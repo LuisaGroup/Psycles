@@ -1,0 +1,4976 @@
+{
+  "schema": "psycles.native-surface-continuation.v1",
+  "status": "portal and native-label continuation repaired; remaining surface obligations and overall performance goal are open",
+  "snapshot": {
+    "root_base": "63b3637646d72aef617fe9e5f7ebcea4ce72c6c0",
+    "child": "6e58928d84604bf0d976f0d6b00f44006b21ceb5",
+    "source_files": [
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/cmake/PsyclesCoreTests.cmake",
+        "sha256": "e55f3a29a8f5a6f4c31cc7bef0e8f100c5110731ec1282e03df17570d2ee921c"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/cmake/PsyclesLuisaSources.cmake",
+        "sha256": "91249b0beb1bcb0ce48760c92ca3df3e52369dc91018d56e0732b57550c81e4c"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/cmake/PsyclesSurfaceBackendTests.cmake",
+        "sha256": "50e44b8103c0e4f9c0216c10dc24fa19ff736851bd47ade464c7edb7b77ab34b"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/include/psycles/luisa/cycles_path_state.h",
+        "sha256": "62fab17de2a0f71715c79011eeb96fce0102e271befb006b23ef87deed5d28eb"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm_bsdf.h",
+        "sha256": "fd8459e5bab6b9acdf17ceaacc3e2368362dac07744e058df8fe9f2f06c9b1bf"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm_surface_integrator.cpp",
+        "sha256": "cf1ed03ff60e597038986048186ae979e76c87244e9f6ce1d9445647c14ebc40"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm_surface_integrator.h",
+        "sha256": "9038d107a96a1c87e4f65710178306b2000a06f5d7a55517f361eb812223baf8"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_builder.h",
+        "sha256": "71baab6a43de1afc5bf1881daaa641a034bfe919bd328059e9013f0a10615da9"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_cycles_svm_surface_scatter.cpp",
+        "sha256": "570a5024718f306986a5f9d0069df8d3a31a0dbf78607961a6369e8dba232f62"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_cycles_svm_surface_scatter.h",
+        "sha256": "f70973743ac0e2065b4a75a2e1788a93039fb25c799924422ea341e91e3e9de0"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_direct_light_task.cpp",
+        "sha256": "b28a080b99f639d203ce640c6b32787d35d2e8d723ac87c51a71e9bd228c520c"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_direct_light_task.h",
+        "sha256": "31879db6ad04b15f3665b6b9502b38d4fc2faf39794c3b565fe711ae57502496"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_direct_light_transport.cpp",
+        "sha256": "487522164192b6a4934b2a2a27293963f67e94a42706649722728a9a95f31e15"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_environment_light.cpp",
+        "sha256": "8aa649dadfa01244847d7d69079b199a20cc6e533618ce7e106c44836d892f3a"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_setup.cpp",
+        "sha256": "d5c38025092967688aece8eca3e3130487951456bc2d589aa833c0f2366f9a4a"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_subsurface.cpp",
+        "sha256": "cffc3385c0ab7c6591643c6a38b3c0038ea864dd98b3217b561c8eb1e94ffa57"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_surface_geometry.cpp",
+        "sha256": "0bdb332259932bf823acf2226239b45c39f8f251b27653842aada5d003ab872b"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_surface_scatter.cpp",
+        "sha256": "f716048721ca9f9ea7ba072a662c4a253d22914e0c626386ebecd9ad4396196d"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_surface_shading.cpp",
+        "sha256": "8619078e3193154a809600fe7ebf22dd08c4f236fa7af016fcaa6c1426a49aaf"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_volume_direct_light.cpp",
+        "sha256": "7dd83b402f9dc4a46d186e2c3f71125bcdda22c982df0396a5456c6df4ca7627"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_volume_segment.cpp",
+        "sha256": "89de9f1b394b185e4deb0e9417c063fc296cd790ce6ad4764b78feccd50f8572"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_volume_shadow.cpp",
+        "sha256": "80d4606b37789ba52d9ee5d99497d5ea9283b6cbfcad1f9f3791006befbb3ba0"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_common.cpp",
+        "sha256": "718247f3155de6862fcaa02e44073d01a291cd1269d041a01201f7da5881c81d"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_light.cpp",
+        "sha256": "7b80e8236a7968f47af161f49fcd0cf90d3b6e7415ef3ba138cd108bf1c267b5"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_shadow.cpp",
+        "sha256": "f01eb37f94433dbc5736db1793b4545196cd7901eb819fd8df050e30029c5209"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_surface.cpp",
+        "sha256": "d07ea0c8ecd7dd6b18d57910e3b0ab97ddd0438e402eb3130eb8c97d287f40e3"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_surfaces.h",
+        "sha256": "c4497ef8313747142aebf751b9e086a58a393d47ce10ca2e819a788e6abbf9db"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_types.h",
+        "sha256": "992387ba4441c3db3126d3e395900c693836bf67f2b813f4d4720095355bb13f"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tests/cycles_ray_portal_fixture.h",
+        "sha256": "87231f87d276f0bf75874d95a689f159016357e67e32e8fd62f0660028605164"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tests/data/cycles_ray_portal_render/manifest.json",
+        "sha256": "6bc6900707e99518c9bcb878d5892dea8cd97c285b30810e7354b648b464a70b"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tests/data/cycles_ray_portal_state.json",
+        "sha256": "821a7edbf05db77b4a83331be9254cdf95c8c33111541f56a136eb5dfb8bca40"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tests/data/cycles_ray_portal_state.txt",
+        "sha256": "fb8c63e63ec0ef48bf2ea42474efa875d7ee64c6700e7745e8fb98b9d191623a"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tests/test_cycles_ray_portal_fixture.py",
+        "sha256": "4e68bc02729ab98f96a5cafdaca1daaa0c213de7791934f358c3c6e160b4f335"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tests/test_luisa_cycles_ray_portal_render.cpp",
+        "sha256": "8651b32bc62abffc6c7c248fd4ed62b3bb2d0d0cf80ec897382839e6fa4e2bca"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tests/test_luisa_cycles_ray_portal_state.cpp",
+        "sha256": "6d7e11a95eac205b704a649185b25ea7602570a29e9f3cfb66c08571791c9ef7"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tests/test_luisa_cycles_shadow_queue.cpp",
+        "sha256": "3464c371ab4e47817195035d0d3cf28b856c80ef60bc56d1a43973b2ed05d679"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tests/test_luisa_cycles_svm_bsdf_dispatch.cpp",
+        "sha256": "84a965d00942b8226d141232f2b02ed3c45f35f92d2b4e3dad1c806047d406a5"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tests/test_luisa_cycles_svm_native_shadow.cpp",
+        "sha256": "55183886277629fe57a32d4d248dbfe1794b2dbd35f22983e54eff79b9995563"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tests/test_luisa_direct_lighting_plan.cpp",
+        "sha256": "93a4e824c06c484fa7cca54a5ba8beb52bc14b060e19e81752ae3ca7b391a827"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tools/capture_cycles_ray_portal.py",
+        "sha256": "9b808738920d9107fdcc945fc935a6d2baba87a7fb74ca1879f59a06dca5ecb1"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tools/create_cycles_ray_portal_scenes.py",
+        "sha256": "b4d4eae6531528c28401e331220b75c59ccd48cb40a98a73ea354517e2d0354e"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tools/cycles_ray_portal_oracle.hip",
+        "sha256": "93ee53f03cf9842addb284f24b34c89cd9239524e133083e2441526768c7282d"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/tools/extract_cycles_ray_portal_fixture.py",
+        "sha256": "057ed86d577be115fe7f12264f24f5fbb8266d990e9a207cee1c94bbff41fa69"
+      }
+    ],
+    "implementation_sha256": {
+      "build/bin/psycles_render_blender_scene": "d22d47d63758ca20dacba56b12222613b990f8e851cedf9163fcf887155e61d0",
+      "build/libpsycles_core.so": "a1b98a746ac670df24df08ed39fd8306abc287d57e85fa34ce5a839ed605a2ec",
+      "build/libpsycles_luisa_runtime.so": "e97641213126f08da84ed5a9a4b8dc0cfb449649e3e12d40078c3454caacbdb7",
+      "build/bin/libluisa-coro.so": "50493a131f2d515432e921762f291e5188e2ff02c6202fb5be6a55359e4ac225",
+      "build/bin/libluisa-xir.so": "60e91e7a0adf433040dbdd5a561ffd46bc84727092f832e13b2169cca1a8b5d6",
+      "build/bin/libluisa-backend-hip.so": "31c7665da651e21b088d4645f2634ad5d81212f2c035afbd1a41ffe273ede5df"
+    },
+    "original_source": "cb168525138fecc792cc393f94afc39582b0103c",
+    "original_inherited_dirty_files": [
+      {
+        "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/scene/light.cpp",
+        "sha256": "6075fa6cb941548af4ce9dffc8ab34233860709095bc71517ad4bc7742747fdb"
+      },
+      {
+        "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/scene/svm.cpp",
+        "sha256": "b0c7db6de10d5e77a26159015f16b633783032749e687ed9a7d3cd3658492e9e"
+      }
+    ]
+  },
+  "builds": [
+    {
+      "command": [
+        "cmake",
+        "--build",
+        "/home/mike/Projects/Psycles-surface-svm/build",
+        "--parallel",
+        "32"
+      ],
+      "exit_status": 0,
+      "log": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/upstream-build.log",
+        "sha256": "7eb0c5c2831e54b221ba9516d69bdfe1eca5503a8cd192b1577df9680b214896"
+      }
+    },
+    {
+      "command": [
+        "cmake",
+        "--build",
+        "/home/mike/Projects/Psycles-surface-svm/build",
+        "--parallel",
+        "32"
+      ],
+      "exit_status": 0,
+      "log": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/final-fixture-build.log",
+        "sha256": "aa38cce9d74d299085dd281fc3b493939a50a7aef40fad11ba1089d69139254b"
+      }
+    }
+  ],
+  "regression_red": {
+    "log": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/render-red-hip.log",
+      "sha256": "53d34b286e918d482f43dff7572c89e944fdcd7f1f76f9b433095af81f4d3fef"
+    },
+    "exit_status": 8,
+    "root": "4d1a3b19077627797f5d6adec4afc11a1476891b",
+    "observations": [
+      {
+        "case": "ray-portal",
+        "scheduler": "megakernel",
+        "rgb_lanes": 768,
+        "mismatches": 768
+      },
+      {
+        "case": "ray-portal",
+        "scheduler": "wavefront-staged",
+        "rgb_lanes": 768,
+        "mismatches": 768
+      },
+      {
+        "case": "transparent-control",
+        "scheduler": "megakernel",
+        "rgb_lanes": 768,
+        "mismatches": 0
+      },
+      {
+        "case": "transparent-control",
+        "scheduler": "wavefront-staged",
+        "rgb_lanes": 768,
+        "mismatches": 0
+      }
+    ]
+  },
+  "regression_green": {
+    "hip": {
+      "log": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/full-hip.log",
+        "sha256": "844ec49a3899ef89f967acbf11eee7d6fc27531bde9c83008a444ddc1c624f92"
+      },
+      "state_cases": 26,
+      "render_observations": [
+        {
+          "case": "portal-default-position",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-default-position",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-chain",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-chain",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-nee",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-nee",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-shadow",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-shadow",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-surface",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-surface",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-world",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-world",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-limit-zero",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-limit-zero",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-signed-weight",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-signed-weight",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-transparent-mix",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-transparent-mix",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "ray-portal",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "ray-portal",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "transparent-control",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "transparent-control",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        }
+      ]
+    },
+    "fallback": {
+      "log": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/full-fallback.log",
+        "sha256": "11f790a2baa6bd7a918b8347d0e2a4fdf5bffc2134434f769d5c91868dba39eb"
+      },
+      "state_cases": 26,
+      "render_observations": [
+        {
+          "case": "portal-default-position",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-default-position",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-chain",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-chain",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-nee",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-nee",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-shadow",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-shadow",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-surface",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-surface",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-world",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-world",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-limit-zero",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-limit-zero",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-signed-weight",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-signed-weight",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-transparent-mix",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-transparent-mix",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "ray-portal",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "ray-portal",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "transparent-control",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "transparent-control",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        }
+      ]
+    },
+    "vk": {
+      "log": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/strict-native-vk.log",
+        "sha256": "1237db2f6a2592a504bba78186c08ba0a87e1d46da83bb91ac31face8173af16"
+      },
+      "state_cases": 26,
+      "render_observations": [
+        {
+          "case": "portal-default-position",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-default-position",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-chain",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-chain",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-nee",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-nee",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-shadow",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-shadow",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-surface",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-surface",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-world",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-depth-world",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-limit-zero",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-limit-zero",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-signed-weight",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-signed-weight",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-transparent-mix",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "portal-transparent-mix",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "ray-portal",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "ray-portal",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "transparent-control",
+          "scheduler": "megakernel",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        },
+        {
+          "case": "transparent-control",
+          "scheduler": "wavefront-staged",
+          "rgb_lanes": 768,
+          "mismatches": 0
+        }
+      ]
+    }
+  },
+  "tests": [
+    {
+      "name": "host",
+      "passed": 178,
+      "total": 178,
+      "exit_status": 0,
+      "wall_seconds": 1.27,
+      "log": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/final-host.log",
+        "sha256": "95daa5f3869c5d9aa6ae2794523dc154733fb70064a5ea5360c96edb55795cde"
+      },
+      "command": [
+        "ctest",
+        "--test-dir",
+        "/home/mike/Projects/Psycles-surface-svm/build",
+        "--parallel",
+        "32",
+        "--output-on-failure",
+        "-E",
+        "_(hip|fallback|vk|cuda|metal|dx)$"
+      ]
+    },
+    {
+      "name": "hip",
+      "passed": 190,
+      "total": 190,
+      "exit_status": 0,
+      "wall_seconds": 355.99,
+      "log": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/full-hip.log",
+        "sha256": "844ec49a3899ef89f967acbf11eee7d6fc27531bde9c83008a444ddc1c624f92"
+      },
+      "command": [
+        "ctest",
+        "--test-dir",
+        "/home/mike/Projects/Psycles-surface-svm/build",
+        "--parallel",
+        "1",
+        "--output-on-failure",
+        "-V",
+        "-R",
+        "_hip$"
+      ]
+    },
+    {
+      "name": "fallback",
+      "passed": 192,
+      "total": 192,
+      "exit_status": 0,
+      "wall_seconds": 317.03,
+      "log": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/full-fallback.log",
+        "sha256": "11f790a2baa6bd7a918b8347d0e2a4fdf5bffc2134434f769d5c91868dba39eb"
+      },
+      "command": [
+        "ctest",
+        "--test-dir",
+        "/home/mike/Projects/Psycles-surface-svm/build",
+        "--parallel",
+        "1",
+        "--output-on-failure",
+        "-V",
+        "-R",
+        "_fallback$"
+      ]
+    },
+    {
+      "name": "strict-native-vulkan",
+      "passed": 9,
+      "total": 9,
+      "exit_status": 0,
+      "wall_seconds": 357.39,
+      "log": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/strict-native-vk.log",
+        "sha256": "1237db2f6a2592a504bba78186c08ba0a87e1d46da83bb91ac31face8173af16"
+      },
+      "command": [
+        "ctest",
+        "--test-dir",
+        "/home/mike/Projects/Psycles-surface-svm/build",
+        "--parallel",
+        "1",
+        "--output-on-failure",
+        "-V",
+        "-R",
+        "^psycles\\.luisa_cycles_(path_lifetime|volume_boundary|volume_emission_film|lamp_routing|zero_bsdf|film_routing|svm_subsurface_exit|ray_portal_state|ray_portal_render)_vk$"
+      ]
+    }
+  ],
+  "fixture_correction": {
+    "reason": "Position requires a link; former relocation fixtures actually retained sd.P and exposed shared-edge traversal ties",
+    "old_full_fallback_log": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/red-full-fallback.log",
+      "sha256": "9daeac2d57af0edfd42518f9922e2d0d55428247eb6535f150ebf72ddaeb8690"
+    },
+    "old_full_fallback_result": {
+      "passed": 191,
+      "total": 192,
+      "exit_status": 8
+    },
+    "old_manifest": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/unlinked-position-manifest.json",
+      "sha256": "9b09aac2059e7fa9d694407f41417bdd85b4b894609236051b20d3de42f5f0d1"
+    },
+    "pixel_diagnostics": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/diagnostic-fallback.log",
+      "sha256": "367f87c3921f248775d63bfaed2640b1cbba9a5224af6fafd44f5813c121ce23"
+    },
+    "original_source_observer": "cb168525138fecc792cc393f94afc39582b0103c",
+    "edge_traces": {
+      "original": {
+        "capture": {
+          "path": "/var/tmp/psycles-ray-portal-pzGSbl/trace-original.decoded.json",
+          "sha256": "8a102eddf592f7a53993b327539cc4b8db5c352b52c566e1fa3887d6d14c1395"
+        },
+        "log": {
+          "path": "/var/tmp/psycles-ray-portal-pzGSbl/trace-original.log",
+          "sha256": "2a9a361df5081eec3a6a44be144abac0dd9b513a2730f8db7997d995d367def3"
+        },
+        "events": [
+          {
+            "index": 0,
+            "state": {
+              "state_lobes": {
+                "aov": "PsyTrace009",
+                "diffuse_bounce": 0.0,
+                "glossy_bounce": 0.0,
+                "slot": 9,
+                "transparent_bounce": 0.0,
+                "written": true
+              },
+              "ray_p": {
+                "aov": "PsyTrace013",
+                "slot": 13,
+                "written": true,
+                "x": 0.4687805771827698,
+                "y": 0.4687805771827698,
+                "z": 4.900000095367432
+              },
+              "ray_d": {
+                "aov": "PsyTrace014",
+                "slot": 14,
+                "written": true,
+                "x": 0.0,
+                "y": 0.0,
+                "z": -1.0
+              },
+              "isect_coord": {
+                "aov": "PsyTrace016",
+                "distance": 1.899999976158142,
+                "slot": 16,
+                "u": 0.0,
+                "v": 0.6171951293945312,
+                "written": true
+              },
+              "isect_id": {
+                "aov": "PsyTrace017",
+                "object": 0.0,
+                "primitive": 0.0,
+                "primitive_type": 1.0,
+                "slot": 17,
+                "written": true
+              },
+              "surface_p": {
+                "aov": "PsyTrace019",
+                "slot": 19,
+                "written": true,
+                "x": 0.468780517578125,
+                "y": 0.468780517578125,
+                "z": 3.0
+              }
+            }
+          }
+        ]
+      },
+      "hip": {
+        "capture": {
+          "path": "/var/tmp/psycles-ray-portal-pzGSbl/trace-hip.decoded.json",
+          "sha256": "0df4ca257d56c3130f2656ecfafbf2100ebddfdc350bc30f963a2119fe65094b"
+        },
+        "log": {
+          "path": "/var/tmp/psycles-ray-portal-pzGSbl/trace-hip.log",
+          "sha256": "bda410e27a4ae5990e6de65327a4a0626f75c9530b4dd184c03655b79f3b21b9"
+        },
+        "events": [
+          {
+            "index": 0,
+            "state": {
+              "state_lobes": {
+                "aov": "PsyTrace009",
+                "diffuse_bounce": 0.0,
+                "glossy_bounce": 0.0,
+                "slot": 9,
+                "transparent_bounce": 0.0,
+                "written": true
+              },
+              "ray_p": {
+                "aov": "PsyTrace013",
+                "slot": 13,
+                "written": true,
+                "x": 0.4687805771827698,
+                "y": 0.4687805771827698,
+                "z": 4.900000095367432
+              },
+              "ray_d": {
+                "aov": "PsyTrace014",
+                "slot": 14,
+                "written": true,
+                "x": -0.0,
+                "y": -0.0,
+                "z": -1.0
+              },
+              "isect_coord": {
+                "aov": "PsyTrace016",
+                "distance": 1.8999998569488525,
+                "slot": 16,
+                "u": 0.0,
+                "v": 0.6171951293945312,
+                "written": true
+              },
+              "isect_id": {
+                "aov": "PsyTrace017",
+                "object": 0.0,
+                "primitive": 0.0,
+                "primitive_type": 1.0,
+                "slot": 17,
+                "written": true
+              },
+              "surface_p": {
+                "aov": "PsyTrace019",
+                "slot": 19,
+                "written": true,
+                "x": 0.468780517578125,
+                "y": 0.468780517578125,
+                "z": 3.0
+              }
+            }
+          }
+        ]
+      },
+      "fallback": {
+        "capture": {
+          "path": "/var/tmp/psycles-ray-portal-pzGSbl/trace-fallback.decoded.json",
+          "sha256": "543efbf923a7390b798e2b42096d5e982946b60eaded358d8e3f6f0bca4edafe"
+        },
+        "log": {
+          "path": "/var/tmp/psycles-ray-portal-pzGSbl/trace-fallback.log",
+          "sha256": "27cefca0c99ba85cf858056ee6e428f6fe5939b980921aee17d73598a4ff2b79"
+        },
+        "events": [
+          {
+            "index": 0,
+            "state": {
+              "state_lobes": {
+                "aov": "PsyTrace009",
+                "diffuse_bounce": 0.0,
+                "glossy_bounce": 0.0,
+                "slot": 9,
+                "transparent_bounce": 0.0,
+                "written": true
+              },
+              "ray_p": {
+                "aov": "PsyTrace013",
+                "slot": 13,
+                "written": true,
+                "x": 0.4687805771827698,
+                "y": 0.4687805771827698,
+                "z": 4.900000095367432
+              },
+              "ray_d": {
+                "aov": "PsyTrace014",
+                "slot": 14,
+                "written": true,
+                "x": -0.0,
+                "y": -0.0,
+                "z": -1.0
+              },
+              "isect_coord": {
+                "aov": "PsyTrace016",
+                "distance": 1.9000000953674316,
+                "slot": 16,
+                "u": 0.6171951293945312,
+                "v": -0.0,
+                "written": true
+              },
+              "isect_id": {
+                "aov": "PsyTrace017",
+                "object": 0.0,
+                "primitive": 1.0,
+                "primitive_type": 1.0,
+                "slot": 17,
+                "written": true
+              },
+              "surface_p": {
+                "aov": "PsyTrace019",
+                "slot": 19,
+                "written": true,
+                "x": 0.468780517578125,
+                "y": 0.468780517578125,
+                "z": 3.0
+              }
+            }
+          },
+          {
+            "index": 1,
+            "state": {
+              "state_lobes": {
+                "aov": "PsyTrace081",
+                "diffuse_bounce": 0.0,
+                "glossy_bounce": 0.0,
+                "slot": 81,
+                "transparent_bounce": 1.0,
+                "written": true
+              },
+              "ray_p": {
+                "aov": "PsyTrace085",
+                "slot": 85,
+                "written": true,
+                "x": 0.468780517578125,
+                "y": 0.468780517578125,
+                "z": 3.00006103515625
+              },
+              "ray_d": {
+                "aov": "PsyTrace086",
+                "slot": 86,
+                "written": true,
+                "x": 0.0,
+                "y": 0.0,
+                "z": -1.0
+              },
+              "isect_coord": {
+                "aov": "PsyTrace088",
+                "distance": 6.103515625e-05,
+                "slot": 88,
+                "u": -0.0,
+                "v": 0.6171951293945312,
+                "written": true
+              },
+              "isect_id": {
+                "aov": "PsyTrace089",
+                "object": 0.0,
+                "primitive": 0.0,
+                "primitive_type": 1.0,
+                "slot": 89,
+                "written": true
+              },
+              "surface_p": {
+                "aov": "PsyTrace091",
+                "slot": 91,
+                "written": true,
+                "x": 0.468780517578125,
+                "y": 0.468780517578125,
+                "z": 3.0
+              }
+            }
+          },
+          {
+            "index": 2,
+            "state": {
+              "state_lobes": {
+                "aov": "PsyTrace153",
+                "diffuse_bounce": 0.0,
+                "glossy_bounce": 0.0,
+                "slot": 153,
+                "transparent_bounce": 2.0,
+                "written": true
+              },
+              "ray_p": {
+                "aov": "PsyTrace157",
+                "slot": 157,
+                "written": true,
+                "x": 0.468780517578125,
+                "y": 0.468780517578125,
+                "z": 3.00006103515625
+              },
+              "ray_d": {
+                "aov": "PsyTrace158",
+                "slot": 158,
+                "written": true,
+                "x": 0.0,
+                "y": 0.0,
+                "z": -1.0
+              },
+              "isect_coord": {
+                "aov": "PsyTrace160",
+                "distance": 6.103515625e-05,
+                "slot": 160,
+                "u": 0.6171951293945312,
+                "v": -0.0,
+                "written": true
+              },
+              "isect_id": {
+                "aov": "PsyTrace161",
+                "object": 0.0,
+                "primitive": 1.0,
+                "primitive_type": 1.0,
+                "slot": 161,
+                "written": true
+              },
+              "surface_p": {
+                "aov": "PsyTrace163",
+                "slot": 163,
+                "written": true,
+                "x": 0.468780517578125,
+                "y": 0.468780517578125,
+                "z": 3.0
+              }
+            }
+          },
+          {
+            "index": 3,
+            "state": {
+              "state_lobes": {
+                "aov": "PsyTrace225",
+                "diffuse_bounce": 0.0,
+                "glossy_bounce": 0.0,
+                "slot": 225,
+                "transparent_bounce": 3.0,
+                "written": true
+              },
+              "ray_p": {
+                "aov": "PsyTrace229",
+                "slot": 229,
+                "written": true,
+                "x": 0.468780517578125,
+                "y": 0.468780517578125,
+                "z": 3.00006103515625
+              },
+              "ray_d": {
+                "aov": "PsyTrace230",
+                "slot": 230,
+                "written": true,
+                "x": 0.0,
+                "y": 0.0,
+                "z": -1.0
+              },
+              "isect_coord": {
+                "aov": "PsyTrace232",
+                "distance": 6.103515625e-05,
+                "slot": 232,
+                "u": -0.0,
+                "v": 0.6171951293945312,
+                "written": true
+              },
+              "isect_id": {
+                "aov": "PsyTrace233",
+                "object": 0.0,
+                "primitive": 0.0,
+                "primitive_type": 1.0,
+                "slot": 233,
+                "written": true
+              },
+              "surface_p": {
+                "aov": "PsyTrace235",
+                "slot": 235,
+                "written": true,
+                "x": 0.468780517578125,
+                "y": 0.468780517578125,
+                "z": 3.0
+              }
+            }
+          }
+        ]
+      }
+    },
+    "original_gpu_boundary_capture": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/original-portal-edges.txt",
+      "sha256": "fb8c63e63ec0ef48bf2ea42474efa875d7ee64c6700e7745e8fb98b9d191623a"
+    },
+    "boundary_gpu_test_logs": [
+      {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/edge-state-hip.log",
+        "sha256": "afa851d0f8537dadb362a9421d07bdb26b8c90e7cab77b224fa30127201c77cf"
+      },
+      {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/edge-state-fallback.log",
+        "sha256": "74b5b5fc0b293483e616282d21868887aabf64bc5780b85a7f4e87979588ee14"
+      }
+    ],
+    "new_original_capture": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/capture.json",
+      "sha256": "c5defbf33b401c3fd5bb489f5fec719230fb91fbc0c1272e0b2d420752bb7713"
+    },
+    "new_original_capture_processes": 18,
+    "runtime_arithmetic_unchanged": true,
+    "tolerance_unchanged": true,
+    "general_shared_edge_parity_certified": false
+  },
+  "native_vulkan": {
+    "environment": {
+      "LUISA_VULKAN_USE_XIR": "1",
+      "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1",
+      "LUISA_VULKAN_DISABLE_DXC": "1",
+      "LD_DEBUG": "libs"
+    },
+    "spirv_compilation_success_lines": 288,
+    "dxc_dxil_loader_matches": 0
+  },
+  "upstream_coro_regression": {
+    "host_log": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/luisa-upstream-host.log",
+      "sha256": "45dad85b6566bac932128f6c8ef31c94b2a3b6238bd994fa7169a4b521dce5de"
+    },
+    "host_tests": 2,
+    "hip_log": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/luisa-packed-hip.log",
+      "sha256": "a975be9b07abbc2b3a5064d84bcac3e7bae65910bd031bd172b9596849d4a2bc"
+    },
+    "hip_assertions": 14,
+    "build_log": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/luisa-upstream-tests-build.log",
+      "sha256": "1a7e2bc0487b3bdbd35d3ecaf365186e4618de0e1fc30aee5d643d899cc22cb8"
+    }
+  },
+  "canaries": {
+    "manifest": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/canaries.json",
+      "sha256": "54727d2174f47dd3dd12874988e89d517d4627680584c389f27155abcf694720"
+    },
+    "runner_log": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-run.log",
+      "sha256": "7b6fa8ae59786929c17691f364304bbe558010cc17a0a5376a9ca485eaf19397"
+    },
+    "runner_exit_status": 2,
+    "reference_scope": "retained equal-pass Cycles run-1 images; not fresh timing pairs",
+    "main_shader_cache": "disabled",
+    "records": [
+      {
+        "scene": "barbershop",
+        "repeat": 1,
+        "timings": {
+          "scene_compile_seconds": 15.44,
+          "shader_jit_seconds": 59.1673,
+          "render_seconds": 37.3847
+        },
+        "render": {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.ppm",
+            "hip",
+            "2048",
+            "858",
+            "256",
+            "64",
+            "-",
+            "1024",
+            "429",
+            "0",
+            "0",
+            "256",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.log",
+          "log_sha256": "f46e8070e3dafde828a2c054387c08eec9f7e6718effd82388523bc122e54ac6",
+          "returncode": 0,
+          "wall_seconds": 114.17180394398747
+        },
+        "comparison": {
+          "command": [
+            "/usr/bin/python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.exr",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1-comparison.json",
+            "--triptych-dir",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1-triptychs",
+            "--reference-label",
+            "Cycles 5.2.1 HIP",
+            "--actual-label",
+            "Psycles native continuation HIP, SDK 6e58928d8",
+            "--reference-metadata",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.json",
+            "--actual-metadata",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop/scene.json",
+            "Combined=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "Normal=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "DiffCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "GlossCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "TransCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "DiffDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "DiffInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "GlossDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "GlossInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "TransDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "TransInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "Emit=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "Env=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "Volume Direct=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+            "Volume Indirect=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1-compare.log",
+          "log_sha256": "cfda6c83b25c63a3ca993ae47441a6a9c58ab0db8eb5393a29aa14b229adfbfa",
+          "returncode": 0,
+          "wall_seconds": 12.41253418699489
+        },
+        "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/benchmark.json",
+        "source_manifest_sha256": "7405c10f9ea1d09929cb8f4cea8eb68fe720b136759bac039eef20a5c10c7e31",
+        "output_sha256": "1ec428303e17079df684251f19d802c5b996f57a175c7b26c433befc1b9a5cca",
+        "reference_sha256": "6172978af5505604b4d018aa3a74cb86fee5038bc5aa87275c0078f0d6c03d3a",
+        "frame": {
+          "stages": 6,
+          "fields": 92,
+          "bytes": 416
+        },
+        "actual_all_finite": true,
+        "passes": {
+          "Combined": {
+            "rmse": 0.002310415031388402,
+            "relative_rmse": 0.01052118306551078,
+            "maximum_absolute_error": 1.0282701253890991,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "DiffCol": {
+            "rmse": 0.0003974412102252245,
+            "relative_rmse": 0.001597477710963558,
+            "maximum_absolute_error": 0.14437994360923767,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "DiffDir": {
+            "rmse": 0.005852751899510622,
+            "relative_rmse": 0.009853772543643736,
+            "maximum_absolute_error": 2.4588613510131836,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "DiffInd": {
+            "rmse": 0.008526776917278767,
+            "relative_rmse": 0.07126172006904968,
+            "maximum_absolute_error": 3.1758127212524414,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Emit": {
+            "rmse": 1.685227471170947e-05,
+            "relative_rmse": 0.0002119692471380918,
+            "maximum_absolute_error": 0.005866773426532745,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Env": {
+            "rmse": 5.8762325352290645e-06,
+            "relative_rmse": 0.00045627798673005546,
+            "maximum_absolute_error": 0.00390625,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "GlossCol": {
+            "rmse": 0.00038607255555689335,
+            "relative_rmse": 0.0019358409455885854,
+            "maximum_absolute_error": 0.09696038067340851,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "GlossDir": {
+            "rmse": 0.018164798617362976,
+            "relative_rmse": 0.008050348086606712,
+            "maximum_absolute_error": 16.8869686126709,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "GlossInd": {
+            "rmse": 0.02490895241498947,
+            "relative_rmse": 0.11403339185269902,
+            "maximum_absolute_error": 11.26154613494873,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Normal": {
+            "rmse": 0.0005052111227996647,
+            "relative_rmse": 0.000916536408195256,
+            "maximum_absolute_error": 0.059086017310619354,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "TransCol": {
+            "rmse": 1.755613266141154e-05,
+            "relative_rmse": 0.0002701361292099856,
+            "maximum_absolute_error": 0.0038556456565856934,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "TransDir": {
+            "rmse": 9.330457032774575e-06,
+            "relative_rmse": 0.02814883238281112,
+            "maximum_absolute_error": 0.003766209352761507,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "TransInd": {
+            "rmse": 0.00040733281639404595,
+            "relative_rmse": 0.029734830857551235,
+            "maximum_absolute_error": 0.2506383955478668,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Volume Direct": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Volume Indirect": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          }
+        },
+        "hip_link_observations": [
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 20.171712
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 5.783672
+          },
+          {
+            "code_object_bytes": 4288,
+            "milliseconds": 5.698372
+          },
+          {
+            "code_object_bytes": 10304,
+            "milliseconds": 1.059211
+          },
+          {
+            "code_object_bytes": 449728,
+            "milliseconds": 4928.47965
+          },
+          {
+            "code_object_bytes": 53040,
+            "milliseconds": 455.23702399999996
+          },
+          {
+            "code_object_bytes": 489440,
+            "milliseconds": 5320.2718589999995
+          },
+          {
+            "code_object_bytes": 31512,
+            "milliseconds": 211.93921899999998
+          },
+          {
+            "code_object_bytes": 39520,
+            "milliseconds": 241.67032999999998
+          },
+          {
+            "code_object_bytes": 178496,
+            "milliseconds": 1877.740435
+          },
+          {
+            "code_object_bytes": 375528,
+            "milliseconds": 3366.812462
+          },
+          {
+            "code_object_bytes": 7744,
+            "milliseconds": 37.255078999999995
+          },
+          {
+            "code_object_bytes": 860096,
+            "milliseconds": 25015.446248
+          },
+          {
+            "code_object_bytes": 4160,
+            "milliseconds": 19.950142
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.851563
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.8852019999999999
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 19.825923
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 5.758862
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.8670829999999999
+          },
+          {
+            "code_object_bytes": 11072,
+            "milliseconds": 6.511965
+          }
+        ]
+      },
+      {
+        "scene": "monk",
+        "repeat": 1,
+        "timings": {
+          "scene_compile_seconds": 5.05536,
+          "shader_jit_seconds": 42.828,
+          "render_seconds": 12.6946
+        },
+        "render": {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/monk",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.ppm",
+            "hip",
+            "1440",
+            "1080",
+            "256",
+            "64",
+            "-",
+            "720",
+            "540",
+            "0",
+            "0",
+            "256",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.log",
+          "log_sha256": "853b8305cf7fd87a8add2438c9e5aea27c1cd83bbc801e3bef6c68cca6b026fa",
+          "returncode": 0,
+          "wall_seconds": 61.749261623001075
+        },
+        "comparison": {
+          "command": [
+            "/usr/bin/python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/monk/run-1/cycles/hip.exr",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1-comparison.json",
+            "--triptych-dir",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1-triptychs",
+            "--reference-label",
+            "Cycles 5.2.1 HIP",
+            "--actual-label",
+            "Psycles native continuation HIP, SDK 6e58928d8",
+            "--reference-metadata",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/monk/run-1/cycles/hip.json",
+            "--actual-metadata",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/monk/scene.json",
+            "Combined=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "Normal=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "DiffCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "GlossCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "TransCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "DiffDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "DiffInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "GlossDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "GlossInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "TransDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "TransInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "Emit=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "Env=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "Volume Direct=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+            "Volume Indirect=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1-compare.log",
+          "log_sha256": "57654409dfc63baa4baebdaf1e576ba443fe6611f5a16b946f491a00f45132e9",
+          "returncode": 0,
+          "wall_seconds": 11.578642018997925
+        },
+        "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/monk/run-1/benchmark.json",
+        "source_manifest_sha256": "484502e39214430eac732c846bbd7d7f9d752d0308a1cd256ecc057c43980993",
+        "output_sha256": "6240e80f2d396ead8a6689b3ccf9f8cd8827508b9052d74e52008bd4af3ebe67",
+        "reference_sha256": "b54ce5297200259ec21809ec7dd93231537e6c3b165f6934b7bd6462cc5398a6",
+        "frame": {
+          "stages": 4,
+          "fields": 50,
+          "bytes": 200
+        },
+        "actual_all_finite": true,
+        "passes": {
+          "Combined": {
+            "rmse": 0.019859304651618004,
+            "relative_rmse": 0.012404448861706325,
+            "maximum_absolute_error": 4.85056209564209,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "DiffCol": {
+            "rmse": 0.00010382640175521374,
+            "relative_rmse": 0.0005459235443044322,
+            "maximum_absolute_error": 0.031210459768772125,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "DiffDir": {
+            "rmse": 0.12511475384235382,
+            "relative_rmse": 0.013657020324541842,
+            "maximum_absolute_error": 41.64160919189453,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "DiffInd": {
+            "rmse": 0.052107106894254684,
+            "relative_rmse": 0.12881728424768704,
+            "maximum_absolute_error": 21.9217529296875,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "Emit": {
+            "rmse": 0.0001574619673192501,
+            "relative_rmse": 0.00021499477380357803,
+            "maximum_absolute_error": 0.06563067436218262,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "Env": {
+            "rmse": 9.253035004874732e-10,
+            "relative_rmse": 5.976877795634076e-07,
+            "maximum_absolute_error": 1.1026859283447266e-06,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "GlossCol": {
+            "rmse": 5.3939904319122434e-05,
+            "relative_rmse": 0.0007615456297041122,
+            "maximum_absolute_error": 0.004534691572189331,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "GlossDir": {
+            "rmse": 0.13244163990020752,
+            "relative_rmse": 0.030595114369446553,
+            "maximum_absolute_error": 46.4306640625,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "GlossInd": {
+            "rmse": 0.05176962912082672,
+            "relative_rmse": 0.13596509319723105,
+            "maximum_absolute_error": 8.022109031677246,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "Normal": {
+            "rmse": 0.0010644110152497888,
+            "relative_rmse": 0.0019149970998810328,
+            "maximum_absolute_error": 0.22747711837291718,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "TransCol": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "TransDir": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "TransInd": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "Volume Direct": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          },
+          "Volume Indirect": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1555200,
+            "shape": [
+              1080,
+              1440,
+              3
+            ]
+          }
+        },
+        "hip_link_observations": [
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 1.001811
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.849973
+          },
+          {
+            "code_object_bytes": 4288,
+            "milliseconds": 0.8255629999999999
+          },
+          {
+            "code_object_bytes": 10304,
+            "milliseconds": 1.135561
+          },
+          {
+            "code_object_bytes": 446520,
+            "milliseconds": 8215.963344
+          },
+          {
+            "code_object_bytes": 44464,
+            "milliseconds": 267.499386
+          },
+          {
+            "code_object_bytes": 366176,
+            "milliseconds": 3747.3302639999997
+          },
+          {
+            "code_object_bytes": 7360,
+            "milliseconds": 39.739602
+          },
+          {
+            "code_object_bytes": 25240,
+            "milliseconds": 3.697078
+          },
+          {
+            "code_object_bytes": 377160,
+            "milliseconds": 3447.1980439999998
+          },
+          {
+            "code_object_bytes": 699968,
+            "milliseconds": 15706.488856
+          },
+          {
+            "code_object_bytes": 4160,
+            "milliseconds": 0.993632
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.8485419999999999
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.989381
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.924302
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.925952
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.9677319999999999
+          },
+          {
+            "code_object_bytes": 5952,
+            "milliseconds": 1.185629
+          },
+          {
+            "code_object_bytes": 5056,
+            "milliseconds": 20.122108
+          },
+          {
+            "code_object_bytes": 4160,
+            "milliseconds": 12.716011
+          },
+          {
+            "code_object_bytes": 14528,
+            "milliseconds": 55.02397
+          }
+        ]
+      },
+      {
+        "scene": "monster",
+        "repeat": 1,
+        "timings": {
+          "scene_compile_seconds": 1.49393,
+          "shader_jit_seconds": 53.6947,
+          "render_seconds": 13.7475
+        },
+        "render": {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/monster",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.ppm",
+            "hip",
+            "1080",
+            "1080",
+            "256",
+            "64",
+            "-",
+            "540",
+            "540",
+            "0",
+            "0",
+            "256",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.log",
+          "log_sha256": "6444b6ce434f6fc2940de426467b8469a68d0484d02e85a76d7c93422a0f1499",
+          "returncode": 0,
+          "wall_seconds": 69.72913118499855
+        },
+        "comparison": {
+          "command": [
+            "/usr/bin/python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/monster/run-1/cycles/hip.exr",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1-comparison.json",
+            "--triptych-dir",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1-triptychs",
+            "--reference-label",
+            "Cycles 5.2.1 HIP",
+            "--actual-label",
+            "Psycles native continuation HIP, SDK 6e58928d8",
+            "--reference-metadata",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/monster/run-1/cycles/hip.json",
+            "--actual-metadata",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/monster/scene.json",
+            "Combined=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "Normal=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "DiffCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "GlossCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "TransCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "DiffDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "DiffInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "GlossDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "GlossInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "TransDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "TransInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "Emit=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "Env=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "Volume Direct=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+            "Volume Indirect=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1-compare.log",
+          "log_sha256": "ceb5327eef55b8a3eb2fc245035a63cdddedc18cd3a585e2b9e1e8b53d29c4ab",
+          "returncode": 0,
+          "wall_seconds": 8.062023431994021
+        },
+        "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/monster/run-1/benchmark.json",
+        "source_manifest_sha256": "9eba8d60c6377866050560ae2c4470bb883670d2704c01b8f61a4fe5606f6d55",
+        "output_sha256": "3fc97dfb462606fcb9d7070e210ab810ffcc2cad0e705ae429a79ac041623686",
+        "reference_sha256": "abac5958d05e07b399ebb6099578df32173be57e1db0aa364a65a86fd0614001",
+        "frame": {
+          "stages": 6,
+          "fields": 68,
+          "bytes": 272
+        },
+        "actual_all_finite": true,
+        "passes": {
+          "Combined": {
+            "rmse": 0.0007778240251354873,
+            "relative_rmse": 0.005478549626826196,
+            "maximum_absolute_error": 0.10743248462677002,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "DiffCol": {
+            "rmse": 3.8640169805148616e-05,
+            "relative_rmse": 0.00010991639465077175,
+            "maximum_absolute_error": 0.004987359046936035,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "DiffDir": {
+            "rmse": 0.0007270673522725701,
+            "relative_rmse": 0.002333540421346764,
+            "maximum_absolute_error": 0.24936866760253906,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "DiffInd": {
+            "rmse": 0.0021791881881654263,
+            "relative_rmse": 0.025525251381485477,
+            "maximum_absolute_error": 0.31186026334762573,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "Emit": {
+            "rmse": 4.263103221546771e-07,
+            "relative_rmse": 0.0001347357086454389,
+            "maximum_absolute_error": 0.00018330104649066925,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "Env": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "GlossCol": {
+            "rmse": 1.627332494535949e-05,
+            "relative_rmse": 0.00022797147374176824,
+            "maximum_absolute_error": 0.0030778050422668457,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "GlossDir": {
+            "rmse": 0.0015441871946677566,
+            "relative_rmse": 0.004396788195659839,
+            "maximum_absolute_error": 0.6565099954605103,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "GlossInd": {
+            "rmse": 0.003727454924955964,
+            "relative_rmse": 0.04217129652849398,
+            "maximum_absolute_error": 1.561591386795044,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "Normal": {
+            "rmse": 4.818736488232389e-05,
+            "relative_rmse": 8.407577971231741e-05,
+            "maximum_absolute_error": 0.009735755622386932,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "TransCol": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "TransDir": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "TransInd": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "Volume Direct": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          },
+          "Volume Indirect": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1166400,
+            "shape": [
+              1080,
+              1080,
+              3
+            ]
+          }
+        },
+        "hip_link_observations": [
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.9753809999999999
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.862713
+          },
+          {
+            "code_object_bytes": 4288,
+            "milliseconds": 0.808653
+          },
+          {
+            "code_object_bytes": 10304,
+            "milliseconds": 1.013971
+          },
+          {
+            "code_object_bytes": 439352,
+            "milliseconds": 4609.7211959999995
+          },
+          {
+            "code_object_bytes": 44464,
+            "milliseconds": 5.3035939999999995
+          },
+          {
+            "code_object_bytes": 464736,
+            "milliseconds": 5381.026951
+          },
+          {
+            "code_object_bytes": 6720,
+            "milliseconds": 38.224641999999996
+          },
+          {
+            "code_object_bytes": 34840,
+            "milliseconds": 227.13982
+          },
+          {
+            "code_object_bytes": 413376,
+            "milliseconds": 3963.340679
+          },
+          {
+            "code_object_bytes": 6464,
+            "milliseconds": 33.938339
+          },
+          {
+            "code_object_bytes": 852032,
+            "milliseconds": 23716.740932999997
+          },
+          {
+            "code_object_bytes": 99528,
+            "milliseconds": 748.172191
+          },
+          {
+            "code_object_bytes": 4160,
+            "milliseconds": 1.3287579999999999
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.8673719999999999
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.853302
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 1.199309
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 1.037121
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.957332
+          },
+          {
+            "code_object_bytes": 9920,
+            "milliseconds": 49.500543
+          },
+          {
+            "code_object_bytes": 5056,
+            "milliseconds": 20.561503
+          },
+          {
+            "code_object_bytes": 4160,
+            "milliseconds": 17.477028999999998
+          },
+          {
+            "code_object_bytes": 14528,
+            "milliseconds": 53.399609
+          }
+        ]
+      },
+      {
+        "scene": "classroom",
+        "repeat": 1,
+        "timings": {
+          "scene_compile_seconds": 2.08653,
+          "shader_jit_seconds": 38.7979,
+          "render_seconds": 17.2365
+        },
+        "render": {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/classroom",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.ppm",
+            "hip",
+            "1920",
+            "1080",
+            "256",
+            "64",
+            "-",
+            "960",
+            "540",
+            "0",
+            "0",
+            "256",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.log",
+          "log_sha256": "f0823fe38fdc93bee4099f6dde2dc77a44df36c61d9bb4cb55e1b807e5d8fd83",
+          "returncode": 0,
+          "wall_seconds": 59.67691599900718
+        },
+        "comparison": {
+          "command": [
+            "/usr/bin/python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/cycles/hip.exr",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1-comparison.json",
+            "--triptych-dir",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1-triptychs",
+            "--reference-label",
+            "Cycles 5.2.1 HIP",
+            "--actual-label",
+            "Psycles native continuation HIP, SDK 6e58928d8",
+            "--reference-metadata",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/cycles/hip.json",
+            "--actual-metadata",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/classroom/scene.json",
+            "Combined=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "Normal=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "DiffCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "GlossCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "TransCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "DiffDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "DiffInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "GlossDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "GlossInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "TransDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "TransInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "Emit=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "Env=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "Volume Direct=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+            "Volume Indirect=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1-compare.log",
+          "log_sha256": "4bf88fa49a091dbe8c30a1cc01a4a9efbf73ebb27c466acb47816ab7d157e4c5",
+          "returncode": 0,
+          "wall_seconds": 14.143157063997933
+        },
+        "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/benchmark.json",
+        "source_manifest_sha256": "13a1ea5fe2ebac91eac04bda443a1def559c9202f2adaae91156a6a2bb029c86",
+        "output_sha256": "67ff838bdd4b8e9e71560fda3f9b11c056f457a264ffb86e26b8986123cfcd16",
+        "reference_sha256": "94dbbc51b63958e1def2feba5c8645b89cadc8172cb7aaeda90ebcd996bf5108",
+        "frame": {
+          "stages": 5,
+          "fields": 63,
+          "bytes": 252
+        },
+        "actual_all_finite": false,
+        "passes": {
+          "Combined": {
+            "rmse": 0.001520572928711772,
+            "relative_rmse": 0.0035332016042348593,
+            "maximum_absolute_error": 0.35792529582977295,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 2073600,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "DiffCol": {
+            "rmse": 3.340398325235583e-05,
+            "relative_rmse": 0.00010232396370682254,
+            "maximum_absolute_error": 0.004035472869873047,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 2073600,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "DiffDir": {
+            "rmse": 0.002316366648301482,
+            "relative_rmse": 0.002656370761614441,
+            "maximum_absolute_error": 1.9988431930541992,
+            "actual_invalid_pixels": 7,
+            "reference_invalid_pixels": 25,
+            "invalid_pixels": 32,
+            "valid_pixels": 2073568,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "DiffInd": {
+            "rmse": 0.03805910050868988,
+            "relative_rmse": 0.1782033942958794,
+            "maximum_absolute_error": 58.97568893432617,
+            "actual_invalid_pixels": 2,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 2,
+            "valid_pixels": 2073598,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "Emit": {
+            "rmse": 3.9428552554454654e-05,
+            "relative_rmse": 0.00018370088856576412,
+            "maximum_absolute_error": 0.009806632995605469,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 2073600,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "Env": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 2073600,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "GlossCol": {
+            "rmse": 2.793656130961608e-05,
+            "relative_rmse": 0.0002984108674346397,
+            "maximum_absolute_error": 0.005186676979064941,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 2073600,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "GlossDir": {
+            "rmse": 0.0057385824620723724,
+            "relative_rmse": 0.012258971359871631,
+            "maximum_absolute_error": 4.153463840484619,
+            "actual_invalid_pixels": 7,
+            "reference_invalid_pixels": 27,
+            "invalid_pixels": 34,
+            "valid_pixels": 2073566,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "GlossInd": {
+            "rmse": 0.02418205328285694,
+            "relative_rmse": 0.1504037205601165,
+            "maximum_absolute_error": 23.7286319732666,
+            "actual_invalid_pixels": 2,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 2,
+            "valid_pixels": 2073598,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "Normal": {
+            "rmse": 0.00012060406152158976,
+            "relative_rmse": 0.00021520023281535963,
+            "maximum_absolute_error": 0.013612210750579834,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 2073600,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "TransCol": {
+            "rmse": 8.861038622853812e-06,
+            "relative_rmse": 0.000153829320603823,
+            "maximum_absolute_error": 0.003721177577972412,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 2073600,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "TransDir": {
+            "rmse": 1.7623958958878916e-09,
+            "relative_rmse": 0.4335678051196791,
+            "maximum_absolute_error": 7.397480317195004e-07,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 2073600,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "TransInd": {
+            "rmse": 0.0012093719560652971,
+            "relative_rmse": 0.08735140023900408,
+            "maximum_absolute_error": 2.0919766426086426,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 2073600,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "Volume Direct": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 2073600,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          },
+          "Volume Indirect": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 2073600,
+            "shape": [
+              1080,
+              1920,
+              3
+            ]
+          }
+        },
+        "hip_link_observations": [
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.975232
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.7987029999999999
+          },
+          {
+            "code_object_bytes": 4288,
+            "milliseconds": 0.783353
+          },
+          {
+            "code_object_bytes": 10304,
+            "milliseconds": 0.984331
+          },
+          {
+            "code_object_bytes": 359912,
+            "milliseconds": 4881.883337
+          },
+          {
+            "code_object_bytes": 44464,
+            "milliseconds": 5.343604
+          },
+          {
+            "code_object_bytes": 354912,
+            "milliseconds": 2952.54045
+          },
+          {
+            "code_object_bytes": 7360,
+            "milliseconds": 40.468779999999995
+          },
+          {
+            "code_object_bytes": 33688,
+            "milliseconds": 213.146455
+          },
+          {
+            "code_object_bytes": 348392,
+            "milliseconds": 3018.943013
+          },
+          {
+            "code_object_bytes": 6336,
+            "milliseconds": 30.959221999999997
+          },
+          {
+            "code_object_bytes": 699072,
+            "milliseconds": 16472.251202
+          },
+          {
+            "code_object_bytes": 4160,
+            "milliseconds": 19.841877999999998
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.901822
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.9008619999999999
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 5.8373289999999995
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 5.789549999999999
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 1.000271
+          },
+          {
+            "code_object_bytes": 8768,
+            "milliseconds": 42.218244
+          },
+          {
+            "code_object_bytes": 5056,
+            "milliseconds": 19.861487999999998
+          },
+          {
+            "code_object_bytes": 4160,
+            "milliseconds": 12.424681999999999
+          },
+          {
+            "code_object_bytes": 14528,
+            "milliseconds": 52.659912999999996
+          }
+        ]
+      },
+      {
+        "scene": "barbershop",
+        "repeat": 2,
+        "timings": {
+          "scene_compile_seconds": 15.2232,
+          "shader_jit_seconds": 17.372,
+          "render_seconds": 37.5162
+        },
+        "render": {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.ppm",
+            "hip",
+            "2048",
+            "858",
+            "256",
+            "64",
+            "-",
+            "1024",
+            "429",
+            "0",
+            "0",
+            "256",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.log",
+          "log_sha256": "1f31859b0b4a95ed856b26d3e88775eaf8d572bfeb53b9ebf7a68e623f781571",
+          "returncode": 0,
+          "wall_seconds": 72.23383966799884
+        },
+        "comparison": {
+          "command": [
+            "/usr/bin/python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.exr",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2-comparison.json",
+            "--triptych-dir",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2-triptychs",
+            "--reference-label",
+            "Cycles 5.2.1 HIP",
+            "--actual-label",
+            "Psycles native continuation HIP, SDK 6e58928d8",
+            "--reference-metadata",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.json",
+            "--actual-metadata",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop/scene.json",
+            "Combined=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "Normal=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "DiffCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "GlossCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "TransCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "DiffDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "DiffInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "GlossDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "GlossInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "TransDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "TransInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "Emit=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "Env=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "Volume Direct=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr",
+            "Volume Indirect=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2.exr"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-2-compare.log",
+          "log_sha256": "4011b9e835320349db7030e77b4b7ef1bc3d3e4c9f7d00f4acedc2c2ecfa87df",
+          "returncode": 0,
+          "wall_seconds": 12.62953116800054
+        },
+        "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/benchmark.json",
+        "source_manifest_sha256": "7405c10f9ea1d09929cb8f4cea8eb68fe720b136759bac039eef20a5c10c7e31",
+        "output_sha256": "a352039a63865d8c94cee4f0750ee665f569d636f39597ac993b6c987e7e930a",
+        "reference_sha256": "6172978af5505604b4d018aa3a74cb86fee5038bc5aa87275c0078f0d6c03d3a",
+        "frame": {
+          "stages": 6,
+          "fields": 92,
+          "bytes": 416
+        },
+        "actual_all_finite": true,
+        "passes": {
+          "Combined": {
+            "rmse": 0.0023104019928723574,
+            "relative_rmse": 0.010521123690631228,
+            "maximum_absolute_error": 1.0282701253890991,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "DiffCol": {
+            "rmse": 0.0003974517749156803,
+            "relative_rmse": 0.0015975201747471118,
+            "maximum_absolute_error": 0.14437994360923767,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "DiffDir": {
+            "rmse": 0.005852775648236275,
+            "relative_rmse": 0.00985381252732061,
+            "maximum_absolute_error": 2.4588613510131836,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "DiffInd": {
+            "rmse": 0.008526770398020744,
+            "relative_rmse": 0.0712616655849762,
+            "maximum_absolute_error": 3.1758127212524414,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Emit": {
+            "rmse": 1.685227471170947e-05,
+            "relative_rmse": 0.0002119692471380918,
+            "maximum_absolute_error": 0.005866773426532745,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Env": {
+            "rmse": 5.8762325352290645e-06,
+            "relative_rmse": 0.00045627798673005546,
+            "maximum_absolute_error": 0.00390625,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "GlossCol": {
+            "rmse": 0.00038607255555689335,
+            "relative_rmse": 0.0019358409455885854,
+            "maximum_absolute_error": 0.09696038067340851,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "GlossDir": {
+            "rmse": 0.018164798617362976,
+            "relative_rmse": 0.008050348086606712,
+            "maximum_absolute_error": 16.8869686126709,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "GlossInd": {
+            "rmse": 0.024908946827054024,
+            "relative_rmse": 0.11403336627108394,
+            "maximum_absolute_error": 11.26154613494873,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Normal": {
+            "rmse": 0.0005052110645920038,
+            "relative_rmse": 0.0009165363025969467,
+            "maximum_absolute_error": 0.059086017310619354,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "TransCol": {
+            "rmse": 1.755613266141154e-05,
+            "relative_rmse": 0.0002701361292099856,
+            "maximum_absolute_error": 0.0038556456565856934,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "TransDir": {
+            "rmse": 9.330457032774575e-06,
+            "relative_rmse": 0.02814883238281112,
+            "maximum_absolute_error": 0.003766209352761507,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "TransInd": {
+            "rmse": 0.00040733281639404595,
+            "relative_rmse": 0.029734830857551235,
+            "maximum_absolute_error": 0.2506383955478668,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Volume Direct": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Volume Indirect": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          }
+        },
+        "hip_link_observations": [
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.9996109999999999
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.8282229999999999
+          },
+          {
+            "code_object_bytes": 4288,
+            "milliseconds": 0.7940229999999999
+          },
+          {
+            "code_object_bytes": 10304,
+            "milliseconds": 1.011731
+          },
+          {
+            "code_object_bytes": 449728,
+            "milliseconds": 22.714522
+          },
+          {
+            "code_object_bytes": 53040,
+            "milliseconds": 13.796159999999999
+          },
+          {
+            "code_object_bytes": 489440,
+            "milliseconds": 25.787985
+          },
+          {
+            "code_object_bytes": 31512,
+            "milliseconds": 4.474781
+          },
+          {
+            "code_object_bytes": 39520,
+            "milliseconds": 5.657921
+          },
+          {
+            "code_object_bytes": 178496,
+            "milliseconds": 11.4834
+          },
+          {
+            "code_object_bytes": 375528,
+            "milliseconds": 25.327709
+          },
+          {
+            "code_object_bytes": 7744,
+            "milliseconds": 1.433308
+          },
+          {
+            "code_object_bytes": 860096,
+            "milliseconds": 87.475087
+          },
+          {
+            "code_object_bytes": 4160,
+            "milliseconds": 1.005951
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.893222
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.848143
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.9076919999999999
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.910662
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.838093
+          },
+          {
+            "code_object_bytes": 11072,
+            "milliseconds": 1.593046
+          }
+        ]
+      },
+      {
+        "scene": "barbershop",
+        "repeat": 3,
+        "timings": {
+          "scene_compile_seconds": 15.1784,
+          "shader_jit_seconds": 18.3936,
+          "render_seconds": 37.4951
+        },
+        "render": {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.ppm",
+            "hip",
+            "2048",
+            "858",
+            "256",
+            "64",
+            "-",
+            "1024",
+            "429",
+            "0",
+            "0",
+            "256",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.log",
+          "log_sha256": "43aad20ce6f6d25b2ffa029a5edc16e5c3b1a7bb9e4fb61d54b5203cfd823004",
+          "returncode": 0,
+          "wall_seconds": 73.19457071999204
+        },
+        "comparison": {
+          "command": [
+            "/usr/bin/python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.exr",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3-comparison.json",
+            "--triptych-dir",
+            "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3-triptychs",
+            "--reference-label",
+            "Cycles 5.2.1 HIP",
+            "--actual-label",
+            "Psycles native continuation HIP, SDK 6e58928d8",
+            "--reference-metadata",
+            "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.json",
+            "--actual-metadata",
+            "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop/scene.json",
+            "Combined=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "Normal=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "DiffCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "GlossCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "TransCol=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "DiffDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "DiffInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "GlossDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "GlossInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "TransDir=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "TransInd=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "Emit=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "Env=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "Volume Direct=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr",
+            "Volume Indirect=/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3.exr"
+          ],
+          "log": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-3-compare.log",
+          "log_sha256": "a77e9799105947bc55e64de339d34b31bb7dc2ec6299f672accd7c01fd1a74fd",
+          "returncode": 0,
+          "wall_seconds": 12.663983550999546
+        },
+        "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/benchmark.json",
+        "source_manifest_sha256": "7405c10f9ea1d09929cb8f4cea8eb68fe720b136759bac039eef20a5c10c7e31",
+        "output_sha256": "f57fb39b6f2db70a0b2ae73cb00a426b52084454de4860fdcd186c2b06cc9b9f",
+        "reference_sha256": "6172978af5505604b4d018aa3a74cb86fee5038bc5aa87275c0078f0d6c03d3a",
+        "frame": {
+          "stages": 6,
+          "fields": 92,
+          "bytes": 416
+        },
+        "actual_all_finite": true,
+        "passes": {
+          "Combined": {
+            "rmse": 0.002310414332896471,
+            "relative_rmse": 0.010521179884713662,
+            "maximum_absolute_error": 1.0282701253890991,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "DiffCol": {
+            "rmse": 0.00039744030800648034,
+            "relative_rmse": 0.0015974740845798386,
+            "maximum_absolute_error": 0.14437994360923767,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "DiffDir": {
+            "rmse": 0.005852777045220137,
+            "relative_rmse": 0.009853814879301604,
+            "maximum_absolute_error": 2.4588613510131836,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "DiffInd": {
+            "rmse": 0.00852676946669817,
+            "relative_rmse": 0.07126165780153712,
+            "maximum_absolute_error": 3.1758127212524414,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Emit": {
+            "rmse": 1.685227471170947e-05,
+            "relative_rmse": 0.0002119692471380918,
+            "maximum_absolute_error": 0.005866773426532745,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Env": {
+            "rmse": 5.8762325352290645e-06,
+            "relative_rmse": 0.00045627798673005546,
+            "maximum_absolute_error": 0.00390625,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "GlossCol": {
+            "rmse": 0.00038607255555689335,
+            "relative_rmse": 0.0019358409455885854,
+            "maximum_absolute_error": 0.09696038067340851,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "GlossDir": {
+            "rmse": 0.018164798617362976,
+            "relative_rmse": 0.008050348086606712,
+            "maximum_absolute_error": 16.8869686126709,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "GlossInd": {
+            "rmse": 0.02490895241498947,
+            "relative_rmse": 0.11403339185269902,
+            "maximum_absolute_error": 11.26154613494873,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Normal": {
+            "rmse": 0.0005052110645920038,
+            "relative_rmse": 0.0009165363025969467,
+            "maximum_absolute_error": 0.059086017310619354,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "TransCol": {
+            "rmse": 1.755613266141154e-05,
+            "relative_rmse": 0.0002701361292099856,
+            "maximum_absolute_error": 0.0038556456565856934,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "TransDir": {
+            "rmse": 9.330457032774575e-06,
+            "relative_rmse": 0.02814883238281112,
+            "maximum_absolute_error": 0.003766209352761507,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "TransInd": {
+            "rmse": 0.00040733281639404595,
+            "relative_rmse": 0.029734830857551235,
+            "maximum_absolute_error": 0.2506383955478668,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Volume Direct": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          },
+          "Volume Indirect": {
+            "rmse": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "actual_invalid_pixels": 0,
+            "reference_invalid_pixels": 0,
+            "invalid_pixels": 0,
+            "valid_pixels": 1757184,
+            "shape": [
+              858,
+              2048,
+              3
+            ]
+          }
+        },
+        "hip_link_observations": [
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.9768209999999999
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.8686729999999999
+          },
+          {
+            "code_object_bytes": 4288,
+            "milliseconds": 0.834533
+          },
+          {
+            "code_object_bytes": 10304,
+            "milliseconds": 1.044931
+          },
+          {
+            "code_object_bytes": 449728,
+            "milliseconds": 22.184945
+          },
+          {
+            "code_object_bytes": 53040,
+            "milliseconds": 13.981297
+          },
+          {
+            "code_object_bytes": 489440,
+            "milliseconds": 25.515905999999998
+          },
+          {
+            "code_object_bytes": 31512,
+            "milliseconds": 4.5468
+          },
+          {
+            "code_object_bytes": 39520,
+            "milliseconds": 5.728286
+          },
+          {
+            "code_object_bytes": 178496,
+            "milliseconds": 13.898316
+          },
+          {
+            "code_object_bytes": 375528,
+            "milliseconds": 28.982408
+          },
+          {
+            "code_object_bytes": 7744,
+            "milliseconds": 1.554187
+          },
+          {
+            "code_object_bytes": 860096,
+            "milliseconds": 89.75725299999999
+          },
+          {
+            "code_object_bytes": 4160,
+            "milliseconds": 0.972368
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.828708
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.8156979999999999
+          },
+          {
+            "code_object_bytes": 3776,
+            "milliseconds": 0.8642179999999999
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.8489479999999999
+          },
+          {
+            "code_object_bytes": 3904,
+            "milliseconds": 0.860177
+          },
+          {
+            "code_object_bytes": 11072,
+            "milliseconds": 1.577386
+          }
+        ]
+      }
+    ]
+  },
+  "image_intervention": {
+    "capture": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/image-intervention.json",
+      "sha256": "76ee854266324f614374bd920a3ee52c182d61b9daa1b7bc59aa276338dfef47"
+    },
+    "schema": "psycles.native-path-lifetime-image-intervention.v1",
+    "scope": "captured before/after image differences; not original-renderer parity or a speedup experiment",
+    "before_manifest": {
+      "path": "/var/tmp/psycles-native-path-lifetime-v7burc/canaries-oC9C3p/canaries.json",
+      "sha256": "452c929300906d29a4dab20afc7ae7b189df11ecc203ead29b2d738a8cd01997"
+    },
+    "after_manifest": {
+      "path": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/canaries.json",
+      "sha256": "54727d2174f47dd3dd12874988e89d517d4627680584c389f27155abcf694720"
+    },
+    "records": [
+      {
+        "scene": "barbershop",
+        "before": {
+          "path": "/var/tmp/psycles-native-path-lifetime-v7burc/canaries-oC9C3p/barbershop-fixed-1.exr",
+          "sha256": "cd8f72c288c31f63909df4c52508d97a8ef8949f970cd73a21e81287bb01b440"
+        },
+        "after": {
+          "path": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/barbershop-fixed-1.exr",
+          "sha256": "1ec428303e17079df684251f19d802c5b996f57a175c7b26c433befc1b9a5cca"
+        },
+        "shape": [
+          858,
+          2048,
+          46
+        ],
+        "channels": [
+          "ViewLayer.Combined.R",
+          "ViewLayer.Combined.G",
+          "ViewLayer.Combined.B",
+          "ViewLayer.Combined.A",
+          "ViewLayer.DiffCol.R",
+          "ViewLayer.DiffCol.G",
+          "ViewLayer.DiffCol.B",
+          "ViewLayer.DiffDir.R",
+          "ViewLayer.DiffDir.G",
+          "ViewLayer.DiffDir.B",
+          "ViewLayer.DiffInd.R",
+          "ViewLayer.DiffInd.G",
+          "ViewLayer.DiffInd.B",
+          "ViewLayer.Emit.R",
+          "ViewLayer.Emit.G",
+          "ViewLayer.Emit.B",
+          "ViewLayer.Env.R",
+          "ViewLayer.Env.G",
+          "ViewLayer.Env.B",
+          "ViewLayer.GlossCol.R",
+          "ViewLayer.GlossCol.G",
+          "ViewLayer.GlossCol.B",
+          "ViewLayer.GlossDir.R",
+          "ViewLayer.GlossDir.G",
+          "ViewLayer.GlossDir.B",
+          "ViewLayer.GlossInd.R",
+          "ViewLayer.GlossInd.G",
+          "ViewLayer.GlossInd.B",
+          "ViewLayer.Normal.X",
+          "ViewLayer.Normal.Y",
+          "ViewLayer.Normal.Z",
+          "ViewLayer.TransCol.R",
+          "ViewLayer.TransCol.G",
+          "ViewLayer.TransCol.B",
+          "ViewLayer.TransDir.R",
+          "ViewLayer.TransDir.G",
+          "ViewLayer.TransDir.B",
+          "ViewLayer.TransInd.R",
+          "ViewLayer.TransInd.G",
+          "ViewLayer.TransInd.B",
+          "ViewLayer.VolumeDir.R",
+          "ViewLayer.VolumeDir.G",
+          "ViewLayer.VolumeDir.B",
+          "ViewLayer.VolumeInd.R",
+          "ViewLayer.VolumeInd.G",
+          "ViewLayer.VolumeInd.B"
+        ],
+        "invalid_lanes_before": 0,
+        "invalid_lanes_after": 0,
+        "invalid_pixels_after": 0,
+        "nonfinite_classification_unchanged": true,
+        "passes": {
+          "ViewLayer.Combined": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 4.414426736926367e-06,
+            "before_rms": 0.21959515983930974,
+            "relative_rmse": 2.010256847262323e-05,
+            "maximum_absolute_error": 0.0077991783618927,
+            "pixels_above_absolute_error": {
+              "1e-06": 27,
+              "0.0001": 19,
+              "0.001": 3,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              442,
+              490,
+              1760,
+              794
+            ]
+          },
+          "ViewLayer.DiffCol": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 7.86327703107604e-06,
+            "before_rms": 0.24879254840284284,
+            "relative_rmse": 3.160575781531803e-05,
+            "maximum_absolute_error": 0.003130584955215454,
+            "pixels_above_absolute_error": {
+              "1e-06": 191,
+              "0.0001": 161,
+              "0.001": 39,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              305,
+              649,
+              1725,
+              841
+            ]
+          },
+          "ViewLayer.DiffDir": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 6.024982777735952e-06,
+            "before_rms": 0.5939482088539251,
+            "relative_rmse": 1.0143953105543801e-05,
+            "maximum_absolute_error": 0.004710689187049866,
+            "pixels_above_absolute_error": {
+              "1e-06": 199,
+              "0.0001": 92,
+              "0.001": 9,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              347,
+              485,
+              1867,
+              840
+            ]
+          },
+          "ViewLayer.DiffInd": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 1.1147526237614947e-05,
+            "before_rms": 0.11963217665544844,
+            "relative_rmse": 9.318167193196557e-05,
+            "maximum_absolute_error": 0.02225519437342882,
+            "pixels_above_absolute_error": {
+              "1e-06": 193,
+              "0.0001": 25,
+              "0.001": 3,
+              "0.01": 1,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              1611,
+              489,
+              1762,
+              837
+            ]
+          },
+          "ViewLayer.Emit": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.07950346856630729,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.Env": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.012878668986924066,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.GlossCol": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 5.82669234636687e-08,
+            "before_rms": 0.19943182171805424,
+            "relative_rmse": 2.921646252925638e-07,
+            "maximum_absolute_error": 4.9442052841186523e-05,
+            "pixels_above_absolute_error": {
+              "1e-06": 19,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.GlossDir": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 1.639754166350497e-06,
+            "before_rms": 2.256454835288938,
+            "relative_rmse": 7.266948758318609e-07,
+            "maximum_absolute_error": 0.002305593341588974,
+            "pixels_above_absolute_error": {
+              "1e-06": 11,
+              "0.0001": 3,
+              "0.001": 1,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              1760,
+              490,
+              1760,
+              490
+            ]
+          },
+          "ViewLayer.GlossInd": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 7.991192957408603e-06,
+            "before_rms": 0.21840282971972066,
+            "relative_rmse": 3.65892372716224e-05,
+            "maximum_absolute_error": 0.01237238198518753,
+            "pixels_above_absolute_error": {
+              "1e-06": 16,
+              "0.0001": 8,
+              "0.001": 4,
+              "0.01": 1,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              442,
+              489,
+              1762,
+              630
+            ]
+          },
+          "ViewLayer.Normal": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 1.5973214076341642e-07,
+            "before_rms": 0.5512182813018965,
+            "relative_rmse": 2.897801944923753e-07,
+            "maximum_absolute_error": 0.00021059811115264893,
+            "pixels_above_absolute_error": {
+              "1e-06": 32,
+              "0.0001": 3,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.TransCol": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 2.5960368725380883e-11,
+            "before_rms": 0.06498996239492784,
+            "relative_rmse": 3.9945197333129966e-10,
+            "maximum_absolute_error": 5.960464477539063e-08,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.TransDir": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 9.610933830237657e-12,
+            "before_rms": 0.0003318078131232329,
+            "relative_rmse": 2.8965363231721647e-08,
+            "maximum_absolute_error": 1.2006410088361008e-08,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.TransInd": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 2.074457754417963e-11,
+            "before_rms": 0.013707074355708995,
+            "relative_rmse": 1.513421245543876e-09,
+            "maximum_absolute_error": 1.4901161193847656e-08,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.VolumeDir": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.VolumeInd": {
+            "finite_lanes_compared": 5271552,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          }
+        }
+      },
+      {
+        "scene": "monk",
+        "before": {
+          "path": "/var/tmp/psycles-native-path-lifetime-v7burc/canaries-oC9C3p/monk-fixed-1.exr",
+          "sha256": "d96dd399d3585d1a2158acb7131a53ba20332769a51e306e56466bbbb6666519"
+        },
+        "after": {
+          "path": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monk-fixed-1.exr",
+          "sha256": "6240e80f2d396ead8a6689b3ccf9f8cd8827508b9052d74e52008bd4af3ebe67"
+        },
+        "shape": [
+          1080,
+          1440,
+          46
+        ],
+        "channels": [
+          "ViewLayer.Combined.R",
+          "ViewLayer.Combined.G",
+          "ViewLayer.Combined.B",
+          "ViewLayer.Combined.A",
+          "ViewLayer.DiffCol.R",
+          "ViewLayer.DiffCol.G",
+          "ViewLayer.DiffCol.B",
+          "ViewLayer.DiffDir.R",
+          "ViewLayer.DiffDir.G",
+          "ViewLayer.DiffDir.B",
+          "ViewLayer.DiffInd.R",
+          "ViewLayer.DiffInd.G",
+          "ViewLayer.DiffInd.B",
+          "ViewLayer.Emit.R",
+          "ViewLayer.Emit.G",
+          "ViewLayer.Emit.B",
+          "ViewLayer.Env.R",
+          "ViewLayer.Env.G",
+          "ViewLayer.Env.B",
+          "ViewLayer.GlossCol.R",
+          "ViewLayer.GlossCol.G",
+          "ViewLayer.GlossCol.B",
+          "ViewLayer.GlossDir.R",
+          "ViewLayer.GlossDir.G",
+          "ViewLayer.GlossDir.B",
+          "ViewLayer.GlossInd.R",
+          "ViewLayer.GlossInd.G",
+          "ViewLayer.GlossInd.B",
+          "ViewLayer.Normal.X",
+          "ViewLayer.Normal.Y",
+          "ViewLayer.Normal.Z",
+          "ViewLayer.TransCol.R",
+          "ViewLayer.TransCol.G",
+          "ViewLayer.TransCol.B",
+          "ViewLayer.TransDir.R",
+          "ViewLayer.TransDir.G",
+          "ViewLayer.TransDir.B",
+          "ViewLayer.TransInd.R",
+          "ViewLayer.TransInd.G",
+          "ViewLayer.TransInd.B",
+          "ViewLayer.VolumeDir.R",
+          "ViewLayer.VolumeDir.G",
+          "ViewLayer.VolumeDir.B",
+          "ViewLayer.VolumeInd.R",
+          "ViewLayer.VolumeInd.G",
+          "ViewLayer.VolumeInd.B"
+        ],
+        "invalid_lanes_before": 0,
+        "invalid_lanes_after": 0,
+        "invalid_pixels_after": 0,
+        "nonfinite_classification_unchanged": true,
+        "passes": {
+          "ViewLayer.Combined": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.00029448807270423356,
+            "before_rms": 1.6012735946288803,
+            "relative_rmse": 0.0001839086547683225,
+            "maximum_absolute_error": 0.27337074279785156,
+            "pixels_above_absolute_error": {
+              "1e-06": 194,
+              "0.0001": 133,
+              "0.001": 85,
+              "0.01": 36,
+              "0.1": 8
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              245,
+              4,
+              1240,
+              1001
+            ]
+          },
+          "ViewLayer.DiffCol": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 1.1503163004295182e-06,
+            "before_rms": 0.19018502586476257,
+            "relative_rmse": 6.048406257007264e-06,
+            "maximum_absolute_error": 0.0010354667901992798,
+            "pixels_above_absolute_error": {
+              "1e-06": 103,
+              "0.0001": 15,
+              "0.001": 1,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              1258,
+              324,
+              1258,
+              324
+            ]
+          },
+          "ViewLayer.DiffDir": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0017282929667989078,
+            "before_rms": 9.162935702166168,
+            "relative_rmse": 0.00018861782107565481,
+            "maximum_absolute_error": 1.2760944366455078,
+            "pixels_above_absolute_error": {
+              "1e-06": 176,
+              "0.0001": 83,
+              "0.001": 55,
+              "0.01": 28,
+              "0.1": 18
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              631,
+              691,
+              815,
+              728
+            ]
+          },
+          "ViewLayer.DiffInd": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0002941120087192853,
+            "before_rms": 0.4051244833186476,
+            "relative_rmse": 0.0007259793491373706,
+            "maximum_absolute_error": 0.2919498682022095,
+            "pixels_above_absolute_error": {
+              "1e-06": 201,
+              "0.0001": 153,
+              "0.001": 99,
+              "0.01": 63,
+              "0.1": 5
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              53,
+              4,
+              1336,
+              1001
+            ]
+          },
+          "ViewLayer.Emit": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.7324018633420221,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.Env": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0015481382374972162,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.GlossCol": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 1.7821711646596678e-06,
+            "before_rms": 0.07082947087049096,
+            "relative_rmse": 2.516143552615692e-05,
+            "maximum_absolute_error": 0.0008136853575706482,
+            "pixels_above_absolute_error": {
+              "1e-06": 106,
+              "0.0001": 53,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.GlossDir": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0005540133193124853,
+            "before_rms": 4.33220157692422,
+            "relative_rmse": 0.0001278826272220288,
+            "maximum_absolute_error": 0.4481201171875,
+            "pixels_above_absolute_error": {
+              "1e-06": 110,
+              "0.0001": 91,
+              "0.001": 75,
+              "0.01": 37,
+              "0.1": 10
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              631,
+              320,
+              1240,
+              728
+            ]
+          },
+          "ViewLayer.GlossInd": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0004587486266873876,
+            "before_rms": 0.38120256398058416,
+            "relative_rmse": 0.0012034248193324144,
+            "maximum_absolute_error": 0.6539394855499268,
+            "pixels_above_absolute_error": {
+              "1e-06": 205,
+              "0.0001": 174,
+              "0.001": 107,
+              "0.01": 43,
+              "0.1": 5
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              67,
+              4,
+              1257,
+              1001
+            ]
+          },
+          "ViewLayer.Normal": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 7.934751995618768e-05,
+            "before_rms": 0.5558293253790767,
+            "relative_rmse": 0.0001427551882083093,
+            "maximum_absolute_error": 0.04504305124282837,
+            "pixels_above_absolute_error": {
+              "1e-06": 109,
+              "0.0001": 109,
+              "0.001": 99,
+              "0.01": 34,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": [
+              67,
+              320,
+              1258,
+              728
+            ]
+          },
+          "ViewLayer.TransCol": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.TransDir": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.TransInd": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.VolumeDir": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.VolumeInd": {
+            "finite_lanes_compared": 4665600,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          }
+        }
+      },
+      {
+        "scene": "monster",
+        "before": {
+          "path": "/var/tmp/psycles-native-path-lifetime-v7burc/canaries-oC9C3p/monster-fixed-1.exr",
+          "sha256": "394585936a20e26d783740646fb40976c090a55e7a9716375bd7de808257a12c"
+        },
+        "after": {
+          "path": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/monster-fixed-1.exr",
+          "sha256": "3fc97dfb462606fcb9d7070e210ab810ffcc2cad0e705ae429a79ac041623686"
+        },
+        "shape": [
+          1080,
+          1080,
+          46
+        ],
+        "channels": [
+          "ViewLayer.Combined.R",
+          "ViewLayer.Combined.G",
+          "ViewLayer.Combined.B",
+          "ViewLayer.Combined.A",
+          "ViewLayer.DiffCol.R",
+          "ViewLayer.DiffCol.G",
+          "ViewLayer.DiffCol.B",
+          "ViewLayer.DiffDir.R",
+          "ViewLayer.DiffDir.G",
+          "ViewLayer.DiffDir.B",
+          "ViewLayer.DiffInd.R",
+          "ViewLayer.DiffInd.G",
+          "ViewLayer.DiffInd.B",
+          "ViewLayer.Emit.R",
+          "ViewLayer.Emit.G",
+          "ViewLayer.Emit.B",
+          "ViewLayer.Env.R",
+          "ViewLayer.Env.G",
+          "ViewLayer.Env.B",
+          "ViewLayer.GlossCol.R",
+          "ViewLayer.GlossCol.G",
+          "ViewLayer.GlossCol.B",
+          "ViewLayer.GlossDir.R",
+          "ViewLayer.GlossDir.G",
+          "ViewLayer.GlossDir.B",
+          "ViewLayer.GlossInd.R",
+          "ViewLayer.GlossInd.G",
+          "ViewLayer.GlossInd.B",
+          "ViewLayer.Normal.X",
+          "ViewLayer.Normal.Y",
+          "ViewLayer.Normal.Z",
+          "ViewLayer.TransCol.R",
+          "ViewLayer.TransCol.G",
+          "ViewLayer.TransCol.B",
+          "ViewLayer.TransDir.R",
+          "ViewLayer.TransDir.G",
+          "ViewLayer.TransDir.B",
+          "ViewLayer.TransInd.R",
+          "ViewLayer.TransInd.G",
+          "ViewLayer.TransInd.B",
+          "ViewLayer.VolumeDir.R",
+          "ViewLayer.VolumeDir.G",
+          "ViewLayer.VolumeDir.B",
+          "ViewLayer.VolumeInd.R",
+          "ViewLayer.VolumeInd.G",
+          "ViewLayer.VolumeInd.B"
+        ],
+        "invalid_lanes_before": 0,
+        "invalid_lanes_after": 0,
+        "invalid_pixels_after": 0,
+        "nonfinite_classification_unchanged": true,
+        "passes": {
+          "ViewLayer.Combined": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 6.533890531309473e-10,
+            "before_rms": 0.14200383530462451,
+            "relative_rmse": 4.601207085212219e-09,
+            "maximum_absolute_error": 2.384185791015625e-07,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.DiffCol": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.3515321473891997,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.DiffDir": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 2.694347789544614e-10,
+            "before_rms": 0.3115950107081234,
+            "relative_rmse": 8.646954209637386e-10,
+            "maximum_absolute_error": 2.384185791015625e-07,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.DiffInd": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 4.3881834872977373e-10,
+            "before_rms": 0.08542776614350468,
+            "relative_rmse": 5.136718054790647e-09,
+            "maximum_absolute_error": 1.1920928955078125e-07,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.Emit": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0031640466464497286,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.Env": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.GlossCol": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.07138315320513375,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.GlossDir": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 3.8942233376552325e-10,
+            "before_rms": 0.3511962719283399,
+            "relative_rmse": 1.1088452950462503e-09,
+            "maximum_absolute_error": 2.384185791015625e-07,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.GlossInd": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 3.631308645370045e-10,
+            "before_rms": 0.08842673784860795,
+            "relative_rmse": 4.106573117722685e-09,
+            "maximum_absolute_error": 2.384185791015625e-07,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.Normal": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.5731422871110027,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.TransCol": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.TransDir": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.TransInd": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.VolumeDir": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.VolumeInd": {
+            "finite_lanes_compared": 3499200,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          }
+        }
+      },
+      {
+        "scene": "classroom",
+        "before": {
+          "path": "/var/tmp/psycles-native-path-lifetime-v7burc/canaries-oC9C3p/classroom-fixed-1.exr",
+          "sha256": "08d4996347863835cb6322886dae72714c338eb8766ae762c6797340533a70af"
+        },
+        "after": {
+          "path": "/var/tmp/psycles-ray-portal-pzGSbl/canaries-CijhLv/classroom-fixed-1.exr",
+          "sha256": "67ff838bdd4b8e9e71560fda3f9b11c056f457a264ffb86e26b8986123cfcd16"
+        },
+        "shape": [
+          1080,
+          1920,
+          46
+        ],
+        "channels": [
+          "ViewLayer.Combined.R",
+          "ViewLayer.Combined.G",
+          "ViewLayer.Combined.B",
+          "ViewLayer.Combined.A",
+          "ViewLayer.DiffCol.R",
+          "ViewLayer.DiffCol.G",
+          "ViewLayer.DiffCol.B",
+          "ViewLayer.DiffDir.R",
+          "ViewLayer.DiffDir.G",
+          "ViewLayer.DiffDir.B",
+          "ViewLayer.DiffInd.R",
+          "ViewLayer.DiffInd.G",
+          "ViewLayer.DiffInd.B",
+          "ViewLayer.Emit.R",
+          "ViewLayer.Emit.G",
+          "ViewLayer.Emit.B",
+          "ViewLayer.Env.R",
+          "ViewLayer.Env.G",
+          "ViewLayer.Env.B",
+          "ViewLayer.GlossCol.R",
+          "ViewLayer.GlossCol.G",
+          "ViewLayer.GlossCol.B",
+          "ViewLayer.GlossDir.R",
+          "ViewLayer.GlossDir.G",
+          "ViewLayer.GlossDir.B",
+          "ViewLayer.GlossInd.R",
+          "ViewLayer.GlossInd.G",
+          "ViewLayer.GlossInd.B",
+          "ViewLayer.Normal.X",
+          "ViewLayer.Normal.Y",
+          "ViewLayer.Normal.Z",
+          "ViewLayer.TransCol.R",
+          "ViewLayer.TransCol.G",
+          "ViewLayer.TransCol.B",
+          "ViewLayer.TransDir.R",
+          "ViewLayer.TransDir.G",
+          "ViewLayer.TransDir.B",
+          "ViewLayer.TransInd.R",
+          "ViewLayer.TransInd.G",
+          "ViewLayer.TransInd.B",
+          "ViewLayer.VolumeDir.R",
+          "ViewLayer.VolumeDir.G",
+          "ViewLayer.VolumeDir.B",
+          "ViewLayer.VolumeInd.R",
+          "ViewLayer.VolumeInd.G",
+          "ViewLayer.VolumeInd.B"
+        ],
+        "invalid_lanes_before": 18,
+        "invalid_lanes_after": 18,
+        "invalid_pixels_after": 8,
+        "nonfinite_classification_unchanged": true,
+        "passes": {
+          "ViewLayer.Combined": {
+            "finite_lanes_compared": 6220800,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 1.1085159970292424e-09,
+            "before_rms": 0.43036753431203684,
+            "relative_rmse": 2.575742612186717e-09,
+            "maximum_absolute_error": 2.384185791015625e-07,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.DiffCol": {
+            "finite_lanes_compared": 6220800,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.3264531209624073,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.DiffDir": {
+            "finite_lanes_compared": 6220793,
+            "invalid_lanes_before": 7,
+            "invalid_lanes_after": 7,
+            "rmse": 7.779513560785468e-09,
+            "before_rms": 0.8719740941904927,
+            "relative_rmse": 8.921725556546115e-09,
+            "maximum_absolute_error": 9.5367431640625e-07,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.DiffInd": {
+            "finite_lanes_compared": 6220798,
+            "invalid_lanes_before": 2,
+            "invalid_lanes_after": 2,
+            "rmse": 1.2375571115972243e-10,
+            "before_rms": 0.21032540691797913,
+            "relative_rmse": 5.884011493104283e-10,
+            "maximum_absolute_error": 8.940696716308594e-08,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.Emit": {
+            "finite_lanes_compared": 6220800,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.21463941330773473,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.Env": {
+            "finite_lanes_compared": 6220800,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.GlossCol": {
+            "finite_lanes_compared": 6220800,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.09361772064400518,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.GlossDir": {
+            "finite_lanes_compared": 6220793,
+            "invalid_lanes_before": 7,
+            "invalid_lanes_after": 7,
+            "rmse": 6.502580320785171e-09,
+            "before_rms": 0.46808365830808746,
+            "relative_rmse": 1.38919191161022e-08,
+            "maximum_absolute_error": 9.5367431640625e-07,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.GlossInd": {
+            "finite_lanes_compared": 6220798,
+            "invalid_lanes_before": 2,
+            "invalid_lanes_after": 2,
+            "rmse": 1.0096409515402841e-10,
+            "before_rms": 0.16275398708462266,
+            "relative_rmse": 6.203479064481101e-10,
+            "maximum_absolute_error": 5.960464477539063e-08,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.Normal": {
+            "finite_lanes_compared": 6220800,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.5604272038576013,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.TransCol": {
+            "finite_lanes_compared": 6220800,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0576030167401093,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.TransDir": {
+            "finite_lanes_compared": 6220800,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 3.964635396375673e-09,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.TransInd": {
+            "finite_lanes_compared": 6220800,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 3.2586707194941435e-11,
+            "before_rms": 0.014001682883826784,
+            "relative_rmse": 2.327342182030279e-09,
+            "maximum_absolute_error": 2.9802322387695312e-08,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.VolumeDir": {
+            "finite_lanes_compared": 6220800,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          },
+          "ViewLayer.VolumeInd": {
+            "finite_lanes_compared": 6220800,
+            "invalid_lanes_before": 0,
+            "invalid_lanes_after": 0,
+            "rmse": 0.0,
+            "before_rms": 0.0,
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "pixels_above_absolute_error": {
+              "1e-06": 0,
+              "0.0001": 0,
+              "0.001": 0,
+              "0.01": 0,
+              "0.1": 0
+            },
+            "above_1e-3_bbox_xy_inclusive": null
+          }
+        }
+      }
+    ]
+  },
+  "qa": {
+    "no_fresh_paired_speedup_claim": true,
+    "renderer_and_sdk_changed_since_S1": true,
+    "no_exclusive_renderer_causal_timing_claim": true,
+    "portal_plus_volume_nee_not_certified": true,
+    "shadow_task_aos_bytes": 224,
+    "shadow_task_soa_growth_bytes_per_path": 4,
+    "unchanged_opcode_streams_and_static_sizing_algorithm": true,
+    "holdout_and_legacy_displacement_still_open": true
+  }
+}

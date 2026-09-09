@@ -243,7 +243,7 @@ class PathEnvironmentLightComponent final
             forward ? sample.path_flags | cycles_svm::path_ray_emission
                     : UInt{cycles_svm::path_ray_emission},
             sample.path_depth, sample.transparent_depth, sample.diffuse_depth,
-            sample.glossy_depth, sample.transmission_depth, 0u};
+            sample.glossy_depth, sample.transmission_depth, sample.portal_depth};
         const auto lcg_state = cycles_noise::hash_uint3(
             sample.rng_hash ^ 0xb4bc3953u, sample.cycles_rng_offset, sample.sample_index);
         // The admitted scene domain is static: camera_sample uses time 0.5

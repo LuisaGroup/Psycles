@@ -142,7 +142,9 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
           svm::path_ray_visibility_shadow, 0u,
           context.path.ray_depth,          context.path.transparent_depth,
           context.path.diffuse_depth,      context.path.glossy_depth,
-          context.path.transmission_depth, 0u};
+          context.path.transmission_depth,
+          (scene->cycles_svm->kernel_features & svm::kernel_feature_node_portal)
+              ? UInt{context.path.portal_depth} : UInt{0u}};
       svm::EvaluationResult result;
       const auto usage = scene->cycles_svm->compilation.table.usage_for(
           abi::SHADER_TYPE_SURFACE);

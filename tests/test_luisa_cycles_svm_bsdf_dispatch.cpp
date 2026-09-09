@@ -69,6 +69,10 @@ constexpr auto principled_hair_mask = detail::closure_types_for_kernel_features(
     device_svm::kernel_feature_node_principled_hair);
 constexpr auto subsurface_mask = detail::closure_types_for_kernel_features(
     device_svm::kernel_feature_subsurface);
+constexpr auto portal_mask = detail::closure_types_for_kernel_features(
+    device_svm::kernel_feature_node_portal);
+static_assert(!closure_enabled(no_optional_features_mask, closure::type_ray_portal));
+static_assert(closure_enabled(portal_mask, closure::type_ray_portal));
 static_assert(!closure_enabled(no_optional_features_mask,
                                closure::type_hair_chiang));
 static_assert(!closure_enabled(no_optional_features_mask,

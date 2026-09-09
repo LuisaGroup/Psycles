@@ -332,6 +332,11 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
     }
 
   public:
+    [[nodiscard]] std::optional<CyclesSvmSurfaceState>
+    native_surface_state() const noexcept override {
+      return CyclesSvmSurfaceState{_kernel_globals, *_shader_data, _closure_types};
+    }
+
     CyclesSvmPopulatedSurface(
         std::shared_ptr<LuisaSceneData> scene,
         const SurfacePopulationContext &context) noexcept
@@ -410,7 +415,8 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           context.point.diffuse_depth,
           context.point.glossy_depth,
           context.point.transmission_depth,
-          0u};
+          (_scene->cycles_svm->kernel_features & svm::kernel_feature_node_portal)
+              ? UInt{context.portal_depth} : UInt{0u}};
       const Expr<Buffer<luisa::uint>> words{
           *_scene->cycles_svm->word_buffer};
       const auto evaluate_material = [&] {

@@ -267,7 +267,7 @@ bool run(const char *program, const char *backend, bool no_cache) {
         out.write(i, make_float4(task.shadow_throughput, task.ray_minimum));
         meta.write(i * 2u, make_uint4(step.continue_shadow.cast<unsigned>(),
                                       step.visible.cast<unsigned>(),
-                                      task.transparent_depth, task.rng_offset));
+                                      task.transparent_depth.cast<unsigned>(), task.rng_offset));
         meta.write(
             i * 2u + 1u,
             make_uint4(task.volume_bounds_bounce,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "path_tracer_internal.h"
+#include "cycles_svm_bsdf.h"
 
 namespace psycles::luisa_backend::detail {
 
@@ -26,6 +27,7 @@ struct SurfacePopulationContext {
     Expr<luisa::float4x4> object_to_world;
     Expr<luisa::float4x4> world_to_object;
     Expr<std::uint32_t> path_flags;
+    Expr<std::uint32_t> portal_depth = 0u;
     Expr<std::uint32_t> sample_index;
     Expr<std::uint32_t> rng_hash;
     Expr<std::uint32_t> rng_offset;
@@ -132,10 +134,21 @@ using SurfaceBssrdfNormalCallable = Callable<luisa::float3(
 // Host/JIT object whose device-local storage is populated exactly once for a
 // path hit. Every method is a consumer of the retained original closures; no
 // method is allowed to dispatch or replay the material graph.
+struct CyclesSvmSurfaceState {
+    const cycles_svm::KernelGlobals &kernel_globals;
+    cycles_svm::ShaderData &shader_data;
+    cycles_svm::detail::ClosureTypeMask closure_types;
+};
+
 class PopulatedSurfaceShader {
 
   public:
     virtual ~PopulatedSurfaceShader() noexcept = default;
+
+    // Host-only view of the retained native population, shared by NEE and
+    // continuation. No material replay, event conversion or device pointer.
+    [[nodiscard]] virtual std::optional<CyclesSvmSurfaceState>
+    native_surface_state() const noexcept { return std::nullopt; }
 
     // Diagnostic observation of native ShaderData::flag. This is not the
     // legacy contract runtime-flag encoding used by integrator consumers.

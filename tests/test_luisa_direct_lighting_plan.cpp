@@ -334,7 +334,9 @@ int main(int argc, char **argv) {
     static_assert(offsetof(DirectLightTaskCall, volume_bounds_bounce) == 220u);
     const auto *task_type = luisa::compute::Type::of<DirectLightTaskCall>();
     const auto task_members = task_type->members();
-    if (task_type->size() != 224u || task_members.size() != 32u ||
+    static_assert(sizeof(DirectLightTaskCall::transparent_depth) == 2u);
+    static_assert(sizeof(DirectLightTaskCall::portal_depth) == 2u);
+    if (task_type->size() != 224u || task_members.size() != 33u ||
         task_members.back() != Type::of<luisa::uint>() ||
         std::any_of(task_members.begin(), task_members.end(), [](const Type *t) {
           return t->is_array() || t->is_structure();
@@ -353,8 +355,10 @@ int main(int argc, char **argv) {
             make_runtime_direct_light_task_storage(*tasks, capacity);
         runtime_tasks.pixel.write(x, x + 37u);
         runtime_tasks.volume_bounds_bounce.write(x, x + 11u);
+        runtime_tasks.portal_depth.write(x, cast<std::uint16_t>(x + 5u));
         values.write(x, runtime_tasks.pixel.read(x) +
-                            runtime_tasks.volume_bounds_bounce.read(x));
+                            runtime_tasks.volume_bounds_bounce.read(x) +
+                            runtime_tasks.portal_depth.read(x).template cast<unsigned>());
       }};
     };
     auto small_kernel = make_runtime_soa_kernel(&small_tasks);
@@ -377,14 +381,14 @@ int main(int argc, char **argv) {
            << large_values.copy_to(luisa::span{large_actual})
            << synchronize();
     for (auto index = std::size_t{0u}; index < small_actual.size(); ++index) {
-      if (small_actual[index] != 2u * index + 48u) {
+      if (small_actual[index] != 3u * index + 53u) {
         std::cerr << "Small direct-light runtime SoA failed at " << index
                   << " on " << backend << '\n';
         return EXIT_FAILURE;
       }
     }
     for (auto index = std::size_t{0u}; index < large_actual.size(); ++index) {
-      if (large_actual[index] != 2u * index + 48u) {
+      if (large_actual[index] != 3u * index + 53u) {
         std::cerr << "Large direct-light runtime SoA failed at " << index
                   << " on " << backend << '\n';
         return EXIT_FAILURE;

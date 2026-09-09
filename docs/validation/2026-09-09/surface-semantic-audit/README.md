@@ -2,10 +2,15 @@
 
 Follow-up: the [native path-lifetime repair](../native-path-lifetime/README.md)
 closes **S1** with a permanent original-HIP full-render red/green regression,
-complete host/HIP/fallback suites and strict native Vulkan canaries. **S2/S3
-remain open.** The findings and images below describe the captured pre-repair
-baseline, not the current S1 implementation. Its source/word identities remain
-unchanged historical evidence.
+complete host/HIP/fallback suites and strict native Vulkan canaries. The
+[native continuation repair](../native-surface-continuation/README.md) addresses
+**S2**, removes the production native-label roundtrip, and restores the W3/W4
+and surface-BSDF part of W5 control placement. **S3 remains open**, as do
+transparent-glass controls, other feature boundaries and the unmeasured costs
+of remaining work-placement leads. The findings and images below describe the
+captured pre-repair baseline, not the current S1/S2 implementation. Source/word
+identities remain unchanged historical evidence; runtime-only repairs do not
+establish new compiler coverage or an isolated rendering speedup.
 
 The native interpreter is **not yet an end-to-end Cycles-identical surface
 implementation**. This audit finds three production rendering failures beyond

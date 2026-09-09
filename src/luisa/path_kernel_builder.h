@@ -363,6 +363,7 @@ struct PathSampleContext {
     UInt glossy_depth;
     UInt transparent_depth;
     UInt transmission_depth;
+    UInt portal_depth;
     UInt path_depth;
     UInt path_flags;
     UInt cycles_path_visibility;
@@ -396,6 +397,7 @@ struct PathSampleContext {
     // the light sampler prevents surface-only random state from crossing the
     // intersect-to-shade scheduling boundary.
     [[nodiscard]] Float continuation_terminate_sample() const noexcept;
+    [[nodiscard]] Float3 surface_bsdf_sample() const noexcept;
     [[nodiscard]] Float3 trace_uint32(UInt value) const noexcept;
     void trace_write(UInt slot, Float3 value) const noexcept;
     void trace_write_global(path_trace_schema::GlobalSlot slot,

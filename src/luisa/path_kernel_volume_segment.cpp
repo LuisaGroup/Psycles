@@ -201,7 +201,7 @@ class PathVolumeSegmentStageImpl final
 
         const cycles_svm::PathState volume_state{
             cycles_path_visibility, path_flags, path_depth, transparent_depth,
-            diffuse_depth, glossy_depth, transmission_depth, 0u};
+            diffuse_depth, glossy_depth, transmission_depth, sample.portal_depth};
         const PathCyclesSvmVolumeShader volume_shader{
             _scene, parameters, ray->origin(), ray->direction(), segment_start,
             0.5f, stack.entry(0u).object, volume_state,

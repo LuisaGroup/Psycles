@@ -140,7 +140,7 @@ bool run(const char *program, const char *backend, bool no_cache) {
             evaluator.trace_staged(task, params, active, visible);
             output.write(
                 id, make_float4(task.shadow_throughput, visible.cast<float>()));
-            meta.write(id, make_uint4(task.transparent_depth, task.rng_offset,
+            meta.write(id, make_uint4(task.transparent_depth.cast<unsigned>(), task.rng_offset,
                                       task.volume_bounds_bounce, id));
           }};
   auto output = device.create_buffer<luisa::float4>(paths);

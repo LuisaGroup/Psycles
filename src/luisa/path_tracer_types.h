@@ -346,6 +346,7 @@ struct ShaderEvaluationStateCall {
     luisa::uint glossy_depth{};
     luisa::uint transparent_depth{};
     luisa::uint transmission_depth{};
+    luisa::uint portal_depth{};
 };
 
 // IntegratorShadowState inputs read by surface_shader_eval. RNG offset is
@@ -796,7 +797,8 @@ LUISA_STRUCT(
     diffuse_depth,
     glossy_depth,
     transparent_depth,
-    transmission_depth) {};
+    transmission_depth,
+    portal_depth) {};
 LUISA_STRUCT(psycles::luisa_backend::detail::ShadowShaderContextCall,
              path, ray_time, sample_index, rng_hash, rng_offset,
              volume_bounds_bounce){};

@@ -157,6 +157,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                  .object_to_world = surface.object_to_world,
                  .world_to_object = surface.world_to_object,
                  .path_flags = sample.path_flags,
+                 .portal_depth = sample.portal_depth,
                  .sample_index = sample.sample_index,
                  .rng_hash = sample.rng_hash,
                  .rng_offset = sample.cycles_rng_offset,
@@ -262,20 +263,13 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                   bounce.subsurface_exit);
             }
         }
-        // This random tuple has no use in traversal or volume transport.
-        // Materialize it only after the surface continuation resumes, at the
-        // nearest common dominator of its trace and scatter uses. Paths which
-        // reach this point have not advanced the bounce RNG offset: volume
-        // scattering advances it and continues before surface shading.
-        const auto bsdf_sample =
-            cycles_sampler::sample_3d(
-                invocation.sobol_table,
-                kernel_parameters.sobol_sequence_size,
-                sample.sample_index,
-                sample.rng_hash,
-                cycles_sampler::path_state_dimension(
-                    cycles_rng_offset,
-                    tabulated_sobol::surface_bsdf_dimension));
+        // Release native continuation requests this tuple only after the
+        // SD_BSDF/SD_BSSRDF gate, following NEE. Diagnostics deliberately
+        // observe the same pure counter-based tuple at this earlier boundary.
+        Float3 bsdf_sample = make_float3(0.0f);
+        if (!scene->native_cycles_svm_surface || path_trace_enabled) {
+            bsdf_sample = sample.surface_bsdf_sample();
+        }
         if (path_trace_enabled) {
             // Cycles' diagnostic trace observes PRNG_LIGHT even when NEE
             // will be rejected. Record only the pure tuple here, never an

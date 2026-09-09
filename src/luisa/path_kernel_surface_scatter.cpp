@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_cycles_svm_surface_scatter.h"
 
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_path_state.h>
@@ -27,6 +28,13 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
 
   public:
     Result emit(DirectLightingContext &context) const noexcept override {
+        if (context.bounce.sample.invocation.config.scene->native_cycles_svm_surface) {
+            LUISA_ASSERT(context.shading.populated_surface != nullptr,
+                         "Native continuation requires the retained surface population.");
+            const auto native = context.shading.populated_surface->native_surface_state();
+            LUISA_ASSERT(native.has_value(), "Missing native ShaderData consumer.");
+            return emit_cycles_svm_surface_scatter(context, *native);
+        }
         auto &bounce = context.bounce;
         auto &sample = bounce.sample;
         auto &invocation = sample.invocation;

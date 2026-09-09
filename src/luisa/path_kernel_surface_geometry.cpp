@@ -64,9 +64,9 @@ public:
     Float3 shadow_shading_normal = point.shading_normal;
 
     UInt path_lobe_mask = surface_query.lobe_mask;
-    const Bool previous_ray_was_diffuse =
-        (ray_events & static_cast<std::uint32_t>(contract::event_diffuse)) !=
-        0u;
+    const Bool previous_ray_was_diffuse = scene->native_cycles_svm_surface
+        ? (sample.cycles_path_visibility & cycles_path_state::visibility_diffuse) != 0u
+        : (ray_events & static_cast<std::uint32_t>(contract::event_diffuse)) != 0u;
     const auto path_reflective_caustics =
         Bool{reflective_caustics} | !previous_ray_was_diffuse;
     const auto path_refractive_caustics =

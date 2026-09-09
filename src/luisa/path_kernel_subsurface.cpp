@@ -183,6 +183,12 @@ public:
             0u,
             cycles_path_state::flag_subsurface_backfacing,
             surface.point.back_facing);
+        if (invocation.config.scene->native_cycles_svm_surface) {
+            $if(valid & (path.path_depth == 0u)) {
+                path.path_diffuse_weight = make_float3(1.0f);
+                path.path_glossy_weight = make_float3(0.0f);
+            };
+        }
 
         const auto modern =
             closure_sample.bssrdf_method ==

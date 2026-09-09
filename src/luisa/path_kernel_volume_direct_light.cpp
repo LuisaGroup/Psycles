@@ -555,10 +555,11 @@ class CombinedVolumeLightProvider final
                 task.rng_hash = sample.rng_hash;
                 task.rng_offset = sample.cycles_rng_offset;
                 task.path_depth = sample.path_depth;
-                task.transparent_depth = sample.transparent_depth;
+                task.transparent_depth = sample.transparent_depth.cast<std::uint16_t>();
                 task.diffuse_depth = sample.diffuse_depth;
                 task.glossy_depth = sample.glossy_depth;
                 task.transmission_depth = sample.transmission_depth;
+                task.portal_depth = sample.portal_depth.cast<std::uint16_t>();
                 _result.radiance *= _native_emission->evaluate(
                     task, sample.invocation.parameters);
             };
