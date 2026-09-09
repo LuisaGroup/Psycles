@@ -31,6 +31,14 @@ rejected disabling the staged direct-light queue: render time increased to
 48.464 s versus approximately 37.0 s with the queue enabled. The current
 staged queue configuration remains the selected baseline.
 
+The surface continuation's scheduler block size was also probed without
+changing the path program. At 640x480/64 spp, 256 threads rendered in 1.80673 s
+and 512 threads in 1.81682 s. One native-resolution 256-thread run rendered in
+36.8091 s, within the existing 512-thread range of 36.975--37.030 s. The
+low-resolution margin and single full-resolution observation are too small to
+establish a general gain, so production retains the existing 512-thread
+continuation until a repeated cross-scene sweep justifies changing it.
+
 The full 12-pair campaign is still incomplete, and this note does not claim
 Cycles parity for all scenes. The next performance work requires a measured,
 semantics-preserving Barbershop shader or queue change with complete image,
