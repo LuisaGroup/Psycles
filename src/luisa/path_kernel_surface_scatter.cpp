@@ -273,35 +273,37 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 context.shading.shading_normal,
                 previous_mis_origin_normal,
                 transparent);
-            const auto normalized_surface_direction =
-                normalize(surface_sample.wi);
-            Float3 next_origin = select(
-                make_surface_ray_origin(normalized_surface_direction),
-                ray->origin(),
-                transparent);
-            Float3 next_direction = select(
-                normalized_surface_direction,
-                ray->direction(),
-                transparent);
-            Float next_minimum = select(
-                0.0f,
-                surface_ray::intersection_t_offset(
-                    hit->committed_ray_t),
-                transparent);
-            Float next_maximum = select(
-                ray_maximum, ray->t_max(), transparent);
+            // Cycles' transparent branch only advances tmin. Keep the
+            // existing ray and avoid normalization plus the triangle
+            // self-exclusion certificate until an ordinary BSDF bounce.
+            Float3 next_origin = ray->origin();
+            Float3 next_direction = ray->direction();
+            Float next_minimum = surface_ray::intersection_t_offset(
+                hit->committed_ray_t);
+            Float next_maximum = ray->t_max();
+            $if(!transparent) {
+                const auto normalized_surface_direction =
+                    normalize(surface_sample.wi);
+                next_origin = make_surface_ray_origin(
+                    normalized_surface_direction);
+                next_direction = normalized_surface_direction;
+                next_minimum = 0.0f;
+                next_maximum = ray_maximum;
+            };
             ray_source_object = surface.cycles_object_index;
             ray_source_primitive = surface.cycles_primitive_index;
-            const auto differential_update =
-                cycles_ray_differential::after_surface_bounce(
-                    ray_dP,
-                    ray_dD,
-                    differential_radius,
-                    surface_sample.evaluation
-                        .average_roughness_squared,
-                    transparent);
-            ray_dP = differential_update.position;
-            ray_dD = differential_update.direction;
+            $if(!transparent) {
+                const auto differential_update =
+                    cycles_ray_differential::after_surface_bounce(
+                        ray_dP,
+                        ray_dD,
+                        differential_radius,
+                        surface_sample.evaluation
+                            .average_roughness_squared,
+                        false);
+                ray_dP = differential_update.position;
+                ray_dD = differential_update.direction;
+            };
             ray = make_ray(
                 next_origin,
                 next_direction,

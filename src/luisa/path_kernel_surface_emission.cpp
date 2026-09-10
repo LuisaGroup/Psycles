@@ -55,26 +55,50 @@ void emit_surface_emission(
       $if((!surface.is_curve) &
           (surface.emission_sampling !=
            static_cast<std::uint32_t>(contract::EmissionSampling::none))) {
-        surface.ensure_world_triangle_vertices();
-        Bool competing = (path_depth > 0u) & (!mis_competition_skipped);
-        const auto oriented_geometric_normal = select(
-            point.geometric_normal, -point.geometric_normal, point.back_facing);
-        forward_selection_pdf = 0.5f * length(cross(wp1 - wp0, wp2 - wp0)) *
-                                scene->triangle_area_pdf;
-        if (config.use_light_tree) {
-          const auto emitter_id = config.light_tree.triangle_emitter(
-              cycles_object_index, cycles_primitive_index);
-          forward_selection_pdf = config.light_tree.forward_pdf(
-              emitter_id, ray->origin(), previous_mis_origin_normal,
-              previous_light_tree_dt, cycles_path_visibility, path_flags);
-        }
-        const auto light_pdf = emissive_triangle.from_intersection(
-            forward_selection_pdf, surface.emission_sampling, ray->origin(),
-            hit_position, wp0, wp1, wp2, oriented_geometric_normal);
-        forward_light_pdf = light_pdf.value;
-        forward_pdf_valid = light_pdf.valid;
-        emission_weight = forward_light_weight(
-            previous_bsdf_pdf, forward_light_pdf, competing, forward_pdf_valid);
+        // Cycles' light_sample_mis_weight_forward_surface initializes both
+        // PDFs and returns unit weight before touching triangle geometry when
+        // MIS is skipped or the hit side is not sampled. Keep that exact
+        // predicate around all expensive forward-hit work.
+        const auto samples_front =
+            (surface.emission_sampling ==
+             static_cast<std::uint32_t>(contract::EmissionSampling::automatic)) |
+            (surface.emission_sampling ==
+             static_cast<std::uint32_t>(contract::EmissionSampling::front)) |
+            (surface.emission_sampling ==
+             static_cast<std::uint32_t>(contract::EmissionSampling::front_back));
+        const auto samples_back =
+            (surface.emission_sampling ==
+             static_cast<std::uint32_t>(contract::EmissionSampling::automatic)) |
+            (surface.emission_sampling ==
+             static_cast<std::uint32_t>(contract::EmissionSampling::back)) |
+            (surface.emission_sampling ==
+             static_cast<std::uint32_t>(contract::EmissionSampling::front_back));
+        const auto has_mis =
+            (!mis_competition_skipped) &
+            select(samples_front, samples_back, point.back_facing);
+        $if(has_mis) {
+          surface.ensure_world_triangle_vertices();
+          Bool competing = (path_depth > 0u) & (!mis_competition_skipped);
+          const auto oriented_geometric_normal = select(
+              point.geometric_normal, -point.geometric_normal, point.back_facing);
+          forward_selection_pdf = 0.5f * length(cross(wp1 - wp0, wp2 - wp0)) *
+                                  scene->triangle_area_pdf;
+          if (config.use_light_tree) {
+            const auto emitter_id = config.light_tree.triangle_emitter(
+                cycles_object_index, cycles_primitive_index);
+            forward_selection_pdf = config.light_tree.forward_pdf(
+                emitter_id, ray->origin(), previous_mis_origin_normal,
+                previous_light_tree_dt, cycles_path_visibility, path_flags);
+          }
+          const auto light_pdf = emissive_triangle.from_intersection(
+              forward_selection_pdf, surface.emission_sampling, ray->origin(),
+              hit_position, wp0, wp1, wp2, oriented_geometric_normal);
+          forward_light_pdf = light_pdf.value;
+          forward_pdf_valid = light_pdf.valid;
+          emission_weight = forward_light_weight(
+              previous_bsdf_pdf, forward_light_pdf, competing,
+              forward_pdf_valid);
+        };
       };
     }
     emission_contribution =

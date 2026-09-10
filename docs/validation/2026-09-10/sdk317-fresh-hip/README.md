@@ -91,6 +91,15 @@ words. On the same fresh Barbershop bundle at 640x480/64 spp, the combined
 post-change render was 1.76904 s with all 46 channels finite; this is within the
 prior 1.77308 s single-run spread, so no material timing gain is claimed.
 
+The forward-hit emission path now follows Cycles' early MIS return: triangle
+area/light-tree/emitter geometry work is skipped when the MIS competition is
+skipped or the hit side is not sampled. Transparent surface continuation likewise
+only advances tmin, leaving direction normalization, triangle self-exclusion,
+and differential updates to ordinary bounces. On the same fresh Barbershop
+bundle at 640x480/64 spp, direct warm runs were 1.76625--1.77165 s (mean
+1.76814 s), with all 46 channels finite. This remains within the prior spread,
+so no material timing gain is claimed.
+
 The ten native-size pairs currently recorded for these four
 current-exporter scenes show Psycles ahead on Monk and Monster, close on
 Classroom, and still behind on Barbershop. This note does not claim global Cycles parity. The next
