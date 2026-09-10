@@ -125,6 +125,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
     std::unique_ptr<svm::ShaderData> _shader_data;
     svm_detail::ClosureTypeMask _closure_types;
     SurfacePopulationQuery _preparation_query;
+    bool _include_aov_roughness{};
 
   private:
     [[nodiscard]] SurfacePreparation make_preparation(
@@ -180,17 +181,19 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                                     3.0f);
             average_normal += common.N * weight;
           };
-          $if(closure::is_bsdf(common.type)) {
-            const auto value = svm_detail::bsdf_get_roughness_pass_squared(
-                *_closures, index);
-            $if(value >= 0.0f) {
-              const auto weight = abs((common.weight.x + common.weight.y +
-                                       common.weight.z) /
-                                      3.0f);
-              roughness += weight * sqrt(sqrt(value));
-              roughness_weight += weight;
+          if (_include_aov_roughness) {
+            $if(closure::is_bsdf(common.type)) {
+              const auto value = svm_detail::bsdf_get_roughness_pass_squared(
+                  *_closures, index);
+              $if(value >= 0.0f) {
+                const auto weight = abs((common.weight.x + common.weight.y +
+                                         common.weight.z) /
+                                        3.0f);
+                roughness += weight * sqrt(sqrt(value));
+                roughness_weight += weight;
+              };
             };
-          };
+          }
           index += 1u;
         };
 
@@ -207,12 +210,14 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
             _shader_data->N,
             svm_detail::safe_normalize_cycles(average_normal),
             nonzero(average_normal));
-        const auto average_roughness = select(
-            1.0f, roughness / roughness_weight, roughness_weight > 0.0f);
         result.aov.albedo = diffuse;
         result.aov.glossy_albedo = glossy;
         result.aov.transmission_albedo = transmission;
-        result.aov.roughness = make_float2(average_roughness);
+        if (_include_aov_roughness) {
+          const auto average_roughness = select(
+              1.0f, roughness / roughness_weight, roughness_weight > 0.0f);
+          result.aov.roughness = make_float2(average_roughness);
+        }
         result.aov.normal = normal;
         result.aov.transparency = transparency;
       };
@@ -349,7 +354,8 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                   1u, svm::maximum_closure_capacity))},
           _closure_types{svm_detail::closure_types_for_kernel_features(
               _scene->cycles_svm->kernel_features)},
-          _preparation_query{context.query} {
+          _preparation_query{context.query},
+          _include_aov_roughness{false} {
       const Expr<Buffer<abi::KernelShader>> shaders{
           *_scene->cycles_svm->kernel_shader_buffer};
       const auto shader = shaders->read(
