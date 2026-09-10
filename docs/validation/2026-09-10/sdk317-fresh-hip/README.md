@@ -109,6 +109,14 @@ after the guard, which is neutral within run noise. The candidate render had
 all 46 channels finite and matched the Cycles reference's existing per-pass
 validation tolerances.
 
+Native surface shading now guards the normal film accumulation with Cycles'
+alpha-threshold and single-pass predicate. This avoids zero-valued atomic
+normal writes for rejected lanes while retaining the same normal contribution
+and `single_pass_done` state for accepted lanes. Three matched Barbershop
+640x480/64 runs measured 2.13041 s before and 2.13587 s after the guard; this
+is neutral within run noise. Focused HIP, fallback, and strict Vulkan film and
+surface tests passed, and the render retained all 46 finite channels.
+
 The ten native-size pairs currently recorded for these four
 current-exporter scenes show Psycles ahead on Monk and Monster, close on
 Classroom, and still behind on Barbershop. This note does not claim global Cycles parity. The next
