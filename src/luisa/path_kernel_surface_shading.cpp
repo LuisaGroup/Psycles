@@ -260,15 +260,15 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                     ((kernel_parameters.pass_alpha_threshold == 0.0f) |
                      (average_alpha >=
                       kernel_parameters.pass_alpha_threshold));
-                sample.accumulate_normal_pass(
-                    select(
-                        make_float3(0.0f),
-                        aov.normal,
-                        writes_normal));
-                path_flags |= select(
-                    0u,
-                    cycles_path_state::flag_single_pass_done,
-                    writes_normal);
+                // Keep the native data-pass predicate around the reduction
+                // and film write. Passing a selected zero to the accumulator
+                // still records three atomic fetch_add operations in atomic
+                // film mode for rejected alpha/single-pass lanes.
+                $if(writes_normal) {
+                    sample.accumulate_normal_pass(aov.normal);
+                    path_flags |=
+                        cycles_path_state::flag_single_pass_done;
+                };
             };
         };
 
