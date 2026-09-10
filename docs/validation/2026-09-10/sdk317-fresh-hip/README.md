@@ -100,6 +100,15 @@ bundle at 640x480/64 spp, direct warm runs were 1.76625--1.77165 s (mean
 1.76814 s), with all 46 channels finite. This remains within the prior spread,
 so no material timing gain is claimed.
 
+Native SVM surface preparation now omits the roughness film-data reduction in
+the production component because Psycles exposes no Roughness pass consumer.
+Transport roughness, including `average_roughness_squared`, remains intact;
+generic GraphSurface preparation still computes its documented AOV field. A
+same-machine Barbershop 640x480/64 A/B measured 2.10831 s before and 2.11132 s
+after the guard, which is neutral within run noise. The candidate render had
+all 46 channels finite and matched the Cycles reference's existing per-pass
+validation tolerances.
+
 The ten native-size pairs currently recorded for these four
 current-exporter scenes show Psycles ahead on Monk and Monster, close on
 Classroom, and still behind on Barbershop. This note does not claim global Cycles parity. The next
