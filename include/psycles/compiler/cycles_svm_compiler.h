@@ -140,6 +140,11 @@ struct ShaderCompileMetadata {
   bool has_bump_from_displacement{};
   bool has_bssrdf_bump{};
   bool has_light_path_node{};
+  // True when a reachable finalized surface closure may execute Cycles'
+  // thin-film Fresnel path. A direct finite thickness at or below
+  // THINFILM_THICKNESS_CUTOFF proves that path inactive; linked, missing, or
+  // non-finite inputs remain conservatively true.
+  bool may_have_thin_film{true};
   bool emission_is_constant{true};
   bool emission_from_auto_conversion{};
   Vec3f emission_estimate{};

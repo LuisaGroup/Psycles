@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cmath>
 #include <functional>
 #include <limits>
 #include <optional>
@@ -123,6 +124,21 @@ template<typename T>
     return *value;
   }
   return std::nullopt;
+}
+
+// Thin-film is a property of the finalized Cycles closure node, rather than
+// of the serialized SVM words. A direct finite literal at or below Cycles'
+// cutoff is the only host proof that the Airy/Fresnel table path cannot be
+// observed. Links, missing values, and non-finite literals remain unknown.
+[[nodiscard]] bool thin_film_input_is_inactive(
+    const GraphNode *node) noexcept {
+  const auto *input = node != nullptr
+                          ? node->input("ThinFilmThickness")
+                          : nullptr;
+  const auto value = literal<float>(
+      input, contract::SocketType::floating);
+  return value && std::isfinite(*value) &&
+         *value <= THINFILM_THICKNESS_CUTOFF;
 }
 
 [[nodiscard]] Vec3f add(Vec3f lhs, Vec3f rhs) noexcept {
@@ -880,6 +896,17 @@ private:
     if ((state->node_feature_mask & feature) != feature) {
       return true;
     }
+    const auto film_bearing_closure =
+        node->type == node_type::principled_bsdf ||
+        node->type == node_type::glass_bsdf ||
+        node->type == node_type::metallic_bsdf;
+    if (_current_type == SHADER_TYPE_SURFACE && film_bearing_closure) {
+      // This runs only for closure leaves reached from the selected surface
+      // root. Keep the initial false value when every such input is proven
+      // inactive; any unknown input flips the shader fact to true.
+      _metadata.may_have_thin_film |=
+          !thin_film_input_is_inactive(node);
+    }
     for (auto &input : node->inputs) {
       if (input.link != nullptr) {
         GraphNodeSet dependencies;
@@ -1164,6 +1191,11 @@ public:
         _background{context.background},
         _use_bump_eval_state{
             context.displacement_method == contract::DisplacementMethod::both} {
+    // The compiler starts with a closed-world false fact and widens it while
+    // traversing reachable finalized surface closures. Invalid/failed images
+    // are never consumed by the scene linker, while inert holes explicitly
+    // carry false metadata below.
+    _metadata.may_have_thin_film = false;
     _metadata.num_closures = _graph.get_num_closures();
     _metadata.has_surface = _graph.root(GraphDomain::surface) != nullptr;
     _metadata.has_volume = _graph.root(GraphDomain::volume) != nullptr;

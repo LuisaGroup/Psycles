@@ -77,53 +77,60 @@ void apply_lobe_mask(Expr<std::uint32_t> type,
       .reflectance = make_float3(0.0f),
       .transmittance = make_float3(0.0f),
       .cosine_transmitted = 0.0f};
-  $if(fresnel.thin_film.thickness >
-      thin_film::thin_film_thickness_cutoff) {
-    const auto film = thin_film::thin_film_dielectric_fresnel(
-        kernel_globals, fresnel.thin_film.thickness,
-        fresnel.thin_film.ior, closure.param.ior, fresnel.f0,
-        cosine_incoming);
-    result.reflectance = film.reflectance * fresnel.reflection_tint;
-    result.transmittance =
-        (make_float3(1.0f) - film.reflectance) *
-        fresnel.transmission_tint;
-    result.cosine_transmitted = film.cosine_transmitted;
-  }
-  $elif(fresnel.exponent < 0.0f) {
-    const auto dielectric =
-        fresnel_dielectric(cosine_incoming, closure.param.ior);
-    const auto real_f0 = f0_from_ior(closure.param.ior);
-    const auto interpolation =
-        clamp((dielectric.reflectance - real_f0) / (1.0f - real_f0),
-              0.0f, 1.0f);
-    const auto reflected = lerp(fresnel.f0, fresnel.f90, interpolation);
-    result.reflectance = reflected * fresnel.reflection_tint;
-    result.transmittance =
-        (make_float3(1.0f) - reflected) * fresnel.transmission_tint;
-    result.cosine_transmitted = dielectric.cosine_transmitted;
-  }
-  $else {
-    const auto cosine_transmitted_squared =
-        1.0f - (1.0f - square(cosine_incoming)) /
-                   square(closure.param.ior);
-    $if(cosine_transmitted_squared <= 0.0f) {
-      result.reflectance = fresnel.reflection_tint;
-      result.transmittance = make_float3(0.0f);
-    }
-    $else {
-      result.cosine_transmitted = sqrt(cosine_transmitted_squared);
-      const auto fresnel_angle = select(
-          cosine_incoming, result.cosine_transmitted,
-          closure.param.ior < 1.0f);
+  const auto without_thin_film = [&] {
+    $if(fresnel.exponent < 0.0f) {
+      const auto dielectric =
+          fresnel_dielectric(cosine_incoming, closure.param.ior);
+      const auto real_f0 = f0_from_ior(closure.param.ior);
       const auto interpolation =
-          pow(1.0f - fresnel_angle, fresnel.exponent);
+          clamp((dielectric.reflectance - real_f0) / (1.0f - real_f0),
+                0.0f, 1.0f);
       const auto reflected = lerp(fresnel.f0, fresnel.f90, interpolation);
       result.reflectance = reflected * fresnel.reflection_tint;
       result.transmittance =
-          (make_float3(1.0f) - reflected) *
-          fresnel.transmission_tint;
+          (make_float3(1.0f) - reflected) * fresnel.transmission_tint;
+      result.cosine_transmitted = dielectric.cosine_transmitted;
+    }
+    $else {
+      const auto cosine_transmitted_squared =
+          1.0f - (1.0f - square(cosine_incoming)) /
+                     square(closure.param.ior);
+      $if(cosine_transmitted_squared <= 0.0f) {
+        result.reflectance = fresnel.reflection_tint;
+        result.transmittance = make_float3(0.0f);
+      }
+      $else {
+        result.cosine_transmitted = sqrt(cosine_transmitted_squared);
+        const auto fresnel_angle = select(
+            cosine_incoming, result.cosine_transmitted,
+            closure.param.ior < 1.0f);
+        const auto interpolation =
+            pow(1.0f - fresnel_angle, fresnel.exponent);
+        const auto reflected = lerp(fresnel.f0, fresnel.f90, interpolation);
+        result.reflectance = reflected * fresnel.reflection_tint;
+        result.transmittance =
+            (make_float3(1.0f) - reflected) *
+            fresnel.transmission_tint;
+      };
     };
   };
+  if (kernel_globals.may_have_thin_film()) {
+    $if(fresnel.thin_film.thickness >
+        thin_film::thin_film_thickness_cutoff) {
+      const auto film = thin_film::thin_film_dielectric_fresnel(
+          kernel_globals, fresnel.thin_film.thickness,
+          fresnel.thin_film.ior, closure.param.ior, fresnel.f0,
+          cosine_incoming);
+      result.reflectance = film.reflectance * fresnel.reflection_tint;
+      result.transmittance =
+          (make_float3(1.0f) - film.reflectance) *
+          fresnel.transmission_tint;
+      result.cosine_transmitted = film.cosine_transmitted;
+    }
+    $else { without_thin_film(); };
+  } else {
+    without_thin_film();
+  }
   return result;
 }
 
@@ -134,6 +141,11 @@ void apply_lobe_mask(Expr<std::uint32_t> type,
       .reflectance = make_float3(0.0f),
       .transmittance = make_float3(0.0f),
       .cosine_transmitted = 0.0f};
+  if (!kernel_globals.may_have_thin_film()) {
+    result.reflectance = fresnel_conductor(
+        cosine_incoming, fresnel.ior, fresnel.extinction);
+    return result;
+  }
   $if(fresnel.thin_film.thickness > thin_film::thin_film_thickness_cutoff) {
     result.reflectance = thin_film::thin_film_conductor_fresnel(
         kernel_globals, fresnel.thin_film.thickness,
@@ -154,6 +166,10 @@ void apply_lobe_mask(Expr<std::uint32_t> type,
       .reflectance = make_float3(0.0f),
       .transmittance = make_float3(0.0f),
       .cosine_transmitted = 0.0f};
+  if (!kernel_globals.may_have_thin_film()) {
+    result.reflectance = fresnel_f82(cosine_incoming, fresnel.f0, fresnel.b);
+    return result;
+  }
   $if(fresnel.thin_film.thickness > thin_film::thin_film_thickness_cutoff) {
     result.reflectance = thin_film::thin_film_f82_fresnel(
         kernel_globals, fresnel.thin_film.thickness,

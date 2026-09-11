@@ -35,11 +35,31 @@ inline constexpr std::uint32_t label_count = 13u;
           .exponent = 0.0f};
 }
 
-[[nodiscard]] auto scattering_kernel() {
+class ScatteringKernelGlobals final
+    : public psycles::test_support::DefaultCyclesSvmKernelGlobals {
+private:
+  bool _may_have_thin_film;
+  std::size_t &_table_reads;
+
+public:
+  ScatteringKernelGlobals(bool may_have_thin_film,
+                          std::size_t &table_reads) noexcept
+      : _may_have_thin_film{may_have_thin_film}, _table_reads{table_reads} {}
+
+  [[nodiscard]] bool may_have_thin_film() const noexcept override {
+    return _may_have_thin_film;
+  }
+  [[nodiscard]] Float cycles_bsdf_data(Expr<std::uint32_t>) const noexcept override {
+    ++_table_reads;
+    return 0.0f;
+  }
+};
+
+[[nodiscard]] auto scattering_kernel(bool may_have_thin_film,
+                                      std::size_t &table_reads) {
   return Kernel1D<Buffer<luisa::float4>, Buffer<std::uint32_t>>{
-      [](BufferFloat4 output, BufferUInt labels) noexcept {
-        const psycles::test_support::DefaultCyclesSvmKernelGlobals
-            kernel_globals;
+      [may_have_thin_film, &table_reads](BufferFloat4 output, BufferUInt labels) noexcept {
+        const ScatteringKernelGlobals kernel_globals{may_have_thin_film, table_reads};
         const auto normal = normalize(make_float3(0.2f, -0.3f, 1.0f));
         const auto geometric_normal = normal;
         const auto incoming =
@@ -334,14 +354,24 @@ inline constexpr std::uint32_t label_count = 13u;
          near(actual.w, expected.w, tolerance);
 }
 
-[[nodiscard]] bool run(std::string_view backend, char **argv) {
+[[nodiscard]] bool run(std::string_view backend, char **argv,
+                       bool may_have_thin_film) {
   Context context{argv[0]};
   auto device = context.create_device(backend);
   auto stream = device.create_stream();
   auto output = device.create_buffer<luisa::float4>(output_count);
   auto labels = device.create_buffer<std::uint32_t>(label_count);
+  std::size_t table_reads{};
+  const auto kernel = scattering_kernel(may_have_thin_film, table_reads);
+  // All authored closures in this Cycles oracle have zero film thickness.
+  // Check recording itself: no-film capability must omit the table bodies,
+  // even before the backend can fold the literal device thickness values.
+  if ((table_reads != 0u) != may_have_thin_film) {
+    std::cerr << "Thin-film recording proof did not control table reads\n";
+    return false;
+  }
   const auto shader = device.compile(
-      scattering_kernel(),
+      kernel,
       ShaderOption{.enable_cache = false, .enable_fast_math = true});
   std::array<luisa::float4, output_count> actual{};
   std::array<std::uint32_t, label_count> actual_labels{};
@@ -437,5 +467,6 @@ inline constexpr std::uint32_t label_count = 13u;
 int main(int argc, char **argv) {
   const auto backend =
       std::string_view{argc > 1 ? argv[1] : "fallback"};
-  return run(backend, argv) ? EXIT_SUCCESS : EXIT_FAILURE;
+  return run(backend, argv, true) && run(backend, argv, false)
+             ? EXIT_SUCCESS : EXIT_FAILURE;
 }

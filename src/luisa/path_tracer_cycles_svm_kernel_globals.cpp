@@ -5,6 +5,7 @@
 
 #include <psycles/luisa/cycles_transform.h>
 
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -143,6 +144,13 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
                "Native Cycles SVM surface requires a finalized scene image.");
   _has_shadow_terminator_shading_offset =
       _scene->cycles_svm->objects->image.has_shadow_terminator_shading_offset();
+  const auto &compilation = _scene->cycles_svm->compilation;
+  if (compilation.table.valid &&
+      compilation.shader_metadata.size() == compilation.table.shader_count) {
+    _may_have_thin_film = std::ranges::any_of(
+        compilation.shader_metadata,
+        [](const auto &metadata) { return metadata.may_have_thin_film; });
+  }
 }
 
 Bool PathCyclesSvmKernelGlobals::caustics_reflective() const noexcept {
@@ -166,6 +174,10 @@ Float PathCyclesSvmKernelGlobals::object_shadow_terminator_shading_offset(
 
 bool PathCyclesSvmKernelGlobals::has_shadow_terminator_shading_offset() const noexcept {
   return _has_shadow_terminator_shading_offset;
+}
+
+bool PathCyclesSvmKernelGlobals::may_have_thin_film() const noexcept {
+  return _may_have_thin_film;
 }
 
 std::optional<Float> PathCyclesSvmKernelGlobals::object_volume_density(
