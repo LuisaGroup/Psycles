@@ -338,6 +338,12 @@ public:
     return true;
   }
 
+  // Recording-time proof over all finalized shader closures. Unknown or
+  // independently supplied closures must retain the native thin-film branch.
+  [[nodiscard]] virtual bool may_have_thin_film() const noexcept {
+    return true;
+  }
+
   /* kernel_data_fetch(objects, object).shadow_terminator_shading_offset. A
    * value of one is Cycles' no-op domain for the frequency correction. */
   [[nodiscard]] virtual luisa::compute::Float

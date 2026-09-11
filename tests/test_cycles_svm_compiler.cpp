@@ -8,7 +8,9 @@
 #include <bit>
 #include <cstdint>
 #include <cstdlib>
+#include <cmath>
 #include <iostream>
+#include <limits>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -1474,6 +1476,84 @@ void test_principled_surface_matches_cycles_5_2_1() {
           "Principled SVM node usage mask differs from Cycles");
 }
 
+void test_thin_film_metadata_binding_proof() {
+  const auto compile = [](std::string_view closure_type, float thickness,
+                          bool linked) {
+    ShaderGraph graph;
+    const auto closure =
+        graph.add_node(std::string{closure_type}, "Thin-film closure");
+    const auto configured =
+        (closure_type == node_type::principled_bsdf
+             ? graph.set_property(closure, "Distribution",
+                                  SocketValue::string("MULTI_GGX")) &&
+                   graph.set_property(closure, "SubsurfaceMethod",
+                                      SocketValue::string("RANDOM_WALK"))
+             : closure_type == node_type::metallic_bsdf
+                   ? graph.set_property(closure, "Distribution",
+                                        SocketValue::string("GGX")) &&
+                         graph.set_property(closure, "FresnelType",
+                                            SocketValue::string("F82"))
+                   : graph.set_property(closure, "Distribution",
+                                        SocketValue::string("GGX"))) &&
+        graph.set_input(closure, "ThinFilmThickness",
+                                SocketValue::floating(thickness)) &&
+        graph.set_input(closure, "ThinFilmIOR",
+                        SocketValue::floating(1.33f));
+    require(configured, "failed to configure thin-film metadata closure");
+    if (linked) {
+      const auto attribute = graph.add_node(node_type::attribute, "Film input");
+      require(graph.set_property(attribute, "Attribute",
+                                 SocketValue::string("film")) &&
+                  graph.set_property(
+                      attribute, "AttributeId",
+                      SocketValue::unsigned_integer(attribute_id("film"))) &&
+                  graph.connect({attribute, "Fac"}, closure,
+                                "ThinFilmThickness"),
+              "failed to link thin-film metadata input");
+    }
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = closure, .socket = "Closure"});
+    const ShaderCompiler frontend{make_core_node_registry()};
+    const auto shader = frontend.compile(graph);
+    require(shader.ok(), "thin-film metadata graph did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+    return image.metadata.may_have_thin_film;
+  };
+
+  for (const auto closure_type : {node_type::principled_bsdf,
+                                  node_type::glass_bsdf,
+                                  node_type::metallic_bsdf}) {
+    require(!compile(closure_type, 0.0f, false),
+            "zero thin-film thickness was not proven inactive");
+    require(!compile(closure_type, THINFILM_THICKNESS_CUTOFF, false),
+            "cutoff thin-film thickness was not proven inactive");
+    require(compile(closure_type,
+                    std::nextafter(THINFILM_THICKNESS_CUTOFF, 1.0f), false),
+            "above-cutoff thin-film thickness was incorrectly pruned");
+    require(compile(closure_type, 0.0f, true),
+            "linked thin-film thickness was incorrectly pruned");
+    require(compile(closure_type, std::numeric_limits<float>::quiet_NaN(),
+                    false),
+            "non-finite thin-film thickness was incorrectly pruned");
+  }
+
+  ShaderGraph diffuse_graph;
+  const auto diffuse =
+      diffuse_graph.add_node(node_type::diffuse_bsdf, "No film");
+  diffuse_graph.set_root(ShaderDomain::surface,
+                         OutputRef{.node = diffuse, .socket = "Closure"});
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto diffuse_shader = frontend.compile(diffuse_graph);
+  require(diffuse_shader.ok(), "film-free metadata graph did not validate");
+  const auto diffuse_image = compile_shader(*diffuse_shader.program);
+  require(diffuse_image.valid && !diffuse_image.metadata.may_have_thin_film,
+          "film-free closure retained an unknown thin-film capability");
+  ShaderImage unknown;
+  require(unknown.metadata.may_have_thin_film,
+          "default ShaderImage metadata must retain unknown thin-film capability");
+}
+
 } // namespace
 
 int main() {
@@ -1497,5 +1577,6 @@ int main() {
   test_constant_math_fold_matches_cycles_5_2_1();
   test_zero_mix_closure_fold_matches_cycles_5_2_1();
   test_principled_surface_matches_cycles_5_2_1();
+  test_thin_film_metadata_binding_proof();
   return 0;
 }

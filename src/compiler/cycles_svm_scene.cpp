@@ -35,6 +35,7 @@ static_assert(jump_node_word_count == 4u);
 [[nodiscard]] ShaderImage inert_shader() {
   ShaderImage image;
   image.valid = true;
+  image.metadata.may_have_thin_film = false;
   image.words = {NODE_SHADER_JUMP, 4u, 5u, 6u, NODE_END, NODE_END, NODE_END};
   image.node_types_used[NODE_SHADER_JUMP] = true;
   image.node_types_used[NODE_END] = true;
@@ -62,6 +63,7 @@ static_assert(jump_node_word_count == 4u);
       a.has_bump_from_displacement == b.has_bump_from_displacement &&
       a.has_bssrdf_bump == b.has_bssrdf_bump &&
       a.has_light_path_node == b.has_light_path_node &&
+      a.may_have_thin_film == b.may_have_thin_film &&
       a.emission_is_constant == b.emission_is_constant &&
       a.emission_from_auto_conversion == b.emission_from_auto_conversion &&
       std::bit_cast<std::uint32_t>(a.emission_estimate.x) ==

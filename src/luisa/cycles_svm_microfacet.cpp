@@ -74,14 +74,7 @@ principled_generalized_schlick_fresnel(
     const auto f0 = make_float3(f0_from_ior(endpoint_ior)) * reflection_tint;
     Float3 fresnel;
     Float cosine_transmitted;
-    $if (thin_film_thickness > table_detail::thin_film_thickness_cutoff) {
-        const auto film = table_detail::thin_film_dielectric_fresnel(
-            kernel_globals, thin_film_thickness, thin_film_ior,
-            evaluation_ior, f0, cosine_incoming);
-        fresnel = film.reflectance;
-        cosine_transmitted = film.cosine_transmitted;
-    }
-    $else {
+    const auto without_thin_film = [&] {
         const auto dielectric =
             fresnel_dielectric(cosine_incoming, evaluation_ior);
         const auto real_f0 = f0_from_ior(evaluation_ior);
@@ -91,6 +84,18 @@ principled_generalized_schlick_fresnel(
         fresnel = lerp(f0, make_float3(1.0f), interpolation);
         cosine_transmitted = dielectric.cosine_transmitted;
     };
+    if (kernel_globals.may_have_thin_film()) {
+        $if (thin_film_thickness > table_detail::thin_film_thickness_cutoff) {
+            const auto film = table_detail::thin_film_dielectric_fresnel(
+                kernel_globals, thin_film_thickness, thin_film_ior,
+                evaluation_ior, f0, cosine_incoming);
+            fresnel = film.reflectance;
+            cosine_transmitted = film.cosine_transmitted;
+        }
+        $else { without_thin_film(); };
+    } else {
+        without_thin_film();
+    }
     return {
         .reflectance =
             fresnel * select(make_float3(0.0f), make_float3(1.0f),
@@ -125,17 +130,19 @@ struct ThinGlassFresnel {
          any(front.transmittance != make_float3(0.0f))) {
         Float3 back_reflectance = front.reflectance;
         Float3 back_transmittance = front.transmittance;
-        $if (thin_film_thickness >
-             table_detail::thin_film_thickness_cutoff) {
-            const auto inverse_ior = 1.0f / ior;
-            const auto back = principled_generalized_schlick_fresnel(
-                kernel_globals, ior, inverse_ior,
-                -front.cosine_transmitted, reflective_caustics,
-                refractive_caustics, reflection_tint, make_float3(1.0f),
-                thin_film_thickness, thin_film_ior * inverse_ior);
-            back_reflectance = back.reflectance;
-            back_transmittance = back.transmittance;
-        };
+        if (kernel_globals.may_have_thin_film()) {
+            $if (thin_film_thickness >
+                 table_detail::thin_film_thickness_cutoff) {
+                const auto inverse_ior = 1.0f / ior;
+                const auto back = principled_generalized_schlick_fresnel(
+                    kernel_globals, ior, inverse_ior,
+                    -front.cosine_transmitted, reflective_caustics,
+                    refractive_caustics, reflection_tint, make_float3(1.0f),
+                    thin_film_thickness, thin_film_ior * inverse_ior);
+                back_reflectance = back.reflectance;
+                back_transmittance = back.transmittance;
+            };
+        }
 
         const auto nonzero_cosine = front.cosine_transmitted != 0.0f;
         const auto safe_cosine =
@@ -240,7 +247,8 @@ ensure_valid_specular_reflection(Expr<luisa::float3> geometric_normal,
         fresnel.f90,
         fresnel.exponent,
         Bool{eval_reflection},
-        Bool{eval_transmission});
+        Bool{eval_transmission},
+        kernel_globals.may_have_thin_film());
 }
 
 struct MultiGgxEnergyAdjustment {
@@ -392,7 +400,8 @@ void preserve_multi_ggx_reflection_energy(
         fresnel.thin_film.thickness,
         fresnel.thin_film.ior,
         fresnel.f0,
-        fresnel.b);
+        fresnel.b,
+        kernel_globals.may_have_thin_film());
 }
 
 [[nodiscard]] Float3 conductor_albedo(
@@ -405,7 +414,8 @@ void preserve_multi_ggx_reflection_energy(
         fresnel.thin_film.thickness,
         fresnel.thin_film.ior,
         fresnel.ior,
-        fresnel.extinction);
+        fresnel.extinction,
+        kernel_globals.may_have_thin_film());
 }
 
 }// namespace
