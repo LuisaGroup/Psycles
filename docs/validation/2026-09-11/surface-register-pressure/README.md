@@ -96,6 +96,17 @@ promoted to validated rendering changes: their output images were not
 compared against the Cycles oracle, and no full backend suite is claimed.
 The restored source was rebuilt with `cmake --build build --parallel 32`.
 
+## Current SDK backend gate
+
+After restoring the diagnostic policy, the exact active root/SDK pair was
+validated with a freshly configured driver at
+`/var/tmp/psycles-sdk3bc7-gates-20260911` (the old handoff driver was pinned
+to a different SDK and was rejected). The all-thread build completed 46/46
+tasks. Host controls passed 6/6, HIP passed 17/17, fallback passed 17/17,
+and strict native Vulkan passed 17/17. Vulkan logs contain 1,023 successful
+SPIR-V compilations and no DXC/DXIL matches. The machine-local
+`results.json` records the exact library hashes and complete logs.
+
 ## Frame-address witness
 
 The unoptimized surface LLVM constructs frame addresses at the individual
