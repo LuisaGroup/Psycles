@@ -194,6 +194,28 @@ if-conversion variants disabled. Both production and disabled outputs are
 414,056 bytes with the baseline SHA-256 above. This rules out those
 switches for this input; selects can be introduced by other transformations.
 
+## The largest mask chain is the SVM closure skip dispatch
+
+The repeated `v_cndmask_b32` / `v_cmp_eq_u32` sequence is not coroutine
+resume dispatch. In the exact optimized XIR capture, the function
+`node_closure_bsdf_skip` reads the SVM closure opcode and merges 25 sparse
+closure cases into one `words` value before `Cursor::advance`. The AMDGPU
+lowering turns this side-effect-free divergent switch into a compare/select
+chain. The corresponding raw ISA region is `0x4DAC` in
+`/var/tmp/raw-current-3.dis`; the XIR source is around line 126,555 of
+`kernel.36141c5c2087763b.opt.rq.xir`.
+
+The equivalent cases are already grouped by the source switch's payload type,
+but the merged cursor offset remains a PHI/select. A constant table probe kept
+all Cycles output metrics unchanged (zero invalid pixels, relative RMSE
+0.0105206) and measured 32.7339 s and 32.9997 s in two full Barbershop runs,
+versus the 32.8914 s paired raw-frame baseline. The mean is within run-to-run
+variance, so the table was reverted. An early-return probe was rejected by the
+XIR verifier because `$return()` in this helper is inlined into non-void
+callables. This evidence points to SVM dispatch lowering or a backend constant
+lookup as the next optimization boundary; it does not justify disabling
+coroutine if-conversion.
+
 Reproduce with the retained helper, which always includes the production
 `-amdgpu-inline-max-bb=0` option and passes a separate `-mllvm` for each
 additional option:

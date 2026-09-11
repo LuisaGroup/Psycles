@@ -1,6 +1,6 @@
 # Psycles / LuisaCompute handoff
 
-Updated 2026-09-11 18:10 +08:00. The owner requested continued work toward
+Updated 2026-09-12 12:00 +08:00. The owner requested continued work toward
 Cycles-or-better HIP performance. No background build, render, test or replay
 remains running at handoff. The current raw-frame result and exact SDK gates
 supersede the older pending-gates snapshot below.
@@ -26,7 +26,7 @@ git -C /home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute status -
 - SDK branch: `next`, tracking `origin/next`.
 - SDK `7d1f44cb6` is published directly on `origin/next`. It tags only
   coroutine frame scalar byte-buffer accesses and lowers eligible HIP accesses
-  through AMD raw-buffer intrinsics. The root gitlink is `ec1e82dc` on
+  through AMD raw-buffer intrinsics. The root gitlink is `556f5ef7` on
   `origin/main`.
 - A fresh paired Barbershop benchmark with `PSYCLES_DISABLE_SHADER_CACHE=1`
   measures Cycles HIP at 25.4221 s and current raw-frame Psycles at 32.8914 s
@@ -36,6 +36,14 @@ git -C /home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute status -
   408,716 code bytes, 2,368 -> 2,192 private bytes, and 449 -> 407 VGPR
   spills, with 256 VGPR / 107 SGPR unchanged. See
   `docs/validation/2026-09-11/frame-raw-lowering/README.md`.
+- Static ISA review finds the largest excess mask chain in SVM
+  `node_closure_bsdf_skip`: 3,116 `v_cndmask_b32` and 794
+  `v_cmp_eq_u32` versus Cycles' 1,333 and 157. This is closure-opcode
+  dispatch lowered from a side-effect-free switch, not coroutine resume
+  dispatch. Grouped-switch and constant-table source probes preserved image
+  output but were within timing noise; an early-return probe failed XIR
+  verification. See
+  `docs/validation/2026-09-11/surface-register-pressure/README.md`.
 - The exact current-SDK driver passed 6 host, 17 HIP, 17 fallback, and 17
   strict native Vulkan tests. Its evidence is in
   `/var/tmp/psycles-sdk3bc7-patched-20260911-1789137615`.
