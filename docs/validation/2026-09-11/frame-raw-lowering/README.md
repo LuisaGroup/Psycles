@@ -41,7 +41,7 @@ Validation completed before publishing:
   DXC/DXIL matches.
 
 The Luisa change is published directly on `next` as `7d1f44cb6`; the Psycles
-gitlink is published on `main` as `e32ad11a`. The static counts above are
+gitlink is published on `main` as `60cc58c5`. The static counts above are
 decoded instruction lanes, not dynamic issue counters. The earlier offline
 raw-IR scratch-delta experiment is retracted because its diagnostic did not
 accumulate nested GEP offsets correctly; only the live tagged lowering and the
@@ -56,3 +56,11 @@ tested LLVM IfConverter mode was byte-identical, so these masks originate in
 coroutine/state-machine selects or later lowering. Raw lowering removes 85
 64-bit address-spill instructions while adding 85 scalar b32 scratch
 operations; total decoded scratch lanes remain flat.
+
+The stronger remaining pressure signal is register spilling: the raw surface
+still uses 256 VGPRs with 407 VGPR spill slots, while Cycles' surface metadata
+reports 192 VGPRs and 2 VGPR spills. The current LLVM contains long-lived
+aggregate values such as a 60x4-word register object and a 33-float object.
+Reducing those continuation live ranges or promoting only proven narrow fields
+is the next generic direction; blanket if-conversion changes would not address
+this pressure.

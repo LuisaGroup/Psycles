@@ -26,7 +26,7 @@ git -C /home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute status -
 - SDK branch: `next`, tracking `origin/next`.
 - SDK `7d1f44cb6` is published directly on `origin/next`. It tags only
   coroutine frame scalar byte-buffer accesses and lowers eligible HIP accesses
-  through AMD raw-buffer intrinsics. The root gitlink is `7d62e046` on
+  through AMD raw-buffer intrinsics. The root gitlink is `60cc58c5` on
   `origin/main`.
 - The original Barbershop module now renders in 32.97--32.99 s in two runs;
   the frozen stock capture was 36.58 s. The exact surface object is 409,104 ->
