@@ -927,6 +927,14 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         return result;
     }
 
+    // Every texture inserted into this scene's heap is created in the two
+    // explicit branches above: BYTE4 for decoded UNORM8 and FLOAT4 for wider
+    // or generated data. No R10G10B10A2 resource can enter this closed upload
+    // transaction, so the path-kernel HIP codegen may remove its packed
+    // sampler fallback. Keep unknown/imported upload routes conservative by
+    // leaving LuisaSceneData::may_have_packed_textures at its true default.
+    data->may_have_packed_textures = false;
+
     for (const auto &[geometry_id, geometry] :
          snapshot.geometries) {
         const auto &geometry_attribute_residency =

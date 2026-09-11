@@ -590,6 +590,11 @@ struct LuisaSceneData {
     std::vector<CurveGeometryResource> curve_geometries;
     std::vector<Image<float>> images;
     BindlessArray texture_heap;
+    // The scene image upload below has one closed set of storage choices:
+    // decoded UNORM8 images become BYTE4 and wider/HDR images become FLOAT4.
+    // Keep the default conservative so any future/imported storage path still
+    // retains HIP's generic R10G10B10A2 sampling support.
+    bool may_have_packed_textures{true};
     std::optional<std::uint32_t> environment_texture_slot;
     std::uint32_t environment_width{};
     std::uint32_t environment_height{};
