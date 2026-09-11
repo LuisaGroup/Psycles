@@ -66,7 +66,111 @@ void append_payload(std::vector<std::uint32_t> &words,
          near(actual.w, expected.w, tolerance);
 }
 
-[[nodiscard]] auto noise_kernel() {
+[[nodiscard]] auto noise_kernel(NoiseUsage usage = {}) {
+  return Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>,
+                  Buffer<std::uint32_t>>{
+      [usage](BufferUInt words, BufferFloat4 output,
+              BufferUInt cursors) noexcept {
+        const UInt index = dispatch_x();
+        svm_detail::Stack stack{SVM_STACK_SIZE};
+        svm_detail::stack_store_float3(
+            stack, vector_offset,
+            make_float3(0.173f, 0.0f, 1.375f));
+        UInt cursor_offset = index * noise_word_count;
+        svm_detail::Cursor cursor{words, cursor_offset};
+        svm_detail::node_tex_noise(cursor, stack, usage);
+        const auto value =
+            svm_detail::stack_load_float(stack, value_offset);
+        const auto color =
+            svm_detail::stack_load_float3(stack, color_offset);
+        output.write(index, make_float4(color, value));
+        cursors.write(index,
+                      cursor_offset - index * noise_word_count);
+      }};
+}
+
+struct NoiseShapeCase {
+  std::uint32_t dimensions{};
+  std::uint32_t type{};
+  NoiseUsage usage{};
+  bool normalize{};
+};
+
+[[nodiscard]] constexpr NoiseUsage singleton_noise_usage(
+    std::uint32_t dimensions, std::uint32_t type) noexcept {
+  auto usage = NoiseUsage::none();
+  usage.add(dimensions, type);
+  return usage;
+}
+
+constexpr auto singleton_noise_shapes = [] {
+  std::array<NoiseShapeCase, noise_type_count * dimension_count * 2u> cases{};
+  auto index = std::size_t{};
+  for (auto type = std::uint32_t{}; type < noise_type_count; ++type) {
+    for (auto dimensions = std::uint32_t{1u}; dimensions <= dimension_count;
+         ++dimensions) {
+      for (auto normalize = std::uint32_t{}; normalize < 2u; ++normalize) {
+        cases[index++] = {dimensions, type,
+                          singleton_noise_usage(dimensions, type),
+                          normalize != 0u};
+      }
+    }
+  }
+  return cases;
+}();
+
+constexpr auto mixed_noise_usage = [] {
+  auto usage = NoiseUsage::none();
+  usage.add(1u, static_cast<std::uint32_t>(NODE_NOISE_MULTIFRACTAL));
+  usage.add(2u, static_cast<std::uint32_t>(NODE_NOISE_FBM));
+  usage.add(3u,
+            static_cast<std::uint32_t>(NODE_NOISE_HYBRID_MULTIFRACTAL));
+  usage.add(4u,
+            static_cast<std::uint32_t>(NODE_NOISE_RIDGED_MULTIFRACTAL));
+  return usage;
+}();
+
+constexpr auto mixed_noise_shapes = std::array{
+    NoiseShapeCase{1u, static_cast<std::uint32_t>(NODE_NOISE_MULTIFRACTAL),
+                   mixed_noise_usage, false},
+    NoiseShapeCase{1u, static_cast<std::uint32_t>(NODE_NOISE_MULTIFRACTAL),
+                   mixed_noise_usage, true},
+    NoiseShapeCase{2u, static_cast<std::uint32_t>(NODE_NOISE_FBM),
+                   mixed_noise_usage, false},
+    NoiseShapeCase{2u, static_cast<std::uint32_t>(NODE_NOISE_FBM),
+                   mixed_noise_usage, true},
+    NoiseShapeCase{3u,
+                   static_cast<std::uint32_t>(
+                       NODE_NOISE_HYBRID_MULTIFRACTAL),
+                   mixed_noise_usage, false},
+    NoiseShapeCase{3u,
+                   static_cast<std::uint32_t>(
+                       NODE_NOISE_HYBRID_MULTIFRACTAL),
+                   mixed_noise_usage, true},
+    NoiseShapeCase{4u,
+                   static_cast<std::uint32_t>(
+                       NODE_NOISE_RIDGED_MULTIFRACTAL),
+                   mixed_noise_usage, false},
+    NoiseShapeCase{4u,
+                   static_cast<std::uint32_t>(
+                       NODE_NOISE_RIDGED_MULTIFRACTAL),
+                   mixed_noise_usage, true}};
+
+constexpr auto specialized_noise_cases = [] {
+  std::array<NoiseShapeCase,
+             singleton_noise_shapes.size() + mixed_noise_shapes.size()>
+      cases{};
+  auto index = std::size_t{};
+  for (const auto &noise_case : singleton_noise_shapes) {
+    cases[index++] = noise_case;
+  }
+  for (const auto &noise_case : mixed_noise_shapes) {
+    cases[index++] = noise_case;
+  }
+  return cases;
+}();
+
+[[nodiscard]] auto specialized_noise_kernel() {
   return Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>,
                   Buffer<std::uint32_t>>{
       [](BufferUInt words, BufferFloat4 output,
@@ -78,7 +182,16 @@ void append_payload(std::vector<std::uint32_t> &words,
             make_float3(0.173f, 0.0f, 1.375f));
         UInt cursor_offset = index * noise_word_count;
         svm_detail::Cursor cursor{words, cursor_offset};
-        svm_detail::node_tex_noise(cursor, stack);
+        // Each branch records one host-specialized shape. At runtime exactly
+        // one branch is selected, so all singleton shapes share one dispatch
+        // and are checked against the same Cycles oracle below.
+        for (auto case_index = std::size_t{};
+             case_index < specialized_noise_cases.size(); case_index += 2u) {
+          const auto usage = specialized_noise_cases[case_index].usage;
+          $if ((index / 2u) == static_cast<std::uint32_t>(case_index / 2u)) {
+            svm_detail::node_tex_noise(cursor, stack, usage);
+          };
+        }
         const auto value =
             svm_detail::stack_load_float(stack, value_offset);
         const auto color =
@@ -300,6 +413,112 @@ constexpr std::array normalized_fbm_oracle{
   return true;
 }
 
+[[nodiscard]] bool test_specialized_shapes(
+    Device &device, Stream &stream, std::string_view backend,
+    ModuleShape generic_shape) {
+  // Every one of the 20 (dimension, noise type) singleton masks is recorded
+  // below, with both normalize values. The mixed mask checks that independent
+  // shapes can coexist without restoring the generic all-shapes body.
+  for (auto type = std::uint32_t{}; type < noise_type_count; ++type) {
+    for (auto dimensions = std::uint32_t{1u}; dimensions <= dimension_count;
+         ++dimensions) {
+      const auto shape = module_shape(noise_kernel(
+          singleton_noise_usage(dimensions, type)));
+      if (shape.instructions >= generic_shape.instructions ||
+          shape.callable_definitions >= generic_shape.callable_definitions ||
+          shape.loops >= generic_shape.loops) {
+        std::cerr << "Cycles Noise singleton specialization did not shrink on "
+                  << backend << ", type=" << type
+                  << ", dimensions=" << dimensions << ": generic="
+                  << generic_shape.instructions << "/"
+                  << generic_shape.callable_definitions << "/"
+                  << generic_shape.loops << ", specialized="
+                  << shape.instructions << "/"
+                  << shape.callable_definitions << "/" << shape.loops << '\n';
+        return false;
+      }
+    }
+  }
+  const auto mixed_shape = module_shape(noise_kernel(mixed_noise_usage));
+  if (mixed_shape.instructions >= generic_shape.instructions ||
+      mixed_shape.loops >= generic_shape.loops) {
+    std::cerr << "Cycles Noise mixed specialization did not shrink on "
+              << backend << ": generic=" << generic_shape.instructions << "/"
+              << generic_shape.callable_definitions << "/" << generic_shape.loops
+              << ", specialized=" << mixed_shape.instructions << "/"
+                << mixed_shape.callable_definitions << "/"
+                << mixed_shape.loops << '\n';
+    return false;
+  }
+
+  std::vector<std::uint32_t> words;
+  words.reserve(specialized_noise_cases.size() * noise_word_count);
+  for (const auto &noise_case : specialized_noise_cases) {
+    append_payload(
+        words,
+        payload(noise_case.dimensions,
+                static_cast<NodeNoiseType>(noise_case.type),
+                noise_case.normalize,
+                static_cast<SVMStackOffset>(value_offset),
+                static_cast<SVMStackOffset>(color_offset)));
+  }
+
+  auto word_buffer = device.create_buffer<std::uint32_t>(words.size());
+  auto output_buffer =
+      device.create_buffer<luisa::float4>(specialized_noise_cases.size());
+  auto cursor_buffer =
+      device.create_buffer<std::uint32_t>(specialized_noise_cases.size());
+  // Fast math is intentional here: these added checks validate specialization
+  // against the existing oracle tolerance under the production setting.
+  auto shader = device.compile(
+      specialized_noise_kernel(),
+      ShaderOption{.enable_cache = false, .enable_fast_math = true});
+  std::array<luisa::float4, specialized_noise_cases.size()> actual{};
+  std::array<std::uint32_t, specialized_noise_cases.size()> cursors{};
+  stream << word_buffer.copy_from(luisa::span{words})
+         << shader(word_buffer, output_buffer, cursor_buffer)
+                .dispatch(specialized_noise_cases.size())
+         << output_buffer.copy_to(luisa::span{actual})
+         << cursor_buffer.copy_to(luisa::span{cursors}) << synchronize();
+
+  for (auto index = std::size_t{}; index < specialized_noise_cases.size();
+       ++index) {
+    const auto &noise_case = specialized_noise_cases[index];
+    const auto expected_color =
+        noise_case.type == static_cast<std::uint32_t>(NODE_NOISE_FBM) &&
+                noise_case.normalize
+            ? normalized_fbm_oracle[noise_case.dimensions - 1u]
+            : raw_oracle[noise_case.type][noise_case.dimensions - 1u];
+    const auto expected =
+        luisa::float4{expected_color.x, expected_color.y, expected_color.z,
+                      expected_color.x};
+    if (!near(actual[index], expected) ||
+        cursors[index] != noise_word_count) {
+      std::cerr << "Cycles Noise specialized oracle mismatch on " << backend
+                << ", case=" << index << ", type=" << noise_case.type
+                << ", dimensions=" << noise_case.dimensions
+                << ", normalize=" << noise_case.normalize << ": got {"
+                << actual[index].x << ", " << actual[index].y << ", "
+                << actual[index].z << ", " << actual[index].w
+                << "}, expected {" << expected.x << ", " << expected.y
+                << ", " << expected.z << ", " << expected.w
+                << "}, cursor=" << cursors[index] << '\n';
+      return false;
+    }
+  }
+  if (std::getenv("PSYCLES_REPORT_SHADER_SHAPES") != nullptr) {
+    std::cout << "Cycles SVM Noise specialized " << backend
+              << " XIR: singleton_3d_fbm_instructions="
+              << module_shape(noise_kernel(singleton_noise_usage(
+                     3u, static_cast<std::uint32_t>(NODE_NOISE_FBM))))
+                     .instructions
+              << ", mixed_instructions=" << mixed_shape.instructions
+              << ", generic_instructions=" << generic_shape.instructions
+              << '\n';
+  }
+  return true;
+}
+
 [[nodiscard]] bool test_clamp_and_output_validity(
     Device &device, Stream &stream, std::string_view backend) {
   constexpr auto case_count = std::uint32_t{8u};
@@ -335,7 +554,10 @@ constexpr std::array normalized_fbm_oracle{
                                 static_cast<SVMStackOffset>(value_offset),
                                 static_cast<SVMStackOffset>(color_offset)));
 
-  Kernel1D kernel = [](BufferUInt payloads, BufferFloat4 output) noexcept {
+  auto run = [&](NoiseUsage usage, bool fast_math,
+                 std::array<luisa::float4, case_count> &actual) {
+    Kernel1D kernel = [usage](BufferUInt payloads,
+                              BufferFloat4 output) noexcept {
     const UInt index = dispatch_x();
     svm_detail::Stack stack{SVM_STACK_SIZE};
     svm_detail::stack_store_float3(
@@ -345,22 +567,24 @@ constexpr std::array normalized_fbm_oracle{
         stack, color_offset, make_float3(-92.0f, -93.0f, -94.0f));
     UInt cursor_offset = index * noise_word_count;
     svm_detail::Cursor cursor{payloads, cursor_offset};
-    svm_detail::node_tex_noise(cursor, stack);
+    svm_detail::node_tex_noise(cursor, stack, usage);
     output.write(
         index,
         make_float4(
             svm_detail::stack_load_float3(stack, color_offset),
             svm_detail::stack_load_float(stack, value_offset)));
+    };
+    auto word_buffer = device.create_buffer<std::uint32_t>(words.size());
+    auto output_buffer = device.create_buffer<luisa::float4>(case_count);
+    auto shader = device.compile(
+        kernel,
+        ShaderOption{.enable_cache = false, .enable_fast_math = fast_math});
+    stream << word_buffer.copy_from(luisa::span{words})
+           << shader(word_buffer, output_buffer).dispatch(case_count)
+           << output_buffer.copy_to(luisa::span{actual}) << synchronize();
   };
-  auto word_buffer = device.create_buffer<std::uint32_t>(words.size());
-  auto output_buffer = device.create_buffer<luisa::float4>(case_count);
-  auto shader = device.compile(
-      kernel,
-      ShaderOption{.enable_cache = false, .enable_fast_math = false});
   std::array<luisa::float4, case_count> actual{};
-  stream << word_buffer.copy_from(luisa::span{words})
-         << shader(word_buffer, output_buffer).dispatch(case_count)
-         << output_buffer.copy_to(luisa::span{actual}) << synchronize();
+  run({}, false, actual);
   if (!near(actual[0u], actual[1u]) || !near(actual[2u], actual[3u]) ||
       !near(actual[4u].w, actual[7u].w) || actual[4u].x != -92.0f ||
       actual[4u].y != -93.0f || actual[4u].z != -94.0f ||
@@ -373,14 +597,37 @@ constexpr std::array normalized_fbm_oracle{
               << backend << '\n';
     return false;
   }
+  std::array<luisa::float4, case_count> specialized_actual{};
+  run(singleton_noise_usage(3u,
+                            static_cast<std::uint32_t>(NODE_NOISE_FBM)),
+      true, specialized_actual);
+  if (!near(specialized_actual[0u], specialized_actual[1u]) ||
+      !near(specialized_actual[2u], specialized_actual[3u]) ||
+      !near(specialized_actual[4u].w, specialized_actual[7u].w) ||
+      specialized_actual[4u].x != -92.0f ||
+      specialized_actual[4u].y != -93.0f ||
+      specialized_actual[4u].z != -94.0f ||
+      !near(specialized_actual[5u].x, specialized_actual[7u].x) ||
+      !near(specialized_actual[5u].y, specialized_actual[7u].y) ||
+      !near(specialized_actual[5u].z, specialized_actual[7u].z) ||
+      specialized_actual[5u].w != -91.0f ||
+      specialized_actual[6u].x != -92.0f ||
+      specialized_actual[6u].y != -93.0f ||
+      specialized_actual[6u].z != -94.0f ||
+      specialized_actual[6u].w != -91.0f) {
+    std::cerr << "Cycles Noise specialized clamp/output-validity mismatch on "
+              << backend << '\n';
+    return false;
+  }
   return true;
 }
 
 [[nodiscard]] auto interpreter_kernel(
-    std::array<bool, NODE_NUM> node_types_used) {
+    std::array<bool, NODE_NUM> node_types_used,
+    NoiseUsage noise_usage = {}) {
   return Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>,
                   Buffer<std::uint32_t>>{
-      [node_types_used](BufferUInt words, BufferFloat4 output,
+      [node_types_used, noise_usage](BufferUInt words, BufferFloat4 output,
                         BufferUInt status) noexcept {
         const auto identity = make_float4x4(1.0f);
         const device_svm::TransformState transforms{
@@ -418,7 +665,8 @@ constexpr std::array normalized_fbm_oracle{
         device_svm::eval_nodes(
             kernel_globals, words, SHADER_TYPE_SURFACE, 0u,
             device_svm::kernel_feature_node_emission, node_types_used,
-            transforms, shader_data, path_state, result);
+            transforms, shader_data, path_state, result, SVM_STACK_SIZE,
+            noise_usage);
         output.write(0u,
                      make_float4(shader_data.closure_emission_background,
                                  result.closure_weight.x));
@@ -470,6 +718,28 @@ constexpr std::array normalized_fbm_oracle{
               << actual.z << "}, status=" << status << '\n';
     return false;
   }
+  auto specialized_shader = device.compile(
+      interpreter_kernel(
+          node_types,
+          singleton_noise_usage(
+              3u, static_cast<std::uint32_t>(NODE_NOISE_FBM))),
+      ShaderOption{.enable_cache = false, .enable_fast_math = true});
+  actual = {};
+  status = 0u;
+  stream << specialized_shader(word_buffer, output_buffer, status_buffer)
+                .dispatch(1u)
+         << output_buffer.copy_to(&actual)
+         << status_buffer.copy_to(&status) << synchronize();
+  if (!near(actual.x, expected_color.x) ||
+      !near(actual.y, expected_color.y) ||
+      !near(actual.z, expected_color.z) ||
+      status != static_cast<std::uint32_t>(
+                    device_svm::EvaluationStatus::ended)) {
+    std::cerr << "Cycles Noise specialized interpreter dispatch mismatch on "
+              << backend << ": got {" << actual.x << ", " << actual.y
+              << ", " << actual.z << "}, status=" << status << '\n';
+    return false;
+  }
   return true;
 }
 
@@ -495,6 +765,7 @@ int main(int argc, char **argv) {
   auto device = context.create_device(backend);
   auto stream = device.create_stream();
   return test_oracle(device, stream, backend) &&
+                 test_specialized_shapes(device, stream, backend, shape) &&
                  test_clamp_and_output_validity(device, stream, backend) &&
                  test_interpreter_dispatch(device, stream, backend)
              ? EXIT_SUCCESS

@@ -630,8 +630,23 @@ private:
          _current_type != SHADER_TYPE_VOLUME)
             ? node_type_with_derivatives(type)
             : type;
+    const auto is_noise = resolved == NODE_TEX_NOISE;
+    const auto prior_noise = is_noise ? current_entry_usage().noise_usage
+                                      : NoiseUsage::none();
     static_cast<void>(add_node(resolved));
     _stream.add_node_data(payload, payload_size);
+    if (is_noise) {
+      auto &usage = current_entry_usage();
+      if (payload == nullptr || payload_size != sizeof(SVMNodeTexNoise)) {
+        usage.noise_usage.shape_mask = NoiseUsage::all_shapes;
+      } else {
+        SVMNodeTexNoise noise{};
+        std::memcpy(&noise, payload, sizeof(noise));
+        usage.noise_usage = prior_noise;
+        usage.noise_usage.add(noise.dimensions,
+                              static_cast<std::uint32_t>(noise.noise_type));
+      }
+    }
     if (node != nullptr) {
       node->added_to_svm = true;
     }
@@ -656,6 +671,10 @@ private:
   [[nodiscard]] std::size_t add_node(ShaderNodeType type) override {
     const auto offset = _stream.add_node(type);
     current_entry_usage().node_types_used[type] = true;
+    if (type == NODE_TEX_NOISE) {
+      // Untyped/raw Noise opcodes carry no shape proof.
+      current_entry_usage().noise_usage.shape_mask = NoiseUsage::all_shapes;
+    }
     return offset;
   }
 
@@ -1197,6 +1216,9 @@ public:
     // carry false metadata below.
     _metadata.may_have_thin_film = false;
     _metadata.num_closures = _graph.get_num_closures();
+    for (auto &usage : _entry_usage) {
+      usage.noise_usage = NoiseUsage::none();
+    }
     _metadata.has_surface = _graph.root(GraphDomain::surface) != nullptr;
     _metadata.has_volume = _graph.root(GraphDomain::volume) != nullptr;
     _metadata.has_volume_connected =

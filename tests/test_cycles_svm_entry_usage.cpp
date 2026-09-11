@@ -13,6 +13,7 @@ abi::ShaderEntryUsage empty_entry() {
   abi::ShaderEntryUsage result;
   result.node_types_used[abi::NODE_SHADER_JUMP] = true;
   result.node_types_used[abi::NODE_END] = true;
+  result.noise_usage = abi::NoiseUsage::none();
   return result;
 }
 
@@ -46,8 +47,10 @@ int main() {
       require(image.usage_for(inactive) == empty_entry() &&
                   image.usage_for(abi::SHADER_TYPE_DISPLACEMENT) == empty_entry(),
               std::string{names[i]} + ": an END-only entry retained another entry's usage");
-      require(image.usage_for(active) == abi::ShaderEntryUsage{
-                  image.node_types_used, image.peak_stack_usage},
+      abi::ShaderEntryUsage expected_active{
+          image.node_types_used, image.peak_stack_usage};
+      expected_active.noise_usage = abi::NoiseUsage::none();
+      require(image.usage_for(active) == expected_active,
               "active entry lost shader emission facts");
       if ((i & 1u) != 0u) {
         require(image.usage_for(active).node_types_used[abi::NODE_JUMP_IF_ZERO] &&
@@ -74,7 +77,10 @@ int main() {
     const auto unproven = abi::link_shader_table(external);
     require(unproven.valid && unproven.words == table.words,
             "external-image fallback changed the linked stream");
-    const abi::ShaderEntryUsage whole{table.node_types_used, table.peak_stack_usage};
+    abi::ShaderEntryUsage whole{table.node_types_used, table.peak_stack_usage};
+    // This fixture contains no Noise opcode, so the conservative fallback has
+    // no shape domain to retain.
+    whole.noise_usage = abi::NoiseUsage::none();
     for (const auto type : {abi::SHADER_TYPE_SURFACE, abi::SHADER_TYPE_VOLUME,
                             abi::SHADER_TYPE_DISPLACEMENT}) {
       require(unproven.usage_for(type) == whole,

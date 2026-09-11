@@ -7,6 +7,10 @@
 #include <psycles/luisa/cycles_noise.h>
 
 #include <type_traits>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <utility>
 
 #include <luisa/dsl/sugar.h>
 
@@ -29,44 +33,69 @@ static_assert(
 static_assert(static_cast<std::uint32_t>(NODE_NOISE_HETERO_TERRAIN) ==
               static_cast<std::uint32_t>(cycles_noise::Type::hetero_terrain));
 
+// The only key is the immutable set of admitted noise types for this
+// coordinate dimension. Lambda type separates select and texture callables.
+template<typename Body>
+[[nodiscard]] const auto &cached_noise_callable(std::uint32_t type_mask,
+                                               Body &&body) noexcept {
+  using Recorded = decltype(Callable{std::forward<Body>(body)});
+  static std::mutex mutex;
+  static std::map<std::uint32_t, std::unique_ptr<Recorded>> cache;
+  std::lock_guard lock{mutex};
+  auto &recorded = cache[type_mask];
+  if (!recorded) {
+    recorded = std::make_unique<Recorded>(std::forward<Body>(body));
+  }
+  return *recorded;
+}
+
 template<typename Coordinate>
-[[nodiscard]] const auto &noise_select_callable() noexcept {
-  static Callable callable{
-      [](Coordinate coordinate, Float detail, Float roughness,
+[[nodiscard]] const auto &noise_select_callable(std::uint32_t type_mask) noexcept {
+  return cached_noise_callable(type_mask,
+      [type_mask](Coordinate coordinate, Float detail, Float roughness,
          Float lacunarity, Float offset, Float gain, UInt type,
          Bool normalize) noexcept {
         Float result = 0.0f;
         $switch (type) {
-          $case(static_cast<std::uint32_t>(NODE_NOISE_MULTIFRACTAL)) {
-            result = cycles_noise::multifractal(
-                coordinate, detail, roughness, lacunarity);
-          };
-          $case(static_cast<std::uint32_t>(NODE_NOISE_FBM)) {
-            result = cycles_noise::fbm(
-                coordinate, detail, roughness, lacunarity, normalize);
-          };
-          $case(static_cast<std::uint32_t>(
-              NODE_NOISE_HYBRID_MULTIFRACTAL)) {
-            result = cycles_noise::hybrid_multifractal(
-                coordinate, detail, roughness, lacunarity, offset, gain);
-          };
-          $case(static_cast<std::uint32_t>(
-              NODE_NOISE_RIDGED_MULTIFRACTAL)) {
-            result = cycles_noise::ridged_multifractal(
-                coordinate, detail, roughness, lacunarity, offset, gain);
-          };
-          $case(static_cast<std::uint32_t>(NODE_NOISE_HETERO_TERRAIN)) {
-            result = cycles_noise::hetero_terrain(
-                coordinate, detail, roughness, lacunarity, offset);
-          };
+          if ((type_mask & (1u << NODE_NOISE_MULTIFRACTAL)) != 0u) {
+            $case(static_cast<std::uint32_t>(NODE_NOISE_MULTIFRACTAL)) {
+              result = cycles_noise::multifractal(
+                  coordinate, detail, roughness, lacunarity);
+            };
+          }
+          if ((type_mask & (1u << NODE_NOISE_FBM)) != 0u) {
+            $case(static_cast<std::uint32_t>(NODE_NOISE_FBM)) {
+              result = cycles_noise::fbm(
+                  coordinate, detail, roughness, lacunarity, normalize);
+            };
+          }
+          if ((type_mask & (1u << NODE_NOISE_HYBRID_MULTIFRACTAL)) != 0u) {
+            $case(static_cast<std::uint32_t>(
+                NODE_NOISE_HYBRID_MULTIFRACTAL)) {
+              result = cycles_noise::hybrid_multifractal(
+                  coordinate, detail, roughness, lacunarity, offset, gain);
+            };
+          }
+          if ((type_mask & (1u << NODE_NOISE_RIDGED_MULTIFRACTAL)) != 0u) {
+            $case(static_cast<std::uint32_t>(
+                NODE_NOISE_RIDGED_MULTIFRACTAL)) {
+              result = cycles_noise::ridged_multifractal(
+                  coordinate, detail, roughness, lacunarity, offset, gain);
+            };
+          }
+          if ((type_mask & (1u << NODE_NOISE_HETERO_TERRAIN)) != 0u) {
+            $case(static_cast<std::uint32_t>(NODE_NOISE_HETERO_TERRAIN)) {
+              result = cycles_noise::hetero_terrain(
+                  coordinate, detail, roughness, lacunarity, offset);
+            };
+          }
           $default {
             luisa::compute::dsl::unreachable(
                 "invalid Cycles SVM Noise type");
           };
         };
         return result;
-      }};
-  return callable;
+      });
 }
 
 template<typename Coordinate>
@@ -96,9 +125,9 @@ template<typename Coordinate>
 }
 
 template<typename Coordinate>
-[[nodiscard]] const auto &noise_texture_callable() noexcept {
-  static Callable callable{
-      [](Coordinate coordinate, Float detail, Float roughness,
+[[nodiscard]] const auto &noise_texture_callable(std::uint32_t type_mask) noexcept {
+  return cached_noise_callable(type_mask,
+      [type_mask](Coordinate coordinate, Float detail, Float roughness,
          Float lacunarity, Float offset, Float gain, Float distortion,
          UInt type, Bool normalize, Bool color_needed) noexcept {
         $if (distortion != 0.0f) {
@@ -140,7 +169,7 @@ template<typename Coordinate>
           }
         };
 
-        const auto &select_noise = noise_select_callable<Coordinate>();
+        const auto &select_noise = noise_select_callable<Coordinate>(type_mask);
         const Float value = select_noise(
             coordinate, detail, roughness, lacunarity, offset, gain, type,
             normalize);
@@ -155,37 +184,53 @@ template<typename Coordinate>
               roughness, lacunarity, offset, gain, type, normalize);
         };
         return make_float4(color, value);
-      }};
-  return callable;
+      });
+}
+
+[[nodiscard]] std::uint32_t noise_types_for(NoiseUsage usage,
+                                           std::uint32_t dimensions) noexcept {
+  auto mask = std::uint32_t{};
+  for (auto type = 0u; type < 5u; ++type) {
+    if (usage.contains(dimensions, type)) { mask |= 1u << type; }
+  }
+  return mask;
 }
 
 [[nodiscard]] Float4 evaluate_noise(
     Expr<std::uint32_t> dimensions, Float3 vector, Float w, Float detail,
     Float roughness, Float lacunarity, Float offset, Float gain,
     Float distortion, Expr<std::uint32_t> type, Bool normalize,
-    Bool color_needed) noexcept {
+    Bool color_needed, NoiseUsage usage) noexcept {
   Float4 result = make_float4(0.0f);
   $switch (dimensions) {
-    $case(1u) {
-      result = noise_texture_callable<Float>()(
-          w, detail, roughness, lacunarity, offset, gain, distortion, type,
-          normalize, color_needed);
-    };
-    $case(2u) {
-      result = noise_texture_callable<Float2>()(
-          vector.xy(), detail, roughness, lacunarity, offset, gain,
-          distortion, type, normalize, color_needed);
-    };
-    $case(3u) {
-      result = noise_texture_callable<Float3>()(
-          vector, detail, roughness, lacunarity, offset, gain, distortion,
-          type, normalize, color_needed);
-    };
-    $case(4u) {
-      result = noise_texture_callable<Float4>()(
-          make_float4(vector, w), detail, roughness, lacunarity, offset, gain,
-          distortion, type, normalize, color_needed);
-    };
+    if (noise_types_for(usage, 1u) != 0u) {
+      $case(1u) {
+        result = noise_texture_callable<Float>(noise_types_for(usage, 1u))(
+            w, detail, roughness, lacunarity, offset, gain, distortion, type,
+            normalize, color_needed);
+      };
+    }
+    if (noise_types_for(usage, 2u) != 0u) {
+      $case(2u) {
+        result = noise_texture_callable<Float2>(noise_types_for(usage, 2u))(
+            vector.xy(), detail, roughness, lacunarity, offset, gain,
+            distortion, type, normalize, color_needed);
+      };
+    }
+    if (noise_types_for(usage, 3u) != 0u) {
+      $case(3u) {
+        result = noise_texture_callable<Float3>(noise_types_for(usage, 3u))(
+            vector, detail, roughness, lacunarity, offset, gain, distortion,
+            type, normalize, color_needed);
+      };
+    }
+    if (noise_types_for(usage, 4u) != 0u) {
+      $case(4u) {
+        result = noise_texture_callable<Float4>(noise_types_for(usage, 4u))(
+            make_float4(vector, w), detail, roughness, lacunarity, offset, gain,
+            distortion, type, normalize, color_needed);
+      };
+    }
     $default {
       luisa::compute::dsl::unreachable(
           "invalid Cycles SVM Noise dimensions");
@@ -196,7 +241,7 @@ template<typename Coordinate>
 
 } // namespace
 
-void node_tex_noise(Cursor &cursor, Stack &stack) noexcept {
+void node_tex_noise(Cursor &cursor, Stack &stack, NoiseUsage usage) noexcept {
   const auto dimensions = cursor.word();
   const auto noise_type = cursor.word();
   const auto normalize = cursor.word() != 0u;
@@ -232,7 +277,7 @@ void node_tex_noise(Cursor &cursor, Stack &stack) noexcept {
       color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID);
   const auto result = evaluate_noise(
       dimensions, vector, w, detail, roughness, lacunarity, offset, gain,
-      distortion, noise_type, normalize, color_needed);
+      distortion, noise_type, normalize, color_needed, usage);
   $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
     stack_store_float(stack, value_offset, result.w);
   };

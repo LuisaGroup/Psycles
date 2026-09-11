@@ -87,7 +87,7 @@ void eval_nodes_impl(
     const std::array<bool, NODE_NUM> &node_types_used,
     const TransformState &transform_state, ShaderData &shader_data,
     const PathState &path_state, EvaluationResult *result,
-    std::size_t stack_size) noexcept {
+    std::size_t stack_size, NoiseUsage noise_usage) noexcept {
   LUISA_ASSERT(stack_size != 0u && stack_size <= SVM_STACK_SIZE,
                "Cycles SVM stack extent must be in [1, {}], got {}.",
                SVM_STACK_SIZE, stack_size);
@@ -377,7 +377,8 @@ void eval_nodes_impl(
       if (node_types_used[NODE_TEX_NOISE]) {
         PSYCLES_SVM_CASE(NODE_TEX_NOISE) {
           PSYCLES_SVM_OUTLINE_NODE(
-              "svm_node_tex_noise", detail::node_tex_noise(cursor, stack));
+              "svm_node_tex_noise",
+              detail::node_tex_noise(cursor, stack, noise_usage));
         };
       }
       if (node_types_used[NODE_TEX_WHITE_NOISE]) {
@@ -981,10 +982,12 @@ void eval_nodes(const KernelGlobals &kernel_globals,
                 const std::array<bool, NODE_NUM> &node_types_used,
                 const TransformState &transform_state, ShaderData &shader_data,
                 const PathState &path_state,
-                EvaluationResult &result, std::size_t stack_size) noexcept {
+                EvaluationResult &result, std::size_t stack_size,
+                NoiseUsage noise_usage) noexcept {
   eval_nodes_impl<true>(kernel_globals, words, shader_type, kernel_features,
                         node_feature_mask, node_types_used, transform_state,
-                        shader_data, path_state, &result, stack_size);
+                        shader_data, path_state, &result, stack_size,
+                        noise_usage);
 }
 
 void eval_nodes_assume_valid(
@@ -993,11 +996,13 @@ void eval_nodes_assume_valid(
     std::uint32_t node_feature_mask,
     const std::array<bool, NODE_NUM> &node_types_used,
     const TransformState &transform_state, ShaderData &shader_data,
-    const PathState &path_state, std::size_t stack_size) noexcept {
+    const PathState &path_state, std::size_t stack_size,
+    NoiseUsage noise_usage) noexcept {
   $outline_with_name("svm_eval_nodes") {
     eval_nodes_impl<false>(kernel_globals, words, shader_type, kernel_features,
                            node_feature_mask, node_types_used, transform_state,
-                           shader_data, path_state, nullptr, stack_size);
+                           shader_data, path_state, nullptr, stack_size,
+                           noise_usage);
   };
 }
 

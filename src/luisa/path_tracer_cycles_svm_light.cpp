@@ -264,7 +264,7 @@ public:
                     usage.node_types_used,
                     transforms, sd, state, result,
                     std::max<std::size_t>(
-                        1u, usage.peak_stack_usage));
+                        1u, usage.peak_stack_usage), usage.noise_usage);
     $if(result.status !=
         static_cast<unsigned>(svm::EvaluationStatus::ended)) {
       dsl::unreachable("native Cycles light SVM did not reach NODE_END");

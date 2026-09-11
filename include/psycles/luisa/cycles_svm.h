@@ -9,6 +9,7 @@
 #endif
 
 #include <psycles/compiler/cycles_svm_node_types.h>
+#include <psycles/compiler/cycles_svm_noise_usage.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
 
 #include <array>
@@ -1026,6 +1027,9 @@ struct EvaluationResult {
 // stack_size is a host/JIT bound from the compiler's static stack allocator,
 // maximized over the compiled scene's shader images, never a profiled usage.
 // Callers without such a proof retain Cycles' maximum-sized default.
+// noise_usage is the union of dimension/type pairs in the emitted word image.
+// It only erases unreachable arms of the existing Noise switches; the default
+// retains their complete domain for callers without an emission proof.
 void eval_nodes(
     const KernelGlobals &kernel_globals,
     luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> words,
@@ -1034,7 +1038,8 @@ void eval_nodes(
     const std::array<bool, compiler::cycles_svm::NODE_NUM> &node_types_used,
     const TransformState &transform_state, ShaderData &shader_data,
     const PathState &path_state, EvaluationResult &result,
-    std::size_t stack_size = SVM_STACK_SIZE) noexcept;
+    std::size_t stack_size = SVM_STACK_SIZE,
+    compiler::cycles_svm::NoiseUsage noise_usage = {}) noexcept;
 
 /* Cycles' production SVM loop has no status machine: a compiler-generated
  * stream reaches NODE_END, while invalid opcodes are kernel assertions (and
@@ -1048,6 +1053,7 @@ void eval_nodes_assume_valid(
     const std::array<bool, compiler::cycles_svm::NODE_NUM> &node_types_used,
     const TransformState &transform_state, ShaderData &shader_data,
     const PathState &path_state,
-    std::size_t stack_size = SVM_STACK_SIZE) noexcept;
+    std::size_t stack_size = SVM_STACK_SIZE,
+    compiler::cycles_svm::NoiseUsage noise_usage = {}) noexcept;
 
 } // namespace psycles::luisa_backend::cycles_svm

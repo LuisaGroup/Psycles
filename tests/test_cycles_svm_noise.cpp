@@ -1,5 +1,6 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/cycles_svm_compiler.h>
+#include <psycles/compiler/cycles_svm_scene.h>
 
 #include <array>
 #include <cstdint>
@@ -226,6 +227,12 @@ void test_payload_cross_product_and_mapping() {
              .distortion = 0.42f});
         const auto image = compile_graph(graph);
         require(image.valid, image.diagnostic.c_str());
+        auto expected_shape = NoiseUsage::none();
+        expected_shape.add(
+            dimensions, static_cast<std::uint32_t>(type.value));
+        require(image.usage_for(SHADER_TYPE_SURFACE).noise_usage ==
+                    expected_shape,
+                "Noise entry usage lost dimensions/type shape proof");
         // NODE_TEX_COORD occupies words 4..6. The exact Noise payload starts
         // at word 8 and matches the Cycles matrix oracle byte-for-byte.
         require(image.words.size() >= 20u &&
@@ -307,11 +314,121 @@ void test_invalid_static_properties_are_rejected() {
   require(!image.valid, "invalid Noise type was accepted");
 }
 
+void test_noise_usage_linking_and_unknown_fallback() {
+  auto graph = make_noise_graph(
+      {.dimensions = 3u,
+       .type = "FBM",
+       .normalize = true,
+       .color = true,
+       .w = 0.0f,
+       .scale = 1.0f,
+       .detail = 2.0f,
+       .roughness = 0.5f,
+       .lacunarity = 2.0f,
+       .offset = 0.0f,
+       .gain = 1.0f,
+       .distortion = 0.0f});
+  auto image = compile_graph(graph);
+  require(image.valid, image.diagnostic.c_str());
+  const auto expected = image.usage_for(SHADER_TYPE_SURFACE).noise_usage;
+  require(expected.shape_mask ==
+              (1u << (static_cast<std::uint32_t>(NODE_NOISE_FBM) * 4u + 2u)),
+          "Noise metadata did not record the exact emitted shape");
+
+  auto unknown = image;
+  unknown.entry_usage.reset();
+  const auto unknown_table = link_shader_table(std::span{&unknown, 1u});
+  require(unknown_table.valid,
+          "linking an unknown external Noise image failed");
+  require(unknown_table.usage_for(SHADER_TYPE_SURFACE)
+                  .noise_usage.shape_mask == NoiseUsage::all_shapes,
+          "unknown Noise image did not retain conservative shape domain");
+
+  ShaderImage inert;
+  inert.valid = true;
+  inert.words = {NODE_SHADER_JUMP, 4u, 5u, 6u, NODE_END, NODE_END, NODE_END};
+  inert.node_types_used[NODE_SHADER_JUMP] = true;
+  inert.node_types_used[NODE_END] = true;
+  const std::array both{image, inert};
+  const auto mixed = link_shader_table(both);
+  require(mixed.valid,
+          "linking known Noise with inert shader hole failed");
+  require(mixed.usage_for(SHADER_TYPE_SURFACE).noise_usage.shape_mask ==
+              expected.shape_mask,
+          "inert shader hole widened known Noise shape metadata");
+
+  auto legacy = image;
+  for (auto &entry : *legacy.entry_usage) {
+    entry.noise_usage = NoiseUsage{};
+  }
+  const std::array with_legacy{image, legacy};
+  const auto legacy_table = link_shader_table(with_legacy);
+  require(legacy_table.valid &&
+              legacy_table.usage_for(SHADER_TYPE_SURFACE)
+                      .noise_usage.shape_mask == NoiseUsage::all_shapes,
+          "legacy opcode-only entry metadata narrowed the Noise domain");
+
+  for (const auto malformed_mask :
+       {0u, NoiseUsage::all_shapes | (1u << 31u)}) {
+    auto malformed = image;
+    require(malformed.entry_usage.has_value(),
+            "compiled Noise image omitted entry usage metadata");
+    (*malformed.entry_usage)[SHADER_TYPE_SURFACE].noise_usage.shape_mask =
+        malformed_mask;
+    const auto repaired = link_shader_table(std::span{&malformed, 1u});
+    require(repaired.valid,
+            "linker rejected malformed Noise metadata instead of widening");
+    require(repaired.usage_for(SHADER_TYPE_SURFACE)
+                    .noise_usage.shape_mask == NoiseUsage::all_shapes,
+            "malformed Noise metadata did not widen conservatively");
+  }
+
+  const auto add_noise = [&](std::uint32_t dimensions, std::string_view type) {
+    const auto node = graph.add_node(node_type::noise_texture);
+    require(graph.set_property(node, "Dimensions",
+                               SocketValue::unsigned_integer(dimensions)) &&
+                graph.set_property(node, "NoiseType",
+                                   SocketValue::string(std::string{type})) &&
+                graph.set_property(node, "Normalize",
+                                   SocketValue::boolean(false)),
+            "failed to configure entry-domain Noise probe");
+    return node;
+  };
+  const auto bump_noise = add_noise(2u, "MULTIFRACTAL");
+  const auto volume_noise = add_noise(4u, "RIDGED_MULTIFRACTAL");
+  const auto bump = graph.add_node(node_type::bump);
+  const auto volume = graph.add_node(node_type::volume_scatter);
+  require(graph.connect({bump_noise, "Factor"}, bump, "Height") &&
+              graph.connect({volume_noise, "Factor"}, volume, "Density"),
+          "failed to connect entry-domain Noise probe");
+  graph.set_root(ShaderDomain::surface_normal, OutputRef{bump, "Normal"});
+  graph.set_root(ShaderDomain::volume, OutputRef{volume, "Volume"});
+  const auto domains = compile_graph(graph);
+  require(domains.valid, domains.diagnostic.c_str());
+  auto surface_shapes = expected;
+  surface_shapes.add(2u, NODE_NOISE_MULTIFRACTAL);
+  auto volume_shapes = NoiseUsage::none();
+  volume_shapes.add(4u, NODE_NOISE_RIDGED_MULTIFRACTAL);
+  require(domains.usage_for(SHADER_TYPE_SURFACE).noise_usage == surface_shapes &&
+              domains.usage_for(SHADER_TYPE_VOLUME).noise_usage == volume_shapes &&
+              domains.usage_for(SHADER_TYPE_DISPLACEMENT).noise_usage ==
+                  NoiseUsage::none(),
+          "Noise shapes crossed entry domains or lost the surface bump prefix");
+  const std::array with_domains{image, domains, inert};
+  const auto domain_table = link_shader_table(with_domains);
+  require(domain_table.valid &&
+              domain_table.usage_for(SHADER_TYPE_SURFACE).noise_usage ==
+                  surface_shapes &&
+              domain_table.usage_for(SHADER_TYPE_VOLUME).noise_usage == volume_shapes,
+          "linking did not preserve independent Noise entry domains");
+}
+
 } // namespace
 
 int main() {
   test_linked_streams_match_cycles_5_2_1();
   test_payload_cross_product_and_mapping();
   test_invalid_static_properties_are_rejected();
+  test_noise_usage_linking_and_unknown_fallback();
   return EXIT_SUCCESS;
 }

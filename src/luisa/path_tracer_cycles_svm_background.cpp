@@ -100,7 +100,7 @@ Float3 evaluate_cycles_svm_background_emission(
         scene->cycles_svm->kernel_features, cycles_svm_background_feature_mask(evaluation),
         usage.node_types_used,
         transforms, sd, state,
-        std::max<std::size_t>(1u, usage.peak_stack_usage));
+        std::max<std::size_t>(1u, usage.peak_stack_usage), usage.noise_usage);
     $if((sd.flag & svm::shader_data_emission) != 0u) {
       emission = sd.closure_emission_background;
     };
