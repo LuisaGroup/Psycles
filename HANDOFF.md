@@ -39,10 +39,9 @@ git -C /home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute status -
 - Root `8bf668f0066072b3e2d4cb0117d0ed59d79a845d` is published: generic
   recording-time shading-frequency pruning, native fast-angle reuse, tests,
   original-GPU fixture and four-scene report.
-- SDK `31721e1f66f1672df113f1d8e213fc8eb9e74917` is published to `origin/next`
-  at the owner's explicit handoff request. It is the conflict-free cherry-pick
-  of isolated `c3114fdba` onto published `5c7de2bb9`; all 15 reviewed file hashes
-  matched. This handoff's parent commit advances the root gitlink to it.
+- The earlier SDK317 publication (`31721e1f...`) and its parent commit are
+  historical context only; the current nested SDK is `7d1f44cb6` as recorded
+  above.
 - `5c7de2bb9`'s actual frame-relocation/compatible-resume-queue regression is
   preserved. No isolated dependency symlink/gitlink adaptation was imported.
 
@@ -84,7 +83,7 @@ regression -> generic repair -> full original-module validation. Build with all
 fallback, then strict native XIR -> SPIR-V with DXC disabled. Do not overlap
 timed renders with compilation, tests, replay, profiling or image comparison.
 
-## 3. Current SDK317 integration: completed and pending
+## 3. Historical SDK317 integration snapshot
 
 Evidence directory `B=/var/tmp/psycles-coro-predicate-integration-Ba05LR`.
 `B/STATUS.md` was an intermediate note; **this handoff supersedes its pending
@@ -348,5 +347,7 @@ Word observer Blender:
 
 Earlier bump-state work from the old conversation is no longer the immediate
 uncommitted task: consult current Git/tests instead of restarting that handoff.
-The current highest-priority next steps are the test-only host assertion fix,
-remaining SDK317 backend/scene gates, and then the native structural work above.
+The historical SDK317 pending items are superseded by the current raw-frame
+validation recorded at the top of this handoff. The remaining performance gap
+to Cycles still requires paired multi-repeat scene benchmarks and further
+generic HIP instruction-pressure work.
