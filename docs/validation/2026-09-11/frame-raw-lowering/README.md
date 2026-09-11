@@ -23,11 +23,11 @@ kernel changed as follows:
 | SGPR spills | 58 | 60 |
 | decoded entry lanes | 74,292 | 74,186 |
 
-The render completed successfully in 32.97 s and 32.99 s in two runs, versus
-36.58 s for the frozen stock capture. The output comparison differed in only
-13 channels, with maximum absolute difference 2 on 8-bit output; the tiny
-difference is within the existing GPU render nondeterminism envelope and was
-not used as a performance claim.
+The render completed successfully in 32.9742 s, 32.9882 s, and 32.9691 s
+(mean 32.9772 s), versus 36.5768 s for the frozen stock capture. The output
+comparison differed in only a handful of channels, with maximum absolute
+difference 2 on 8-bit output; the tiny difference is within the existing GPU
+render nondeterminism envelope and was not used as a performance claim.
 
 Validation completed before publishing:
 
