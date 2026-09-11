@@ -107,6 +107,26 @@ and strict native Vulkan passed 17/17. Vulkan logs contain 1,023 successful
 SPIR-V compilations and no DXC/DXIL matches. The machine-local
 `results.json` records the exact library hashes and complete logs.
 
+## Offline raw-buffer probe
+
+`/var/tmp/frame-raw-lowering-repro` contains an exact LLVM transformation and
+its reproduction notes. It replaces 68 scalar frame loads in the captured
+surface module with `llvm.amdgcn.raw.buffer.load.{i32,f32}` calls using the
+descriptor format already emitted for HIP raw atomics. `llc -mcpu=gfx1201
+-O3 -verify-machineinstrs` succeeds. Static code length falls from 313,304 to
+312,312 bytes and private allocation from 2,368 to 2,176 bytes; VGPR, SGPR
+and occupancy metadata remain 256, 107 and 5. The probe omits stores,
+aggregates, booleans and full semantic validation, so it is evidence for the
+direction only and is not a production compiler change.
+
+The current XIR resource operation does not carry frame-buffer provenance.
+The proposed implementation therefore needs an internal marker from the
+coroutine frame helpers through AST→XIR metadata, with raw lowering gated to
+marked scalar operations. Ordinary byte buffers must retain the existing
+64-bit pointer path. The required regression covers capacities 1, 3 and 37,
+conditional dormant-field preservation, packed-word read/modify/write and
+all non-HIP backends before any `next` publication.
+
 ## Frame-address witness
 
 The unoptimized surface LLVM constructs frame addresses at the individual
