@@ -362,6 +362,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             .shader_option = {
               .enable_cache = render_shader_cache_enabled(),
             .enable_fast_math = _options.enable_fast_math,
+            .assume_no_packed_textures =
+                  !scene->may_have_packed_textures,
             .enable_driver_optimization =
                   render_shader_driver_optimization_enabled(_scene->device)}});
 }
