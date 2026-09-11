@@ -1,0 +1,551 @@
+{
+  "bundle_root": "/var/tmp/psycles-current-sdk317-20260910/fresh-exports",
+  "captured": "2026-09-11",
+  "output_root": "/var/tmp/psycles-v3-20260911",
+  "scenes": [
+    {
+      "blend": "/var/tmp/psycles-official-redownload-20260814/barbershop_interior.blend",
+      "blend_sha256": "95972b56180462cac47ec82f3a755bd9111ec18ca37a6196a319c013db994130",
+      "bundle": "/var/tmp/psycles-current-sdk317-20260910/fresh-exports/barbershop",
+      "cycles_render_summary": {
+        "max_seconds": 25.3468,
+        "median_seconds": 25.3056,
+        "min_seconds": 25.292
+      },
+      "extent": [
+        2048,
+        858
+      ],
+      "geometry_bin_sha256": "065660e5fb30012a6316c5db443a11e1a5341922a323945e326e47818487005d",
+      "psycles_render_summary": {
+        "max_seconds": 36.5402,
+        "median_seconds": 36.5278,
+        "min_seconds": 36.4613
+      },
+      "runs": [
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/barbershop/run-1/benchmark.json",
+          "benchmark_manifest_sha256": "ef4fb4296b9f9beb7c5bf53546231186a07932233fa9299e28f20a6675d6535a",
+          "comparison": {
+            "invalid_by_pass": {},
+            "max_relative_rmse": 0.11402916535262474,
+            "passes": 15
+          },
+          "comparison_report_sha256": "4e6f2665a20307886f1380e058b2e501fee0ad7f777d630a4de12a41deec529a",
+          "cycles": {
+            "metadata_sha256": "61e3f78bcbd29f1f8bbe3a35c5f040c9a3c6bd86c95531246efb5882eaef0000",
+            "output_sha256": "591de888a683bd3b455d92cdee789eb9e97d3585c89211d697b89e5a0ab5f10a",
+            "process_wall_seconds": 37.95098888897337,
+            "render_call_seconds": 35.77038573301979,
+            "render_seconds": 25.292
+          },
+          "psycles": {
+            "output_sha256": "811b2e27506fce6458c2ab0c4691abc9d716effbf479e555095681a109a38945",
+            "process_wall_seconds": 71.91512510602479,
+            "render_seconds": 36.4613,
+            "scene_compile_seconds": 15.1044,
+            "shader_jit_seconds": 18.2292
+          },
+          "repeat": 1,
+          "slowdown_vs_cycles": 1.4416139490748063,
+          "speedup_over_cycles": 0.693666983897996
+        },
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/barbershop/run-2/benchmark.json",
+          "benchmark_manifest_sha256": "f4071e95a33d83884546815ffc419bf1eac1861f20823d087ca01f5d72cda2a6",
+          "comparison": {
+            "invalid_by_pass": {},
+            "max_relative_rmse": 0.11403175268134808,
+            "passes": 15
+          },
+          "comparison_report_sha256": "c796686e737ea86049ecc64979dab74f68e0213b59beddc243dac54ddb00d182",
+          "cycles": {
+            "metadata_sha256": "c359436e6a17c3c8dd9b6817276190c24eb1d5bf0c2938dfd0d74348fb86c364",
+            "output_sha256": "44c4689711edcebf2e38f4b23712bd72767b041ccf9341f8b0f55aa020a676f9",
+            "process_wall_seconds": 36.70323028997518,
+            "render_call_seconds": 35.662810999987414,
+            "render_seconds": 25.3056
+          },
+          "psycles": {
+            "output_sha256": "2fba9abcbc7d34c46ddad800c5e374ae8cfdbbdc507f2fc947ad2e4f649df107",
+            "process_wall_seconds": 71.25450419602566,
+            "render_seconds": 36.5402,
+            "scene_compile_seconds": 14.7853,
+            "shader_jit_seconds": 17.8718
+          },
+          "repeat": 2,
+          "slowdown_vs_cycles": 1.4439570687910976,
+          "speedup_over_cycles": 0.6925413654002989
+        },
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/barbershop/run-3/benchmark.json",
+          "benchmark_manifest_sha256": "f272dcfb573c3ce69e7e8bf895ed0f91ab2f0b69fd636528afcbb982a0e986a6",
+          "comparison": {
+            "invalid_by_pass": {},
+            "max_relative_rmse": 0.11403066285121144,
+            "passes": 15
+          },
+          "comparison_report_sha256": "a6e6eded91e81deff904d29f4761c20c6dce72aac7799b3c4a045d0053d56031",
+          "cycles": {
+            "metadata_sha256": "06af878f52e9e212eebbab7b4c783ca95c6c232c853f4897299d80e878beb807",
+            "output_sha256": "ee70c8adc8be477ab189fb87e453f0fe6f1b91001e03fe406b28db652c5fc5eb",
+            "process_wall_seconds": 36.84705664002104,
+            "render_call_seconds": 35.78967001801357,
+            "render_seconds": 25.3468
+          },
+          "psycles": {
+            "output_sha256": "9c5e10f83167397f4fb69dea742bf9760f7db8418a8837ebd573b696c4d7228f",
+            "process_wall_seconds": 71.97102132299915,
+            "render_seconds": 36.5278,
+            "scene_compile_seconds": 15.1121,
+            "shader_jit_seconds": 18.2247
+          },
+          "repeat": 3,
+          "slowdown_vs_cycles": 1.4411207726419113,
+          "speedup_over_cycles": 0.6939043687273803
+        }
+      ],
+      "scene": "barbershop",
+      "scene_json_sha256": "68fb08c4ff0caa3e04ee1cb1289e289d3b1275971838dd33c7da20db758a25a2",
+      "slowdown_summary": {
+        "max": 1.4439570687910976,
+        "median": 1.4416139490748063,
+        "min": 1.4411207726419113
+      }
+    },
+    {
+      "blend": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+      "blend_sha256": "4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7",
+      "bundle": "/var/tmp/psycles-current-sdk317-20260910/fresh-exports/monk",
+      "cycles_render_summary": {
+        "max_seconds": 13.2113,
+        "median_seconds": 13.2106,
+        "min_seconds": 13.1894
+      },
+      "extent": [
+        1440,
+        1080
+      ],
+      "geometry_bin_sha256": "4b93baa1e3e8afda9e0381aabdaef97c54ebe9a8715a1af636e34247e0216b48",
+      "psycles_render_summary": {
+        "max_seconds": 12.1709,
+        "median_seconds": 12.1597,
+        "min_seconds": 12.1545
+      },
+      "runs": [
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/monk/run-1/benchmark.json",
+          "benchmark_manifest_sha256": "e920620a6c11359a5ac6337dd9384c65605fc1d321ba23c2497a50bb5b74e58a",
+          "comparison": {
+            "invalid_by_pass": {},
+            "max_relative_rmse": 0.1359674675949422,
+            "passes": 15
+          },
+          "comparison_report_sha256": "4c02ea6d268bedbb793bb0954a8b0b3e53d45a76931f21b4b5de8b49b7e7f98e",
+          "cycles": {
+            "metadata_sha256": "9b77cd0e10fd144271aaf4772d205c2e6e488535b80ddff3f9749256146056a8",
+            "output_sha256": "873233c401030ccc0feb1ace7b7f294fddc4dc03efedef3e95cd052d7fcd7698",
+            "process_wall_seconds": 16.358453827007907,
+            "render_call_seconds": 15.8024232009775,
+            "render_seconds": 13.2113
+          },
+          "psycles": {
+            "output_sha256": "e5ca6a54e7973e10627093f93b4277cec85d42d9d6a18dda7c5428ea9207d641",
+            "process_wall_seconds": 39.94379898899933,
+            "render_seconds": 12.1597,
+            "scene_compile_seconds": 5.01878,
+            "shader_jit_seconds": 21.5948
+          },
+          "repeat": 1,
+          "slowdown_vs_cycles": 0.9204014744953185,
+          "speedup_over_cycles": 1.086482396769657
+        },
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/monk/run-2/benchmark.json",
+          "benchmark_manifest_sha256": "f38f300e311b759862e43328e638beaf0442de7099c6c371aa736b8a432d5132",
+          "comparison": {
+            "invalid_by_pass": {},
+            "max_relative_rmse": 0.1359695060804215,
+            "passes": 15
+          },
+          "comparison_report_sha256": "bdc8388715a8bbf4cb42d0b8b00fe0c44a1937d0f32a02aa31fa030d37ceaa1d",
+          "cycles": {
+            "metadata_sha256": "3961e9f5bfbff378fb21ab17cfebd4341f50cb335a0378127fcb0f02840d6e92",
+            "output_sha256": "36b6b012051c599692834d52f1f9e61a5a1b8f89c5d45b93e4acf318f1e55112",
+            "process_wall_seconds": 16.287857839022763,
+            "render_call_seconds": 15.74110699200537,
+            "render_seconds": 13.1894
+          },
+          "psycles": {
+            "output_sha256": "c5193778f2fcb326b2d21381fe99df965c138cc0b77d3e766238f928e6884eab",
+            "process_wall_seconds": 29.774040153977694,
+            "render_seconds": 12.1709,
+            "scene_compile_seconds": 5.06437,
+            "shader_jit_seconds": 11.4241
+          },
+          "repeat": 2,
+          "slowdown_vs_cycles": 0.9227788982061352,
+          "speedup_over_cycles": 1.0836832115948698
+        },
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/monk/run-3/benchmark.json",
+          "benchmark_manifest_sha256": "9fce958ef645cdc2d0755d0bde2bbecdd6ff0fa6dcba5cb5d1df698896e5a6cc",
+          "comparison": {
+            "invalid_by_pass": {},
+            "max_relative_rmse": 0.1359650047988168,
+            "passes": 15
+          },
+          "comparison_report_sha256": "dc8bb2ee38da75377cb20289859891ec208fff07d0d7e577f0399b6a29d30e4c",
+          "cycles": {
+            "metadata_sha256": "d9d85797f5fd7e7e747c98d41a48acf833ab1ecb2aca16f5a4428a9b57d46a10",
+            "output_sha256": "0e53ce9f40749d8f9a99d2292083cbf7067385d60870435b1d56e61b6888f8ab",
+            "process_wall_seconds": 16.296182571008103,
+            "render_call_seconds": 15.75818666498526,
+            "render_seconds": 13.2106
+          },
+          "psycles": {
+            "output_sha256": "1754a10f1212a2dda5a04d544b78015a74feef0ab6869b34db425b8000e72517",
+            "process_wall_seconds": 29.50894061999861,
+            "render_seconds": 12.1545,
+            "scene_compile_seconds": 4.90582,
+            "shader_jit_seconds": 11.3587
+          },
+          "repeat": 3,
+          "slowdown_vs_cycles": 0.9200566211981288,
+          "speedup_over_cycles": 1.0868896293553827
+        }
+      ],
+      "scene": "monk",
+      "scene_json_sha256": "e3b7c29d8be7a34abe41420bb02ffa455624f58d273bc83b751b208c4d62fd1b",
+      "slowdown_summary": {
+        "max": 0.9227788982061352,
+        "median": 0.9204014744953185,
+        "min": 0.9200566211981288
+      }
+    },
+    {
+      "blend": "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+      "blend_sha256": "9463082f8d365ad8ae19c1ba86429deb3b532c5a2d0db0b9492c3c759f64d28d",
+      "bundle": "/var/tmp/psycles-current-sdk317-20260910/fresh-exports/monster",
+      "cycles_render_summary": {
+        "max_seconds": 14.2781,
+        "median_seconds": 14.255,
+        "min_seconds": 14.2515
+      },
+      "extent": [
+        1080,
+        1080
+      ],
+      "geometry_bin_sha256": "269afdf98c9e35f80fff7b875af4aa27fda80f462d668214d0d82d1d251b7927",
+      "psycles_render_summary": {
+        "max_seconds": 13.2532,
+        "median_seconds": 13.2501,
+        "min_seconds": 13.2248
+      },
+      "runs": [
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/monster/run-1/benchmark.json",
+          "benchmark_manifest_sha256": "3f6334ad98217041fb8f08bf8e0a25793c520d3206c036567f372d7353d9f1a2",
+          "comparison": {
+            "invalid_by_pass": {},
+            "max_relative_rmse": 0.04217965003085566,
+            "passes": 15
+          },
+          "comparison_report_sha256": "b6bd316830c9a074e455a6f004842d6d60949f7d9e62b8686d2ef65b24936431",
+          "cycles": {
+            "metadata_sha256": "7a773b9570d4b3870c3a34f920d9a5d7168600a8ac482b649c5cf52621d0512f",
+            "output_sha256": "34bd7c6636988a9e299fe9efb0ab226d092fe1daabbba4b84d60ce5038e6029b",
+            "process_wall_seconds": 15.79786983600934,
+            "render_call_seconds": 15.227428480022354,
+            "render_seconds": 14.2515
+          },
+          "psycles": {
+            "output_sha256": "e7dec550ac9ef2506936f49b1bbb563a0675b4edf36e652186a9f56303ad6f0c",
+            "process_wall_seconds": 35.644390346016735,
+            "render_seconds": 13.2248,
+            "scene_compile_seconds": 1.52183,
+            "shader_jit_seconds": 20.1624
+          },
+          "repeat": 1,
+          "slowdown_vs_cycles": 0.9279584605129285,
+          "speedup_over_cycles": 1.0776344443772305
+        },
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/monster/run-2/benchmark.json",
+          "benchmark_manifest_sha256": "13a5a63138c4efbc2cf84d51e9d5f6463963820adf781aceb652c1fb70df546a",
+          "comparison": {
+            "invalid_by_pass": {},
+            "max_relative_rmse": 0.04217879300319709,
+            "passes": 15
+          },
+          "comparison_report_sha256": "fed4d0c36f9534f7cf8db8660c3a56c00a8651b23ccc4e6f29d414b1fb8a2361",
+          "cycles": {
+            "metadata_sha256": "ba020ce42822b52464d03dd8fc337942604b916420cd573cff0a2e80c375394a",
+            "output_sha256": "4f68fe160cdb61faad3be319a5a781bed4ddf184ffd6296870a4efcadf18cf09",
+            "process_wall_seconds": 15.79134872899158,
+            "render_call_seconds": 15.223793159995694,
+            "render_seconds": 14.255
+          },
+          "psycles": {
+            "output_sha256": "6866bee3a5416b219734e0f7f55a7b6b2e7163c51dd623e5936768433e3bdf1a",
+            "process_wall_seconds": 28.454891645989846,
+            "render_seconds": 13.2532,
+            "scene_compile_seconds": 1.46628,
+            "shader_jit_seconds": 13.0478
+          },
+          "repeat": 2,
+          "slowdown_vs_cycles": 0.9297229042441248,
+          "speedup_over_cycles": 1.0755892916427732
+        },
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/monster/run-3/benchmark.json",
+          "benchmark_manifest_sha256": "d75bb107ce5ee21404dcbbd3e908728bb1dd17a12fbfb7e448ace8f04be689b2",
+          "comparison": {
+            "invalid_by_pass": {},
+            "max_relative_rmse": 0.042179702584591514,
+            "passes": 15
+          },
+          "comparison_report_sha256": "fe288b2091a33372b4cf1e4fc4fca0936a8d54199380ff78ffdf348d910bb9b0",
+          "cycles": {
+            "metadata_sha256": "3aeeeb202ceb854b10569293630467c28a4e0eb2c6a1b84b1fe1205558b7f6f3",
+            "output_sha256": "0d6c72f08efebe2de57d0ceab5fcedb7e2c8b7fb1e41109e72a2cd604e0cb87f",
+            "process_wall_seconds": 15.820448671991471,
+            "render_call_seconds": 15.239906856004382,
+            "render_seconds": 14.2781
+          },
+          "psycles": {
+            "output_sha256": "5df000ab1ead8cd20caabf94d9863678ea6dc65844a1203cfefc833470f4899e",
+            "process_wall_seconds": 28.81196173900389,
+            "render_seconds": 13.2501,
+            "scene_compile_seconds": 1.60564,
+            "shader_jit_seconds": 13.2618
+          },
+          "repeat": 3,
+          "slowdown_vs_cycles": 0.9280016248660535,
+          "speedup_over_cycles": 1.0775843201183388
+        }
+      ],
+      "scene": "monster",
+      "scene_json_sha256": "9a90ecc5994dd6026b0a524a1e21dc0ede3cca5bbffc8755a9ab2723ba221c8f",
+      "slowdown_summary": {
+        "max": 0.9297229042441248,
+        "median": 0.9280016248660535,
+        "min": 0.9279584605129285
+      }
+    },
+    {
+      "blend": "/home/mike/Projects/Psycles/assets/official-blender-scenes/classroom/classroom.blend",
+      "blend_sha256": "5c526ea3f280566e80253673c9955640527cd0f247ea41b1742620b5bc39f7a4",
+      "bundle": "/var/tmp/psycles-current-sdk317-20260910/fresh-exports/classroom",
+      "cycles_render_summary": {
+        "max_seconds": 18.0453,
+        "median_seconds": 18.0049,
+        "min_seconds": 17.9813
+      },
+      "extent": [
+        1920,
+        1080
+      ],
+      "geometry_bin_sha256": "c368c9ad78cb014fea1c79ce19c107f1a002489e388987be691624d703e77123",
+      "psycles_render_summary": {
+        "max_seconds": 16.7932,
+        "median_seconds": 16.788,
+        "min_seconds": 16.7756
+      },
+      "runs": [
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/classroom/run-1/benchmark.json",
+          "benchmark_manifest_sha256": "38864fc4f9e28e1264634d25d5b45422cb14c3e4e10b3cc5f514a0497697ffa2",
+          "comparison": {
+            "invalid_by_pass": {
+              "DiffDir": {
+                "cycles": 25,
+                "psycles": 7
+              },
+              "DiffInd": {
+                "cycles": 0,
+                "psycles": 2
+              },
+              "GlossDir": {
+                "cycles": 27,
+                "psycles": 7
+              },
+              "GlossInd": {
+                "cycles": 0,
+                "psycles": 2
+              }
+            },
+            "max_relative_rmse": 0.433578447867485,
+            "passes": 15
+          },
+          "comparison_report_sha256": "bc1be8084a48b32aefb7c6898989fa61da8d81e0427af2c4199fe425216bf441",
+          "cycles": {
+            "metadata_sha256": "506d5000f7d21ad449da0de3910997e9a0342ce286a72196dd94a9baa886fb42",
+            "output_sha256": "b79a261eeff5e5728f2a03517ae5f7147016b5f494297d9e918a4650776e9232",
+            "process_wall_seconds": 19.793453721998958,
+            "render_call_seconds": 19.36786079398007,
+            "render_seconds": 17.9813
+          },
+          "psycles": {
+            "output_sha256": "d3df7ab0ef8af31833806baa80a9bd58c8cc0bc89b7f8b05ca4ad1fadffc9e40",
+            "process_wall_seconds": 39.96287817499251,
+            "render_seconds": 16.7756,
+            "scene_compile_seconds": 2.0821,
+            "shader_jit_seconds": 19.3852
+          },
+          "repeat": 1,
+          "slowdown_vs_cycles": 0.9329470060562918,
+          "speedup_over_cycles": 1.0718722430196237
+        },
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/classroom/run-2/benchmark.json",
+          "benchmark_manifest_sha256": "d0fd452806c7805bf71211994eb3b7ff09a780a56911c9c42abfa0b088b5035d",
+          "comparison": {
+            "invalid_by_pass": {
+              "DiffDir": {
+                "cycles": 25,
+                "psycles": 7
+              },
+              "DiffInd": {
+                "cycles": 0,
+                "psycles": 2
+              },
+              "GlossDir": {
+                "cycles": 27,
+                "psycles": 7
+              },
+              "GlossInd": {
+                "cycles": 0,
+                "psycles": 2
+              }
+            },
+            "max_relative_rmse": 0.43357065172563164,
+            "passes": 15
+          },
+          "comparison_report_sha256": "2e5b8862e2cfc7fb663a856e2d6244e74351ea79dc0cf81de7bfc343ce1891a9",
+          "cycles": {
+            "metadata_sha256": "fb127e0610ed87a3dab78a73c471d89173f0c28af803fdd9d250b8d2450cdf40",
+            "output_sha256": "7df75d4b2bcac886bc88facf3815728eb0d0cdc68ddf21e22ce701343fea8e4a",
+            "process_wall_seconds": 19.827587690990185,
+            "render_call_seconds": 19.41677965701092,
+            "render_seconds": 18.0453
+          },
+          "psycles": {
+            "output_sha256": "03e961a69d72fa668b94965897765eaeb0d1f319f1a403acf6fadc9880922a1d",
+            "process_wall_seconds": 31.76580228700186,
+            "render_seconds": 16.788,
+            "scene_compile_seconds": 2.01791,
+            "shader_jit_seconds": 11.5507
+          },
+          "repeat": 2,
+          "slowdown_vs_cycles": 0.9303253478745158,
+          "speedup_over_cycles": 1.0748927805575412
+        },
+        {
+          "benchmark_manifest": "/var/tmp/psycles-v3-20260911/classroom/run-3/benchmark.json",
+          "benchmark_manifest_sha256": "0113cfc78899574849d119eb71b27b5414ccd02ae70ac5b8062f8b9f3cfb507c",
+          "comparison": {
+            "invalid_by_pass": {
+              "DiffDir": {
+                "cycles": 25,
+                "psycles": 7
+              },
+              "DiffInd": {
+                "cycles": 0,
+                "psycles": 2
+              },
+              "GlossDir": {
+                "cycles": 27,
+                "psycles": 7
+              },
+              "GlossInd": {
+                "cycles": 0,
+                "psycles": 2
+              }
+            },
+            "max_relative_rmse": 0.4335843316728786,
+            "passes": 15
+          },
+          "comparison_report_sha256": "4a23012ac3fa93c10f68cc698f56f92a73c41ec21ab0553493cb14704fbbc224",
+          "cycles": {
+            "metadata_sha256": "e2d0e688e7301f341b881cb50cc51904556efb5367d2313086d969503c56fd5c",
+            "output_sha256": "284ce5d7e630c615188353f9efbf8c1518239f1069fe3383cbde57601628efbf",
+            "process_wall_seconds": 19.828858919994673,
+            "render_call_seconds": 19.384993935003877,
+            "render_seconds": 18.0049
+          },
+          "psycles": {
+            "output_sha256": "f0bb23fb270655d67f1369d37522e2af8cad0cf12b5b60c96d2c040bf79e9e32",
+            "process_wall_seconds": 31.830633488978492,
+            "render_seconds": 16.7932,
+            "scene_compile_seconds": 2.0679,
+            "shader_jit_seconds": 11.5485
+          },
+          "repeat": 3,
+          "slowdown_vs_cycles": 0.9327016534387861,
+          "speedup_over_cycles": 1.072154205273563
+        }
+      ],
+      "scene": "classroom",
+      "scene_json_sha256": "b18e8653fe82ffbd169d2a866871e62a3f621fd7d9a01638c7426d9c5405b6ab",
+      "slowdown_summary": {
+        "max": 0.9329470060562918,
+        "median": 0.9327016534387861,
+        "min": 0.9303253478745158
+      }
+    }
+  ],
+  "schema": "psycles.current-hip-pairs.v1",
+  "settings": {
+    "backend": "hip",
+    "channel_count": 46,
+    "counter_readback_batch_size": 4,
+    "counter_readback_pipeline_depth": 2,
+    "cycles_device": "Radeon RX 9070 XT",
+    "execution_block_size": 32,
+    "fast_math": true,
+    "frame_capacity": 1048576,
+    "graph_refill_threshold": 0,
+    "graph_selective": false,
+    "graph_worker_count": 0,
+    "main_shader_cache": "disabled",
+    "max_samples_per_dispatch": 64,
+    "pass_contract": "psycles.linear-pass-contract.v1",
+    "pass_count": 15,
+    "persistent_block_size": 32,
+    "persistent_fetch_size": 1,
+    "persistent_worker_count": 32768,
+    "samples": 256,
+    "scheduler": "wavefront-staged",
+    "staged_direct_light_queue": true,
+    "staged_surface_sorting": true,
+    "tail_megakernel_threshold": 0
+  },
+  "source": {
+    "blender": {
+      "path": "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+      "sha256": "6f1babd8e863fec61d033c14348ee138e9a7c0ab5cd1a21cbf45c27b15a4dec9"
+    },
+    "exporter": {
+      "identity": "46254cd23f1b73bf7928be11c19f5726732e412a50975b088cae64bc6bbfe3b3",
+      "path": "tools/export_psycles_scene.py",
+      "sha256": "df92396db48a95e2fe7605246021ba18aabf6d9efafd559c988c2aaeaf424814"
+    },
+    "luisa_commit": "5066ab8f23fd158ca50a967c6a4d4a61c2571f1e",
+    "renderer": {
+      "libraries": {
+        "build/bin/libluisa-coro.so": "80c2ec120b8b1a9f5e909ece9094fd1dd7668a9c63fdf710a6d5affbea1fd90b",
+        "build/bin/libluisa-xir.so": "1e23422de25579f4143259d91d897fac3723d5654f6f8f8f7dbb9e2c88fb3e1f",
+        "build/libpsycles_luisa_runtime.so": "f07bd66063e757c4cdea387f5cc419e17cf00cb83a394c8f224a246ec240f27b"
+      },
+      "path": "build/bin/psycles_render_blender_scene",
+      "sha256": "83ede06f45502b78df7ff6888d389306ea1ca763110232654eb799f1420a99e9"
+    },
+    "root_commit": "ccdde5786568c899b13d67b9e6c2f20b5003f838",
+    "runner": {
+      "path": "tools/run_scene_benchmark.py",
+      "sha256": "220e5d666607b938a2c6dce1cc90f51905d57e2a06d8477fecebb343659c38e3"
+    }
+  },
+  "status": "complete_12_pairs"
+}
