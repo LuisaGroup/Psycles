@@ -1,9 +1,9 @@
 # Psycles / LuisaCompute handoff
 
-Updated 2026-09-10 02:42 +08:00. The owner explicitly requested **push and stop
-for another agent**, not completion of the rendering goal. No background build,
-render, test or replay remains running at handoff. Do not infer that all gates
-passed from publication: the remaining failures and unrun gates are below.
+Updated 2026-09-11 18:10 +08:00. The owner requested continued work toward
+Cycles-or-better HIP performance. No background build, render, test or replay
+remains running at handoff. The current raw-frame result and exact SDK gates
+supersede the older pending-gates snapshot below.
 
 This replaces the obsolete July/August handoff, whose older Cycles revisions,
 legacy execution paths and timing claims are not current. Its full text remains
@@ -23,7 +23,19 @@ git -C /home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute status -
 ```
 
 - Root branch: `codex/surface-common-projection`, tracking `origin/main`.
-- SDK branch: `codex/coro-exact-frame-io`, tracking `origin/next`.
+- SDK branch: `next`, tracking `origin/next`.
+- SDK `7d1f44cb6` is published directly on `origin/next`. It tags only
+  coroutine frame scalar byte-buffer accesses and lowers eligible HIP accesses
+  through AMD raw-buffer intrinsics. The root gitlink is `7d62e046` on
+  `origin/main`.
+- The original Barbershop module now renders in 32.97--32.99 s in two runs;
+  the frozen stock capture was 36.58 s. The exact surface object is 409,104 ->
+  408,716 code bytes, 2,368 -> 2,192 private bytes, and 449 -> 407 VGPR
+  spills, with 256 VGPR / 107 SGPR unchanged. See
+  `docs/validation/2026-09-11/frame-raw-lowering/README.md`.
+- The exact current-SDK driver passed 6 host, 17 HIP, 17 fallback, and 17
+  strict native Vulkan tests. Its evidence is in
+  `/var/tmp/psycles-sdk3bc7-patched-20260911-1789137615`.
 - Root `8bf668f0066072b3e2d4cb0117d0ed59d79a845d` is published: generic
   recording-time shading-frequency pruning, native fast-angle reuse, tests,
   original-GPU fixture and four-scene report.
