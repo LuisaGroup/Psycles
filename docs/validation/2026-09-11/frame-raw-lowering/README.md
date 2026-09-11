@@ -41,8 +41,18 @@ Validation completed before publishing:
   DXC/DXIL matches.
 
 The Luisa change is published directly on `next` as `7d1f44cb6`; the Psycles
-gitlink is published on `main` as `a9764788`. The static counts above are
+gitlink is published on `main` as `e32ad11a`. The static counts above are
 decoded instruction lanes, not dynamic issue counters. The earlier offline
 raw-IR scratch-delta experiment is retracted because its diagnostic did not
 accumulate nested GEP offsets correctly; only the live tagged lowering and the
 full-module render are evidence for this result.
+
+The post-lowering instruction audit identifies the next target. In the exact
+surface entry, Psycles has 3,091 cndmask lanes, 4,585 compares, and 9,013
+integer/hash lanes, versus 1,299, 3,291, and 8,256 in Cycles'
+`integrate_surface<1979>` entry. Branches and waits are already lower in
+Psycles. The cndmask count is unchanged by raw lowering, and disabling every
+tested LLVM IfConverter mode was byte-identical, so these masks originate in
+coroutine/state-machine selects or later lowering. Raw lowering removes 85
+64-bit address-spill instructions while adding 85 scalar b32 scratch
+operations; total decoded scratch lanes remain flat.
