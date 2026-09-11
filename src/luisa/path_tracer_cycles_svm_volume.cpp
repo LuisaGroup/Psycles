@@ -72,7 +72,7 @@ Bool evaluate_cycles_svm_volume_entry(
           scene->cycles_svm->kernel_features, node_feature_mask,
           usage.node_types_used, transforms,
           sd, state, std::max<std::size_t>(
-                         1u, usage.peak_stack_usage));
+                         1u, usage.peak_stack_usage), usage.noise_usage);
     };
   };
   return valid;

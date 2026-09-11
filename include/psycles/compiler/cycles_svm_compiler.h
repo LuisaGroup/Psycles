@@ -2,6 +2,7 @@
 
 #include <psycles/compiler/cycles_svm_attribute_request.h>
 #include <psycles/compiler/cycles_svm_bytecode.h>
+#include <psycles/compiler/cycles_svm_noise_usage.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/contract/scene.h>
 
@@ -155,6 +156,7 @@ struct ShaderCompileMetadata {
 struct ShaderEntryUsage {
   std::array<bool, NODE_NUM> node_types_used{};
   std::uint32_t peak_stack_usage{};
+  NoiseUsage noise_usage{};
 
   bool operator==(const ShaderEntryUsage &) const = default;
 };

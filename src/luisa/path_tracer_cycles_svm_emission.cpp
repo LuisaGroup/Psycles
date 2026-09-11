@@ -74,7 +74,7 @@ Float3 evaluate_cycles_svm_lamp_emission(
         svm::kernel_feature_node_mask_surface_light,
         usage.node_types_used,
         transforms, sd, state,
-        std::max<std::size_t>(1u, usage.peak_stack_usage));
+        std::max<std::size_t>(1u, usage.peak_stack_usage), usage.noise_usage);
     $if(((sd.flag & svm::shader_data_emission) != 0u) &
         (abs(dot(sd.Ng, sd.wi)) > 0.0f)) {
       emission = sd.closure_emission_background;

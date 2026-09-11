@@ -442,7 +442,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           path_state,
           std::max<std::size_t>(
               1u,
-              usage.peak_stack_usage));
+              usage.peak_stack_usage), usage.noise_usage);
       };
       const auto prepare_closures = [&] {
         svm_detail::surface_shader_prepare_closures(

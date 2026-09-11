@@ -155,7 +155,7 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
                       usage.node_types_used,
                       setup.transforms, sd, state, result,
                       std::max<std::size_t>(
-                          1u, usage.peak_stack_usage));
+                          1u, usage.peak_stack_usage), usage.noise_usage);
       $if(result.status !=
           static_cast<unsigned>(svm::EvaluationStatus::ended)) {
         dsl::unreachable("native Cycles shadow SVM did not reach NODE_END");

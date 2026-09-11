@@ -181,6 +181,9 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
   auto peak_stack_usage = std::uint32_t{};
   std::array<bool, NODE_NUM> node_types_used{};
   ShaderEntryUsageTable entry_usage{};
+  for (auto &usage : entry_usage) {
+    usage.noise_usage = NoiseUsage::none();
+  }
   node_types_used[NODE_SHADER_JUMP] = !shaders.empty();
 
   for (auto shader_index = std::size_t{}; shader_index < shaders.size();
@@ -224,6 +227,14 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
       auto &linked = entry_usage[entry];
       linked.peak_stack_usage = std::max(linked.peak_stack_usage, usage.peak_stack_usage);
       combined.peak_stack_usage = std::max(combined.peak_stack_usage, usage.peak_stack_usage);
+      if (usage.node_types_used[NODE_TEX_NOISE]) {
+        auto shape_mask = usage.noise_usage.shape_mask;
+        if ((shape_mask & NoiseUsage::all_shapes) == 0u ||
+            (shape_mask & ~NoiseUsage::all_shapes) != 0u) {
+          shape_mask = NoiseUsage::all_shapes;
+        }
+        linked.noise_usage.shape_mask |= shape_mask;
+      }
       for (auto node = std::size_t{}; node < NODE_NUM; ++node) {
         linked.node_types_used[node] |= usage.node_types_used[node];
         combined.node_types_used[node] |= usage.node_types_used[node];
