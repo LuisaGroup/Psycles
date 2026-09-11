@@ -90,6 +90,17 @@ temporary policy change was also reverted. Other inline thresholds and
 target-specific cost adjustments remain active; threshold zero does not
 mean every positive-growth inline is prohibited.
 
+The coroutine compile profile does not identify the large locals as
+coroutine-frame candidates. It scans 27,570 allocas, classifies 26,948 as
+nonreplayable, rejects 25,713 as scope-local projections, and promotes 528
+(only 9 nonreplayable, 3,900 bytes). The `[60 x [4 x i32]]` alloca is
+`ClosurePool::_storage`, sized from the scene closure high-water mark; the
+`[33 x float]` alloca is the dynamically indexed SVM stack. The former escapes
+through `svm_eval_nodes`, and the latter cannot be field-scalarized while
+preserving arbitrary SVM offsets. They are therefore not safe generic targets.
+The unresolved spill pressure is in compiler-generated continuation SSA and
+aggregate state after these ordinary locals are accounted for.
+
 Both diagnostic patches and build logs are retained in the evidence
 directory. These probes completed the original full render but were not
 promoted to validated rendering changes: their output images were not

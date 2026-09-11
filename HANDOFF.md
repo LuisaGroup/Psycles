@@ -26,10 +26,13 @@ git -C /home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute status -
 - SDK branch: `next`, tracking `origin/next`.
 - SDK `7d1f44cb6` is published directly on `origin/next`. It tags only
   coroutine frame scalar byte-buffer accesses and lowers eligible HIP accesses
-  through AMD raw-buffer intrinsics. The root gitlink is `80878c80` on
+  through AMD raw-buffer intrinsics. The root gitlink is `ec1e82dc` on
   `origin/main`.
-- The original Barbershop module now renders in 32.97--32.99 s in two runs;
-  the frozen stock capture was 36.58 s. The exact surface object is 409,104 ->
+- A fresh paired Barbershop benchmark with `PSYCLES_DISABLE_SHADER_CACHE=1`
+  measures Cycles HIP at 25.4221 s and current raw-frame Psycles at 32.8914 s
+  (1.29381x, 29.38% slower). Three
+  additional raw repeats are 32.97--32.99 s; the frozen stock capture was
+  36.58 s. The exact surface object is 409,104 ->
   408,716 code bytes, 2,368 -> 2,192 private bytes, and 449 -> 407 VGPR
   spills, with 256 VGPR / 107 SGPR unchanged. See
   `docs/validation/2026-09-11/frame-raw-lowering/README.md`.

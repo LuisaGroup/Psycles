@@ -24,7 +24,10 @@ kernel changed as follows:
 | decoded entry lanes | 74,292 | 74,186 |
 
 The render completed successfully in 32.9742 s, 32.9882 s, and 32.9691 s
-(mean 32.9772 s), versus 36.5768 s for the frozen stock capture. The output
+(mean 32.9772 s), versus 36.5768 s for the frozen stock capture. A fresh
+paired manifest at `/var/tmp/psycles-raw-paired-nocache-20260912/barbershop/benchmark.json`
+measured Cycles HIP at 25.4221 s and current Psycles at 32.8914 s (1.29381x,
+29.38% slower), with `PSYCLES_DISABLE_SHADER_CACHE=1` recorded. The output
 comparison differed in only a handful of channels, with maximum absolute
 difference 2 on 8-bit output; the tiny difference is within the existing GPU
 render nondeterminism envelope and was not used as a performance claim.
@@ -41,7 +44,7 @@ Validation completed before publishing:
   DXC/DXIL matches.
 
 The Luisa change is published directly on `next` as `7d1f44cb6`; the Psycles
-gitlink is published on `main` as `80878c80`. The static counts above are
+gitlink is published on `main` as `ec1e82dc`. The static counts above are
 decoded instruction lanes, not dynamic issue counters. The earlier offline
 raw-IR scratch-delta experiment is retracted because its diagnostic did not
 accumulate nested GEP offsets correctly; only the live tagged lowering and the
@@ -59,8 +62,11 @@ operations; total decoded scratch lanes remain flat.
 
 The stronger remaining pressure signal is register spilling: the raw surface
 still uses 256 VGPRs with 407 VGPR spill slots, while Cycles' surface metadata
-reports 192 VGPRs and 2 VGPR spills. The current LLVM contains long-lived
-aggregate values such as a 60x4-word register object and a 33-float object.
-Reducing those continuation live ranges or promoting only proven narrow fields
-is the next generic direction; blanket if-conversion changes would not address
-this pressure.
+reports 192 VGPRs and 2 VGPR spills. The apparent long-lived aggregates are
+ordinary locals: the 60x4-word object is `ClosurePool::_storage`, sized by the
+scene-wide closure budget, and the 33-float object is the dynamically indexed
+SVM stack. They escape through callable interfaces or require arbitrary stack
+indices, so generic scalarization is unsafe. Coroutine profiling instead
+scanned 27,570 allocas, rejected 25,713 scope-local projections, and promoted
+only 528; the remaining pressure is compiler-generated SSA/aggregate state in
+the continuation lowering. Blanket if-conversion changes would not address it.
