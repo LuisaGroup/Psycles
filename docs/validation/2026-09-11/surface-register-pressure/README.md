@@ -206,15 +206,20 @@ chain. The corresponding raw ISA region is `0x4DAC` in
 `kernel.36141c5c2087763b.opt.rq.xir`.
 
 The equivalent cases are already grouped by the source switch's payload type,
-but the merged cursor offset remains a PHI/select. A constant table probe kept
-all Cycles output metrics unchanged (zero invalid pixels, relative RMSE
-0.0105206) and measured 32.7339 s and 32.9997 s in two full Barbershop runs,
-versus the 32.8914 s paired raw-frame baseline. The mean is within run-to-run
-variance, so the table was reverted. An early-return probe was rejected by the
-XIR verifier because `$return()` in this helper is inlined into non-void
-callables. This evidence points to SVM dispatch lowering or a backend constant
-lookup as the next optimization boundary; it does not justify disabling
-coroutine if-conversion.
+but the merged cursor offset remains a PHI/select. Luisa now applies a narrow
+post-optimization HIP transform (published as `c710f5c59` on `origin/next`):
+forwarding switches with immutable integer PHI payloads become bounded
+constant-address-space lookup tables, preserving the original default for
+unknown selectors. On the exact surface object this reduced the kernel code
+object from 313,304 to 311,056 bytes and private scratch from 2,368 to 2,192
+bytes. Two uncached Barbershop runs measured 33.0702 s and 32.9877 s, versus
+the 32.8914 s paired raw-frame baseline; the timing is neutral within run to
+run variance, with zero invalid pixels and relative RMSE 0.0105206. It is a
+code-size/register-pressure cleanup, not yet an end-to-end speedup. An
+early-return probe was rejected by the XIR verifier because `$return()` in this
+helper is inlined into non-void callables. This evidence points to SVM dispatch
+lowering or a backend constant lookup as the next optimization boundary; it
+does not justify disabling coroutine if-conversion.
 
 Reproduce with the retained helper, which always includes the production
 `-amdgpu-inline-max-bb=0` option and passes a separate `-mllvm` for each
