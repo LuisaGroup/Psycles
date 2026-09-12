@@ -221,6 +221,15 @@ helper is inlined into non-void callables. This evidence points to SVM dispatch
 lowering or a backend constant lookup as the next optimization boundary; it
 does not justify disabling coroutine if-conversion.
 
+A follow-up packed-scalar `ClosurePool` probe preserved the same 80-byte record
+layout but replaced `Local<uint4>` with scalar-word indexing. It rendered the
+same scene in 33.0889 s and was reverted. Comparing the resulting table-pass
+ISA with the stock Cycles object shows the closure-related machine counts are
+already effectively matched: 40 row multiplies versus 40, 1,069 versus 1,072
+scratch loads, 389 versus 391 scratch stores, and 1,884 versus 1,888
+`v_cndmask` instructions. The remaining gap is therefore more likely dynamic
+dispatch, workload, occupancy, or runtime scheduling than this closure layout.
+
 Reproduce with the retained helper, which always includes the production
 `-amdgpu-inline-max-bb=0` option and passes a separate `-mllvm` for each
 additional option:
