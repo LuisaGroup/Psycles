@@ -24,10 +24,10 @@ git -C /home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute status -
 
 - Root branch: `codex/surface-common-projection`, tracking `origin/main`.
 - SDK branch: `next`, tracking `origin/next`.
-- SDK `7d1f44cb6` is published directly on `origin/next`. It tags only
-  coroutine frame scalar byte-buffer accesses and lowers eligible HIP accesses
-  through AMD raw-buffer intrinsics. The root gitlink is `556f5ef7` on
-  `origin/main`.
+- SDK `c710f5c59` is published directly on `origin/next`. It retains the raw
+  coroutine-frame access lowering and adds a guarded post-optimization lookup
+  table for small constant forwarding switches. The root gitlink will be
+  updated with the matching validation commit on `origin/main`.
 - A fresh paired Barbershop benchmark with `PSYCLES_DISABLE_SHADER_CACHE=1`
   measures Cycles HIP at 25.4221 s and current raw-frame Psycles at 32.8914 s
   (1.29381x, 29.38% slower). Three
