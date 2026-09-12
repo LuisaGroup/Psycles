@@ -1,0 +1,75 @@
+{
+  "scope": "Single sequential 2048x858 256spp HIP kernel-trace run per renderer. GPU durations are instrumented dispatch sums, not unprofiled wall time or per-path work counts.",
+  "engines": {
+    "psycles": {
+      "stages": {
+        "shade_surface": {
+          "kernel": "kernel_2427035293d48dc3",
+          "launches": 2966,
+          "gpu_seconds": 17.839758212,
+          "vgpr_count": 256,
+          "private_bytes": 2192,
+          "block_min": 128,
+          "block_max": 128
+        },
+        "intersect_closest": {
+          "kernel": "kernel_5aaf4097611a6e54",
+          "launches": 3263,
+          "gpu_seconds": 6.428314061,
+          "vgpr_count": 144,
+          "private_bytes": 240,
+          "block_min": 32,
+          "block_max": 32
+        },
+        "shade_volume": {
+          "kernel": "kernel_f432640e77543414",
+          "launches": 1397,
+          "gpu_seconds": 1.524027293,
+          "vgpr_count": 256,
+          "private_bytes": 100,
+          "block_min": 32,
+          "block_max": 32
+        }
+      },
+      "db": "/var/tmp/psycles-corrected-profile-20260912/psycles/psycles_results.db",
+      "manifest": "/var/tmp/psycles-corrected-profile-20260912/psycles/run.json",
+      "render_seconds": 33.2631,
+      "db_sha256": "4c04e2523f06d39c6f7c9a637aab22b2a3a6e739b5e638a446afa63e5e0303b3"
+    },
+    "cycles": {
+      "stages": {
+        "shade_surface": {
+          "kernel": "kernel_gpu_integrator_shade_surface",
+          "launches": 2750,
+          "gpu_seconds": 12.186687108,
+          "vgpr_count": 192,
+          "private_bytes": 6976,
+          "block_min": 1024,
+          "block_max": 1024
+        },
+        "intersect_closest": {
+          "kernel": "kernel_gpu_integrator_intersect_closest",
+          "launches": 3108,
+          "gpu_seconds": 5.2411189,
+          "vgpr_count": 184,
+          "private_bytes": 64,
+          "block_min": 256,
+          "block_max": 256
+        },
+        "shade_volume": {
+          "kernel": "kernel_gpu_integrator_shade_volume",
+          "launches": 1094,
+          "gpu_seconds": 1.425382931,
+          "vgpr_count": 192,
+          "private_bytes": 10560,
+          "block_min": 1024,
+          "block_max": 1024
+        }
+      },
+      "db": "/var/tmp/psycles-corrected-profile-20260912/cycles/cycles_results.db",
+      "manifest": "/var/tmp/psycles-corrected-profile-20260912/cycles/run.json",
+      "render_seconds": 25.69224,
+      "db_sha256": "39ab741cd1afbcf2ca8d9f3cf90a5ec1608bcf48ccab0c15fb8f515bfee88052"
+    }
+  }
+}

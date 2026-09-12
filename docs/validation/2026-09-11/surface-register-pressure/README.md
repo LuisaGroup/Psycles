@@ -194,41 +194,56 @@ if-conversion variants disabled. Both production and disabled outputs are
 414,056 bytes with the baseline SHA-256 above. This rules out those
 switches for this input; selects can be introduced by other transformations.
 
-## The largest mask chain is the SVM closure skip dispatch
+## Corrected attribution: the long mask chain updates the volume stack
 
-The repeated `v_cndmask_b32` / `v_cmp_eq_u32` sequence is not coroutine
-resume dispatch. In the exact optimized XIR capture, the function
-`node_closure_bsdf_skip` reads the SVM closure opcode and merges 25 sparse
-closure cases into one `words` value before `Cursor::advance`. The AMDGPU
-lowering turns this side-effect-free divergent switch into a compare/select
-chain. The corresponding raw ISA region is `0x4DAC` in
-`/var/tmp/raw-current-3.dis`; the XIR source is around line 126,555 of
-`kernel.36141c5c2087763b.opt.rq.xir`.
+The earlier closure-skip attribution and the later claim of equal Cycles
+instruction counts were incorrect. The supposed "stock Cycles" assembly
+`baseline-capture/bitcode/hip_kernel_16.s` contains Psycles'
+`kernel_5779fbe6d0fbd100`. Comparing it with `kernel_2427035293d48dc3`
+compares two Psycles versions, not two renderers. The 313,304 / 311,056 byte
+figures came from offline `llc` output, not production HIPRTC code objects.
+The 2,368 -> 2,192 private-byte change belongs to the earlier raw-frame fix;
+it is not evidence for the switch-table experiment.
 
-The equivalent cases are already grouped by the source switch's payload type,
-but the merged cursor offset remains a PHI/select. Luisa now applies a narrow
-post-optimization HIP transform (published as `c710f5c59` on `origin/next`):
-forwarding switches with immutable integer PHI payloads become bounded
-constant-address-space lookup tables, preserving the original default for
-unknown selectors. On the exact surface object this reduced the kernel code
-object from 313,304 to 311,056 bytes and private scratch from 2,368 to 2,192
-bytes. Two uncached Barbershop runs measured 33.0702 s and 32.9877 s, versus
-the 32.8914 s paired raw-frame baseline; the timing is neutral within run to
-run variance, with zero invalid pixels and relative RMSE 0.0105206. It is a
-code-size/register-pressure cleanup, not yet an end-to-end speedup. An
-early-return probe was rejected by the XIR verifier because `$return()` in this
-helper is inlined into non-void callables. This evidence points to SVM dispatch
-lowering or a backend constant lookup as the next optimization boundary; it
-does not justify disabling coroutine if-conversion.
+The actual Cycles reference is
+`/var/tmp/psycles-lamp-routing-sCLxKs/barber-isa-47Dvhd/cycles-compute.co`,
+entry `_Z17integrate_surfaceILj1979EEiPK16KernelGlobalsGPUiPf`.
+Using production objects and the same symbol-bounded, dual-lane-aware parser:
 
-A follow-up packed-scalar `ClosurePool` probe preserved the same 80-byte record
-layout but replaced `Local<uint4>` with scalar-word indexing. It rendered the
-same scene in 33.0889 s and was reverted. Comparing the resulting table-pass
-ISA with the stock Cycles object shows the closure-related machine counts are
-already effectively matched: 40 row multiplies versus 40, 1,069 versus 1,072
-scratch loads, 389 versus 391 scratch stores, and 1,884 versus 1,888
-`v_cndmask` instructions. The remaining gap is therefore more likely dynamic
-dispatch, workload, occupancy, or runtime scheduling than this closure layout.
+| Static entry metric | Psycles raw frame | Cycles surface 1979 |
+| --- | ---: | ---: |
+| Function code bytes | 408,716 | 441,580 |
+| Decoded instruction lanes | 77,927 | 86,303 |
+| cndmask | 3,116 | 1,333 |
+| cmp_eq_u32 | 794 | 157 |
+| Scratch loads / stores | 1,037 / 577 | 570 / 164 |
+
+These entry scopes retain different callable boundaries. Cycles' inclusive
+scope has 137 unique symbols and Psycles has two; neither entry nor inclusive
+static counts establish dynamically executed work or rule out spilling costs.
+
+At raw ISA `0x4D84` through `0x51F0`, four updates to a promoted 12-word vector
+expand to 48 conditional moves and 50 equality comparisons. Their indices are
+`4 * i + 0..3`, and each insert compares all 12 lanes, including impossible
+low-bit matches. The four identity fields and following count increment and
+sentinel write match `VolumeStack::_append` and `_write`, not the sparse
+25-case closure skip switch. The original LLVM capture contains dynamic
+`insertelement <12 x i32>` operations for this volume-stack storage.
+
+The generic HIP switch-table pass (`c710f5c59`) measured 33.0702 s and
+32.9877 s on Barbershop, with no demonstrated timing improvement. A later
+correctness audit also found that narrow GEP indices sign-extend: the emitted
+i1 default index 1 addresses element -1 and becomes poison. An original
+constant caller returns 10 while the reproduced lowering returns poison
+under ordinary LLVM optimization. A selector-width check also occurred after
+`getZExtValue`. The pass was reverted as `3be9371f1`; the validated raw-frame
+lowering remains. Reproducer evidence is retained at
+`/var/tmp/psycles-switch-retraction-20260912`.
+
+The packed-scalar ClosurePool probe measured 33.0889 s and was reverted. That
+probe does not address VolumeStack's 12-word insert chain. Disabling the tested
+LLVM if-conversion flags remains byte-identical for the original module;
+turning off coroutine if-conversion is not supported by this evidence.
 
 Reproduce with the retained helper, which always includes the production
 `-amdgpu-inline-max-bb=0` option and passes a separate `-mllvm` for each
