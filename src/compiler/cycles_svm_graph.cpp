@@ -1982,4 +1982,37 @@ std::uint32_t CyclesGraph::get_num_closures() const noexcept {
   return count;
 }
 
+std::uint32_t GraphNode::get_surface_closure_slots() const noexcept {
+  const auto type = get_closure_type();
+  if (type == CLOSURE_NONE_ID || CLOSURE_IS_VOLUME(type)) {
+    return 0u;
+  }
+  if (CLOSURE_IS_BSSRDF(type)) {
+    return 3u;
+  }
+  if (CLOSURE_IS_BSDF_MULTISCATTER(type)) {
+    return 2u;
+  }
+  if (CLOSURE_IS_PRINCIPLED(type)) {
+    return 12u;
+  }
+  if (type == CLOSURE_BSDF_PHYSICAL_CONDUCTOR ||
+      type == CLOSURE_BSDF_F82_CONDUCTOR ||
+      type == CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID ||
+      type == CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID ||
+      type == CLOSURE_BSDF_HAIR_CHIANG_ID ||
+      type == CLOSURE_BSDF_HAIR_HUANG_ID) {
+    return 2u;
+  }
+  return 1u;
+}
+
+std::uint32_t CyclesGraph::get_num_surface_closures() const noexcept {
+  auto count = std::uint32_t{};
+  for (const auto &node : _nodes) {
+    count += node->get_surface_closure_slots();
+  }
+  return count;
+}
+
 } // namespace psycles::compiler::cycles_svm

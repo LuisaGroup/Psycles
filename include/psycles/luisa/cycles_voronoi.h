@@ -62,11 +62,39 @@ void prepare(const Configuration &configuration) noexcept;
                               Float smoothness, Float exponent,
                               Float randomness) noexcept;
 
+struct RuntimeFilterOptions {
+    std::uint32_t dimension_mask{~0u};
+    std::uint32_t feature_mask{~0u};
+    std::uint32_t metric_mask{~0u};
+    bool may_have_detail{true};
+    bool may_normalize{true};
+    bool may_need_color{true};
+    bool may_need_position{true};
+    bool may_need_radius{true};
+
+    [[nodiscard]] constexpr bool is_unfiltered() const noexcept {
+        return dimension_mask == ~0u && feature_mask == ~0u &&
+               metric_mask == ~0u && may_have_detail && may_normalize &&
+               may_need_color && may_need_position && may_need_radius;
+    }
+};
+
 // Runtime payload form used by the isomorphic Cycles SVM interpreter. The
 // four coordinate domains are host/JIT-specialized callables, while feature,
 // metric, Normalize, and all socket values remain the original SVM fields.
 [[nodiscard]] luisa::compute::Var<EvaluationCall> evaluate_runtime(
     bool voronoi_extra_enabled,
+    luisa::compute::Expr<std::uint32_t> dimensions,
+    luisa::compute::Expr<std::uint32_t> feature,
+    luisa::compute::Expr<std::uint32_t> metric,
+    luisa::compute::Expr<bool> normalize,
+    Float3 vector, Float w, Float scale, Float detail, Float roughness,
+    Float lacunarity, Float smoothness, Float exponent,
+    Float randomness) noexcept;
+
+[[nodiscard]] luisa::compute::Var<EvaluationCall> evaluate_runtime_filtered(
+    bool voronoi_extra_enabled,
+    RuntimeFilterOptions filter_options,
     luisa::compute::Expr<std::uint32_t> dimensions,
     luisa::compute::Expr<std::uint32_t> feature,
     luisa::compute::Expr<std::uint32_t> metric,

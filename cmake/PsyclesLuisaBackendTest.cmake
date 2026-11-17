@@ -34,7 +34,7 @@ function(psycles_add_luisa_backend_test)
             RUNTIME_OUTPUT_DIRECTORY
                 "${CMAKE_BINARY_DIR}/bin")
 
-    foreach(_backend IN ITEMS fallback simd metal hip vk)
+    foreach(_backend IN ITEMS fallback simd metal metal4 hip vk)
         set(_backend_target
             "luisa-compute-backend-${_backend}")
         if(TARGET ${_backend_target})

@@ -3,6 +3,8 @@
 #include "cycles_shader_identity.h"
 #include <cstdint>
 #include <limits>
+#include <map>
+#include <tuple>
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -159,6 +161,154 @@ build_scene_traversal_tables(SceneTraversalTableBuildInput input) {
                     geometry.primitive_kind,
                     geometry.curve_subdivision_level)});
     }
+
+    if (!result.instances.empty()) {
+        std::uint32_t max_object_index = 0u;
+        bool within_object_table_limit = true;
+        constexpr std::uint32_t max_dense_object_table_index = 16'777'215u;
+        for (const auto &inst : result.instances) {
+            if (inst.cycles_object_index > max_dense_object_table_index) {
+                within_object_table_limit = false;
+                break;
+            }
+            max_object_index =
+                std::max(max_object_index, inst.cycles_object_index);
+        }
+        if (within_object_table_limit) {
+            result.object_to_instance.assign(
+                static_cast<std::size_t>(max_object_index) + 1u,
+                luisa::make_uint2(~luisa::uint{0u}, 0u));
+            bool injective = true;
+            for (std::size_t i = 0u; i < result.instances.size(); ++i) {
+                const auto obj = result.instances[i].cycles_object_index;
+                if (result.object_to_instance[obj].x != ~luisa::uint{0u}) {
+                    injective = false;
+                    break;
+                }
+                result.object_to_instance[obj] = luisa::make_uint2(
+                    static_cast<luisa::uint>(i),
+                    result.instances[i].cycles_primitive_offset);
+            }
+            if (!injective) {
+                result.object_to_instance.clear();
+            }
+        }
+    }
+
+    const auto eval_transparent = [&](const SceneTraversalInstanceGpu &inst_rec,
+                                      std::uint32_t slot) noexcept {
+        std::uint32_t flags = result.material_flags[
+            inst_rec.geometry_material_offset +
+            std::min(slot, inst_rec.geometry_material_count - 1u)];
+        if (slot < inst_rec.override_material_count) {
+            flags = result.material_flags[
+                inst_rec.override_material_offset + slot];
+        }
+        return (flags & material_flag_has_transparent_shadow) != 0u;
+    };
+
+    bool has_any_transparent = false;
+    bool can_build_triangle_opacity = !result.instances.empty();
+    result.shadow_opacity_words.assign(result.instances.size(), 0u);
+    std::map<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t>,
+             luisa::uint>
+        mixed_cache;
+    for (std::size_t i = 0u; i < result.instances.size(); ++i) {
+        const auto &src_inst = input.instances[i];
+        const auto &geometry = input.geometries[src_inst.geometry_index];
+        const auto &inst_rec = result.instances[i];
+        const auto max_slot_probe = std::max(
+            inst_rec.geometry_material_count, inst_rec.override_material_count);
+        bool seen_transparent = false;
+        bool seen_opaque = false;
+        for (std::uint32_t s = 0u; s <= max_slot_probe; ++s) {
+            if (eval_transparent(inst_rec, s)) {
+                seen_transparent = true;
+            } else {
+                seen_opaque = true;
+            }
+            if (seen_transparent && seen_opaque) {
+                break;
+            }
+        }
+        if (!seen_transparent) {
+            result.shadow_opacity_words[i] = 0u;
+            continue;
+        }
+        if (!seen_opaque) {
+            result.shadow_opacity_words[i] = ~luisa::uint{0u};
+            has_any_transparent = true;
+            continue;
+        }
+        if (geometry.primitive_kind == geometry_kind_triangle &&
+            src_inst.geometry_index < input.geometry_uploads.size()) {
+            const auto key = std::make_tuple(
+                src_inst.geometry_index,
+                src_inst.override_offset,
+                src_inst.override_count);
+            auto cached = mixed_cache.find(key);
+            if (cached == mixed_cache.end()) {
+                const auto &upload =
+                    input.geometry_uploads[src_inst.geometry_index];
+                const auto tri_count = upload.triangles.size();
+                bool tri_transparent = false;
+                bool tri_opaque = false;
+                for (std::size_t prim = 0u; prim < tri_count; ++prim) {
+                    const auto slot =
+                        prim < upload.triangle_material_slots.size()
+                            ? upload.triangle_material_slots[prim]
+                            : 0u;
+                    if (eval_transparent(inst_rec, slot)) {
+                        tri_transparent = true;
+                    } else {
+                        tri_opaque = true;
+                    }
+                    if (tri_transparent && tri_opaque) {
+                        break;
+                    }
+                }
+                luisa::uint code = 0u;
+                if (!tri_transparent) {
+                    code = 0u;
+                } else if (!tri_opaque) {
+                    code = ~luisa::uint{0u};
+                } else {
+                    const auto word_count = (tri_count + 31u) / 32u;
+                    if (result.shadow_opacity_words.size() + word_count >=
+                        static_cast<std::size_t>(~luisa::uint{0u})) {
+                        can_build_triangle_opacity = false;
+                        has_any_transparent = true;
+                        continue;
+                    }
+                    code = static_cast<luisa::uint>(
+                        result.shadow_opacity_words.size());
+                    result.shadow_opacity_words.resize(
+                        result.shadow_opacity_words.size() + word_count, 0u);
+                    for (std::size_t prim = 0u; prim < tri_count; ++prim) {
+                        const auto slot =
+                            prim < upload.triangle_material_slots.size()
+                                ? upload.triangle_material_slots[prim]
+                                : 0u;
+                        if (eval_transparent(inst_rec, slot)) {
+                            result.shadow_opacity_words[code + (prim >> 5u)] |=
+                                (1u << (prim & 31u));
+                        }
+                    }
+                }
+                cached = mixed_cache.emplace(key, code).first;
+            }
+            const auto code = cached->second;
+            result.shadow_opacity_words[i] = code;
+            has_any_transparent |= (code != 0u);
+        } else {
+            has_any_transparent = true;
+            can_build_triangle_opacity = false;
+        }
+    }
+    if (!can_build_triangle_opacity) {
+        result.shadow_opacity_words.clear();
+    }
+    result.has_transparent_shadow_materials = has_any_transparent;
     return result;
 }
 
@@ -192,9 +342,46 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
          .geometry_materials = std::span<const MaterialBindingGpu>{
              input.geometry_materials.data(), input.geometry_materials.size()},
          .override_materials = std::span<const MaterialBindingGpu>{
-             input.override_materials.data(), input.override_materials.size()}});
+             input.override_materials.data(), input.override_materials.size()},
+         .geometry_uploads = input.geometry_uploads});
     if (!traversal_tables.ok()) {
         return {.diagnostic = std::move(traversal_tables.diagnostic)};
+    }
+    scene->has_transparent_shadow_materials =
+        traversal_tables.has_transparent_shadow_materials;
+    scene->has_mixed_shadow_opacity_instances =
+        traversal_tables.shadow_opacity_words.size() >
+        traversal_tables.instances.size();
+    if (!traversal_tables.object_to_instance.empty()) {
+        scene->traversal_object_instance_count =
+            static_cast<std::uint32_t>(
+                traversal_tables.object_to_instance.size());
+        scene->traversal_object_instance_buffer.emplace(
+            scene->device.create_buffer<luisa::uint2>(
+                traversal_tables.object_to_instance.size()));
+    } else {
+        scene->traversal_object_instance_count = 0u;
+        scene->traversal_object_instance_buffer.reset();
+    }
+    if (!traversal_tables.shadow_opacity_words.empty()) {
+        scene->traversal_shadow_opacity_buffer.emplace(
+            scene->device.create_buffer<luisa::uint>(
+                traversal_tables.shadow_opacity_words.size()));
+    } else {
+        scene->traversal_shadow_opacity_buffer.reset();
+    }
+    if (scene->subsurface_accel &&
+        !scene->primary_to_subsurface_local_host.empty()) {
+        if (scene->primary_to_subsurface_local_host.size() <
+            input.instances.size()) {
+            scene->primary_to_subsurface_local_host.resize(
+                input.instances.size(), ~luisa::uint{0u});
+        }
+        scene->primary_to_subsurface_local_buffer.emplace(
+            scene->device.create_buffer<luisa::uint>(
+                scene->primary_to_subsurface_local_host.size()));
+    } else {
+        scene->primary_to_subsurface_local_buffer.reset();
     }
     scene->geometry_buffer =
         scene->device.create_buffer<GeometryGpu>(input.geometries.size());
@@ -288,8 +475,20 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
            << scene->light_tree_mesh_triangle_buffer.copy_from(
                   luisa::span{input.light_tree_mesh_triangles})
            << scene->light_tree_triangle_lookup_buffer.copy_from(
-                  luisa::span{input.light_tree_triangle_lookup})
-           << scene->texture_heap.update() << scene->heap.update()
+                  luisa::span{input.light_tree_triangle_lookup});
+    if (scene->traversal_object_instance_buffer) {
+        stream << scene->traversal_object_instance_buffer->copy_from(
+            luisa::span{traversal_tables.object_to_instance});
+    }
+    if (scene->traversal_shadow_opacity_buffer) {
+        stream << scene->traversal_shadow_opacity_buffer->copy_from(
+            luisa::span{traversal_tables.shadow_opacity_words});
+    }
+    if (scene->primary_to_subsurface_local_buffer) {
+        stream << scene->primary_to_subsurface_local_buffer->copy_from(
+            luisa::span{scene->primary_to_subsurface_local_host});
+    }
+    stream << scene->texture_heap.update() << scene->heap.update()
            << scene->accel.build();
     if (scene->subsurface_accel) {
         stream << scene->subsurface_accel->build();

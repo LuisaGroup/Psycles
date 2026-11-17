@@ -52,11 +52,11 @@ public:
   // Only Local observes the complete current-object triangle domain and
   // deliberately ignores normal instance visibility. Exact self identity is
   // rejected in either domain, so the ray begins at ShaderData::P with tmin 0.
-  [[nodiscard]] virtual Bool ambient_occluded(
-      const std::shared_ptr<LuisaSceneData> &scene,
-      const Var<luisa::compute::Ray> &ray,
-      const ScenePrimitiveIdentity &source,
-      Expr<bool> only_local) const noexcept = 0;
+  [[nodiscard]] virtual Bool
+  ambient_occluded(const std::shared_ptr<LuisaSceneData> &scene,
+                   const Var<luisa::compute::Ray> &ray,
+                   const ScenePrimitiveIdentity &source,
+                   Expr<bool> only_local) const noexcept = 0;
 
   // Enumerates one backend-native RayQuery and reduces its order-independent
   // candidate stream to the nearest fixed-capacity batch used by the shadow
@@ -81,11 +81,11 @@ public:
       Expr<std::uint32_t> transparent_maximum,
       const ShadowIntersectionBatchStorage &storage,
       Expr<std::uint32_t> storage_invocation,
-      Expr<std::uint32_t> storage_capacity) const noexcept = 0;
+      Expr<std::uint32_t> storage_capacity,
+      std::uint32_t max_transparent_bounces = ~0u) const noexcept = 0;
 };
 
 [[nodiscard]] std::shared_ptr<const SceneTraversalComponent>
-make_scene_traversal_component(
-    SceneTraversalStagePlan plan);
+make_scene_traversal_component(SceneTraversalStagePlan plan);
 
 } // namespace psycles::luisa_backend::detail

@@ -429,18 +429,51 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 coroutine.frame().frame_field_count(),
                 coroutine.frame().frame_type()->size(),
                 config.wavefront_frame_capacity);
+    auto shade_surface_block_size = 64u;
+    if (const auto *override_block =
+            std::getenv("PSYCLES_SHADE_SURFACE_BLOCK_SIZE")) {
+      const auto parsed =
+          static_cast<std::uint32_t>(std::strtoul(override_block, nullptr, 10));
+      if (valid_luisa_execution_block_size(parsed)) {
+        shade_surface_block_size = parsed;
+      }
+    }
     luisa::compute::coro::WavefrontCoroSchedulerConfig scheduler_config;
     scheduler_config.thread_count = config.wavefront_frame_capacity;
             scheduler_config.execution_block_size =
                 config.wavefront_execution_block_size;
             scheduler_config.continuation_block_sizes = {{
                 .continuation = path_transition::shade_surface,
-                .execution_block_size = 128u}};
+                .execution_block_size = shade_surface_block_size}};
             scheduler_config.largest_continuation_first = true;
             scheduler_config.incremental_continuation_counts = true;
             scheduler_config.fused_continuation_counts = true;
+            scheduler_config.frame_buffer_compaction = true;
+            if (const auto *override_compact =
+                    std::getenv("PSYCLES_WAVEFRONT_FRAME_COMPACTION")) {
+                scheduler_config.frame_buffer_compaction =
+                    std::string_view{override_compact} != "0";
+            }
             scheduler_config.refill_continuations = {
                 path_transition::intersect_closest};
+            float refill_ratio = 0.5f;
+            if (const auto *override_ratio =
+                    std::getenv("PSYCLES_WAVEFRONT_REFILL_RATIO")) {
+                refill_ratio = std::clamp(
+                    std::strtof(override_ratio, nullptr), 0.0f, 1.0f);
+            }
+            scheduler_config.refill_threshold =
+                std::clamp<std::uint32_t>(
+                    static_cast<std::uint32_t>(
+                        std::lround(static_cast<double>(refill_ratio) *
+                                    static_cast<double>(
+                                        scheduler_config.thread_count))),
+                    1u, scheduler_config.thread_count);
+            if (const auto *override_refill =
+                    std::getenv("PSYCLES_WAVEFRONT_REFILL_THRESHOLD")) {
+                scheduler_config.refill_threshold = static_cast<std::uint32_t>(
+                    std::strtoul(override_refill, nullptr, 10));
+            }
     scheduler_config.shader_option = config.shader_option;
     auto scheduler = std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);

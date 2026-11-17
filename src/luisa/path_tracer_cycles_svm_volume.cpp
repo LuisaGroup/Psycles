@@ -5,6 +5,8 @@
 #include "path_tracer_cycles_svm_kernel_globals.h"
 #include "cycles_svm_internal.h"
 
+#include <psycles/luisa/cycles_svm_translator.h>
+
 namespace psycles::luisa_backend::detail {
 namespace svm = cycles_svm;
 namespace abi = compiler::cycles_svm;
@@ -67,12 +69,19 @@ Bool evaluate_cycles_svm_volume_entry(
           object_to_world, world_to_object};
       const auto usage = scene->cycles_svm->compilation.table.usage_for(
           abi::SHADER_TYPE_VOLUME);
-      svm::eval_nodes_assume_valid(
-          kg, *scene->cycles_svm->word_buffer, abi::SHADER_TYPE_VOLUME,
-          scene->cycles_svm->kernel_features, node_feature_mask,
-          usage.node_types_used, transforms,
-          sd, state, std::max<std::size_t>(
-                         1u, usage.peak_stack_usage), usage.noise_usage);
+      svm::translate_svm_nodes_assume_valid(svm::SvmTranslationRequest{
+          .kernel_globals = kg,
+          .table = scene->cycles_svm->compilation.table,
+          .words = *scene->cycles_svm->word_buffer,
+          .shader_type = abi::SHADER_TYPE_VOLUME,
+          .kernel_features = scene->cycles_svm->kernel_features,
+          .node_feature_mask = node_feature_mask,
+          .node_types_used = usage.node_types_used,
+          .transform_state = transforms,
+          .shader_data = sd,
+          .path_state = state,
+          .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+          .noise_usage = usage.noise_usage});
     };
   };
   return valid;

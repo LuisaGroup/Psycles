@@ -81,9 +81,11 @@ packed_float3_value(Var<compiler::cycles_svm::packed_float3> value) noexcept {
 }
 
 template <typename T>
-[[nodiscard]] Var<T> attribute_data_fetch(const KernelGlobals &kernel_globals,
-                                          Expr<std::uint32_t> element,
-                                          Expr<std::int32_t> offset) noexcept {
+[[nodiscard]] Var<T> attribute_data_fetch(
+    const KernelGlobals &kernel_globals,
+    const SurfaceAttributeSummary &summary,
+    Expr<std::uint32_t> element,
+    Expr<std::int32_t> offset) noexcept {
   if constexpr (std::is_same_v<T, float>) {
     return kernel_globals.attribute_float(offset);
   } else if constexpr (std::is_same_v<T, luisa::float2>) {
@@ -91,14 +93,25 @@ template <typename T>
   } else if constexpr (std::is_same_v<T, luisa::float3>) {
     Float3 result =
         packed_float3_value(kernel_globals.attribute_float3(offset));
-    $if((element & static_cast<std::uint32_t>(ATTR_ELEMENT_IS_NORMAL)) != 0u) {
-      result = decode_packed_normal(kernel_globals.attribute_normal(offset));
-    };
+    if ((summary.element_mask &
+         static_cast<std::uint32_t>(ATTR_ELEMENT_IS_NORMAL)) != 0u) {
+      $if((element & static_cast<std::uint32_t>(ATTR_ELEMENT_IS_NORMAL)) !=
+          0u) {
+        result = decode_packed_normal(kernel_globals.attribute_normal(offset));
+      };
+    }
     return result;
   } else {
     static_assert(std::is_same_v<T, luisa::float4>);
-    Float4 result;
-    $if((element & static_cast<std::uint32_t>(ATTR_ELEMENT_IS_BYTE)) != 0u) {
+    const bool may_have_byte =
+        (summary.element_mask &
+         static_cast<std::uint32_t>(ATTR_ELEMENT_IS_BYTE)) != 0u;
+    const bool may_have_float4 =
+        (summary.type_mask & (1u << NODE_ATTR_FLOAT4)) != 0u;
+    if (!may_have_byte) {
+      return kernel_globals.attribute_float4(offset);
+    }
+    const auto fetch_byte_rgba = [&]() noexcept {
       const auto packed = kernel_globals.attribute_uchar4(offset);
       const Float4 encoded =
           make_float4(packed.x.cast<float>(), packed.y.cast<float>(),
@@ -107,10 +120,17 @@ template <typename T>
       const Float4 linear_rec709 = make_float4(
           color_srgb_to_linear(encoded.x), color_srgb_to_linear(encoded.y),
           color_srgb_to_linear(encoded.z), encoded.w);
-      result = make_float4(
+      return make_float4(
           ::psycles::luisa_backend::cycles_svm::detail::rec709_to_rgb(
               kernel_globals, linear_rec709.xyz()),
           linear_rec709.w);
+    };
+    if (!may_have_float4) {
+      return fetch_byte_rgba();
+    }
+    Float4 result;
+    $if((element & static_cast<std::uint32_t>(ATTR_ELEMENT_IS_BYTE)) != 0u) {
+      result = fetch_byte_rgba();
     }
     $else { result = kernel_globals.attribute_float4(offset); };
     return result;
@@ -151,39 +171,60 @@ template <typename T>
 template <typename T, bool derivatives>
 [[nodiscard]] DualValue<T>
 triangle_attribute(const KernelGlobals &kernel_globals,
+                   const SurfaceAttributeSummary &summary,
                    const ShaderData &shader_data,
                    const AttributeDescriptor &descriptor) noexcept {
   auto result = zero_dual_value<T>();
-  $if((descriptor.element &
-       static_cast<std::uint32_t>(ATTR_ELEMENT_VERTEX | ATTR_ELEMENT_CORNER)) !=
-      0u) {
+  const bool may_vertex =
+      (summary.element_mask &
+       static_cast<std::uint32_t>(ATTR_ELEMENT_VERTEX)) != 0u;
+  const bool may_corner =
+      (summary.element_mask &
+       static_cast<std::uint32_t>(ATTR_ELEMENT_CORNER)) != 0u;
+  const bool may_face =
+      (summary.element_mask &
+       static_cast<std::uint32_t>(ATTR_ELEMENT_FACE)) != 0u;
+  const auto emit_interp = [&]() noexcept {
     UInt i0;
     UInt i1;
     UInt i2;
-    $if((descriptor.element &
-         static_cast<std::uint32_t>(ATTR_ELEMENT_VERTEX)) != 0u) {
+    if (may_vertex && may_corner) {
+      $if((descriptor.element &
+           static_cast<std::uint32_t>(ATTR_ELEMENT_VERTEX)) != 0u) {
+        const UInt3 indices =
+            kernel_globals.triangle_vertex_indices(shader_data.prim);
+        i0 = indices.x;
+        i1 = indices.y;
+        i2 = indices.z;
+      }
+      $else {
+        const UInt tri = shader_data.prim * 3u;
+        i0 = tri;
+        i1 = tri + 1u;
+        i2 = tri + 2u;
+      };
+    } else if (may_vertex) {
       const UInt3 indices =
           kernel_globals.triangle_vertex_indices(shader_data.prim);
       i0 = indices.x;
       i1 = indices.y;
       i2 = indices.z;
-    }
-    $else {
+    } else {
       const UInt tri = shader_data.prim * 3u;
       i0 = tri;
       i1 = tri + 1u;
       i2 = tri + 2u;
-    };
+    }
 
-    const auto f0 =
-        attribute_data_fetch<T>(kernel_globals, descriptor.element,
-                                descriptor.offset + i0.cast<std::int32_t>());
-    const auto f1 =
-        attribute_data_fetch<T>(kernel_globals, descriptor.element,
-                                descriptor.offset + i1.cast<std::int32_t>());
-    const auto f2 =
-        attribute_data_fetch<T>(kernel_globals, descriptor.element,
-                                descriptor.offset + i2.cast<std::int32_t>());
+    const auto f0 = attribute_data_fetch<T>(
+        kernel_globals, summary, descriptor.element,
+        descriptor.offset + i0.cast<std::int32_t>());
+    const auto f1 = attribute_data_fetch<T>(
+        kernel_globals, summary, descriptor.element,
+        descriptor.offset + i1.cast<std::int32_t>());
+    const auto f2 = attribute_data_fetch<T>(
+        kernel_globals, summary, descriptor.element,
+        descriptor.offset + i2.cast<std::int32_t>());
     result.val =
         triangle_interpolate<T>(shader_data.u, shader_data.v, f0, f1, f2);
     if constexpr (derivatives) {
@@ -192,13 +233,31 @@ triangle_attribute(const KernelGlobals &kernel_globals,
       result.dy = triangle_attribute_dfdy<T>(shader_data.du, shader_data.dv, f0,
                                              f1, f2);
     }
-  }
-  $elif((descriptor.element & static_cast<std::uint32_t>(ATTR_ELEMENT_FACE)) !=
-        0u) {
-    result.val = attribute_data_fetch<T>(
-        kernel_globals, descriptor.element,
-        descriptor.offset + shader_data.prim.cast<std::int32_t>());
   };
+  if (may_vertex || may_corner) {
+    $if((descriptor.element &
+         static_cast<std::uint32_t>(ATTR_ELEMENT_VERTEX |
+                                    ATTR_ELEMENT_CORNER)) != 0u) {
+      emit_interp();
+    }
+    $else {
+      if (may_face) {
+        $if((descriptor.element &
+             static_cast<std::uint32_t>(ATTR_ELEMENT_FACE)) != 0u) {
+          result.val = attribute_data_fetch<T>(
+              kernel_globals, summary, descriptor.element,
+              descriptor.offset + shader_data.prim.cast<std::int32_t>());
+        };
+      }
+    };
+  } else if (may_face) {
+    $if((descriptor.element & static_cast<std::uint32_t>(ATTR_ELEMENT_FACE)) !=
+        0u) {
+      result.val = attribute_data_fetch<T>(
+          kernel_globals, summary, descriptor.element,
+          descriptor.offset + shader_data.prim.cast<std::int32_t>());
+    };
+  }
   return result;
 }
 
@@ -217,6 +276,7 @@ template <typename T>
 template <typename T, bool derivatives>
 [[nodiscard]] DualValue<T>
 curve_attribute(const KernelGlobals &kernel_globals,
+                const SurfaceAttributeSummary &summary,
                 const ShaderData &shader_data,
                 const AttributeDescriptor &descriptor) noexcept {
   auto result = zero_dual_value<T>();
@@ -229,9 +289,9 @@ curve_attribute(const KernelGlobals &kernel_globals,
     const Int k1 = k0 + 1;
 
     const auto f0 = attribute_data_fetch<T>(
-        kernel_globals, descriptor.element, descriptor.offset + k0);
+        kernel_globals, summary, descriptor.element, descriptor.offset + k0);
     const auto f1 = attribute_data_fetch<T>(
-        kernel_globals, descriptor.element, descriptor.offset + k1);
+        kernel_globals, summary, descriptor.element, descriptor.offset + k1);
 
     result.val = f0 + shader_data.u * (f1 - f0);
     if constexpr (derivatives) {
@@ -242,7 +302,7 @@ curve_attribute(const KernelGlobals &kernel_globals,
   $elif((descriptor.element &
          static_cast<std::uint32_t>(ATTR_ELEMENT_CURVE)) != 0u) {
     result.val = attribute_data_fetch<T>(
-        kernel_globals, descriptor.element,
+        kernel_globals, summary, descriptor.element,
         descriptor.offset + shader_data.prim.cast<std::int32_t>());
   };
   return result;
@@ -251,13 +311,14 @@ curve_attribute(const KernelGlobals &kernel_globals,
 template <typename T>
 [[nodiscard]] DualValue<T>
 point_attribute(const KernelGlobals &kernel_globals,
+                const SurfaceAttributeSummary &summary,
                 const ShaderData &shader_data,
                 const AttributeDescriptor &descriptor) noexcept {
   auto result = zero_dual_value<T>();
   $if((descriptor.element &
        static_cast<std::uint32_t>(ATTR_ELEMENT_VERTEX)) != 0u) {
     result.val = attribute_data_fetch<T>(
-        kernel_globals, descriptor.element,
+        kernel_globals, summary, descriptor.element,
         descriptor.offset + shader_data.prim.cast<std::int32_t>());
   };
   return result;
@@ -267,55 +328,98 @@ template <typename T, bool derivatives>
 [[nodiscard]] DualValue<T> primitive_surface_attribute_impl(
     const KernelGlobals &kernel_globals, const ShaderData &shader_data,
     const AttributeDescriptor &descriptor) noexcept {
+  const auto summary = kernel_globals.surface_attribute_summary();
+  if (summary.element_mask == 0u) {
+    return zero_dual_value<T>();
+  }
   auto result = zero_dual_value<T>();
-  $if((descriptor.element &
+  const bool may_obj_mesh =
+      (summary.element_mask &
        static_cast<std::uint32_t>(ATTR_ELEMENT_OBJECT | ATTR_ELEMENT_MESH)) !=
-      0u) {
-    result.val = attribute_data_fetch<T>(kernel_globals, descriptor.element,
-                                         descriptor.offset);
-  }
-  $elif((shader_data.type & primitive_triangle) != 0u) {
-    result = triangle_attribute<T, derivatives>(kernel_globals, shader_data,
-                                                descriptor);
-  }
-  $elif((shader_data.type & primitive_curve) != 0u) {
-    result = curve_attribute<T, derivatives>(kernel_globals, shader_data,
-                                             descriptor);
-  }
-  $elif((shader_data.type & primitive_point) != 0u) {
-    result = point_attribute<T>(kernel_globals, shader_data, descriptor);
+      0u;
+  const auto emit_prim_branches = [&]() noexcept {
+    $if((shader_data.type & primitive_triangle) != 0u) {
+      result = triangle_attribute<T, derivatives>(
+          kernel_globals, summary, shader_data, descriptor);
+    }
+    $else {
+      if (summary.has_curves) {
+        $if((shader_data.type & primitive_curve) != 0u) {
+          result = curve_attribute<T, derivatives>(
+              kernel_globals, summary, shader_data, descriptor);
+        }
+        $else {
+          if (summary.has_points) {
+            $if((shader_data.type & primitive_point) != 0u) {
+              result = point_attribute<T>(
+                  kernel_globals, summary, shader_data, descriptor);
+            };
+          }
+        };
+      } else if (summary.has_points) {
+        $if((shader_data.type & primitive_point) != 0u) {
+          result = point_attribute<T>(
+              kernel_globals, summary, shader_data, descriptor);
+        };
+      }
+    };
   };
+  if (may_obj_mesh) {
+    $if((descriptor.element &
+         static_cast<std::uint32_t>(ATTR_ELEMENT_OBJECT | ATTR_ELEMENT_MESH)) !=
+        0u) {
+      result.val = attribute_data_fetch<T>(
+          kernel_globals, summary, descriptor.element, descriptor.offset);
+    }
+    $else { emit_prim_branches(); };
+  } else {
+    emit_prim_branches();
+  }
   return result;
 }
 
 } // namespace
+
+namespace detail {
+
+AttributeDescriptor find_attribute_from_base_offset(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    Expr<std::uint32_t> base_attr_offset, Expr<luisa::ulong> id) noexcept {
+  auto descriptor = attribute_not_found();
+  UInt attr_offset = base_attr_offset;
+  $if(find_attr_offset(kernel_globals, attr_offset, id)) {
+    const auto attr_map = kernel_globals.attribute_map(attr_offset);
+    descriptor.element = attr_map.element.cast<std::uint32_t>();
+    const Bool primitive_element_without_primitive =
+        (shader_data.prim == primitive_none) &
+        ((descriptor.element &
+          static_cast<std::uint32_t>(ATTR_ELEMENT_MESH | ATTR_ELEMENT_VOXEL |
+                                     ATTR_ELEMENT_OBJECT)) == 0u);
+    $if(primitive_element_without_primitive) {
+      descriptor = attribute_not_found();
+    }
+    $else {
+      descriptor.offset = select(
+          attr_map.offset, static_cast<std::int32_t>(ATTR_STD_NOT_FOUND),
+          attr_map.element.cast<std::uint32_t>() ==
+              static_cast<std::uint32_t>(ATTR_ELEMENT_NONE));
+      descriptor.type = attr_map.type.cast<std::uint32_t>();
+    };
+  };
+  return descriptor;
+}
+
+} // namespace detail
 
 AttributeDescriptor find_attribute(const KernelGlobals &kernel_globals,
                                    const ShaderData &shader_data,
                                    Expr<luisa::ulong> id) noexcept {
   auto descriptor = attribute_not_found();
   $if(shader_data.object != object_none) {
-    UInt attr_offset =
+    const UInt base_attr_offset =
         kernel_globals.object_attribute_map_offset(shader_data.object);
-    $if(find_attr_offset(kernel_globals, attr_offset, id)) {
-      const auto attr_map = kernel_globals.attribute_map(attr_offset);
-      descriptor.element = attr_map.element.cast<std::uint32_t>();
-      const Bool primitive_element_without_primitive =
-          (shader_data.prim == primitive_none) &
-          ((descriptor.element &
-            static_cast<std::uint32_t>(ATTR_ELEMENT_MESH | ATTR_ELEMENT_VOXEL |
-                                       ATTR_ELEMENT_OBJECT)) == 0u);
-      $if(primitive_element_without_primitive) {
-        descriptor = attribute_not_found();
-      }
-      $else {
-        descriptor.offset = select(
-            attr_map.offset, static_cast<std::int32_t>(ATTR_STD_NOT_FOUND),
-            attr_map.element.cast<std::uint32_t>() ==
-                static_cast<std::uint32_t>(ATTR_ELEMENT_NONE));
-        descriptor.type = attr_map.type.cast<std::uint32_t>();
-      };
-    };
+    descriptor = detail::find_attribute_from_base_offset(
+        kernel_globals, shader_data, base_attr_offset, id);
   };
   return descriptor;
 }

@@ -6,6 +6,8 @@
 
 #include <psycles/luisa/cycles_transform.h>
 
+#include <bit>
+
 #include <luisa/dsl/sugar.h>
 
 #define PSYCLES_SVM_CASE(node) \
@@ -171,6 +173,11 @@ namespace {
                            fallback);
 }
 
+[[nodiscard]] constexpr bool has_texco(std::uint32_t mask,
+                                       NodeTexCoord coord) noexcept {
+  return (mask & (1u << static_cast<std::uint32_t>(coord))) != 0u;
+}
+
 [[nodiscard]] Dual3 smooth_normal(
     const KernelGlobals &kernel_globals,
     const TransformState &transform_state,
@@ -184,12 +191,16 @@ namespace {
       ((shader_data.shader & shader_smooth_normal) != 0u);
   $if(smooth_triangle) {
     TriangleNormals normal;
-    $if(shader_data.type == primitive_triangle) {
+    if (object_motion_enabled) {
+      $if(shader_data.type == primitive_triangle) {
+        normal = triangle_normals(kernel_globals, shader_data);
+      }
+      $else {
+        normal = motion_triangle_normals(kernel_globals, shader_data);
+      };
+    } else {
       normal = triangle_normals(kernel_globals, shader_data);
     }
-    $else {
-      normal = motion_triangle_normals(kernel_globals, shader_data);
-    };
     auto center = interpolate_normal(normal, shader_data.u, shader_data.v,
                                      shader_data.Ng);
     auto x = interpolate_normal(normal, shader_data.u + shader_data.du.dx,
@@ -286,6 +297,55 @@ namespace {
   return result;
 }
 
+[[nodiscard]] Float3 evaluate_plain_case(
+    NodeTexCoord coord, Cursor &cursor, const KernelGlobals &kernel_globals,
+    const TransformState &transform_state, const ShaderData &shader_data,
+    const PathState &path_state, bool volume_enabled,
+    bool object_motion_enabled) noexcept {
+  switch (coord) {
+  case NODE_TEXCO_OBJECT:
+    return kernel_globals.object_inverse_position_transform_if_object(
+        shader_data, shader_data.P);
+  case NODE_TEXCO_OBJECT_WITH_TRANSFORM:
+    return cycles_transform::point(packed_transform(cursor), shader_data.P);
+  case NODE_TEXCO_NORMAL: {
+    Float3 data = shader_data.N;
+    object_inverse_normal_transform(data, transform_state, shader_data,
+                                    object_motion_enabled);
+    return data;
+  }
+  case NODE_TEXCO_CAMERA:
+    return texco_camera(transform_state, shader_data, shader_data.P);
+  case NODE_TEXCO_WINDOW: {
+    const Bool orthographic_background_camera =
+        ((path_state.visibility & path_ray_visibility_camera) != 0u) &
+        (shader_data.object == object_none) &
+        (kernel_globals.camera_type() == camera_orthographic);
+    Float3 data = kernel_globals.camera_world_to_ndc(
+        shader_data, select(shader_data.P, shader_data.ray_P,
+                            orthographic_background_camera));
+    data.z = 0.0f;
+    return data;
+  }
+  case NODE_TEXCO_REFLECTION:
+    return texco_reflection(shader_data);
+  case NODE_TEXCO_DUPLI_GENERATED:
+    return dupli_generated(kernel_globals, shader_data);
+  case NODE_TEXCO_DUPLI_UV:
+    return dupli_uv(kernel_globals, shader_data);
+  case NODE_TEXCO_VOLUME_GENERATED: {
+    Float3 data = shader_data.P;
+    if (volume_enabled) {
+      $if(shader_data.object != object_none) {
+        data = volume_normalized_position(kernel_globals, shader_data, data);
+      };
+    }
+    return data;
+  }
+  }
+  return make_float3(0.0f);
+}
+
 [[nodiscard]] Float3 evaluate_plain(
     Cursor &cursor, Expr<std::uint32_t> type,
     const KernelGlobals &kernel_globals,
@@ -293,54 +353,95 @@ namespace {
     const ShaderData &shader_data,
     const PathState &path_state,
     bool volume_enabled,
-    bool object_motion_enabled) noexcept {
+    bool object_motion_enabled,
+    std::uint32_t tex_coord_mask) noexcept {
+  constexpr NodeTexCoord all_coords[] = {
+      NODE_TEXCO_OBJECT,          NODE_TEXCO_OBJECT_WITH_TRANSFORM,
+      NODE_TEXCO_NORMAL,          NODE_TEXCO_CAMERA,
+      NODE_TEXCO_WINDOW,          NODE_TEXCO_REFLECTION,
+      NODE_TEXCO_DUPLI_GENERATED, NODE_TEXCO_DUPLI_UV,
+      NODE_TEXCO_VOLUME_GENERATED};
+  if (tex_coord_mask != ~0u && std::has_single_bit(tex_coord_mask)) {
+    for (const auto coord : all_coords) {
+      if (has_texco(tex_coord_mask, coord)) {
+        return evaluate_plain_case(coord, cursor, kernel_globals,
+                                   transform_state, shader_data, path_state,
+                                   volume_enabled, object_motion_enabled);
+      }
+    }
+    return make_float3(0.0f);
+  }
   Float3 data = make_float3(0.0f);
   $switch(type) {
-    PSYCLES_SVM_CASE(NODE_TEXCO_OBJECT) {
-      data = kernel_globals.object_inverse_position_transform_if_object(
-          shader_data, shader_data.P);
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_OBJECT_WITH_TRANSFORM) {
-      data = cycles_transform::point(packed_transform(cursor), shader_data.P);
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_NORMAL) {
-      data = shader_data.N;
-      object_inverse_normal_transform(data, transform_state, shader_data,
-                                      object_motion_enabled);
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_CAMERA) {
-      data = texco_camera(transform_state, shader_data, shader_data.P);
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_WINDOW) {
-      const Bool orthographic_background_camera =
-          ((path_state.visibility & path_ray_visibility_camera) != 0u) &
-          (shader_data.object == object_none) &
-          (kernel_globals.camera_type() == camera_orthographic);
-      data = kernel_globals.camera_world_to_ndc(
-          shader_data,
-          select(shader_data.P, shader_data.ray_P,
-                 orthographic_background_camera));
-      data.z = 0.0f;
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_REFLECTION) {
-      data = texco_reflection(shader_data);
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_DUPLI_GENERATED) {
-      data = dupli_generated(kernel_globals, shader_data);
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_DUPLI_UV) {
-      data = dupli_uv(kernel_globals, shader_data);
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_VOLUME_GENERATED) {
-      data = shader_data.P;
-      if (volume_enabled) {
-        $if(shader_data.object != object_none) {
-          data = volume_normalized_position(kernel_globals, shader_data, data);
+    for (const auto coord : all_coords) {
+      if (has_texco(tex_coord_mask, coord)) {
+        PSYCLES_SVM_CASE(coord) {
+          data = evaluate_plain_case(coord, cursor, kernel_globals,
+                                     transform_state, shader_data, path_state,
+                                     volume_enabled, object_motion_enabled);
         };
       }
-    };
+    }
     $default { data = make_float3(0.0f); };
   };
+  return data;
+}
+
+[[nodiscard]] Dual3 evaluate_derivative_case(
+    NodeTexCoord coord, Cursor &cursor, const KernelGlobals &kernel_globals,
+    const TransformState &transform_state, const ShaderData &shader_data,
+    const PathState &path_state, bool volume_enabled,
+    bool object_motion_enabled) noexcept {
+  Dual3 data{.val = make_float3(0.0f),
+             .dx = make_float3(0.0f),
+             .dy = make_float3(0.0f)};
+  switch (coord) {
+  case NODE_TEXCO_OBJECT:
+    return kernel_globals.object_inverse_position_transform_if_object_derivative(
+        shader_data, shading_position(shader_data));
+  case NODE_TEXCO_OBJECT_WITH_TRANSFORM:
+    return transform_point(packed_transform(cursor),
+                           shading_position(shader_data));
+  case NODE_TEXCO_NORMAL:
+    return smooth_normal(kernel_globals, transform_state, shader_data,
+                         object_motion_enabled);
+  case NODE_TEXCO_CAMERA:
+    return texco_camera(transform_state, shader_data,
+                        shading_position(shader_data));
+  case NODE_TEXCO_WINDOW: {
+    const Bool orthographic_background_camera =
+        ((path_state.visibility & path_ray_visibility_camera) != 0u) &
+        (shader_data.object == object_none) &
+        (kernel_globals.camera_type() == camera_orthographic);
+    $if(orthographic_background_camera) {
+      data.val =
+          kernel_globals.camera_world_to_ndc(shader_data, shader_data.ray_P);
+    }
+    $else {
+      data.val = kernel_globals.camera_world_to_ndc(shader_data, shader_data.P);
+      data.dx = make_float3(1.0f / kernel_globals.camera_width(), 0.0f, 0.0f);
+      data.dy = make_float3(0.0f, 1.0f / kernel_globals.camera_height(), 0.0f);
+    };
+    data.val.z = 0.0f;
+    return data;
+  }
+  case NODE_TEXCO_REFLECTION:
+    return texco_reflection_derivative(shader_data);
+  case NODE_TEXCO_DUPLI_GENERATED:
+    data.val = dupli_generated(kernel_globals, shader_data);
+    return data;
+  case NODE_TEXCO_DUPLI_UV:
+    data.val = dupli_uv(kernel_globals, shader_data);
+    return data;
+  case NODE_TEXCO_VOLUME_GENERATED:
+    data = shading_position(shader_data);
+    if (volume_enabled) {
+      $if(shader_data.object != object_none) {
+        data = volume_normalized_position(kernel_globals, shader_data, data);
+      };
+    }
+    return data;
+  }
   return data;
 }
 
@@ -351,64 +452,39 @@ namespace {
     const ShaderData &shader_data,
     const PathState &path_state,
     bool volume_enabled,
-    bool object_motion_enabled) noexcept {
+    bool object_motion_enabled,
+    std::uint32_t tex_coord_mask) noexcept {
+  constexpr NodeTexCoord all_coords[] = {
+      NODE_TEXCO_OBJECT,          NODE_TEXCO_OBJECT_WITH_TRANSFORM,
+      NODE_TEXCO_NORMAL,          NODE_TEXCO_CAMERA,
+      NODE_TEXCO_WINDOW,          NODE_TEXCO_REFLECTION,
+      NODE_TEXCO_DUPLI_GENERATED, NODE_TEXCO_DUPLI_UV,
+      NODE_TEXCO_VOLUME_GENERATED};
+  if (tex_coord_mask != ~0u && std::has_single_bit(tex_coord_mask)) {
+    for (const auto coord : all_coords) {
+      if (has_texco(tex_coord_mask, coord)) {
+        return evaluate_derivative_case(
+            coord, cursor, kernel_globals, transform_state, shader_data,
+            path_state, volume_enabled, object_motion_enabled);
+      }
+    }
+    return {.val = make_float3(0.0f),
+            .dx = make_float3(0.0f),
+            .dy = make_float3(0.0f)};
+  }
   Dual3 data{.val = make_float3(0.0f),
              .dx = make_float3(0.0f),
              .dy = make_float3(0.0f)};
   $switch(type) {
-    PSYCLES_SVM_CASE(NODE_TEXCO_OBJECT) {
-      data =
-          kernel_globals.object_inverse_position_transform_if_object_derivative(
-              shader_data, shading_position(shader_data));
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_OBJECT_WITH_TRANSFORM) {
-      data = transform_point(packed_transform(cursor),
-                             shading_position(shader_data));
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_NORMAL) {
-      data = smooth_normal(kernel_globals, transform_state, shader_data,
-                           object_motion_enabled);
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_CAMERA) {
-      data = texco_camera(transform_state, shader_data,
-                          shading_position(shader_data));
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_WINDOW) {
-      const Bool orthographic_background_camera =
-          ((path_state.visibility & path_ray_visibility_camera) != 0u) &
-          (shader_data.object == object_none) &
-          (kernel_globals.camera_type() == camera_orthographic);
-      $if(orthographic_background_camera) {
-        data.val = kernel_globals.camera_world_to_ndc(shader_data,
-                                                      shader_data.ray_P);
-      }
-      $else {
-        data.val = kernel_globals.camera_world_to_ndc(shader_data,
-                                                      shader_data.P);
-        data.dx = make_float3(1.0f / kernel_globals.camera_width(), 0.0f,
-                             0.0f);
-        data.dy = make_float3(0.0f, 1.0f / kernel_globals.camera_height(),
-                             0.0f);
-      };
-      data.val.z = 0.0f;
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_REFLECTION) {
-      data = texco_reflection_derivative(shader_data);
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_DUPLI_GENERATED) {
-      data.val = dupli_generated(kernel_globals, shader_data);
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_DUPLI_UV) {
-      data.val = dupli_uv(kernel_globals, shader_data);
-    };
-    PSYCLES_SVM_CASE(NODE_TEXCO_VOLUME_GENERATED) {
-      data = shading_position(shader_data);
-      if (volume_enabled) {
-        $if(shader_data.object != object_none) {
-          data = volume_normalized_position(kernel_globals, shader_data, data);
+    for (const auto coord : all_coords) {
+      if (has_texco(tex_coord_mask, coord)) {
+        PSYCLES_SVM_CASE(coord) {
+          data = evaluate_derivative_case(
+              coord, cursor, kernel_globals, transform_state, shader_data,
+              path_state, volume_enabled, object_motion_enabled);
         };
       }
-    };
+    }
     $default {
       data.val = make_float3(0.0f);
       data.dx = make_float3(0.0f);
@@ -427,7 +503,8 @@ void node_tex_coord(Cursor &cursor, Stack &stack,
                     const PathState &path_state,
                     bool use_derivatives,
                     bool volume_enabled,
-                    bool object_motion_enabled) noexcept {
+                    bool object_motion_enabled,
+                    std::uint32_t tex_coord_mask) noexcept {
   const auto packed = cursor.word();
   const auto type = cursor.byte(packed, 0u);
   const auto bump_offset = cursor.byte(packed, 1u);
@@ -438,26 +515,49 @@ void node_tex_coord(Cursor &cursor, Stack &stack,
   if (use_derivatives) {
     auto data = evaluate_derivative(
         cursor, type, kernel_globals, transform_state, shader_data, path_state,
-        volume_enabled, object_motion_enabled);
-    $if(bump_offset == static_cast<std::uint32_t>(NODE_BUMP_OFFSET_DX)) {
-      data.val += data.dx * bump_filter_width;
+        volume_enabled, object_motion_enabled, tex_coord_mask);
+    if (const auto cbo = try_const_uint(bump_offset)) {
+      if (*cbo == static_cast<std::uint32_t>(NODE_BUMP_OFFSET_DX)) {
+        data.val += data.dx * bump_filter_width;
+      } else if (*cbo == static_cast<std::uint32_t>(NODE_BUMP_OFFSET_DY)) {
+        data.val += data.dy * bump_filter_width;
+      }
+    } else {
+      $if(bump_offset == static_cast<std::uint32_t>(NODE_BUMP_OFFSET_DX)) {
+        data.val += data.dx * bump_filter_width;
+      }
+      $elif(bump_offset == static_cast<std::uint32_t>(NODE_BUMP_OFFSET_DY)) {
+        data.val += data.dy * bump_filter_width;
+      };
     }
-    $elif(bump_offset == static_cast<std::uint32_t>(NODE_BUMP_OFFSET_DY)) {
-      data.val += data.dy * bump_filter_width;
-    };
-    $if(type == static_cast<std::uint32_t>(NODE_TEXCO_NORMAL)) {
-      data = safe_normalize_dual(data);
-    };
-    $if(store_derivatives != 0u) {
-      stack_store_dual3(stack, output_offset, data);
+    if (has_texco(tex_coord_mask, NODE_TEXCO_NORMAL)) {
+      if (tex_coord_mask ==
+          (1u << static_cast<std::uint32_t>(NODE_TEXCO_NORMAL))) {
+        data = safe_normalize_dual(data);
+      } else {
+        $if(type == static_cast<std::uint32_t>(NODE_TEXCO_NORMAL)) {
+          data = safe_normalize_dual(data);
+        };
+      }
     }
-    $else { stack_store_float3(stack, output_offset, data.val); };
+    if (const auto csd = try_const_uint(store_derivatives)) {
+      if (*csd != 0u) {
+        stack_store_dual3(stack, output_offset, data);
+      } else {
+        stack_store_float3(stack, output_offset, data.val);
+      }
+    } else {
+      $if(store_derivatives != 0u) {
+        stack_store_dual3(stack, output_offset, data);
+      }
+      $else { stack_store_float3(stack, output_offset, data.val); };
+    }
   } else {
     stack_store_float3(
         stack, output_offset,
         evaluate_plain(cursor, type, kernel_globals, transform_state,
                        shader_data, path_state, volume_enabled,
-                       object_motion_enabled));
+                       object_motion_enabled, tex_coord_mask));
   }
 }
 

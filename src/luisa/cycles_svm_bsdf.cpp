@@ -94,7 +94,11 @@ inline constexpr auto microfacet_type_mask =
           (type <= closure_type::type_microfacet_multi_ggx_glass));
 }
 
-[[nodiscard]] Bool is_curve(const ShaderData &shader_data) noexcept {
+[[nodiscard]] Bool is_curve(const KernelGlobals &kernel_globals,
+                            const ShaderData &shader_data) noexcept {
+  if (!kernel_globals.has_curves()) {
+    return false;
+  }
   return (shader_data.type & primitive_curve) != 0u;
 }
 
@@ -108,12 +112,14 @@ inline constexpr auto microfacet_type_mask =
   return 1.0f / (1.0f + lambda);
 }
 
-[[nodiscard]] Float bump_shadowing_term(const ShaderData &shader_data,
+[[nodiscard]] Float bump_shadowing_term(const KernelGlobals &kernel_globals,
+                                        const ShaderData &shader_data,
                                         const ShaderClosureCommon &closure,
                                         Expr<luisa::float3> direction,
                                         Expr<bool> is_eval) noexcept {
   Float result = 1.0f;
-  $if((!all(closure.N == shader_data.N)) & (!is_curve(shader_data))) {
+  $if((!all(closure.N == shader_data.N)) &
+      (!is_curve(kernel_globals, shader_data))) {
     const auto cosine_smooth_direction = dot(shader_data.N, direction);
     const auto cosine_smooth_closure = dot(shader_data.N, closure.N);
     const auto cosine_closure_direction = dot(closure.N, direction);
@@ -238,7 +244,10 @@ BsdfSample bsdf_sample(const KernelGlobals &kernel_globals,
   auto &pool = *shader_data.closure;
   const auto common = pool.common(closure_index);
   const auto geometric_normal =
-      select(shader_data.Ng, common.N, is_curve(shader_data));
+      kernel_globals.has_curves()
+          ? select(shader_data.Ng, common.N,
+                   is_curve(kernel_globals, shader_data))
+          : shader_data.Ng;
   BsdfSample result{.value = make_float3(0.0f),
                     .wo = make_float3(0.0f),
                     .pdf = 0.0f,
@@ -400,7 +409,8 @@ BsdfSample bsdf_sample(const KernelGlobals &kernel_globals,
         result.value *= shift_cos_in(dot(result.wo, common.N), frequency);
       };
     }
-    result.value *= bump_shadowing_term(shader_data, common, result.wo, false);
+    result.value *= bump_shadowing_term(kernel_globals, shader_data, common,
+                                        result.wo, false);
   };
   return result;
 }
@@ -626,7 +636,8 @@ BsdfEvaluation bsdf_eval(const KernelGlobals &kernel_globals,
   auto &pool = *shader_data.closure;
   const auto common = pool.common(closure_index);
   BsdfEvaluation result{.value = make_float3(0.0f), .pdf = 0.0f};
-  const auto bump = bump_shadowing_term(shader_data, common, wo, true);
+  const auto bump =
+      bump_shadowing_term(kernel_globals, shader_data, common, wo, true);
   $if(bump != 0.0f) {
     $switch(common.type) {
       if (closure_enabled(closure_types, closure_type::type_diffuse)) {
@@ -781,18 +792,12 @@ void bsdf_blur(ClosurePool &pool, Expr<std::uint32_t> closure_index,
                    closure_type::type_microfacet_beckmann_refraction,
                    closure_type::type_microfacet_beckmann_glass},
                   [&] {
-                    auto param = pool.microfacet_param(closure_index);
-                    param.alpha_x = max(roughness, param.alpha_x);
-                    param.alpha_y = max(roughness, param.alpha_y);
-                    pool.set_microfacet_param(closure_index, param);
+                    pool.blur_microfacet_roughness(closure_index, roughness);
                   });
 
     if (closure_enabled(closure_types, closure_type::type_ashikhmin_shirley)) {
       $case(closure_type::type_ashikhmin_shirley) {
-        auto param = pool.microfacet_param(closure_index);
-        param.alpha_x = max(roughness, param.alpha_x);
-        param.alpha_y = max(roughness, param.alpha_y);
-        pool.set_microfacet_param(closure_index, param);
+        pool.blur_microfacet_roughness(closure_index, roughness);
       };
     }
     if (closure_enabled(closure_types, closure_type::type_hair_chiang)) {
@@ -822,26 +827,62 @@ Float3 bsdf_albedo(const KernelGlobals &kernel_globals,
   const auto common = pool.common(closure_index);
   Float3 result = common.weight;
   if ((closure_types & microfacet_type_mask) != 0u) {
+    using Usage = compiler::cycles_svm::ClosureUsage;
+    const auto usage = kernel_globals.closure_usage();
+    const bool has_conductor = usage.has_fresnel(Usage::fresnel_conductor);
+    const bool has_f82 = usage.has_fresnel(Usage::fresnel_f82_tint);
     $if(is_microfacet(common.type)) {
-      const auto param = pool.microfacet_param(closure_index);
       Float3 factor = make_float3(0.0f);
-      $if(param.fresnel_type ==
-          static_cast<std::uint32_t>(MicrofacetFresnel::conductor)) {
-        factor = bsdf_microfacet_estimate_albedo(
-            kernel_globals, pool.microfacet_conductor(closure_index),
-            shader_data.wi, reflection, transmission);
-      }
-      $elif(param.fresnel_type ==
-            static_cast<std::uint32_t>(MicrofacetFresnel::f82_tint)) {
-        factor = bsdf_microfacet_estimate_albedo(
-            kernel_globals, pool.microfacet_f82_tint(closure_index),
-            shader_data.wi, reflection, transmission);
-      }
-      $else {
+      if (!has_conductor && !has_f82) {
         factor = bsdf_microfacet_estimate_albedo(
             kernel_globals, pool.microfacet(closure_index), shader_data.wi,
             reflection, transmission);
-      };
+      } else {
+        const auto param = pool.microfacet_param(closure_index);
+        if (has_conductor && !has_f82) {
+          $if(param.fresnel_type ==
+              static_cast<std::uint32_t>(MicrofacetFresnel::conductor)) {
+            factor = bsdf_microfacet_estimate_albedo(
+                kernel_globals, pool.microfacet_conductor(closure_index),
+                shader_data.wi, reflection, transmission);
+          }
+          $else {
+            factor = bsdf_microfacet_estimate_albedo(
+                kernel_globals, pool.microfacet(closure_index), shader_data.wi,
+                reflection, transmission);
+          };
+        } else if (!has_conductor && has_f82) {
+          $if(param.fresnel_type ==
+              static_cast<std::uint32_t>(MicrofacetFresnel::f82_tint)) {
+            factor = bsdf_microfacet_estimate_albedo(
+                kernel_globals, pool.microfacet_f82_tint(closure_index),
+                shader_data.wi, reflection, transmission);
+          }
+          $else {
+            factor = bsdf_microfacet_estimate_albedo(
+                kernel_globals, pool.microfacet(closure_index), shader_data.wi,
+                reflection, transmission);
+          };
+        } else {
+          $if(param.fresnel_type ==
+              static_cast<std::uint32_t>(MicrofacetFresnel::conductor)) {
+            factor = bsdf_microfacet_estimate_albedo(
+                kernel_globals, pool.microfacet_conductor(closure_index),
+                shader_data.wi, reflection, transmission);
+          }
+          $elif(param.fresnel_type ==
+                static_cast<std::uint32_t>(MicrofacetFresnel::f82_tint)) {
+            factor = bsdf_microfacet_estimate_albedo(
+                kernel_globals, pool.microfacet_f82_tint(closure_index),
+                shader_data.wi, reflection, transmission);
+          }
+          $else {
+            factor = bsdf_microfacet_estimate_albedo(
+                kernel_globals, pool.microfacet(closure_index), shader_data.wi,
+                reflection, transmission);
+          };
+        }
+      }
       result *= factor;
     };
   }

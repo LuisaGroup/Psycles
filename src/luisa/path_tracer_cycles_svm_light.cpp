@@ -7,6 +7,7 @@
 
 #include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/cycles_noise.h>
+#include <psycles/luisa/cycles_svm_translator.h>
 #include <psycles/luisa/cycles_transform.h>
 
 #include <algorithm>
@@ -235,9 +236,9 @@ public:
   [[nodiscard]] Float3 evaluate(
       const Var<DirectLightTaskCall> &task,
       const Var<RenderKernelParameters> &parameters) const noexcept override {
-    const PathCyclesSvmKernelGlobals kg{_scene, parameters, _camera_projection,
-                                        Bool{_reflective_caustics},
-                                        Bool{_refractive_caustics}};
+    const PathCyclesSvmKernelGlobals kg{
+        _scene, parameters, _camera_projection, Bool{_reflective_caustics},
+        Bool{_refractive_caustics}, PathCyclesSvmShaderDomain::light_emission};
     auto setup =
         setup_cycles_svm_light_shader_data(_scene, kg, task, parameters);
     auto &sd = setup.shader_data;
@@ -254,21 +255,24 @@ public:
                                task.transmission_depth,
                                (_scene->cycles_svm->kernel_features & svm::kernel_feature_node_portal)
                                    ? task.portal_depth.cast<unsigned>() : UInt{0u}};
-    svm::EvaluationResult result;
-    const auto usage = _scene->cycles_svm->compilation.table.usage_for(
-        abi::SHADER_TYPE_SURFACE);
-    svm::eval_nodes(kg, *_scene->cycles_svm->word_buffer,
-                    abi::SHADER_TYPE_SURFACE,
-                    _scene->cycles_svm->kernel_features,
-                    svm::kernel_feature_node_mask_surface_light,
-                    usage.node_types_used,
-                    transforms, sd, state, result,
-                    std::max<std::size_t>(
-                        1u, usage.peak_stack_usage), usage.noise_usage);
-    $if(result.status !=
-        static_cast<unsigned>(svm::EvaluationStatus::ended)) {
-      dsl::unreachable("native Cycles light SVM did not reach NODE_END");
-    };
+    const auto usage = cycles_svm_domain_entry_usage(
+        *_scene, PathCyclesSvmShaderDomain::light_emission);
+    const auto active_mask = cycles_svm_domain_shader_mask(
+        *_scene, PathCyclesSvmShaderDomain::light_emission);
+    svm::translate_svm_nodes_assume_valid(svm::SvmTranslationRequest{
+        .kernel_globals = kg,
+        .table = _scene->cycles_svm->compilation.table,
+        .words = *_scene->cycles_svm->word_buffer,
+        .shader_type = abi::SHADER_TYPE_SURFACE,
+        .kernel_features = _scene->cycles_svm->kernel_features,
+        .node_feature_mask = svm::kernel_feature_node_mask_surface_light,
+        .node_types_used = usage.node_types_used,
+        .transform_state = transforms,
+        .shader_data = sd,
+        .path_state = state,
+        .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+        .noise_usage = usage.noise_usage,
+        .active_shader_mask = active_mask});
     Float3 emission = make_float3(0.0f);
     $if((sd.flag & static_cast<unsigned>(abi::SD_EMISSION)) != 0u) {
       const auto evaluable = background | (abs(dot(sd.Ng, sd.wi)) > 0.0f);

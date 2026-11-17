@@ -114,90 +114,120 @@ using namespace compiler::cycles_svm;
   return result;
 }
 
+[[nodiscard]] Float svm_math_masked(Expr<std::uint32_t> type,
+                                    Expr<float> a_value,
+                                    Expr<float> b_value,
+                                    Expr<float> c_value,
+                                    std::uint64_t type_mask) noexcept {
+  const Float a = a_value;
+  const Float b = b_value;
+  const Float c = c_value;
+  const auto enabled = [&](NodeMathType op) noexcept {
+    const auto idx = static_cast<std::uint32_t>(op);
+    return idx < 64u && (type_mask & (1ull << idx)) != 0ull;
+  };
+  const auto eval_one = [&](NodeMathType op) noexcept -> Float {
+    switch (op) {
+      case NODE_MATH_ADD: return a + b;
+      case NODE_MATH_SUBTRACT: return a - b;
+      case NODE_MATH_MULTIPLY: return a * b;
+      case NODE_MATH_DIVIDE: return safe_divide(a, b);
+      case NODE_MATH_SINE: return sin(a);
+      case NODE_MATH_COSINE: return cos(a);
+      case NODE_MATH_TANGENT: return tan(a);
+      case NODE_MATH_ARCSINE: return asin(clamp(a, -1.0f, 1.0f));
+      case NODE_MATH_ARCCOSINE: return acos(clamp(a, -1.0f, 1.0f));
+      case NODE_MATH_ARCTANGENT: return atan(a);
+      case NODE_MATH_POWER: return safe_pow(a, b);
+      case NODE_MATH_LOGARITHM: return safe_log(a, b);
+      case NODE_MATH_MINIMUM: return luisa::compute::min(a, b);
+      case NODE_MATH_MAXIMUM: return luisa::compute::max(a, b);
+      case NODE_MATH_ROUND: return floor(a + 0.5f);
+      case NODE_MATH_LESS_THAN: return select(0.0f, 1.0f, a < b);
+      case NODE_MATH_GREATER_THAN: return select(0.0f, 1.0f, a > b);
+      case NODE_MATH_MODULO: return safe_modulo(a, b);
+      case NODE_MATH_ABSOLUTE: return abs(a);
+      case NODE_MATH_ARCTAN2: return compatible_atan2(a, b);
+      case NODE_MATH_FLOOR: return floor(a);
+      case NODE_MATH_CEIL: return ceil(a);
+      case NODE_MATH_FRACTION: return a - floor(a);
+      case NODE_MATH_SQRT: return sqrt(luisa::compute::max(a, 0.0f));
+      case NODE_MATH_INV_SQRT: return inverse_sqrt(a);
+      case NODE_MATH_SIGN: return compatible_sign(a);
+      case NODE_MATH_EXPONENT: return exp(a);
+      case NODE_MATH_RADIANS: return a * (3.14159265358979323846f / 180.0f);
+      case NODE_MATH_DEGREES: return a * (180.0f / 3.14159265358979323846f);
+      case NODE_MATH_SINH: return sinh(a);
+      case NODE_MATH_COSH: return cosh(a);
+      case NODE_MATH_TANH: return tanh(a);
+      case NODE_MATH_TRUNC: return select(ceil(a), floor(a), a >= 0.0f);
+      case NODE_MATH_SNAP: return floor(safe_divide(a, b)) * b;
+      case NODE_MATH_WRAP: return wrap(a, b, c);
+      case NODE_MATH_COMPARE:
+        return select(0.0f, 1.0f,
+                      (a == b) |
+                          (abs(a - b) <= luisa::compute::max(
+                                             c, 1.1920928955078125e-7f)));
+      case NODE_MATH_MULTIPLY_ADD: return a * b + c;
+      case NODE_MATH_PINGPONG: return pingpong(a, b);
+      case NODE_MATH_SMOOTH_MIN: return smooth_min(a, b, c);
+      case NODE_MATH_SMOOTH_MAX: return -smooth_min(-a, -b, c);
+      case NODE_MATH_FLOORED_MODULO: return safe_floored_modulo(a, b);
+      default: return 0.0f;
+    }
+  };
+  static constexpr NodeMathType all_ops[] = {
+      NODE_MATH_ADD,          NODE_MATH_SUBTRACT,     NODE_MATH_MULTIPLY,
+      NODE_MATH_DIVIDE,       NODE_MATH_SINE,         NODE_MATH_COSINE,
+      NODE_MATH_TANGENT,      NODE_MATH_ARCSINE,      NODE_MATH_ARCCOSINE,
+      NODE_MATH_ARCTANGENT,   NODE_MATH_POWER,        NODE_MATH_LOGARITHM,
+      NODE_MATH_MINIMUM,      NODE_MATH_MAXIMUM,      NODE_MATH_ROUND,
+      NODE_MATH_LESS_THAN,    NODE_MATH_GREATER_THAN, NODE_MATH_MODULO,
+      NODE_MATH_ABSOLUTE,     NODE_MATH_ARCTAN2,      NODE_MATH_FLOOR,
+      NODE_MATH_CEIL,         NODE_MATH_FRACTION,     NODE_MATH_SQRT,
+      NODE_MATH_INV_SQRT,     NODE_MATH_SIGN,         NODE_MATH_EXPONENT,
+      NODE_MATH_RADIANS,      NODE_MATH_DEGREES,      NODE_MATH_SINH,
+      NODE_MATH_COSH,         NODE_MATH_TANH,         NODE_MATH_TRUNC,
+      NODE_MATH_SNAP,         NODE_MATH_WRAP,         NODE_MATH_COMPARE,
+      NODE_MATH_MULTIPLY_ADD, NODE_MATH_PINGPONG,     NODE_MATH_SMOOTH_MIN,
+      NODE_MATH_SMOOTH_MAX,   NODE_MATH_FLOORED_MODULO};
+  std::uint32_t active_count = 0u;
+  NodeMathType single_op = NODE_MATH_ADD;
+  for (const auto op : all_ops) {
+    if (enabled(op)) {
+      ++active_count;
+      single_op = op;
+    }
+  }
+  if (active_count == 0u) {
+    return 0.0f;
+  }
+  if (active_count == 1u && type_mask != ~0ull) {
+    return eval_one(single_op);
+  }
+  Float result = 0.0f;
+  $switch (type) {
+    for (const auto op : all_ops) {
+      if (enabled(op)) {
+        PSYCLES_SVM_CASE(op) { result = eval_one(op); };
+      }
+    }
+    $default { result = 0.0f; };
+  };
+  return result;
+}
+
 } // namespace
 
 luisa::compute::Float svm_math(luisa::compute::Expr<std::uint32_t> type,
                                luisa::compute::Expr<float> a_value,
                                luisa::compute::Expr<float> b_value,
                                luisa::compute::Expr<float> c_value) noexcept {
-  using namespace luisa::compute;
-  const Float a = a_value;
-  const Float b = b_value;
-  const Float c = c_value;
-  Float result = 0.0f;
-  $switch (type) {
-    PSYCLES_SVM_CASE(NODE_MATH_ADD) { result = a + b; };
-    PSYCLES_SVM_CASE(NODE_MATH_SUBTRACT) { result = a - b; };
-    PSYCLES_SVM_CASE(NODE_MATH_MULTIPLY) { result = a * b; };
-    PSYCLES_SVM_CASE(NODE_MATH_DIVIDE) { result = safe_divide(a, b); };
-    PSYCLES_SVM_CASE(NODE_MATH_SINE) { result = sin(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_COSINE) { result = cos(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_TANGENT) { result = tan(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_ARCSINE) { result = asin(clamp(a, -1.0f, 1.0f)); };
-    PSYCLES_SVM_CASE(NODE_MATH_ARCCOSINE) { result = acos(clamp(a, -1.0f, 1.0f)); };
-    PSYCLES_SVM_CASE(NODE_MATH_ARCTANGENT) { result = atan(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_POWER) { result = safe_pow(a, b); };
-    PSYCLES_SVM_CASE(NODE_MATH_LOGARITHM) { result = safe_log(a, b); };
-    PSYCLES_SVM_CASE(NODE_MATH_MINIMUM) {
-      result = luisa::compute::min(a, b);
-    };
-    PSYCLES_SVM_CASE(NODE_MATH_MAXIMUM) {
-      result = luisa::compute::max(a, b);
-    };
-    PSYCLES_SVM_CASE(NODE_MATH_ROUND) { result = floor(a + 0.5f); };
-    PSYCLES_SVM_CASE(NODE_MATH_LESS_THAN) {
-      result = select(0.0f, 1.0f, a < b);
-    };
-    PSYCLES_SVM_CASE(NODE_MATH_GREATER_THAN) {
-      result = select(0.0f, 1.0f, a > b);
-    };
-    PSYCLES_SVM_CASE(NODE_MATH_MODULO) { result = safe_modulo(a, b); };
-    PSYCLES_SVM_CASE(NODE_MATH_ABSOLUTE) { result = abs(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_ARCTAN2) { result = compatible_atan2(a, b); };
-    PSYCLES_SVM_CASE(NODE_MATH_FLOOR) { result = floor(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_CEIL) { result = ceil(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_FRACTION) { result = a - floor(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_SQRT) {
-      result = sqrt(luisa::compute::max(a, 0.0f));
-    };
-    PSYCLES_SVM_CASE(NODE_MATH_INV_SQRT) { result = inverse_sqrt(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_SIGN) { result = compatible_sign(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_EXPONENT) { result = exp(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_RADIANS) {
-      result = a * (3.14159265358979323846f / 180.0f);
-    };
-    PSYCLES_SVM_CASE(NODE_MATH_DEGREES) {
-      result = a * (180.0f / 3.14159265358979323846f);
-    };
-    PSYCLES_SVM_CASE(NODE_MATH_SINH) { result = sinh(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_COSH) { result = cosh(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_TANH) { result = tanh(a); };
-    PSYCLES_SVM_CASE(NODE_MATH_TRUNC) {
-      result = select(ceil(a), floor(a), a >= 0.0f);
-    };
-    PSYCLES_SVM_CASE(NODE_MATH_SNAP) { result = floor(safe_divide(a, b)) * b; };
-    PSYCLES_SVM_CASE(NODE_MATH_WRAP) { result = wrap(a, b, c); };
-    PSYCLES_SVM_CASE(NODE_MATH_COMPARE) {
-      result = select(0.0f, 1.0f,
-                      (a == b) |
-                          (abs(a - b) <= luisa::compute::max(
-                                             c, 1.1920928955078125e-7f)));
-    };
-    PSYCLES_SVM_CASE(NODE_MATH_MULTIPLY_ADD) { result = a * b + c; };
-    PSYCLES_SVM_CASE(NODE_MATH_PINGPONG) { result = pingpong(a, b); };
-    PSYCLES_SVM_CASE(NODE_MATH_SMOOTH_MIN) { result = smooth_min(a, b, c); };
-    PSYCLES_SVM_CASE(NODE_MATH_SMOOTH_MAX) {
-      result = -smooth_min(-a, -b, c);
-    };
-    PSYCLES_SVM_CASE(NODE_MATH_FLOORED_MODULO) {
-      result = safe_floored_modulo(a, b);
-    };
-    $default { result = 0.0f; };
-  };
-  return result;
+  return svm_math_masked(type, a_value, b_value, c_value, ~0ull);
 }
 
-void node_math(Cursor &cursor, Stack &stack) noexcept {
+void node_math(Cursor &cursor, Stack &stack,
+               std::uint64_t type_mask) noexcept {
   const auto math_type = cursor.word();
   const auto value1 = cursor.word();
   const auto value2 = cursor.word();
@@ -205,10 +235,34 @@ void node_math(Cursor &cursor, Stack &stack) noexcept {
   const auto result_word = cursor.word();
   const auto result_offset = cursor.byte(result_word, 0u);
 
+  if (type_mask == 0ull) {
+    stack_store_float(stack, result_offset, 0.0f);
+    return;
+  }
+  static constexpr std::uint64_t ternary_mask =
+      (1ull << NODE_MATH_WRAP) | (1ull << NODE_MATH_COMPARE) |
+      (1ull << NODE_MATH_MULTIPLY_ADD) | (1ull << NODE_MATH_SMOOTH_MIN) |
+      (1ull << NODE_MATH_SMOOTH_MAX);
+  static constexpr std::uint64_t unary_only_mask =
+      (1ull << NODE_MATH_SINE) | (1ull << NODE_MATH_COSINE) |
+      (1ull << NODE_MATH_TANGENT) | (1ull << NODE_MATH_ARCSINE) |
+      (1ull << NODE_MATH_ARCCOSINE) | (1ull << NODE_MATH_ARCTANGENT) |
+      (1ull << NODE_MATH_ROUND) | (1ull << NODE_MATH_ABSOLUTE) |
+      (1ull << NODE_MATH_FLOOR) | (1ull << NODE_MATH_CEIL) |
+      (1ull << NODE_MATH_FRACTION) | (1ull << NODE_MATH_SQRT) |
+      (1ull << NODE_MATH_INV_SQRT) | (1ull << NODE_MATH_SIGN) |
+      (1ull << NODE_MATH_EXPONENT) | (1ull << NODE_MATH_RADIANS) |
+      (1ull << NODE_MATH_DEGREES) | (1ull << NODE_MATH_SINH) |
+      (1ull << NODE_MATH_COSH) | (1ull << NODE_MATH_TANH) |
+      (1ull << NODE_MATH_TRUNC);
+  const bool needs_b = (type_mask & ~unary_only_mask) != 0ull;
+  const bool needs_c = (type_mask & ternary_mask) != 0ull;
+
   const auto a = stack_load_input_float(stack, value1);
-  const auto b = stack_load_input_float(stack, value2);
-  const auto c = stack_load_input_float(stack, value3);
-  stack_store_float(stack, result_offset, svm_math(math_type, a, b, c));
+  const Float b = needs_b ? stack_load_input_float(stack, value2) : Float{0.0f};
+  const Float c = needs_c ? stack_load_input_float(stack, value3) : Float{0.0f};
+  stack_store_float(stack, result_offset,
+                    svm_math_masked(math_type, a, b, c, type_mask));
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

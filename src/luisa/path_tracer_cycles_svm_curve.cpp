@@ -39,8 +39,9 @@ void cycles_svm_curve_shader_setup(
   const auto applied = (sd.object_flag & svm::shader_data_object_transform_applied) != 0u;
   Float3 P = ray->origin(), D = ray->direction();
   $if(!applied) {
-    P = cycles_transform::point(transforms.world_to_object, P);
-    D = cycles_transform::direction(transforms.world_to_object, D);
+    const auto w2o = transforms.fetch_world_to_object();
+    P = cycles_transform::point(w2o, P);
+    D = cycles_transform::direction(w2o, D);
   };
   const auto ribbon = make_curve_ribbon_component();
   // A procedural CommittedHit has no u/v payload. Reconstruct the same
@@ -54,7 +55,7 @@ void cycles_svm_curve_shader_setup(
   // whereas the ribbon intersection above permits a non-unit direction.
   Float t = sd.ray_length;
   $if(!applied) {
-    D = cycles_transform::direction(transforms.world_to_object, ray->direction() * t);
+    D = cycles_transform::direction(transforms.fetch_world_to_object(), ray->direction() * t);
     t = length(D);
     D = select(D, D / t, t != 0.0f);
   };
@@ -65,7 +66,7 @@ void cycles_svm_curve_shader_setup(
   const auto cosine = sqrt(max(1.0f - sd.v * sd.v, 0.0f));
   sd.N = normalize(sd.v * bitangent - cosine * normalize(cross(tangent, bitangent)));
   $if(!applied) {
-    P = cycles_transform::point(transforms.object_to_world, P);
+    P = cycles_transform::point(transforms.fetch_object_to_world(), P);
     svm::detail::object_normal_transform(sd.N, transforms, sd, false);
     svm::detail::object_dir_transform(sd.dPdu, transforms, sd, false);
   };

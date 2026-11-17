@@ -3,7 +3,9 @@
 #include "path_kernel_triangle_geometry.h"
 #include "subsurface_random_walk_component.h"
 
+#include <psycles/compiler/cycles_svm_closure_usage.h>
 #include <psycles/luisa/cycles_noise.h>
+#include <psycles/luisa/cycles_svm.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sample_mapping.h>
 #include <psycles/sampling/tabulated_sobol.h>
@@ -135,11 +137,34 @@ public:
         auto &bounce = context.bounce;
         auto &path = bounce.sample;
         auto &invocation = path.invocation;
+        const auto &scene = invocation.config.scene;
         const auto &parameters = invocation.parameters;
         auto &surface = context.surface;
-        const auto is_burley =
-            closure_sample.bssrdf_method ==
-            static_cast<std::uint32_t>(SurfaceBssrdfMethod::burley);
+        const bool may_have_burley =
+            !scene->native_cycles_svm_surface || !scene->cycles_svm ||
+            (scene->cycles_svm->compilation.surface_closure_usage
+                 .surface_closure_mask &
+             compiler::cycles_svm::ClosureUsage::bit(
+                 cycles_closure::type_bssrdf_burley)) != 0ull;
+        const bool may_have_skin =
+            !scene->native_cycles_svm_surface || !scene->cycles_svm ||
+            (scene->cycles_svm->compilation.surface_closure_usage
+                 .surface_closure_mask &
+             compiler::cycles_svm::ClosureUsage::bit(
+                 cycles_closure::type_bssrdf_random_walk_skin)) != 0ull;
+        const bool may_have_legacy_or_skin =
+            !scene->native_cycles_svm_surface || !scene->cycles_svm ||
+            (scene->cycles_svm->compilation.surface_closure_usage
+                 .surface_closure_mask &
+             (compiler::cycles_svm::ClosureUsage::bit(
+                  cycles_closure::type_bssrdf_random_walk_legacy) |
+              compiler::cycles_svm::ClosureUsage::bit(
+                  cycles_closure::type_bssrdf_random_walk_skin))) != 0ull;
+        const Bool is_burley =
+            may_have_burley
+                ? (closure_sample.bssrdf_method ==
+                   static_cast<std::uint32_t>(SurfaceBssrdfMethod::burley))
+                : Bool{false};
 
         // Cycles samples the random-walk entry while ShaderData is still
         // available. Doing the same here proves that neither SurfacePoint nor
@@ -147,7 +172,7 @@ public:
         Float3 entry_direction = path.ray->direction();
         Float3 transport_normal = surface.point.geometric_normal;
         Bool valid = true;
-        $if(!is_burley) {
+        if (!may_have_burley) {
             const auto entry_random = cycles_sampler::sample_2d(
                 invocation.sobol_table,
                 parameters.sobol_sequence_size,
@@ -157,11 +182,27 @@ public:
                     path.cycles_rng_offset,
                     sampling::tabulated_sobol::subsurface_bsdf_dimension));
             const auto entry = _random_walk.sample_entry(
-                surface.point, closure_sample, entry_random);
+                surface.point, closure_sample, entry_random, may_have_skin);
             entry_direction = entry.direction;
             valid = entry.valid;
             transport_normal = context.shading.shading_normal;
-        };
+        } else {
+            $if(!is_burley) {
+                const auto entry_random = cycles_sampler::sample_2d(
+                    invocation.sobol_table,
+                    parameters.sobol_sequence_size,
+                    path.sample_index,
+                    path.rng_hash,
+                    cycles_sampler::path_state_dimension(
+                        path.cycles_rng_offset,
+                        sampling::tabulated_sobol::subsurface_bsdf_dimension));
+                const auto entry = _random_walk.sample_entry(
+                    surface.point, closure_sample, entry_random, may_have_skin);
+                entry_direction = entry.direction;
+                valid = entry.valid;
+                transport_normal = context.shading.shading_normal;
+            };
+        }
 
         path.ray = make_ray(surface.point.position,
                             entry_direction,
@@ -175,10 +216,12 @@ public:
         // transport replaces it atomically with the selected exit.
         path.pending_subsurface_hit.store_surface(bounce.hit);
         path.path_flags &= ~cycles_path_state::flag_subsurface;
-        path.path_flags |= select(
-            cycles_path_state::flag_subsurface_random_walk,
-            cycles_path_state::flag_subsurface_disk,
-            is_burley);
+        path.path_flags |=
+            may_have_burley
+                ? select(cycles_path_state::flag_subsurface_random_walk,
+                         cycles_path_state::flag_subsurface_disk,
+                         is_burley)
+                : UInt{cycles_path_state::flag_subsurface_random_walk};
         path.path_flags |= select(
             0u,
             cycles_path_state::flag_subsurface_backfacing,
@@ -190,16 +233,18 @@ public:
             };
         }
 
-        const auto modern =
-            closure_sample.bssrdf_method ==
-            static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk);
+        Float encoded_anisotropy = closure_sample.bssrdf_anisotropy;
+        if (may_have_legacy_or_skin) {
+            const auto modern =
+                closure_sample.bssrdf_method ==
+                static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk);
+            encoded_anisotropy += select(2.0f, 0.0f, modern);
+        }
         return {
             .state = {
                 .albedo = closure_sample.bssrdf_albedo,
                 .radius = closure_sample.bssrdf_radius,
-                .encoded_anisotropy =
-                    closure_sample.bssrdf_anisotropy +
-                    select(2.0f, 0.0f, modern),
+                .encoded_anisotropy = std::move(encoded_anisotropy),
                 .normal = std::move(transport_normal)},
             .valid = std::move(valid)};
     }
@@ -222,6 +267,16 @@ public:
             return false;
         }
         const auto &subsurface_accel = *scene->subsurface_accel;
+
+        const bool may_have_burley =
+            !scene->native_cycles_svm_surface || !scene->cycles_svm ||
+            (scene->cycles_svm->compilation.surface_closure_usage
+                 .surface_closure_mask &
+             compiler::cycles_svm::ClosureUsage::bit(
+                 cycles_closure::type_bssrdf_burley)) != 0ull;
+        if (!may_have_burley) {
+            return _random_walk.transport(path, state);
+        }
 
         Bool success = false;
         const auto is_burley =
@@ -309,62 +364,119 @@ public:
                 path.rng_hash ^ local_intersection_scramble,
                 rng_offset,
                 path.sample_index);
-            const auto ignored = subsurface_accel
-                                     ->traverse(
-                                         probe,
-                                         {.visibility_mask = ~0u})
-                                     .on_surface_candidate(
-                                         [&](luisa::compute::SurfaceCandidate
-                                                 &candidate) noexcept {
-                                             const auto hit = candidate.hit();
-                                             const auto primary_instance =
-                                                 subsurface_primary_instance(
-                                                     scene, hit->inst);
-                                             const auto instance =
-                                                 scene->instance_buffer->read(
-                                                     primary_instance);
-                                             const auto object = select(
-                                                 primary_instance,
-                                                 instance.cycles_object_index,
-                                                 instance.cycles_object_index !=
-                                                     ~0u);
-                                             Bool duplicate = false;
-                                             for (auto index = 0u;
-                                                  index < maximum_hits;
-                                                  ++index) {
-                                                 duplicate |=
-                                                     (index < min(hit_count,
-                                                                  maximum_hits)) &
-                                                     (hit_distances[index] ==
-                                                      hit->committed_ray_t);
-                                             }
-                                             $if((object ==
-                                                  path.ray_source_object) &
-                                                 !duplicate) {
-                                                 hit_count += 1u;
-                                                 UInt record = hit_count - 1u;
-                                                 $if(hit_count > maximum_hits) {
-                                                     record =
-                                                         lcg_step(lcg_state) %
-                                                         hit_count;
-                                                 };
-                                                 $if(record < maximum_hits) {
-                                                     hit_instances[record] =
-                                                         primary_instance;
-                                                     hit_primitives[record] =
-                                                         hit->prim;
-                                                     hit_barycentrics[record] =
-                                                         hit->bary;
-                                                     hit_distances[record] =
-                                                         hit->committed_ray_t;
-                                                 };
-                                             };
-                                         })
-                                     .on_procedural_candidate(
-                                         [](luisa::compute::ProceduralCandidate
-                                                &) noexcept {})
-                                     .trace();
-            static_cast<void>(ignored);
+            if (scene->primary_to_subsurface_local_buffer.has_value() &&
+                scene->traversal_object_instance_buffer.has_value()) {
+                const UInt entry_primary_instance = pending_hit.instance;
+                UInt entry_local_instance = surface_ray::invalid_primitive;
+                const auto table_size = static_cast<std::uint32_t>(
+                    scene->primary_to_subsurface_local_host.size());
+                $if(entry_primary_instance < table_size) {
+                    entry_local_instance =
+                        (*scene->primary_to_subsurface_local_buffer)
+                            ->read(entry_primary_instance);
+                };
+                $if(entry_local_instance != surface_ray::invalid_primitive) {
+                    const auto handle_subsurface_probe =
+                        [&](luisa::compute::SurfaceCandidate
+                                &candidate) noexcept {
+                            const auto hit = candidate.hit();
+                            $if(hit->inst == entry_local_instance) {
+                                Bool duplicate = false;
+                                for (auto index = 0u;
+                                     index < maximum_hits;
+                                     ++index) {
+                                    duplicate |=
+                                        (index <
+                                         min(hit_count, maximum_hits)) &
+                                        (hit_distances[index] ==
+                                         hit->committed_ray_t);
+                                }
+                                $if(!duplicate) {
+                                    hit_count += 1u;
+                                    UInt record = hit_count - 1u;
+                                    $if(hit_count > maximum_hits) {
+                                        record = lcg_step(lcg_state) %
+                                                 hit_count;
+                                    };
+                                    $if(record < maximum_hits) {
+                                        hit_instances[record] =
+                                            entry_primary_instance;
+                                        hit_primitives[record] =
+                                            hit->prim;
+                                        hit_barycentrics[record] =
+                                            hit->bary;
+                                        hit_distances[record] =
+                                            hit->committed_ray_t;
+                                    };
+                                };
+                            };
+                        };
+                    const UInt instance_mask =
+                        1u << (entry_local_instance & 7u);
+                    const auto ignored =
+                        subsurface_accel
+                            ->traverse(probe,
+                                       {.visibility_mask = instance_mask})
+                            .on_surface_candidate(handle_subsurface_probe)
+                            .trace();
+                    static_cast<void>(ignored);
+                };
+            } else {
+                const auto ignored =
+                    subsurface_accel
+                        ->traverse(
+                            probe,
+                            {.visibility_mask = ~0u})
+                        .on_surface_candidate(
+                            [&](luisa::compute::SurfaceCandidate
+                                    &candidate) noexcept {
+                                const auto hit = candidate.hit();
+                                const auto primary_instance =
+                                    subsurface_primary_instance(
+                                        scene, hit->inst);
+                                const auto instance =
+                                    scene->instance_buffer->read(
+                                        primary_instance);
+                                const auto object = select(
+                                    primary_instance,
+                                    instance.cycles_object_index,
+                                    instance.cycles_object_index !=
+                                        ~0u);
+                                Bool duplicate = false;
+                                for (auto index = 0u;
+                                     index < maximum_hits;
+                                     ++index) {
+                                    duplicate |=
+                                        (index < min(hit_count,
+                                                     maximum_hits)) &
+                                        (hit_distances[index] ==
+                                         hit->committed_ray_t);
+                                }
+                                $if((object ==
+                                     path.ray_source_object) &
+                                    !duplicate) {
+                                    hit_count += 1u;
+                                    UInt record = hit_count - 1u;
+                                    $if(hit_count > maximum_hits) {
+                                        record =
+                                            lcg_step(lcg_state) %
+                                            hit_count;
+                                    };
+                                    $if(record < maximum_hits) {
+                                        hit_instances[record] =
+                                            primary_instance;
+                                        hit_primitives[record] =
+                                            hit->prim;
+                                        hit_barycentrics[record] =
+                                            hit->bary;
+                                        hit_distances[record] =
+                                            hit->committed_ray_t;
+                                    };
+                                };
+                            })
+                        .trace();
+                static_cast<void>(ignored);
+            }
             const auto evaluated_hits = min(hit_count, maximum_hits);
 
             // Cycles sorts the retained local reservoir so CPU, HIP and

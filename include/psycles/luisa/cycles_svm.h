@@ -8,6 +8,7 @@
 #error "Include <psycles/luisa/cycles_svm.h> through the Psycles::luisa target."
 #endif
 
+#include <psycles/compiler/cycles_svm_closure_usage.h>
 #include <psycles/compiler/cycles_svm_node_types.h>
 #include <psycles/compiler/cycles_svm_noise_usage.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
@@ -15,6 +16,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 
 #include <luisa/dsl/local.h>
@@ -191,12 +193,28 @@ struct TransformState {
   luisa::compute::Float4x4 world_to_camera;
   luisa::compute::Float4x4 object_to_world;
   luisa::compute::Float4x4 world_to_object;
+  std::function<luisa::compute::Float4x4()> lazy_object_to_world;
+  std::function<luisa::compute::Float4x4()> lazy_world_to_object;
 
   TransformState(
       luisa::compute::Expr<luisa::float4x4> camera_to_world_transform,
       luisa::compute::Expr<luisa::float4x4> world_to_camera_transform,
       luisa::compute::Expr<luisa::float4x4> object_to_world_transform,
       luisa::compute::Expr<luisa::float4x4> world_to_object_transform) noexcept;
+
+  TransformState(
+      luisa::compute::Expr<luisa::float4x4> camera_to_world_transform,
+      luisa::compute::Expr<luisa::float4x4> world_to_camera_transform,
+      std::function<luisa::compute::Float4x4()> fetch_o2w,
+      std::function<luisa::compute::Float4x4()> fetch_w2o) noexcept;
+
+  [[nodiscard]] luisa::compute::Float4x4 fetch_object_to_world() const noexcept {
+    return lazy_object_to_world ? lazy_object_to_world() : object_to_world;
+  }
+
+  [[nodiscard]] luisa::compute::Float4x4 fetch_world_to_object() const noexcept {
+    return lazy_world_to_object ? lazy_world_to_object() : world_to_object;
+  }
 };
 
 struct TriangleVertices {
@@ -295,6 +313,47 @@ public:
   point_radius(const ShaderData &shader_data) const noexcept = 0;
 };
 
+struct SurfaceAttributeSummary {
+  std::uint32_t element_mask{~0u};
+  std::uint32_t type_mask{~0u};
+  bool has_curves{true};
+  bool has_points{true};
+  bool has_undisplaced_normal{true};
+  bool has_undisplaced_position{true};
+};
+
+struct NormalMapUsage {
+  std::uint32_t space_mask{~0u};
+  bool uses_original_base{true};
+};
+
+struct NoiseStaticOptions {
+  bool may_have_distortion{true};
+  bool may_need_color{true};
+};
+
+struct MappingStaticOptions {
+  std::uint32_t type_mask{~0u};
+  bool may_rotate{true};
+};
+
+struct VoronoiStaticOptions {
+  std::uint32_t dimension_mask{~0u};
+  std::uint32_t feature_mask{~0u};
+  std::uint32_t metric_mask{~0u};
+  bool may_have_detail{true};
+  bool may_normalize{true};
+  bool may_need_color{true};
+  bool may_need_position{true};
+  bool may_need_radius{true};
+};
+
+struct WaveStaticOptions {
+  std::uint32_t type_mask{~0u};
+  std::uint32_t profile_mask{~0u};
+  bool may_have_distortion{true};
+};
+
 /* Host/JIT projection of the exact KernelGlobals services consumed by the
  * copied SVM handlers. Virtual dispatch happens while Luisa records the AST;
  * generated device code contains only the resulting buffer operations. */
@@ -342,6 +401,79 @@ public:
   // Recording-time proof over all finalized shader closures. Unknown or
   // independently supplied closures must retain the native thin-film branch.
   [[nodiscard]] virtual bool may_have_thin_film() const noexcept {
+    return true;
+  }
+
+  // Recording-time specialization mask over finalized SHADER_TYPE_SURFACE
+  // closures. Defaults to all bits set for standalone tests/fixtures.
+  [[nodiscard]] virtual compiler::cycles_svm::ClosureUsage
+  closure_usage() const noexcept {
+    return {};
+  }
+
+  [[nodiscard]] virtual SurfaceAttributeSummary
+  surface_attribute_summary() const noexcept {
+    return {};
+  }
+
+  [[nodiscard]] virtual SurfaceAttributeSummary
+  attribute_summary_for_id(std::uint64_t) const noexcept {
+    return surface_attribute_summary();
+  }
+
+  [[nodiscard]] virtual NormalMapUsage normal_map_usage() const noexcept {
+    return {};
+  }
+
+  [[nodiscard]] virtual std::uint32_t mix_blend_mask() const noexcept {
+    return ~0u;
+  }
+
+  [[nodiscard]] virtual NoiseStaticOptions
+  noise_static_options() const noexcept {
+    return {};
+  }
+
+  [[nodiscard]] virtual std::uint32_t tex_coord_mask() const noexcept {
+    return ~0u;
+  }
+
+  [[nodiscard]] virtual bool bump_uses_object_space() const noexcept {
+    return true;
+  }
+
+  [[nodiscard]] virtual bool curves_may_extrapolate() const noexcept {
+    return true;
+  }
+
+  [[nodiscard]] virtual std::uint64_t math_type_mask() const noexcept {
+    return ~0ull;
+  }
+
+  [[nodiscard]] virtual std::uint64_t vector_math_type_mask() const noexcept {
+    return ~0ull;
+  }
+
+  [[nodiscard]] virtual MappingStaticOptions
+  mapping_static_options() const noexcept {
+    return {};
+  }
+
+  [[nodiscard]] virtual std::uint32_t map_range_type_mask() const noexcept {
+    return ~0u;
+  }
+
+  [[nodiscard]] virtual VoronoiStaticOptions
+  voronoi_static_options() const noexcept {
+    return {};
+  }
+
+  [[nodiscard]] virtual WaveStaticOptions
+  wave_static_options() const noexcept {
+    return {};
+  }
+
+  [[nodiscard]] virtual bool has_curves() const noexcept {
     return true;
   }
 
@@ -715,14 +847,27 @@ public:
     luisa::compute::Bool valid;
   };
 
+  struct Options {
+    bool may_have_thin_film{true};
+    bool may_have_anisotropic_microfacet{true};
+    bool may_have_custom_generalized_schlick{true};
+    bool may_have_positive_exponent{true};
+    bool may_have_extra_fresnel{true};
+  };
+
 private:
   std::size_t _capacity;
-  // uint4 gives each record Cycles' 16-byte alignment. Scalar lvalue access
-  // avoids reading or overwriting neighboring, possibly uninitialized fields.
+  Options _options;
   luisa::compute::Local<luisa::uint4> _storage;
   luisa::compute::UInt _count;
   luisa::compute::UInt _left;
 
+  [[nodiscard]] luisa::compute::UInt4 load_vec4(
+      luisa::compute::Expr<std::uint32_t> slot,
+      std::uint32_t vec_index) const noexcept;
+  void store_vec4(luisa::compute::Expr<std::uint32_t> slot,
+                  std::uint32_t vec_index,
+                  luisa::compute::Expr<luisa::uint4> value) noexcept;
   [[nodiscard]] luisa::compute::UInt load_word(
       luisa::compute::Expr<std::uint32_t> slot,
       std::uint32_t byte_offset) const noexcept;
@@ -744,6 +889,7 @@ private:
 
 public:
   explicit ClosurePool(std::size_t capacity) noexcept;
+  ClosurePool(std::size_t capacity, Options options) noexcept;
   ClosurePool(const ClosurePool &) = delete;
   ClosurePool(ClosurePool &&) = delete;
   ClosurePool &operator=(const ClosurePool &) = delete;
@@ -776,6 +922,9 @@ public:
                 luisa::compute::Expr<std::uint32_t> type) noexcept;
   void set_weight(luisa::compute::Expr<std::uint32_t> index,
                   luisa::compute::Expr<luisa::float3> weight) noexcept;
+  void set_weight_and_type(luisa::compute::Expr<std::uint32_t> index,
+                           luisa::compute::Expr<luisa::float3> weight,
+                           luisa::compute::Expr<std::uint32_t> type) noexcept;
   void add_weight(luisa::compute::Expr<std::uint32_t> index,
                   luisa::compute::Expr<luisa::float3> weight) noexcept;
   void set_sample_weight(luisa::compute::Expr<std::uint32_t> index,
@@ -784,6 +933,10 @@ public:
                          luisa::compute::Expr<float> sample_weight) noexcept;
   void set_normal(luisa::compute::Expr<std::uint32_t> index,
                   luisa::compute::Expr<luisa::float3> normal) noexcept;
+  void set_sample_weight_and_normal(
+      luisa::compute::Expr<std::uint32_t> index,
+      luisa::compute::Expr<float> sample_weight,
+      luisa::compute::Expr<luisa::float3> normal) noexcept;
   void set_volume_henyey_greenstein(luisa::compute::Expr<std::uint32_t> index,
                                    luisa::compute::Expr<float> g) noexcept;
   void set_volume_draine(luisa::compute::Expr<std::uint32_t> index,
@@ -812,6 +965,8 @@ public:
                         const BssrdfParam &param) noexcept;
   void set_microfacet_param(luisa::compute::Expr<std::uint32_t> index,
                             const MicrofacetParam &param) noexcept;
+  void blur_microfacet_roughness(luisa::compute::Expr<std::uint32_t> index,
+                                 luisa::compute::Expr<float> roughness) noexcept;
   void
   set_generalized_schlick(luisa::compute::Expr<std::uint32_t> index,
                           const FresnelGeneralizedSchlick &fresnel) noexcept;

@@ -2,6 +2,8 @@
 
 #include <psycles/compiler/cycles_svm_attribute_request.h>
 #include <psycles/compiler/cycles_svm_bytecode.h>
+#include <psycles/compiler/cycles_svm_closure_usage.h>
+#include <psycles/compiler/cycles_svm_ir.h>
 #include <psycles/compiler/cycles_svm_noise_usage.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/contract/scene.h>
@@ -128,6 +130,9 @@ struct ShaderCompileMetadata {
   // ShaderGraph::get_num_closures() on the finalized Cycles graph, before
   // Scene::get_max_closure_count() applies its scene-wide floor and cap.
   std::uint32_t num_closures{};
+  // Surface-only upper bound (excluding CLOSURE_IS_VOLUME blocks) for
+  // SHADER_TYPE_SURFACE local ClosurePool sizing.
+  std::uint32_t surface_num_closures{};
   bool has_surface{};
   bool has_surface_transparent{};
   bool has_surface_raytrace{};
@@ -146,6 +151,31 @@ struct ShaderCompileMetadata {
   // THINFILM_THICKNESS_CUTOFF proves that path inactive; linked, missing, or
   // non-finite inputs remain conservatively true.
   bool may_have_thin_film{true};
+  ClosureUsage surface_closure_usage{};
+  std::uint32_t mix_blend_mask{~0u};
+  std::uint32_t normal_map_space_mask{~0u};
+  bool normal_map_uses_original_base{true};
+  bool noise_may_have_distortion{true};
+  bool noise_may_need_color{true};
+  std::uint32_t tex_coord_mask{~0u};
+  bool bump_uses_object_space{true};
+  bool curves_may_extrapolate{true};
+  std::uint64_t math_type_mask{~0ull};
+  std::uint64_t vector_math_type_mask{~0ull};
+  std::uint32_t mapping_type_mask{~0u};
+  bool mapping_may_rotate{true};
+  std::uint32_t map_range_type_mask{~0u};
+  std::uint32_t voronoi_dimension_mask{~0u};
+  std::uint32_t voronoi_feature_mask{~0u};
+  std::uint32_t voronoi_metric_mask{~0u};
+  bool voronoi_may_have_detail{true};
+  bool voronoi_may_normalize{true};
+  bool voronoi_may_need_color{true};
+  bool voronoi_may_need_position{true};
+  bool voronoi_may_need_radius{true};
+  std::uint32_t wave_type_mask{~0u};
+  std::uint32_t wave_profile_mask{~0u};
+  bool wave_may_have_distortion{true};
   bool emission_is_constant{true};
   bool emission_from_auto_conversion{};
   Vec3f emission_estimate{};
@@ -177,6 +207,8 @@ struct ShaderImage {
   // Missing for imported/hand-authored images without an emission proof.
   // Such images retain the conservative whole-image specialization.
   std::optional<ShaderEntryUsageTable> entry_usage;
+  // Structured target-independent SVM IR emitted in lockstep with words.
+  std::optional<SvmShaderIr> ir;
   ShaderCompileMetadata metadata;
 
   [[nodiscard]] ShaderEntryUsage usage_for(ShaderType type) const noexcept {

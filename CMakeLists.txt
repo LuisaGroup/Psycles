@@ -23,6 +23,9 @@ endif()
 option(PSYCLES_ENABLE_LUISA_METAL
     "Build LuisaCompute's Metal backend on Apple platforms"
     ${_psycles_enable_luisa_metal_default})
+option(PSYCLES_ENABLE_LUISA_METAL4
+    "Build LuisaCompute's Metal 4 AIR backend on Apple platforms"
+    OFF)
 option(PSYCLES_ENABLE_LUISA_HIP
     "Build LuisaCompute's HIP backend"
     ${_psycles_enable_luisa_non_apple_gpu_default})
@@ -55,6 +58,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_blender_values.cpp
     src/compiler/cycles_svm_constant_fold.cpp
     src/compiler/cycles_svm_compiler.cpp
+    src/compiler/cycles_svm_ir.cpp
     src/compiler/cycles_svm_scene.cpp
     src/compiler/cycles_svm_fresnel_nodes.cpp
     src/compiler/cycles_svm_geometry_nodes.cpp
@@ -171,6 +175,8 @@ if(PSYCLES_ENABLE_LUISA)
             ${PSYCLES_ENABLE_LUISA_SIMD} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_METAL
             ${PSYCLES_ENABLE_LUISA_METAL} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_METAL4
+            ${PSYCLES_ENABLE_LUISA_METAL4} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_HIP
             ${PSYCLES_ENABLE_LUISA_HIP} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_VULKAN
@@ -198,6 +204,8 @@ if(PSYCLES_ENABLE_LUISA)
             ${PSYCLES_ENABLE_LUISA_SIMD} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_METAL
             ${PSYCLES_ENABLE_LUISA_METAL} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_METAL4
+            ${PSYCLES_ENABLE_LUISA_METAL4} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_HIP
             ${PSYCLES_ENABLE_LUISA_HIP} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_VULKAN
@@ -254,6 +262,15 @@ if(PSYCLES_ENABLE_LUISA)
             "luisa-compute-backend-metal. Configure on an Apple platform "
             "with the Metal developer tools available, or configure with "
             "PSYCLES_ENABLE_LUISA_METAL=OFF.")
+    endif()
+    if(PSYCLES_ENABLE_LUISA_METAL4 AND
+       NOT TARGET luisa-compute-backend-metal4)
+        message(FATAL_ERROR
+            "PSYCLES_ENABLE_LUISA_METAL4=ON requires LuisaCompute's Metal 4 "
+            "AIR backend, but LuisaCompute did not create "
+            "luisa-compute-backend-metal4. Configure on an Apple platform "
+            "with macOS 26+ SDK and LLVM available, or configure with "
+            "PSYCLES_ENABLE_LUISA_METAL4=OFF.")
     endif()
     if(PSYCLES_ENABLE_LUISA_HIP AND
        NOT TARGET luisa-compute-backend-hip)
@@ -1747,7 +1764,7 @@ if(PSYCLES_ENABLE_LUISA)
                 psycles_luisa_surface_nee_normal_tests
                 PRIVATE
                     "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
-            foreach(_backend IN ITEMS fallback simd metal hip vk)
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk)
                 if(TEST psycles.luisa_surface_nee_normal_${_backend})
                     set_tests_properties(
                         psycles.luisa_surface_nee_normal_${_backend}
@@ -1902,6 +1919,16 @@ if(PSYCLES_ENABLE_LUISA)
                 PROPERTIES
                     RUNTIME_OUTPUT_DIRECTORY
                         "${CMAKE_BINARY_DIR}/bin")
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk)
+                if(TARGET luisa-compute-backend-${_backend})
+                    add_dependencies(
+                        psycles_luisa_render_demo
+                        luisa-compute-backend-${_backend})
+                    add_dependencies(
+                        psycles_render_blender_scene
+                        luisa-compute-backend-${_backend})
+                endif()
+            endforeach()
 
             add_executable(
                 psycles_probe_nishita

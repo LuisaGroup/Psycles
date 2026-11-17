@@ -247,7 +247,9 @@ int main(int argc, char **argv) {
                                           .material_count = 2u,
                                           .primitive_kind = geometry_kind_curve}};
   const std::array instances{InstanceGpu{.geometry_index = 0u},
-                             InstanceGpu{.geometry_index = 1u, .override_count = 2u},
+                             InstanceGpu{.geometry_index = 1u,
+                                         .override_count = 2u,
+                                         .cycles_primitive_offset = 2u},
                              InstanceGpu{.geometry_index = 2u}};
   const std::array materials{
       MaterialBindingGpu{.surface_tag = 1u, .cycles_shader_index = 12u},

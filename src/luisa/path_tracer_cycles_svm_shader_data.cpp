@@ -50,14 +50,15 @@ void cycles_svm_shader_setup_dudv(svm::ShaderData &sd) noexcept {
 void cycles_svm_triangle_shader_setup(const svm::KernelGlobals &kg,
                                       const svm::TransformState &transforms,
                                       const svm::TriangleVertices &vertices,
-                                      svm::ShaderData &sd) noexcept {
+                                      svm::ShaderData &sd,
+                                      svm::TriangleNormals *out_normals) noexcept {
   const auto transform_applied =
       (sd.object_flag & svm::shader_data_object_transform_applied) != 0u;
   sd.dPdu = vertices.v1 - vertices.v0;
   sd.dPdv = vertices.v2 - vertices.v0;
   sd.P = vertices.v0 + sd.u * sd.dPdu + sd.v * sd.dPdv;
   $if(!transform_applied) {
-    sd.P = cycles_transform::point(transforms.object_to_world, sd.P);
+    sd.P = cycles_transform::point(transforms.fetch_object_to_world(), sd.P);
   };
   const auto negative_scale_applied =
       transform_applied &
@@ -69,6 +70,9 @@ void cycles_svm_triangle_shader_setup(const svm::KernelGlobals &kg,
   sd.N = sd.Ng;
   $if((sd.shader & svm::shader_smooth_normal) != 0u) {
     const auto normals = sd_detail::triangle_normals(kg, sd);
+    if (out_normals != nullptr) {
+      *out_normals = normals;
+    }
     const auto smooth =
         sd_detail::safe_normalize_cycles((1.0f - sd.u - sd.v) * normals.n0 +
                                          sd.u * normals.n1 + sd.v * normals.n2);

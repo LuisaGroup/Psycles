@@ -6,19 +6,23 @@ namespace psycles::luisa_backend::detail {
 
 void atomic_accumulate_float4(const BufferFloat4 &buffer, const UInt &index,
                        const Float4 &value) noexcept {
-    auto destination = buffer.atomic(index);
-    destination.x.fetch_add(value.x);
-    destination.y.fetch_add(value.y);
-    destination.z.fetch_add(value.z);
-    destination.w.fetch_add(value.w);
+    $if(any(value != make_float4(0.0f))) {
+        auto destination = buffer.atomic(index);
+        $if(value.x != 0.0f) { destination.x.fetch_add(value.x); };
+        $if(value.y != 0.0f) { destination.y.fetch_add(value.y); };
+        $if(value.z != 0.0f) { destination.z.fetch_add(value.z); };
+        $if(value.w != 0.0f) { destination.w.fetch_add(value.w); };
+    };
 }
 
 void atomic_accumulate_float3(const BufferFloat4 &buffer, const UInt &index,
                        const Float3 &value) noexcept {
-    auto destination = buffer.atomic(index);
-    destination.x.fetch_add(value.x);
-    destination.y.fetch_add(value.y);
-    destination.z.fetch_add(value.z);
+    $if(any(value != make_float3(0.0f))) {
+        auto destination = buffer.atomic(index);
+        destination.x.fetch_add(value.x);
+        destination.y.fetch_add(value.y);
+        destination.z.fetch_add(value.z);
+    };
 }
 
 void atomic_accumulate_light_pass(const BufferFloat4 &light_passes,
@@ -265,7 +269,9 @@ void PathSampleContext::accumulate_transparency(Float transparency) noexcept {
     const auto atomic_film =
       invocation.film_accumulation == PathFilmAccumulation::atomic;
     if (atomic_film) {
-    invocation.combined.atomic(invocation.pixel).w.fetch_add(transparency);
+        $if(transparency != 0.0f) {
+            invocation.combined.atomic(invocation.pixel).w.fetch_add(transparency);
+        };
     } else {
         sample_transparency += transparency;
     }

@@ -40,38 +40,49 @@ using namespace compiler::cycles_svm;
 }
 } // namespace
 
-void node_map_range(Cursor &cursor, Stack &stack) noexcept {
+void node_map_range(Cursor &cursor, Stack &stack,
+                    std::uint32_t type_mask) noexcept {
   const auto type = cursor.word();
   const Float value = stack_load_input_float(stack, cursor.word());
   const Float from_min = stack_load_input_float(stack, cursor.word());
   const Float from_max = stack_load_input_float(stack, cursor.word());
   const Float to_min = stack_load_input_float(stack, cursor.word());
   const Float to_max = stack_load_input_float(stack, cursor.word());
-  const Float steps = stack_load_input_float(stack, cursor.word());
+  const auto steps_bits = cursor.word();
+  const Float steps =
+      (type_mask & (1u << NODE_MAP_RANGE_STEPPED)) != 0u
+          ? stack_load_input_float(stack, steps_bits)
+          : Float{0.0f};
   const auto output = cursor.byte(cursor.word(), 0u);
   Float result = 0.0f;
   $if(from_max != from_min) {
     Float factor = value;
     $switch(type) {
-      $case(static_cast<unsigned>(NODE_MAP_RANGE_STEPPED)) {
-        factor = (value - from_min) / (from_max - from_min);
-        $if(steps > 0.0f) { factor = floor(factor * (steps + 1.0f)) / steps; }
-        $else { factor = 0.0f; };
-      };
-      $case(static_cast<unsigned>(NODE_MAP_RANGE_SMOOTHSTEP)) {
-        $if(from_min > from_max) {
-          factor = 1.0f - scalar_smoothstep(from_max, from_min, factor, false);
-        }
-        $else {
-          factor = scalar_smoothstep(from_min, from_max, factor, false);
+      if ((type_mask & (1u << NODE_MAP_RANGE_STEPPED)) != 0u) {
+        $case(static_cast<unsigned>(NODE_MAP_RANGE_STEPPED)) {
+          factor = (value - from_min) / (from_max - from_min);
+          $if(steps > 0.0f) { factor = floor(factor * (steps + 1.0f)) / steps; }
+          $else { factor = 0.0f; };
         };
-      };
-      $case(static_cast<unsigned>(NODE_MAP_RANGE_SMOOTHERSTEP)) {
-        $if(from_min > from_max) {
-          factor = 1.0f - scalar_smoothstep(from_max, from_min, factor, true);
-        }
-        $else { factor = scalar_smoothstep(from_min, from_max, factor, true); };
-      };
+      }
+      if ((type_mask & (1u << NODE_MAP_RANGE_SMOOTHSTEP)) != 0u) {
+        $case(static_cast<unsigned>(NODE_MAP_RANGE_SMOOTHSTEP)) {
+          $if(from_min > from_max) {
+            factor = 1.0f - scalar_smoothstep(from_max, from_min, factor, false);
+          }
+          $else {
+            factor = scalar_smoothstep(from_min, from_max, factor, false);
+          };
+        };
+      }
+      if ((type_mask & (1u << NODE_MAP_RANGE_SMOOTHERSTEP)) != 0u) {
+        $case(static_cast<unsigned>(NODE_MAP_RANGE_SMOOTHERSTEP)) {
+          $if(from_min > from_max) {
+            factor = 1.0f - scalar_smoothstep(from_max, from_min, factor, true);
+          }
+          $else { factor = scalar_smoothstep(from_min, from_max, factor, true); };
+        };
+      }
       $default { factor = (value - from_min) / (from_max - from_min); };
     };
     result = to_min + factor * (to_max - to_min);
@@ -80,7 +91,8 @@ void node_map_range(Cursor &cursor, Stack &stack) noexcept {
   stack_store_float(stack, output, result);
 }
 
-void node_vector_map_range(Cursor &cursor, Stack &stack) noexcept {
+void node_vector_map_range(Cursor &cursor, Stack &stack,
+                           std::uint32_t type_mask) noexcept {
   const auto type = cursor.word();
   const auto use_clamp = cursor.byte(cursor.word(), 0u);
   const auto value = vector_input(cursor, stack);
@@ -88,26 +100,38 @@ void node_vector_map_range(Cursor &cursor, Stack &stack) noexcept {
   const auto from_max = vector_input(cursor, stack);
   const auto to_min = vector_input(cursor, stack);
   const auto to_max = vector_input(cursor, stack);
-  const auto steps = vector_input(cursor, stack);
+  const auto sx = cursor.word();
+  const auto sy = cursor.word();
+  const auto sz = cursor.word();
+  const Float3 steps =
+      (type_mask & (1u << NODE_MAP_RANGE_STEPPED)) != 0u
+          ? stack_load_input_float3(stack, sx, sy, sz)
+          : Float3{make_float3(0.0f)};
   const auto output = cursor.byte(cursor.word(), 0u);
   Float3 factor = value;
   $switch(type) {
-    $case(static_cast<unsigned>(NODE_MAP_RANGE_STEPPED)) {
-      factor = safe_divide(value - from_min, from_max - from_min);
-      factor = select(make_float3(0.0f), floor(factor * (steps + 1.0f)) / steps,
-                      steps > make_float3(0.0f));
-    };
-    $case(static_cast<unsigned>(NODE_MAP_RANGE_SMOOTHSTEP)) {
-      factor = safe_divide(value - from_min, from_max - from_min);
-      factor = clamp(factor, make_float3(0.0f), make_float3(1.0f));
-      factor = (make_float3(3.0f) - 2.0f * factor) * (factor * factor);
-    };
-    $case(static_cast<unsigned>(NODE_MAP_RANGE_SMOOTHERSTEP)) {
-      factor = safe_divide(value - from_min, from_max - from_min);
-      factor = clamp(factor, make_float3(0.0f), make_float3(1.0f));
-      factor =
-          factor * factor * factor * (factor * (factor * 6.0f - 15.0f) + 10.0f);
-    };
+    if ((type_mask & (1u << NODE_MAP_RANGE_STEPPED)) != 0u) {
+      $case(static_cast<unsigned>(NODE_MAP_RANGE_STEPPED)) {
+        factor = safe_divide(value - from_min, from_max - from_min);
+        factor = select(make_float3(0.0f), floor(factor * (steps + 1.0f)) / steps,
+                        steps > make_float3(0.0f));
+      };
+    }
+    if ((type_mask & (1u << NODE_MAP_RANGE_SMOOTHSTEP)) != 0u) {
+      $case(static_cast<unsigned>(NODE_MAP_RANGE_SMOOTHSTEP)) {
+        factor = safe_divide(value - from_min, from_max - from_min);
+        factor = clamp(factor, make_float3(0.0f), make_float3(1.0f));
+        factor = (make_float3(3.0f) - 2.0f * factor) * (factor * factor);
+      };
+    }
+    if ((type_mask & (1u << NODE_MAP_RANGE_SMOOTHERSTEP)) != 0u) {
+      $case(static_cast<unsigned>(NODE_MAP_RANGE_SMOOTHERSTEP)) {
+        factor = safe_divide(value - from_min, from_max - from_min);
+        factor = clamp(factor, make_float3(0.0f), make_float3(1.0f));
+        factor =
+            factor * factor * factor * (factor * (factor * 6.0f - 15.0f) + 10.0f);
+      };
+    }
     $default { factor = safe_divide(value - from_min, from_max - from_min); };
   };
   Float3 result = to_min + factor * (to_max - to_min);

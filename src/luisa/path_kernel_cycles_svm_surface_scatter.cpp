@@ -115,7 +115,9 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
         };
         $if(!transparent) {
           sample.previous_bsdf_pdf = bsdf.evaluation.pdf;
-          sample.minimum_bsdf_pdf = min(bsdf.evaluation.pdf, sample.minimum_bsdf_pdf);
+          if (config.has_filter_glossy || config.path_trace_enabled) {
+            sample.minimum_bsdf_pdf = min(bsdf.evaluation.pdf, sample.minimum_bsdf_pdf);
+          }
           sample.previous_mis_origin_normal = sd.N;
         };
         store_path(path::next_surface(path_state(), label,
@@ -150,7 +152,7 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
               .dP = sample.ray_dP, .throughput = sample.throughput,
               .isect_object = context.surface.cycles_object_index, .path = path_state()};
           label = native::integrate_surface_ray_portal(
-              kg, sd, pick.index, context.surface.world_to_object, state, limits);
+              kg, sd, pick.index, context.surface.fetch_world_to_object(), state, limits);
           $if(label != closure::label_none) {
             sample.ray = make_ray(state.P, state.D, state.tmin, state.tmax);
             sample.ray_dP = state.dP;

@@ -11,7 +11,8 @@ void cycles_svm_triangle_shader_setup(
     const cycles_svm::KernelGlobals &kernel_globals,
     const cycles_svm::TransformState &transforms,
     const cycles_svm::TriangleVertices &vertices,
-    cycles_svm::ShaderData &shader_data) noexcept;
+    cycles_svm::ShaderData &shader_data,
+    cycles_svm::TriangleNormals *out_normals = nullptr) noexcept;
 
 void cycles_svm_shader_setup_backfacing(
     cycles_svm::ShaderData &shader_data) noexcept;

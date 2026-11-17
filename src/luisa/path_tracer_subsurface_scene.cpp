@@ -34,6 +34,8 @@ void SubsurfaceSceneComponent::initialize_accel(
     const SubsurfaceScenePlan &plan) const {
     scene->subsurface_instance_count =
         plan.triangle_instance_count;
+    scene->primary_to_subsurface_local_host.assign(
+        plan.triangle_instance_mask.size(), ~luisa::uint{0u});
     if (scene->has_subsurface) {
         LUISA_INFO(
             "Psycles BSSRDF local-intersection domain: triangle_instances={}/{}.",
@@ -59,6 +61,13 @@ void SubsurfaceSceneComponent::append_triangle_instance(
         scene->subsurface_accel &&
             geometry_index < scene->geometries.size(),
         "Invalid BSSRDF local-intersection scene plan.");
+    const auto local_instance =
+        static_cast<luisa::uint>(scene->subsurface_accel->size());
+    if (primary_instance >= scene->primary_to_subsurface_local_host.size()) {
+        scene->primary_to_subsurface_local_host.resize(
+            static_cast<std::size_t>(primary_instance) + 1u, ~luisa::uint{0u});
+    }
+    scene->primary_to_subsurface_local_host[primary_instance] = local_instance;
     // Cycles local intersection ignores normal path visibility and traverses
     // the complete object BLAS. Retain programmable candidates for reservoir
     // and self filtering, and map the compact TLAS instance back to the
@@ -66,7 +75,7 @@ void SubsurfaceSceneComponent::append_triangle_instance(
     scene->subsurface_accel->emplace_back(
         scene->geometries[geometry_index].mesh,
         to_luisa(transform),
-        std::uint8_t{0xffu},
+        static_cast<std::uint8_t>(1u << (local_instance & 7u)),
         false,
         primary_instance);
 }

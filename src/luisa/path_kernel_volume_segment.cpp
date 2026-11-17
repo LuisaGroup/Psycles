@@ -530,10 +530,13 @@ class PathVolumeSegmentStageImpl final
                 collision_position -
                 segment_position;
             previous_light_tree_dt = segment_length;
-            minimum_bsdf_pdf =
-                min(
-                    minimum_bsdf_pdf,
-                    result_phase.pdf);
+            if (invocation.config.has_filter_glossy ||
+                invocation.config.path_trace_enabled) {
+                minimum_bsdf_pdf =
+                    min(
+                        minimum_bsdf_pdf,
+                        result_phase.pdf);
+            }
             ray_events = 0u;
             path_diffuse_weight =
                 select(

@@ -70,17 +70,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 "contains a non-default mask outside that range.");
         }
     }
-    std::set<contract::MaterialId>
-        volume_materials;
-    for (const auto &[id, material] : snapshot.materials) {
-        if (material.shader.root(
-                contract::ShaderDomain::volume)) {
-            volume_materials.emplace(id);
-        }
-    }
-    const auto volume_metadata =
-        VolumeSceneMetadataComponent{}.analyze(
-            snapshot, volume_materials);
     if (!result.diagnostics.empty()) {
         return result;
     }
@@ -94,7 +83,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->native_cycles_svm_surface ||
         populate_surface_once_requested();
     data->camera = camera_iter->second;
-    data->volume_metadata = volume_metadata;
     data->shader_color_space = snapshot.shader_color_space;
     data->cycles_background_object_index =
         snapshot.cycles_background_object_index
@@ -204,6 +192,20 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             cycles_static_transform_by_geometry.emplace(
                 instance.geometry, instance.transform);
         }
+    }
+    {
+        std::set<contract::MaterialId> volume_materials;
+        for (const auto &[material_id, shader_index] :
+             data->cycles_svm->material_shader_indices) {
+            if (shader_index <
+                    data->cycles_svm->compilation.shader_metadata.size() &&
+                data->cycles_svm->compilation.shader_metadata[shader_index]
+                    .has_volume) {
+                volume_materials.emplace(material_id);
+            }
+        }
+        data->volume_metadata =
+            VolumeSceneMetadataComponent{}.analyze(snapshot, volume_materials);
     }
     data->volume_metadata
         .closure_allocation_budget =
@@ -1799,6 +1801,14 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
     data->background = to_luisa(analytic_lights.background);
     data->light_count = analytic_lights.regular_count;
+    {
+        std::uint32_t light_type_mask = 0u;
+        for (std::uint32_t i = 0u; i < analytic_lights.regular_count; ++i) {
+            light_type_mask |=
+                (1u << analytic_lights.device_lights[i].type);
+        }
+        data->light_type_mask = light_type_mask;
+    }
     data->portal_count = analytic_lights.portal_count;
     data->emissive_triangle_count =
         static_cast<std::uint32_t>(
@@ -1890,7 +1900,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
          .light_tree_mesh_triangles =
              light_sampling.tree_mesh_triangles,
          .light_tree_triangle_lookup =
-             light_sampling.tree_triangle_lookup});
+             light_sampling.tree_triangle_lookup,
+         .geometry_uploads = std::span<const GeometryUpload>{
+             uploads.data(), uploads.size()}});
     if (!table_upload.ok()) {
         diagnose(result.diagnostics, table_upload.diagnostic);
         return result;

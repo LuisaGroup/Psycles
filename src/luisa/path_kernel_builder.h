@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <tuple>
 #include <utility>
 
 namespace luisa::compute {
@@ -70,6 +71,7 @@ struct PathKernelConfig {
     bool use_light_tree{};
     bool reflective_caustics{};
     bool refractive_caustics{};
+    bool has_filter_glossy{true};
     bool has_subsurface{};
     // Host/JIT capability only: the authored bounce count remains a kernel
     // parameter, while a scene with replacement Fast GI disabled records no
@@ -92,6 +94,7 @@ struct PathKernelConfig {
   // PathKernelPipeline in both cases.
   std::shared_ptr<const DirectLightTaskSink> direct_light_task_sink;
     std::uint32_t volume_stack_size{};
+    std::uint32_t transparent_max_bounces{~0u};
     bool camera_may_be_inside_volume{};
   std::shared_ptr<const PathVolumeStateComponent> volume_state;
     LightTransportCallables light_transport;
@@ -534,15 +537,23 @@ struct SurfaceGeometryContext {
     UInt cycles_surface_shader;
     UInt cycles_object_index;
     UInt cycles_primitive_index;
+    std::optional<UInt> cycles_shader_flags;
+    std::optional<UInt> cycles_object_flags;
     VolumeStackEntry volume_stack_entry;
     Bool surface_has_volume;
     SurfacePoint point;
     SurfaceQuery path_surface_query;
+    Float shadow_terminator_geometry_offset{0.0f};
+    bool lazy_cycles_geometry{false};
 
     // World-space triangle vertices are needed only by forward-hit emission
     // MIS. Populate them at that consumer so non-emissive triangles do not
     // pay three object-to-world transforms during every surface event.
     void ensure_world_triangle_vertices() noexcept;
+    [[nodiscard]] std::tuple<Float3, Float3, Float3>
+    resolve_world_triangle_vertices() noexcept;
+    [[nodiscard]] luisa::compute::Float4x4
+    fetch_world_to_object() const noexcept;
 
     // Retain the one graph evaluation's ShaderData::N-equivalent for the
     // shadow-terminator geometry consumer without replaying the graph.

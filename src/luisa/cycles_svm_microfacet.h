@@ -11,6 +11,12 @@ class Stack;
 bsdf_allocate(ShaderData &shader_data,
               luisa::compute::Expr<luisa::float3> input_weight) noexcept;
 
+[[nodiscard]] ClosurePool::Allocation bsdf_allocate_typed(
+    ShaderData &shader_data,
+    luisa::compute::Expr<luisa::float3> input_weight,
+    luisa::compute::Expr<std::uint32_t> closure_type,
+    luisa::compute::Expr<luisa::float3> normal) noexcept;
+
 [[nodiscard]] luisa::compute::Float3 maybe_ensure_valid_specular_reflection(
     const ShaderData &shader_data,
     luisa::compute::Expr<luisa::float3> normal) noexcept;

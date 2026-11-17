@@ -229,6 +229,15 @@ constexpr auto inverse_two_pi = 0.5f / pi;
 
 [[nodiscard]] Float2 image_mapping(Float3 coordinate,
                                    Expr<std::uint32_t> projection) noexcept {
+  if (const auto cp = try_const_uint(projection)) {
+    if (*cp == static_cast<std::uint32_t>(NODE_IMAGE_PROJ_SPHERE)) {
+      return map_to_sphere((coordinate - 0.5f) * 2.0f);
+    }
+    if (*cp == static_cast<std::uint32_t>(NODE_IMAGE_PROJ_TUBE)) {
+      return map_to_tube((coordinate - 0.5f) * 2.0f);
+    }
+    return coordinate.xy();
+  }
   Float2 result = coordinate.xy();
   const auto mapped = (coordinate - 0.5f) * 2.0f;
   $if(projection == static_cast<std::uint32_t>(NODE_IMAGE_PROJ_SPHERE)) {
@@ -242,6 +251,17 @@ constexpr auto inverse_two_pi = 0.5f / pi;
 
 [[nodiscard]] Dual2 image_mapping(const Dual3 &coordinate,
                                   Expr<std::uint32_t> projection) noexcept {
+  if (const auto cp = try_const_uint(projection)) {
+    if (*cp == static_cast<std::uint32_t>(NODE_IMAGE_PROJ_SPHERE)) {
+      return map_to_sphere(remap_square(coordinate));
+    }
+    if (*cp == static_cast<std::uint32_t>(NODE_IMAGE_PROJ_TUBE)) {
+      return map_to_tube(remap_square(coordinate));
+    }
+    return {.val = coordinate.val.xy(),
+            .dx = coordinate.dx.xy(),
+            .dy = coordinate.dy.xy()};
+  }
   Dual2 result{.val = coordinate.val.xy(),
                .dx = coordinate.dx.xy(),
                .dy = coordinate.dy.xy()};
@@ -310,6 +330,17 @@ constexpr auto inverse_two_pi = 0.5f / pi;
                                   Expr<std::uint32_t> flags) noexcept {
   const auto sampled = kernel_globals.kernel_image_interp_with_udim(
       shader_data, image_id, uv);
+  if (const auto cf = try_const_uint(flags)) {
+    const bool unassociate =
+        (*cf & static_cast<std::uint32_t>(NODE_IMAGE_ALPHA_UNASSOCIATE)) != 0u;
+    const bool srgb =
+        (*cf & static_cast<std::uint32_t>(NODE_IMAGE_COMPRESS_AS_SRGB)) != 0u;
+    if (!unassociate && !srgb) {
+      return sampled;
+    }
+    return ::psycles::luisa_backend::detail::decode_surface_image_sample(
+        sampled, unassociate, srgb);
+  }
   return ::psycles::luisa_backend::detail::decode_surface_image_sample(
       sampled,
       (flags & static_cast<std::uint32_t>(NODE_IMAGE_ALPHA_UNASSOCIATE)) != 0u,
@@ -319,12 +350,24 @@ constexpr auto inverse_two_pi = 0.5f / pi;
 void store_image_sample(Stack &stack, Expr<std::uint32_t> color_offset,
                         Expr<std::uint32_t> alpha_offset,
                         Expr<luisa::float4> value) noexcept {
-  $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, color_offset, value.xyz());
-  };
-  $if(alpha_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, alpha_offset, value.w);
-  };
+  if (const auto co = try_const_uint(color_offset)) {
+    if (*co != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float3(stack, *co, value.xyz());
+    }
+  } else {
+    $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float3(stack, color_offset, value.xyz());
+    };
+  }
+  if (const auto ao = try_const_uint(alpha_offset)) {
+    if (*ao != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float(stack, *ao, value.w);
+    }
+  } else {
+    $if(alpha_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float(stack, alpha_offset, value.w);
+    };
+  }
 }
 
 } // namespace
@@ -333,7 +376,13 @@ void node_tex_image(Cursor &cursor, Stack &stack,
                     const KernelGlobals &kernel_globals,
                     ShaderData &shader_data,
                     bool use_derivatives) noexcept {
-  const auto image_id = cursor.word().bitcast<std::int32_t>();
+  const auto image_w = cursor.word();
+  const auto image_id = [&]() noexcept -> Expr<std::int32_t> {
+    if (const auto cw = try_const_uint(image_w)) {
+      return Expr<std::int32_t>{std::bit_cast<std::int32_t>(*cw)};
+    }
+    return image_w.bitcast<std::int32_t>();
+  }();
   const auto projection = cursor.word();
   const auto packed = cursor.word();
   const auto flags = cursor.byte(packed, 0u);
@@ -342,12 +391,12 @@ void node_tex_image(Cursor &cursor, Stack &stack,
   const auto alpha_offset = cursor.byte(packed, 3u);
   const auto coordinate =
       load_coordinate(stack, coordinate_offset, use_derivatives);
-  Dual2 uv{.val = image_mapping(coordinate.val, projection),
-           .dx = make_float2(0.0f),
-           .dy = make_float2(0.0f)};
-  if (use_derivatives) {
-    uv = image_mapping(coordinate, projection);
-  }
+  const Dual2 uv =
+      use_derivatives
+          ? image_mapping(coordinate, projection)
+          : Dual2{.val = image_mapping(coordinate.val, projection),
+                  .dx = make_float2(0.0f),
+                  .dy = make_float2(0.0f)};
   store_image_sample(
       stack, color_offset, alpha_offset,
       sample_image(kernel_globals, shader_data, image_id, uv, flags));
@@ -359,7 +408,13 @@ void node_tex_image_box(Cursor &cursor, Stack &stack,
                         ShaderData &shader_data,
                         bool use_derivatives,
                         bool object_motion_enabled) noexcept {
-  const auto image_id = cursor.word().bitcast<std::int32_t>();
+  const auto image_w = cursor.word();
+  const auto image_id = [&]() noexcept -> Expr<std::int32_t> {
+    if (const auto cw = try_const_uint(image_w)) {
+      return Expr<std::int32_t>{std::bit_cast<std::int32_t>(*cw)};
+    }
+    return image_w.bitcast<std::int32_t>();
+  }();
   const auto blend = cursor.floating();
   const auto packed = cursor.word();
   const auto flags = cursor.byte(packed, 0u);
@@ -424,27 +479,41 @@ void node_tex_image_box(Cursor &cursor, Stack &stack,
   const auto y = component(coordinate, 1u);
   const auto z = component(coordinate, 2u);
   const Dual1 one{.val = 1.0f, .dx = 0.0f, .dy = 0.0f};
+  const auto ux = select_dual(signed_normal.x < 0.0f, subtract(one, y), y);
+  const auto uy = select_dual(signed_normal.y > 0.0f, subtract(one, x), x);
+  const auto uz = select_dual(signed_normal.z > 0.0f, subtract(one, y), y);
+  const auto uv_x = make_dual2(ux, z);
+  const auto uv_y = make_dual2(uy, z);
+  const auto uv_z = make_dual2(uz, x);
+
+  const auto has_x = weight.x > 0.0f;
+  const auto has_y = weight.y > 0.0f;
+  const auto has_z = weight.z > 0.0f;
+  const UInt tap_count =
+      select(0u, 1u, has_x) + select(0u, 1u, has_y) + select(0u, 1u, has_z);
+
   Float4 sampled = make_float4(0.0f);
-  $if(weight.x > 0.0f) {
-    const auto u = select_dual(signed_normal.x < 0.0f,
-                               subtract(one, y), y);
-    sampled += weight.x * sample_image(
-                              kernel_globals, shader_data, image_id,
-                              make_dual2(u, z), flags);
-  };
-  $if(weight.y > 0.0f) {
-    const auto u = select_dual(signed_normal.y > 0.0f,
-                               subtract(one, x), x);
-    sampled += weight.y * sample_image(
-                              kernel_globals, shader_data, image_id,
-                              make_dual2(u, z), flags);
-  };
-  $if(weight.z > 0.0f) {
-    const auto u = select_dual(signed_normal.z > 0.0f,
-                               subtract(one, y), y);
-    sampled += weight.z * sample_image(
-                              kernel_globals, shader_data, image_id,
-                              make_dual2(u, x), flags);
+  $for(tap, tap_count) {
+    Dual2 tap_uv = uv_z;
+    Float tap_w = weight.z;
+    $if(tap == 0u) {
+      $if(has_x) {
+        tap_uv = uv_x;
+        tap_w = weight.x;
+      }
+      $elif(has_y) {
+        tap_uv = uv_y;
+        tap_w = weight.y;
+      };
+    }
+    $elif(tap == 1u) {
+      $if(has_x & has_y) {
+        tap_uv = uv_y;
+        tap_w = weight.y;
+      };
+    };
+    sampled += tap_w * sample_image(kernel_globals, shader_data, image_id,
+                                    tap_uv, flags);
   };
   store_image_sample(stack, color_offset, alpha_offset, sampled);
 }
@@ -453,7 +522,13 @@ void node_tex_environment(Cursor &cursor, Stack &stack,
                           const KernelGlobals &kernel_globals,
                           ShaderData &shader_data,
                           bool use_derivatives) noexcept {
-  const auto image_id = cursor.word().bitcast<std::int32_t>();
+  const auto image_w = cursor.word();
+  const auto image_id = [&]() noexcept -> Expr<std::int32_t> {
+    if (const auto cw = try_const_uint(image_w)) {
+      return Expr<std::int32_t>{std::bit_cast<std::int32_t>(*cw)};
+    }
+    return image_w.bitcast<std::int32_t>();
+  }();
   const auto projection = cursor.word();
   const auto packed = cursor.word();
   const auto flags = cursor.byte(packed, 0u);
@@ -464,7 +539,21 @@ void node_tex_environment(Cursor &cursor, Stack &stack,
       load_coordinate(stack, coordinate_offset, use_derivatives);
 
   Dual2 uv;
-  if (use_derivatives) {
+  if (const auto cp = try_const_uint(projection)) {
+    const bool mirror_ball =
+        *cp == static_cast<std::uint32_t>(NODE_ENVIRONMENT_MIRROR_BALL);
+    if (use_derivatives) {
+      const auto direction = safe_normalize_dual(coordinate);
+      uv = mirror_ball ? direction_to_mirrorball(direction)
+                       : direction_to_equirectangular(direction);
+    } else {
+      const auto direction = safe_normalize_cycles(coordinate.val);
+      uv = {.val = mirror_ball ? direction_to_mirrorball(direction)
+                               : direction_to_equirectangular(direction),
+            .dx = make_float2(0.0f),
+            .dy = make_float2(0.0f)};
+    }
+  } else if (use_derivatives) {
     const auto direction = safe_normalize_dual(coordinate);
     uv = direction_to_equirectangular(direction);
     $if(projection ==

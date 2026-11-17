@@ -111,22 +111,25 @@ namespace {
     Float3 normal_or_direction,
     Float distance,
     Bool has_transmission) noexcept {
-    const auto left_importance = child_importance(
-        importance,
-        scene,
-        left,
-        point,
-        normal_or_direction,
-        distance,
-        has_transmission);
-    const auto right_importance = child_importance(
-        importance,
-        scene,
-        right,
-        point,
-        normal_or_direction,
-        distance,
-        has_transmission);
+    Float2 left_importance = make_float2(0.0f);
+    Float2 right_importance = make_float2(0.0f);
+    $for (side, 2u) {
+        const auto child = select(right, left, side == 0u);
+        const auto child_imp = child_importance(
+            importance,
+            scene,
+            child,
+            point,
+            normal_or_direction,
+            distance,
+            has_transmission);
+        $if (side == 0u) {
+            left_importance = child_imp;
+        }
+        $else {
+            right_importance = child_imp;
+        };
+    };
     const auto maximum_total =
         left_importance.x + right_importance.x;
     const auto minimum_total =
@@ -141,35 +144,6 @@ namespace {
     return make_float2(
         0.5f * (maximum_probability + minimum_probability),
         cast<float>(maximum_total > 0.0f));
-}
-
-void reservoir_update(
-    UInt current,
-    Float weight,
-    UInt &selected,
-    Float &selected_weight,
-    Float &total_weight,
-    Float &random) noexcept {
-    $if (weight > 0.0f) {
-        total_weight += weight;
-        $if (selected == sampling::invalid_light_tree_index) {
-            selected = current;
-            selected_weight = weight;
-        }
-        $else {
-            const auto threshold = weight / total_weight;
-            $if (random <= threshold) {
-                selected = current;
-                selected_weight = weight;
-                random = random / threshold;
-            }
-            $else {
-                random = (random - threshold) /
-                         max(1.0f - threshold, safe_distance);
-            };
-            random = clamp(random, 0.0f, 1.0f);
-        };
-    };
 }
 
 void select_leaf_emitter(
@@ -191,6 +165,10 @@ void select_leaf_emitter(
     $if (node.emitters.y > 1u) {
         random = random * 2.0f - cast<float>(sample_maximum);
     };
+    UInt uniform_selected = sampling::invalid_light_tree_index;
+    Float uniform_selected_maximum = 0.0f;
+    Float uniform_total = 0.0f;
+    Float uniform_random = random;
 
     $for (i, node.emitters.y) {
         const auto emitter_index = node.emitters.x + i;
@@ -202,7 +180,8 @@ void select_leaf_emitter(
             has_transmission);
         total_maximum += importance.x;
         total_minimum += importance.y;
-        positive_count += cast<uint>(importance.x > 0.0f);
+        const auto positive_max = importance.x > 0.0f;
+        positive_count += cast<uint>(positive_max);
         const auto primary = select(
             importance.y, importance.x, sample_maximum);
         const auto primary_total = select(
@@ -228,6 +207,26 @@ void select_leaf_emitter(
                 random = clamp(random, 0.0f, 1.0f);
             };
         };
+        $if (!sample_maximum & positive_max & (total_minimum == 0.0f)) {
+            uniform_total += 1.0f;
+            $if (uniform_selected == sampling::invalid_light_tree_index) {
+                uniform_selected = emitter_index;
+                uniform_selected_maximum = importance.x;
+            }
+            $else {
+                const auto threshold = 1.0f / uniform_total;
+                $if (uniform_random <= threshold) {
+                    uniform_selected = emitter_index;
+                    uniform_selected_maximum = importance.x;
+                    uniform_random = uniform_random / threshold;
+                }
+                $else {
+                    uniform_random = (uniform_random - threshold) /
+                                     max(1.0f - threshold, safe_distance);
+                };
+                uniform_random = clamp(uniform_random, 0.0f, 1.0f);
+            };
+        };
     };
 
     $if ((positive_count > 0u) & (total_minimum == 0.0f)) {
@@ -236,30 +235,14 @@ void select_leaf_emitter(
             total_minimum = cast<float>(positive_count);
         }
         $else {
-            selected = sampling::invalid_light_tree_index;
-            Float selected_uniform = 0.0f;
-            Float total_uniform = 0.0f;
-            $for (i, node.emitters.y) {
-                const auto emitter_index = node.emitters.x + i;
-                const auto importance = importance_component.emitter(
-                    emitter_index,
-                    point,
-                    normal_or_direction,
-                    distance,
-                    has_transmission);
-                reservoir_update(
-                    emitter_index,
-                    cast<float>(importance.x > 0.0f),
-                    selected,
-                    selected_uniform,
-                    total_uniform,
-                    random);
-                $if (selected == emitter_index) {
-                    selected_maximum = importance.x;
-                    selected_minimum = 1.0f;
-                };
-            };
-            total_minimum = total_uniform;
+            selected = uniform_selected;
+            selected_maximum = uniform_selected_maximum;
+            selected_minimum = select(
+                0.0f,
+                1.0f,
+                selected != sampling::invalid_light_tree_index);
+            total_minimum = uniform_total;
+            random = uniform_random;
         };
     };
 
@@ -287,9 +270,8 @@ void initialize_invalid_light_selection(
 
 [[nodiscard]] LightTreeSampleCallable make_sample_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
+    const LightTreeImportanceComponent &importance,
     bool in_volume) noexcept {
-    const auto importance =
-        LightTreeImportanceComponent{scene, in_volume};
     return [scene, in_volume, importance](
                Float sample,
                Float3 point,
@@ -317,8 +299,10 @@ void initialize_invalid_light_selection(
             Var<LightTreeNodeGpu> node =
                 scene->light_tree_node_buffer->read(node_index);
             const auto leaf =
-                node.topology.w != static_cast<std::uint32_t>(
-                    sampling::LightTreeNodeKind::inner);
+                (scene->light_tree_node_count <= 1u)
+                    ? Bool{true}
+                    : (node.topology.w != static_cast<std::uint32_t>(
+                                              sampling::LightTreeNodeKind::inner));
             $if (leaf) {
                 select_leaf_emitter(
                     importance,
@@ -355,37 +339,41 @@ void initialize_invalid_light_selection(
                 };
             }
             $else {
-                const auto probability = left_probability(
-                    importance,
-                    scene,
-                    node.topology.y,
-                    node.topology.z,
-                    point,
-                    normal_or_direction,
-                    distance,
-                    has_transmission);
-                $if (probability.y <= 0.0f) {
-                    active = false;
-                }
-                $else {
-                    const auto right_probability = 1.0f - probability.x;
-                    const auto choose_right = random <= right_probability;
-                    node_index = select(
+                if (scene->light_tree_node_count > 1u) {
+                    const auto probability = left_probability(
+                        importance,
+                        scene,
                         node.topology.y,
                         node.topology.z,
-                        choose_right);
-                    selection_pdf *= select(
-                        probability.x,
-                        right_probability,
-                        choose_right);
-                    random = select(
-                        (random - right_probability) /
-                            max(probability.x, safe_distance),
-                        random /
-                            max(right_probability, safe_distance),
-                        choose_right);
-                    random = clamp(random, 0.0f, 1.0f);
-                };
+                        point,
+                        normal_or_direction,
+                        distance,
+                        has_transmission);
+                    $if (probability.y <= 0.0f) {
+                        active = false;
+                    }
+                    $else {
+                        const auto right_probability = 1.0f - probability.x;
+                        const auto choose_right = random <= right_probability;
+                        node_index = select(
+                            node.topology.y,
+                            node.topology.z,
+                            choose_right);
+                        selection_pdf *= select(
+                            probability.x,
+                            right_probability,
+                            choose_right);
+                        random = select(
+                            (random - right_probability) /
+                                max(probability.x, safe_distance),
+                            random /
+                                max(right_probability, safe_distance),
+                            choose_right);
+                        random = clamp(random, 0.0f, 1.0f);
+                    };
+                } else {
+                    active = false;
+                }
             };
         };
 
@@ -464,48 +452,54 @@ void initialize_invalid_light_selection(
                           target_minimum /
                               max(total_minimum, safe_distance),
                           total_minimum > 0.0f));
-            UInt current_node = leaf_index;
-            UInt steps = 0u;
-            Bool valid = true;
-            $while (valid & (current_node != root_index) &
-                    (steps <= scene->light_tree_node_count)) {
-                steps += 1u;
-                const auto parent_index =
-                    scene->light_tree_node_buffer
-                        ->read(current_node)
-                        .topology.x;
-                $if (parent_index >= scene->light_tree_node_count) {
-                    valid = false;
-                    result = 0.0f;
-                }
-                $else {
-                    const auto parent =
-                        scene->light_tree_node_buffer->read(parent_index);
-                    const auto probability = left_probability(
-                        importance_component,
-                        scene,
-                        parent.topology.y,
-                        parent.topology.z,
-                        point,
-                        normal_or_direction,
-                        distance,
-                        has_transmission);
-                    $if (probability.y <= 0.0f) {
+            if (scene->light_tree_node_count > 1u) {
+                UInt current_node = leaf_index;
+                UInt steps = 0u;
+                Bool valid = true;
+                $while (valid & (current_node != root_index) &
+                        (steps <= scene->light_tree_node_count)) {
+                    steps += 1u;
+                    const auto parent_index =
+                        scene->light_tree_node_buffer
+                            ->read(current_node)
+                            .topology.x;
+                    $if (parent_index >= scene->light_tree_node_count) {
                         valid = false;
                         result = 0.0f;
                     }
                     $else {
-                        result *= select(
-                            1.0f - probability.x,
-                            probability.x,
-                            current_node == parent.topology.y);
-                        current_node = parent_index;
+                        const auto parent =
+                            scene->light_tree_node_buffer->read(parent_index);
+                        const auto probability = left_probability(
+                            importance_component,
+                            scene,
+                            parent.topology.y,
+                            parent.topology.z,
+                            point,
+                            normal_or_direction,
+                            distance,
+                            has_transmission);
+                        $if (probability.y <= 0.0f) {
+                            valid = false;
+                            result = 0.0f;
+                        }
+                        $else {
+                            result *= select(
+                                1.0f - probability.x,
+                                probability.x,
+                                current_node == parent.topology.y);
+                            current_node = parent_index;
+                        };
                     };
                 };
-            };
-            $if (current_node != root_index) {
-                result = 0.0f;
-            };
+                $if (current_node != root_index) {
+                    result = 0.0f;
+                };
+            } else {
+                $if (leaf_index != root_index) {
+                    result = 0.0f;
+                };
+            }
         };
     };
     return result;
@@ -513,9 +507,8 @@ void initialize_invalid_light_selection(
 
 [[nodiscard]] LightTreePdfCallable make_pdf_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
+    const LightTreeImportanceComponent &importance,
     bool in_volume) noexcept {
-    const auto importance =
-        LightTreeImportanceComponent{scene, in_volume};
     return [scene, in_volume, importance](
                UInt emitter_id,
                Float3 point,
@@ -531,47 +524,69 @@ void initialize_invalid_light_selection(
         $if (emitter_id < scene->light_distribution_count) {
             const auto top =
                 scene->light_tree_emitter_mapping_buffer->read(emitter_id);
-            result = tree_path_pdf(
-                importance,
-                scene,
-                top.x,
-                top.y,
-                scene->light_tree_root,
-                point,
-                normal_or_direction,
-                distance,
-                has_transmission);
-            if (scene->emissive_triangle_count > 0u) {
-                $if (emitter_id < scene->emissive_triangle_count) {
-                    const auto proxy =
-                        scene->light_tree_emitter_buffer->read(top.x);
-                    const auto local = scene
-                                           ->light_tree_triangle_emitter_mapping_buffer
-                                           ->read(emitter_id);
-                    Float3 local_point = point;
-                    Float3 local_normal_or_direction = normal_or_direction;
-                    Float local_distance = distance;
-                    cycles_light_tree_to_mesh_local_space(
-                        scene,
-                        proxy.identity.x,
-                        local_point,
-                        local_normal_or_direction,
-                        local_distance,
-                        in_volume);
-                    const auto local_pdf = tree_path_pdf(
+            if (scene->emissive_triangle_count == 0u) {
+                result = tree_path_pdf(
+                    importance,
+                    scene,
+                    top.x,
+                    top.y,
+                    scene->light_tree_root,
+                    point,
+                    normal_or_direction,
+                    distance,
+                    has_transmission);
+            } else {
+                UInt query_target = top.x;
+                UInt query_leaf = top.y;
+                UInt query_root = scene->light_tree_root;
+                Float3 query_point = point;
+                Float3 query_normal = normal_or_direction;
+                Float query_distance = distance;
+                result = 1.0f;
+                const UInt pass_count = select(
+                    1u,
+                    2u,
+                    emitter_id < scene->emissive_triangle_count);
+                $for (pass, pass_count) {
+                    $if (pass == 1u) {
+                        const auto proxy =
+                            scene->light_tree_emitter_buffer->read(top.x);
+                        const auto proxy_is_mesh =
+                            emitter_kind(proxy) ==
+                            static_cast<std::uint32_t>(
+                                LightTreeEmitterKind::mesh_instance);
+                        $if (!proxy_is_mesh) {
+                            result = 0.0f;
+                            $break;
+                        };
+                        const auto local =
+                            scene->light_tree_triangle_emitter_mapping_buffer
+                                ->read(emitter_id);
+                        query_target = local.x;
+                        query_leaf = local.y;
+                        query_root = proxy.identity.z;
+                        cycles_light_tree_to_mesh_local_space(
+                            scene,
+                            proxy.identity.x,
+                            query_point,
+                            query_normal,
+                            query_distance,
+                            in_volume);
+                    };
+                    result *= tree_path_pdf(
                         importance,
                         scene,
-                        local.x,
-                        local.y,
-                        proxy.identity.z,
-                        local_point,
-                        local_normal_or_direction,
-                        local_distance,
+                        query_target,
+                        query_leaf,
+                        query_root,
+                        query_point,
+                        query_normal,
+                        query_distance,
                         has_transmission);
-                    const auto proxy_is_mesh =
-                        emitter_kind(proxy) == static_cast<std::uint32_t>(
-                                                   LightTreeEmitterKind::mesh_instance);
-                    result = select(0.0f, result * local_pdf, proxy_is_mesh);
+                    $if (result <= 0.0f) {
+                        result = 0.0f;
+                        $break;
+                    };
                 };
             }
         };
@@ -620,7 +635,27 @@ make_triangle_emitter_callable(
 
 [[nodiscard]] LightTreeForwardPdfCallable make_forward_pdf_callable(
     LightTreePdfCallable surface_pdf,
-    LightTreePdfCallable volume_pdf) noexcept {
+    LightTreePdfCallable volume_pdf,
+    bool allow_volume_origin) noexcept {
+    if (!allow_volume_origin) {
+        return [surface_pdf](
+                   UInt emitter_id,
+                   Float3 point,
+                   Float3 mis_origin_normal,
+                   Float,
+                   UInt,
+                   UInt path_flags) noexcept {
+            const auto has_transmission =
+                (path_flags &
+                 cycles_path_state::flag_mis_had_transmission) != 0u;
+            return surface_pdf(
+                emitter_id,
+                point,
+                mis_origin_normal,
+                0.0f,
+                has_transmission);
+        };
+    }
     return [surface_pdf, volume_pdf](
                UInt emitter_id,
                Float3 point,
@@ -661,13 +696,22 @@ make_triangle_emitter_callable(
 }// namespace
 
 LightTreeCallables make_light_tree_callables(
-    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
-    auto surface_sample = make_sample_callable(scene, false);
-    auto volume_sample = make_sample_callable(scene, true);
-    auto surface_pdf = make_pdf_callable(scene, false);
-    auto volume_pdf = make_pdf_callable(scene, true);
+    const std::shared_ptr<LuisaSceneData> &scene,
+    bool allow_volume_origin) noexcept {
+    const auto surface_importance =
+        LightTreeImportanceComponent{scene, false};
+    const auto volume_importance =
+        LightTreeImportanceComponent{scene, true};
+    auto surface_sample = make_sample_callable(
+        scene, surface_importance, false);
+    auto volume_sample = make_sample_callable(
+        scene, volume_importance, true);
+    auto surface_pdf = make_pdf_callable(
+        scene, surface_importance, false);
+    auto volume_pdf = make_pdf_callable(
+        scene, volume_importance, true);
     auto forward_pdf = make_forward_pdf_callable(
-        surface_pdf, volume_pdf);
+        surface_pdf, volume_pdf, allow_volume_origin);
     return {
         .surface_sample = std::move(surface_sample),
         .volume_sample = std::move(volume_sample),

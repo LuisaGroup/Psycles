@@ -137,8 +137,8 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
     carries_light &= context.volume_bounds_bounce <= shadow_volume_bounds_max;
     $if(carries_light) {
       const auto has_remaining =
-          ordered_batch->count == static_cast<luisa::uint>(
-                                      shadow_intersection_batch_capacity);
+          ordered_batch->count ==
+          static_cast<luisa::uint>(shadow_intersection_batch_capacity);
       $if(has_remaining) {
         task.ray_minimum = surface_ray::intersection_t_offset(last_distance);
         continue_shadow = true;

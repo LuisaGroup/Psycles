@@ -26,19 +26,35 @@ void require(bool condition, const char *message) {
 
 void require_words(std::span<const std::uint32_t> actual,
                    std::span<const std::uint32_t> expected,
-                   std::string_view label) {
+                   std::string_view label,
+                   std::size_t float_ulp_begin = 0u,
+                   std::size_t float_ulp_end = 0u,
+                   std::uint32_t max_ulps = 0u) {
   if (actual.size() != expected.size()) {
     std::cerr << label << " word count differs from Cycles 5.2.1: got "
               << actual.size() << ", expected " << expected.size() << '\n';
     std::exit(EXIT_FAILURE);
   }
   for (auto index = std::size_t{}; index < actual.size(); ++index) {
-    if (actual[index] != expected[index]) {
-      std::cerr << label << " differs at word " << index << ": got 0x"
-                << std::hex << actual[index] << ", expected 0x"
-                << expected[index] << std::dec << '\n';
-      std::exit(EXIT_FAILURE);
+    if (actual[index] == expected[index]) {
+      continue;
     }
+    if (index >= float_ulp_begin && index < float_ulp_end &&
+        ((actual[index] ^ expected[index]) & 0x80000000u) == 0u &&
+        (actual[index] & 0x7f800000u) != 0x7f800000u &&
+        (expected[index] & 0x7f800000u) != 0x7f800000u) {
+      const auto ulp_diff =
+          actual[index] > expected[index]
+              ? actual[index] - expected[index]
+              : expected[index] - actual[index];
+      if (ulp_diff <= max_ulps) {
+        continue;
+      }
+    }
+    std::cerr << label << " differs at word " << index << ": got 0x"
+              << std::hex << actual[index] << ", expected 0x"
+              << expected[index] << std::dec << '\n';
+    std::exit(EXIT_FAILURE);
   }
 }
 
@@ -210,8 +226,10 @@ void test_texture_mapping_streams_match_cycles_5_2_1() {
     const auto jump_size = std::size_t{4u};
     require(image.words.size() == jump_size + item.cycles_surface_words.size(),
             "TextureMapping local stream size differs from Cycles");
+    // Words [5, 17) hold the 3x4 PackedTransform floats computed on the host;
+    // allow up to 4 ULPs for arm64 hardware FMA contraction vs x86_64.
     require_words(std::span{image.words}.subspan(jump_size),
-                  item.cycles_surface_words, item.vector_type);
+                  item.cycles_surface_words, item.vector_type, 5u, 17u, 4u);
     require(image.node_types_used[NODE_TEXTURE_MAPPING] &&
                 !image.node_types_used[NODE_MAPPING],
             "legacy TextureMapping compiled as an authored Mapping node");

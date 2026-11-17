@@ -291,6 +291,29 @@ class DiffuseBsdfNode final : public BsdfNode {
 public:
   DiffuseBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_DIFFUSE_ID} {}
 
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(CLOSURE_BSDF_DIFFUSE_ID);
+    const auto roughness =
+        literal<float>(input("Roughness"), contract::SocketType::floating);
+    if (roughness && std::isfinite(*roughness)) {
+      if (*roughness < 1.0e-5f) {
+        usage.diffuse_node_mask = ClosureUsage::diffuse_lambertian;
+        usage.surface_closure_mask = ClosureUsage::bit(CLOSURE_BSDF_DIFFUSE_ID);
+      } else {
+        usage.diffuse_node_mask = ClosureUsage::diffuse_oren_nayar;
+        usage.surface_closure_mask =
+            ClosureUsage::bit(CLOSURE_BSDF_OREN_NAYAR_ID);
+      }
+    } else {
+      usage.diffuse_node_mask = ClosureUsage::diffuse_all;
+      usage.surface_closure_mask = ClosureUsage::bit(CLOSURE_BSDF_DIFFUSE_ID) |
+                                   ClosureUsage::bit(CLOSURE_BSDF_OREN_NAYAR_ID);
+    }
+    return usage;
+  }
+
   void compile(SVMCompiler &compiler) override {
     compile_bsdf(
         compiler,
@@ -307,6 +330,14 @@ class TranslucentBsdfNode final : public BsdfNode {
 public:
   TranslucentBsdfNode() noexcept
       : BsdfNode{CLOSURE_BSDF_TRANSLUCENT_ID} {}
+
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(CLOSURE_BSDF_TRANSLUCENT_ID);
+    usage.surface_closure_mask = ClosureUsage::bit(CLOSURE_BSDF_TRANSLUCENT_ID);
+    return usage;
+  }
 
   void compile(SVMCompiler &compiler) override {
     compile_bsdf(
@@ -327,6 +358,14 @@ public:
     return true;
   }
 
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(CLOSURE_BSDF_TRANSPARENT_ID);
+    usage.surface_closure_mask = ClosureUsage::bit(CLOSURE_BSDF_TRANSPARENT_ID);
+    return usage;
+  }
+
   void compile(SVMCompiler &compiler) override {
     compile_bsdf(compiler, SVMNodeSimpleBsdfData{});
   }
@@ -338,6 +377,18 @@ public:
 
   [[nodiscard]] ClosureType get_closure_type() const noexcept override {
     return sheen_distribution(this).value_or(CLOSURE_NONE_ID);
+  }
+
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    const auto distribution = sheen_distribution(this);
+    if (!distribution) {
+      return ClosureUsage{};
+    }
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(*distribution);
+    usage.surface_closure_mask = ClosureUsage::bit(*distribution);
+    return usage;
   }
 
   void compile(SVMCompiler &compiler) override {
@@ -357,6 +408,22 @@ public:
 class ToonBsdfNode final : public BsdfNode {
 public:
   ToonBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_DIFFUSE_TOON_ID} {}
+
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return toon_component(this).value_or(CLOSURE_NONE_ID);
+  }
+
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    const auto component = toon_component(this);
+    if (!component) {
+      return ClosureUsage{};
+    }
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(*component);
+    usage.surface_closure_mask = ClosureUsage::bit(*component);
+    return usage;
+  }
 
   void compile(SVMCompiler &compiler) override {
     const auto component = toon_component(this);
@@ -385,6 +452,14 @@ public:
     return true;
   }
 
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(CLOSURE_BSDF_RAY_PORTAL_ID);
+    usage.surface_closure_mask = ClosureUsage::bit(CLOSURE_BSDF_RAY_PORTAL_ID);
+    return usage;
+  }
+
   void compile(SVMCompiler &compiler) override {
     compile_bsdf(
         compiler, CLOSURE_BSDF_RAY_PORTAL_ID,
@@ -401,6 +476,18 @@ public:
 
   [[nodiscard]] ClosureType get_closure_type() const noexcept override {
     return hair_component(this).value_or(CLOSURE_NONE_ID);
+  }
+
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    const auto component = hair_component(this);
+    if (!component) {
+      return ClosureUsage{};
+    }
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(*component);
+    usage.surface_closure_mask = ClosureUsage::bit(*component);
+    return usage;
   }
 
   void compile(SVMCompiler &compiler) override {
@@ -427,6 +514,24 @@ public:
 
   [[nodiscard]] ClosureType get_closure_type() const noexcept override {
     return glass_distribution(this).value_or(CLOSURE_NONE_ID);
+  }
+
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    const auto distribution = glass_distribution(this);
+    if (!distribution) {
+      return ClosureUsage{};
+    }
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(*distribution);
+    usage.surface_closure_mask = ClosureUsage::bit(
+        *distribution == CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID
+            ? CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID
+            : CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID);
+    usage.microfacet_fresnel_mask =
+        ClosureUsage::fresnel_generalized_schlick |
+        ClosureUsage::fresnel_custom_generalized_schlick;
+    return usage;
   }
 
   void compile(SVMCompiler &compiler) override {
@@ -463,6 +568,35 @@ public:
 
   [[nodiscard]] ClosureType get_closure_type() const noexcept override {
     return glossy_distribution(this).value_or(CLOSURE_NONE_ID);
+  }
+
+  [[nodiscard]] std::uint32_t
+  get_surface_closure_slots() const noexcept override {
+    return glossy_distribution(this).has_value() ? 1u : 0u;
+  }
+
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    const auto distribution = glossy_distribution(this);
+    if (!distribution) {
+      return ClosureUsage{};
+    }
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(*distribution);
+    if (*distribution == CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID) {
+      usage.surface_closure_mask =
+          ClosureUsage::bit(CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID);
+    } else {
+      usage.surface_closure_mask = ClosureUsage::bit(
+          *distribution == CLOSURE_BSDF_MICROFACET_BECKMANN_ID
+              ? CLOSURE_BSDF_MICROFACET_BECKMANN_ID
+              : CLOSURE_BSDF_MICROFACET_GGX_ID);
+      usage.microfacet_fresnel_mask = ClosureUsage::fresnel_none;
+      if (!is_isotropic()) {
+        usage.microfacet_fresnel_mask |= ClosureUsage::fresnel_anisotropic;
+      }
+    }
+    return usage;
   }
 
   [[nodiscard]] bool has_attribute_dependency() const noexcept override {
@@ -517,6 +651,19 @@ public:
     return refraction_distribution(this).value_or(CLOSURE_NONE_ID);
   }
 
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    const auto distribution = refraction_distribution(this);
+    if (!distribution) {
+      return ClosureUsage{};
+    }
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(*distribution);
+    usage.surface_closure_mask = ClosureUsage::bit(*distribution);
+    usage.microfacet_fresnel_mask = ClosureUsage::fresnel_none;
+    return usage;
+  }
+
   void compile(SVMCompiler &compiler) override {
     const auto distribution = refraction_distribution(this);
     if (!distribution) {
@@ -544,6 +691,30 @@ private:
 
 public:
   MetallicBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_PHYSICAL_CONDUCTOR} {}
+
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    const auto distribution = metallic_distribution(this);
+    const auto fresnel_type = metallic_fresnel_type(this);
+    if (!distribution || !fresnel_type) {
+      return ClosureUsage{};
+    }
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(*fresnel_type);
+    usage.surface_closure_mask = ClosureUsage::bit(
+        *distribution == CLOSURE_BSDF_MICROFACET_BECKMANN_ID
+            ? CLOSURE_BSDF_MICROFACET_BECKMANN_ID
+            : CLOSURE_BSDF_MICROFACET_GGX_ID);
+    usage.microfacet_fresnel_mask =
+        ClosureUsage::fresnel_none |
+        (*fresnel_type == CLOSURE_BSDF_PHYSICAL_CONDUCTOR
+             ? ClosureUsage::fresnel_conductor
+             : ClosureUsage::fresnel_f82_tint);
+    if (!is_isotropic()) {
+      usage.microfacet_fresnel_mask |= ClosureUsage::fresnel_anisotropic;
+    }
+    return usage;
+  }
 
   [[nodiscard]] bool has_attribute_dependency() const noexcept override {
     return true;
@@ -605,6 +776,19 @@ public:
 
   [[nodiscard]] ClosureType get_closure_type() const noexcept override {
     return subsurface_method(this, "Method").value_or(CLOSURE_NONE_ID);
+  }
+
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    const auto method = subsurface_method(this, "Method");
+    if (!method) {
+      return ClosureUsage{};
+    }
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(*method);
+    usage.surface_closure_mask =
+        ClosureUsage::bit(*method) | ClosureUsage::bit(CLOSURE_BSDF_DIFFUSE_ID);
+    return usage;
   }
 
   [[nodiscard]] bool has_surface_bssrdf() const noexcept override {
@@ -698,7 +882,288 @@ private:
     return scale == nullptr || scale->link != nullptr || !value || *value != 0.0f;
   }
 
+  [[nodiscard]] bool has_positive_weight(std::string_view name) const noexcept {
+    const auto *weight = input(name);
+    if (weight == nullptr || weight->link != nullptr) {
+      return true;
+    }
+    const auto value = literal<float>(weight, contract::SocketType::floating);
+    return !value || !std::isfinite(*value) || *value > CLOSURE_WEIGHT_CUTOFF;
+  }
+
+  [[nodiscard]] bool is_always_unit_weight(
+      std::string_view name) const noexcept {
+    const auto *weight = input(name);
+    if (weight == nullptr || weight->link != nullptr) {
+      return false;
+    }
+    const auto value = literal<float>(weight, contract::SocketType::floating);
+    return value && std::isfinite(*value) && *value >= 1.0f;
+  }
+
+  [[nodiscard]] bool thin_wall_possible() const noexcept {
+    const auto *socket = input("ThinWall");
+    return socket == nullptr || socket->link != nullptr || thin_wall();
+  }
+
+  [[nodiscard]] bool alpha_may_be_transparent() const noexcept {
+    const auto *alpha = input("Alpha");
+    if (alpha == nullptr || alpha->link != nullptr) {
+      return true;
+    }
+    const auto value = literal<float>(alpha, contract::SocketType::floating);
+    return !value || !std::isfinite(*value) || *value < 1.0f;
+  }
+
+  [[nodiscard]] bool thin_film_possible() const noexcept {
+    const auto *thickness = input("ThinFilmThickness");
+    if (thickness == nullptr || thickness->link != nullptr) {
+      return true;
+    }
+    const auto value =
+        literal<float>(thickness, contract::SocketType::floating);
+    return !value || !std::isfinite(*value) ||
+           *value > THINFILM_THICKNESS_CUTOFF;
+  }
+
+  [[nodiscard]] bool anisotropic_possible() const noexcept {
+    const auto *anisotropic = input("Anisotropic");
+    if (anisotropic == nullptr || anisotropic->link != nullptr) {
+      return true;
+    }
+    const auto value =
+        literal<float>(anisotropic, contract::SocketType::floating);
+    return !value || !std::isfinite(*value) || *value > 0.0f;
+  }
+
+  [[nodiscard]] bool diffuse_oren_nayar_possible() const noexcept {
+    const auto *roughness = input("DiffuseRoughness");
+    if (roughness == nullptr || roughness->link != nullptr) {
+      return true;
+    }
+    const auto value =
+        literal<float>(roughness, contract::SocketType::floating);
+    return !value || !std::isfinite(*value) || *value >= 1.0e-5f;
+  }
+
+  [[nodiscard]] bool emission_possible() const noexcept {
+    const auto *color = input("EmissionColor");
+    const auto *strength = input("EmissionStrength");
+    const auto color_value =
+        literal<Vec3f>(color, contract::SocketType::color);
+    const auto strength_value =
+        literal<float>(strength, contract::SocketType::floating);
+    const auto color_zero =
+        color != nullptr && color->link == nullptr && color_value &&
+        color_value->x == 0.0f && color_value->y == 0.0f &&
+        color_value->z == 0.0f;
+    const auto strength_zero =
+        strength != nullptr && strength->link == nullptr && strength_value &&
+        *strength_value == 0.0f;
+    return !color_zero && !strength_zero;
+  }
+
 public:
+  [[nodiscard]] std::uint32_t
+  get_surface_closure_slots() const noexcept override {
+    auto slots = std::uint32_t{};
+    if (alpha_may_be_transparent()) {
+      slots += 1u;
+    }
+    if (has_positive_weight("SheenWeight")) {
+      slots += 1u;
+    }
+    if (has_positive_weight("CoatWeight")) {
+      slots += 1u;
+    }
+    const auto full_metallic = is_always_unit_weight("Metallic");
+    if (has_positive_weight("Metallic")) {
+      slots += 2u;
+    }
+    if (!full_metallic) {
+      const auto full_transmission =
+          is_always_unit_weight("TransmissionWeight");
+      if (has_positive_weight("TransmissionWeight")) {
+        slots += 2u;
+      }
+      if (!full_transmission) {
+        slots += 2u; // Specular (ordinary + Generalized Schlick extra)
+        const auto full_subsurface = is_always_unit_weight("SubsurfaceWeight");
+        if (has_positive_weight("SubsurfaceWeight") &&
+            (has_surface_bssrdf() || thin_wall_possible())) {
+          slots += 2u;
+        }
+        if (!full_subsurface) {
+          slots += 1u;
+        }
+      }
+    }
+    return std::clamp(slots, 1u, 12u);
+  }
+
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    const auto distribution = principled_distribution(this);
+    const auto method = subsurface_method(this, "SubsurfaceMethod");
+    if (!distribution || !method) {
+      return ClosureUsage{};
+    }
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(CLOSURE_BSDF_PRINCIPLED_ID);
+    if (*distribution == CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID) {
+      usage.principled_mask |= ClosureUsage::principled_multi_ggx;
+    } else {
+      usage.principled_mask |= ClosureUsage::principled_single_ggx;
+    }
+
+    const auto is_nonunit_color = [this](std::string_view name) noexcept {
+      const auto *s = input(name);
+      if (s == nullptr || s->link != nullptr) {
+        return true;
+      }
+      const auto v = literal<Vec3f>(s, contract::SocketType::color);
+      return !v || !std::isfinite(v->x) || !std::isfinite(v->y) ||
+             !std::isfinite(v->z) || v->x != 1.0f || v->y != 1.0f ||
+             v->z != 1.0f;
+    };
+    const auto is_nonhalf_float = [this](std::string_view name) noexcept {
+      const auto *s = input(name);
+      if (s == nullptr || s->link != nullptr) {
+        return true;
+      }
+      const auto v = literal<float>(s, contract::SocketType::floating);
+      return !v || !std::isfinite(*v) || *v != 0.5f;
+    };
+    const auto *coat_normal_in = input("CoatNormal");
+    const bool has_coat_normal =
+        coat_normal_in != nullptr && coat_normal_in->link != nullptr;
+
+    if (alpha_may_be_transparent()) {
+      usage.principled_mask |= ClosureUsage::principled_alpha;
+      usage.surface_closure_mask |=
+          ClosureUsage::bit(CLOSURE_BSDF_TRANSPARENT_ID);
+    }
+    if (has_positive_weight("SheenWeight")) {
+      usage.principled_mask |= ClosureUsage::principled_sheen;
+      usage.surface_closure_mask |= ClosureUsage::bit(CLOSURE_BSDF_SHEEN_ID);
+      if (has_coat_normal && has_positive_weight("CoatWeight")) {
+        usage.principled_mask |= ClosureUsage::principled_coat_normal;
+      }
+    }
+    if (has_positive_weight("CoatWeight")) {
+      usage.principled_mask |= ClosureUsage::principled_coat;
+      usage.surface_closure_mask |=
+          ClosureUsage::bit(CLOSURE_BSDF_MICROFACET_GGX_ID);
+      usage.microfacet_fresnel_mask |= ClosureUsage::fresnel_dielectric;
+      if (is_nonunit_color("CoatTint")) {
+        usage.principled_mask |= ClosureUsage::principled_coat_tint;
+      }
+      if (has_coat_normal) {
+        usage.principled_mask |= ClosureUsage::principled_coat_normal;
+      }
+    }
+    if (emission_possible()) {
+      usage.principled_mask |= ClosureUsage::principled_emission;
+    }
+    if (anisotropic_possible()) {
+      usage.principled_mask |= ClosureUsage::principled_anisotropic;
+      usage.microfacet_fresnel_mask |= ClosureUsage::fresnel_anisotropic;
+    }
+    if (thin_film_possible()) {
+      usage.principled_mask |= ClosureUsage::principled_thin_film;
+    }
+    if (is_nonhalf_float("SpecularIORLevel")) {
+      usage.principled_mask |= ClosureUsage::principled_nondefault_specular_ior;
+    }
+    if (is_nonunit_color("SpecularTint")) {
+      usage.principled_mask |= ClosureUsage::principled_specular_tint;
+    }
+
+    const auto full_metallic = is_always_unit_weight("Metallic");
+    if (has_positive_weight("Metallic")) {
+      usage.principled_mask |= ClosureUsage::principled_metallic;
+      usage.surface_closure_mask |=
+          ClosureUsage::bit(CLOSURE_BSDF_MICROFACET_GGX_ID);
+      usage.microfacet_fresnel_mask |= ClosureUsage::fresnel_f82_tint;
+    }
+
+    const auto may_thin_wall = thin_wall_possible();
+    if (may_thin_wall) {
+      usage.principled_mask |= ClosureUsage::principled_thin_wall;
+    }
+
+    if (!full_metallic) {
+      const auto full_transmission =
+          is_always_unit_weight("TransmissionWeight");
+      if (has_positive_weight("TransmissionWeight")) {
+        usage.principled_mask |= ClosureUsage::principled_transmission;
+        if (may_thin_wall) {
+          usage.surface_closure_mask |=
+              ClosureUsage::bit(CLOSURE_BSDF_MICROFACET_GGX_ID) |
+              ClosureUsage::bit(CLOSURE_BSDF_THIN_GLASS_TRANSMISSION_ID) |
+              ClosureUsage::bit(CLOSURE_BSDF_TRANSPARENT_ID);
+          usage.microfacet_fresnel_mask |= ClosureUsage::fresnel_none;
+        }
+        if (!thin_wall()) {
+          usage.surface_closure_mask |=
+              ClosureUsage::bit(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID);
+          usage.microfacet_fresnel_mask |=
+              ClosureUsage::fresnel_generalized_schlick |
+              ClosureUsage::fresnel_custom_generalized_schlick;
+        }
+      }
+
+      if (!full_transmission) {
+        // Specular
+        usage.surface_closure_mask |=
+            ClosureUsage::bit(CLOSURE_BSDF_MICROFACET_GGX_ID);
+        usage.microfacet_fresnel_mask |=
+            ClosureUsage::fresnel_generalized_schlick;
+
+        const auto oren_nayar = diffuse_oren_nayar_possible();
+        if (oren_nayar) {
+          usage.principled_mask |= ClosureUsage::principled_oren_nayar;
+        }
+
+        const auto full_subsurface = is_always_unit_weight("SubsurfaceWeight");
+        if (has_positive_weight("SubsurfaceWeight")) {
+          usage.principled_mask |= ClosureUsage::principled_subsurface;
+          if (has_surface_bssrdf()) {
+            usage.surface_closure_mask |=
+                ClosureUsage::bit(*method) |
+                ClosureUsage::bit(CLOSURE_BSDF_DIFFUSE_ID);
+          }
+          if (may_thin_wall) {
+            usage.surface_closure_mask |=
+                ClosureUsage::bit(CLOSURE_BSDF_DIFFUSE_ID) |
+                ClosureUsage::bit(CLOSURE_BSDF_TRANSLUCENT_ID);
+            if (oren_nayar) {
+              usage.surface_closure_mask |=
+                  ClosureUsage::bit(CLOSURE_BSDF_OREN_NAYAR_ID) |
+                  ClosureUsage::bit(CLOSURE_BSDF_ROUGH_TRANSLUCENT_ID);
+            }
+          }
+        }
+
+        if (!full_subsurface) {
+          const auto *roughness = input("DiffuseRoughness");
+          const auto roughness_val =
+              literal<float>(roughness, contract::SocketType::floating);
+          if (!roughness_val || !std::isfinite(*roughness_val) ||
+              *roughness_val < 1.0e-5f) {
+            usage.surface_closure_mask |=
+                ClosureUsage::bit(CLOSURE_BSDF_DIFFUSE_ID);
+          }
+          if (oren_nayar) {
+            usage.surface_closure_mask |=
+                ClosureUsage::bit(CLOSURE_BSDF_OREN_NAYAR_ID);
+          }
+        }
+      }
+    }
+    return usage;
+  }
+
   [[nodiscard]] std::uint32_t get_feature() const noexcept override {
     return GraphNode::get_feature() | kernel_feature_node_bsdf;
   }
@@ -878,6 +1343,12 @@ class HoldoutNode final : public GraphNode {
 public:
   [[nodiscard]] ClosureType get_closure_type() const noexcept override {
     return CLOSURE_HOLDOUT_ID;
+  }
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    auto usage = ClosureUsage::none();
+    usage.surface_closure_mask = ClosureUsage::bit(CLOSURE_HOLDOUT_ID);
+    return usage;
   }
   [[nodiscard]] bool is_linear_operation() const noexcept override { return true; }
   void compile(SVMCompiler &compiler) override {

@@ -10,60 +10,60 @@
 
 namespace psycles::luisa_backend::detail {
 
-Var<ShadowShaderContextCall> make_shadow_shader_context(
-    const Var<ShaderEvaluationStateCall> &path, Expr<float> time,
-    Expr<luisa::uint> sample, Expr<luisa::uint> rng_hash,
-    Expr<luisa::uint> rng_offset,
-    Expr<luisa::uint> volume_bounds_bounce) noexcept {
-    Var<ShadowShaderContextCall> result;
-    result.path = path;
-    result.ray_time = time;
-    result.sample_index = sample;
-    result.rng_hash = rng_hash;
-    result.rng_offset = rng_offset;
-    result.volume_bounds_bounce = volume_bounds_bounce;
-    return result;
+Var<ShadowShaderContextCall>
+make_shadow_shader_context(const Var<ShaderEvaluationStateCall> &path,
+                           Expr<float> time, Expr<luisa::uint> sample,
+                           Expr<luisa::uint> rng_hash,
+                           Expr<luisa::uint> rng_offset,
+                           Expr<luisa::uint> volume_bounds_bounce) noexcept {
+  Var<ShadowShaderContextCall> result;
+  result.path = path;
+  result.ray_time = time;
+  result.sample_index = sample;
+  result.rng_hash = rng_hash;
+  result.rng_offset = rng_offset;
+  result.volume_bounds_bounce = volume_bounds_bounce;
+  return result;
 }
 
 Bool advance_shadow_surface_state(
     Var<ShadowShaderContextCall> &context, Float3 &throughput,
     const Var<ShadowSurfaceEvaluationCall> &surface) noexcept {
-    // These three fields are uint16_t in Cycles' shadow_state_template.h.
-    context.volume_bounds_bounce =
-        (context.volume_bounds_bounce + surface.volume_boundary) & 0xffffu;
-    const auto next = throughput * surface.transmittance;
-    const auto nonzero = any(next != 0.0f);
-    $if(nonzero) {
-        throughput = next;
-        context.path.transparent_depth =
-            (context.path.transparent_depth + 1u) & 0xffffu;
-        context.rng_offset =
-            (context.rng_offset + cycles_path_state::bounce_dimension_count) &
-            0xffffu;
-    };
-    return nonzero &
-           (context.volume_bounds_bounce <= shadow_volume_bounds_max);
+  // These three fields are uint16_t in Cycles' shadow_state_template.h.
+  context.volume_bounds_bounce =
+      (context.volume_bounds_bounce + surface.volume_boundary) & 0xffffu;
+  const auto next = throughput * surface.transmittance;
+  const auto nonzero = any(next != 0.0f);
+  $if(nonzero) {
+    throughput = next;
+    context.path.transparent_depth =
+        (context.path.transparent_depth + 1u) & 0xffffu;
+    context.rng_offset =
+        (context.rng_offset + cycles_path_state::bounce_dimension_count) &
+        0xffffu;
+  };
+  return nonzero & (context.volume_bounds_bounce <= shadow_volume_bounds_max);
 }
 
 void sort_shadow_intersection_batch(
     Var<ShadowIntersectionBatchCall> &batch) noexcept {
-    const auto compare_exchange =
-        [&batch](luisa::uint left, luisa::uint right) noexcept {
-            auto &a = batch->hits[left];
-            auto &b = batch->hits[right];
-            $if(a->distance > b->distance) {
-                const auto temporary = def(a);
-                a = b;
-                b = temporary;
-            };
-        };
-    // Optimal sorting network for four values. Inactive lanes are initialized
-    // to ray.t_max, so the same network places them after every active hit.
-    compare_exchange(0u, 1u);
-    compare_exchange(2u, 3u);
-    compare_exchange(0u, 2u);
-    compare_exchange(1u, 3u);
-    compare_exchange(1u, 2u);
+  const auto compare_exchange = [&batch](luisa::uint left,
+                                         luisa::uint right) noexcept {
+    auto &a = batch->hits[left];
+    auto &b = batch->hits[right];
+    $if(a->distance > b->distance) {
+      const auto temporary = def(a);
+      a = b;
+      b = temporary;
+    };
+  };
+  // Optimal sorting network for four values. Inactive lanes are initialized
+  // to ray.t_max, so the same network places them after every active hit.
+  compare_exchange(0u, 1u);
+  compare_exchange(2u, 3u);
+  compare_exchange(0u, 2u);
+  compare_exchange(1u, 3u);
+  compare_exchange(1u, 2u);
 }
 
 ShadowIntersectionComponent::ShadowIntersectionComponent(
@@ -74,40 +74,38 @@ ShadowIntersectionComponent::ShadowIntersectionComponent(
     std::shared_ptr<const ShadowIntersectionBatchStorage> storage,
     IntersectShadowCallable intersect) noexcept
     : _storage{std::move(storage)}, _intersect{std::move(intersect)} {
-    LUISA_ASSERT(_storage != nullptr,
-                 "Stored shadow intersection component requires storage.");
+  LUISA_ASSERT(_storage != nullptr,
+               "Stored shadow intersection component requires storage.");
 }
 
 Var<ShadowIntersectionBatchCall> ShadowIntersectionComponent::collect(
-    Var<luisa::compute::Ray> shadow_ray,
-    Expr<std::uint32_t> source_object,
-    Expr<std::uint32_t> source_primitive,
-    Expr<std::uint32_t> light_object,
+    Var<luisa::compute::Ray> shadow_ray, Expr<std::uint32_t> source_object,
+    Expr<std::uint32_t> source_primitive, Expr<std::uint32_t> light_object,
     Expr<std::uint32_t> light_primitive,
     Expr<std::uint32_t> transparent_maximum,
     Expr<std::uint32_t> storage_capacity,
     Expr<std::uint32_t> storage_block_size) const noexcept {
-    if (!_storage) {
-        return std::get<LocalShadowIntersectionCallable>(_intersect)(
-            shadow_ray, source_object, source_primitive, light_object,
-            light_primitive, transparent_maximum);
-    }
-    // The outer kernel owns launch geometry. Its explicit runtime stride makes
-    // this map injective over physical lanes; the callable receives the
-    // already-proved storage identity and cannot inspect launch metadata.
-    const auto invocation = shadow_storage_invocation(storage_block_size);
-    const auto summary = std::get<IntersectShadowCallable>(_intersect)(
+  if (!_storage) {
+    return std::get<LocalShadowIntersectionCallable>(_intersect)(
         shadow_ray, source_object, source_primitive, light_object,
-        light_primitive, transparent_maximum, invocation, storage_capacity);
-    return _storage->materialize(invocation, summary, shadow_ray->t_max(),
-                                 storage_capacity);
+        light_primitive, transparent_maximum);
+  }
+  // The outer kernel owns launch geometry. Its explicit runtime stride makes
+  // this map injective over physical lanes; the callable receives the
+  // already-proved storage identity and cannot inspect launch metadata.
+  const auto invocation = shadow_storage_invocation(storage_block_size);
+  const auto summary = std::get<IntersectShadowCallable>(_intersect)(
+      shadow_ray, source_object, source_primitive, light_object,
+      light_primitive, transparent_maximum, invocation, storage_capacity);
+  return _storage->materialize(invocation, summary, shadow_ray->t_max(),
+                               storage_capacity);
 }
 
 const IntersectShadowCallable &
 ShadowIntersectionComponent::summary_callable() const noexcept {
-    LUISA_ASSERT(_storage != nullptr,
-                 "Local shadow traversal does not have a summary callable.");
-    return std::get<IntersectShadowCallable>(_intersect);
+  LUISA_ASSERT(_storage != nullptr,
+               "Local shadow traversal does not have a summary callable.");
+  return std::get<IntersectShadowCallable>(_intersect);
 }
 
 namespace {
@@ -115,79 +113,77 @@ namespace {
 [[nodiscard]] EvaluateShadowSurfaceCallable
 make_evaluate_shadow_surface_callable(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
-    if (!scene->geometries.empty() || !scene->curve_geometries.empty()) {
-        return make_cycles_svm_shadow_surface_callable(scene);
-    }
-    return [](Var<luisa::compute::Ray>, Var<ShadowIntersectionCall>,
-              Float, Float, Var<ShadowShaderContextCall>,
-              Var<RenderKernelParameters>) noexcept {
+  if (!scene->geometries.empty() || !scene->curve_geometries.empty()) {
+    return make_cycles_svm_shadow_surface_callable(scene);
+  }
+  return
+      [](Var<luisa::compute::Ray>, Var<ShadowIntersectionCall>, Float, Float,
+         Var<ShadowShaderContextCall>, Var<RenderKernelParameters>) noexcept {
         Var<ShadowSurfaceEvaluationCall> result;
         result.transmittance = make_float3(1.0f);
-        result.object = result.primitive = result.kind = surface_ray::invalid_primitive;
+        result.object = result.primitive = result.kind =
+            surface_ray::invalid_primitive;
         return result;
-    };
+      };
 }
 
 } // namespace
 
-std::shared_ptr<const ShadowIntersectionComponent> make_shadow_intersection_component(
+std::shared_ptr<const ShadowIntersectionComponent>
+make_shadow_intersection_component(
     const std::shared_ptr<LuisaSceneData> &scene,
-    std::shared_ptr<const ShadowIntersectionBatchStorage> storage) noexcept {
-    const auto traversal =
-        make_scene_traversal_component(
-            make_scene_traversal_stage_plan(
-                scene->geometries.size(),
-                scene->curve_geometries.size()));
-    std::shared_ptr<const ShadowIntersectionComponent> intersection;
-    if (storage) {
-      auto captured_storage = storage;
-      IntersectShadowCallable intersect_summary =
-          [scene, traversal, captured_storage](
-              Var<luisa::compute::Ray> shadow_ray,
-              UInt source_object, UInt source_primitive,
-              UInt light_object, UInt light_primitive,
-              UInt transparent_maximum, UInt storage_invocation,
-              UInt storage_capacity) noexcept {
-            return traversal->collect_shadow_summary(
-                scene, shadow_ray, shadow_visibility,
-                {.object = source_object, .primitive = source_primitive},
-                {.object = light_object, .primitive = light_primitive},
-                transparent_maximum, *captured_storage, storage_invocation,
-                storage_capacity);
-          };
-      intersection =
-          std::make_shared<ShadowIntersectionComponent>(
-              std::move(storage), std::move(intersect_summary));
-    } else {
-      auto intersect_local = LocalShadowIntersectionCallable{
-          [scene, traversal](
-              Var<luisa::compute::Ray> shadow_ray,
-              UInt source_object, UInt source_primitive,
-              UInt light_object, UInt light_primitive,
-              UInt transparent_maximum) noexcept {
-            return traversal->collect_shadow(
-                scene, shadow_ray, shadow_visibility,
-                {.object = source_object, .primitive = source_primitive},
-                {.object = light_object, .primitive = light_primitive},
-                transparent_maximum);
-          }};
-      intersection = std::make_shared<ShadowIntersectionComponent>(
-          std::move(intersect_local));
-    }
-    return intersection;
+    std::shared_ptr<const ShadowIntersectionBatchStorage> storage,
+    std::uint32_t max_transparent_bounces) noexcept {
+  const auto traversal =
+      make_scene_traversal_component(make_scene_traversal_stage_plan(
+          scene->geometries.size(), scene->curve_geometries.size()));
+  std::shared_ptr<const ShadowIntersectionComponent> intersection;
+  if (storage) {
+    auto captured_storage = storage;
+    IntersectShadowCallable intersect_summary =
+        [scene, traversal, captured_storage, max_transparent_bounces](
+            Var<luisa::compute::Ray> shadow_ray, UInt source_object,
+            UInt source_primitive, UInt light_object, UInt light_primitive,
+            UInt transparent_maximum, UInt storage_invocation,
+            UInt storage_capacity) noexcept {
+          return traversal->collect_shadow_summary(
+              scene, shadow_ray, shadow_visibility,
+              {.object = source_object, .primitive = source_primitive},
+              {.object = light_object, .primitive = light_primitive},
+              transparent_maximum, *captured_storage, storage_invocation,
+              storage_capacity, max_transparent_bounces);
+        };
+    intersection = std::make_shared<ShadowIntersectionComponent>(
+        std::move(storage), std::move(intersect_summary));
+  } else {
+    auto intersect_local = LocalShadowIntersectionCallable{
+        [scene, traversal](Var<luisa::compute::Ray> shadow_ray,
+                           UInt source_object, UInt source_primitive,
+                           UInt light_object, UInt light_primitive,
+                           UInt transparent_maximum) noexcept {
+          return traversal->collect_shadow(
+              scene, shadow_ray, shadow_visibility,
+              {.object = source_object, .primitive = source_primitive},
+              {.object = light_object, .primitive = light_primitive},
+              transparent_maximum);
+        }};
+    intersection = std::make_shared<ShadowIntersectionComponent>(
+        std::move(intersect_local));
+  }
+  return intersection;
 }
 
 ShadowTraceCallables make_shadow_trace_callables(
-    const std::shared_ptr<LuisaSceneData> &scene,
-    const SafeNormalizeCallable &,
+    const std::shared_ptr<LuisaSceneData> &scene, const SafeNormalizeCallable &,
     std::shared_ptr<const ShadowIntersectionBatchStorage> storage) noexcept {
-    auto intersection = make_shadow_intersection_component(scene, std::move(storage));
-    auto evaluate_shadow_surface = make_evaluate_shadow_surface_callable(scene);
-    auto trace_shadow =
-        make_fused_shadow_trace_callable(intersection, evaluate_shadow_surface);
-    return {.intersect = std::move(intersection),
-            .shade_surface = std::move(evaluate_shadow_surface),
-            .trace = std::move(trace_shadow)};
+  auto intersection =
+      make_shadow_intersection_component(scene, std::move(storage));
+  auto evaluate_shadow_surface = make_evaluate_shadow_surface_callable(scene);
+  auto trace_shadow =
+      make_fused_shadow_trace_callable(intersection, evaluate_shadow_surface);
+  return {.intersect = std::move(intersection),
+          .shade_surface = std::move(evaluate_shadow_surface),
+          .trace = std::move(trace_shadow)};
 }
 
 TraceShadowCallable make_fused_shadow_trace_callable(

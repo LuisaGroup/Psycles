@@ -68,30 +68,58 @@ template<typename TextureHeap, typename ImageBindingBuffer>
     const TextureHeap &textures,
     const ImageBindingBuffer &bindings,
     luisa::compute::Expr<std::int32_t> image_id,
-    const Dual2 &uv) noexcept {
+    const Dual2 &uv,
+    bool has_bicubic = true,
+    bool has_load_failed = true,
+    bool contiguous_slots = false,
+    std::uint32_t base_slot = 0u,
+    std::uint32_t image_count = ~0u) noexcept {
   namespace scene_detail = ::psycles::luisa_backend::detail;
 
   // Original kernel/device/gpu/image.h: both an absent image handle and a
   // failed full-image load return before UV wrapping or any texture access.
   luisa::compute::Float4 result = luisa::compute::make_float4(1.0f, 0.0f, 1.0f, 1.0f);
+  if (!has_bicubic && !has_load_failed && contiguous_slots) {
+    if (image_count == 0u) {
+      return result;
+    }
+    $if((image_id >= 0) & (image_id < static_cast<std::int32_t>(image_count))) {
+      auto sample_uv = uv.val;
+      sample_uv.y = 1.0f - sample_uv.y;
+      const auto slot = base_slot + image_id.cast<std::uint32_t>();
+      result = textures->tex2d(slot).sample(sample_uv);
+    };
+    return result;
+  }
   $if(image_id != std::numeric_limits<std::int32_t>::max()) {
     const auto binding = bindings->read(image_id.cast<std::uint32_t>());
-    $if((binding.sampler & scene_detail::cycles_svm_image_load_failed_flag) == 0u) {
-      const luisa::compute::UInt interpolation =
-          binding.sampler & scene_detail::cycles_svm_image_interpolation_mask;
+    const auto sample_valid = [&]() noexcept {
       auto texture = textures->tex2d(binding.texture_slot);
       auto sample_uv = uv.val;
       sample_uv.y = 1.0f - sample_uv.y;
-      $if(interpolation == 2u) {
-        result = scene_detail::sample_cycles_texture_2d_bicubic(
-            texture, sample_uv,
-            [&](luisa::compute::Float u, luisa::compute::Float v) noexcept {
-              return texture.sample(luisa::compute::make_float2(u, v));
-            });
-      } $else {
+      if (has_bicubic) {
+        const luisa::compute::UInt interpolation =
+            binding.sampler & scene_detail::cycles_svm_image_interpolation_mask;
+        $if(interpolation == 2u) {
+          result = scene_detail::sample_cycles_texture_2d_bicubic(
+              texture, sample_uv,
+              [&](luisa::compute::Float u, luisa::compute::Float v) noexcept {
+                return texture.sample(luisa::compute::make_float2(u, v));
+              });
+        } $else {
+          result = texture.sample(sample_uv);
+        };
+      } else {
         result = texture.sample(sample_uv);
-      };
+      }
     };
+    if (has_load_failed) {
+      $if((binding.sampler & scene_detail::cycles_svm_image_load_failed_flag) == 0u) {
+        sample_valid();
+      };
+    } else {
+      sample_valid();
+    }
   };
   return result;
 }

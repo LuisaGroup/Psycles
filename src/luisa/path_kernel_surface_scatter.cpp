@@ -265,10 +265,12 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 surface_sample.evaluation.pdf,
                 previous_bsdf_pdf,
                 transparent);
-            minimum_bsdf_pdf = select(
-                min(minimum_bsdf_pdf, surface_sample.evaluation.pdf),
-                minimum_bsdf_pdf,
-                transparent);
+            if (config.has_filter_glossy || path_trace_enabled) {
+              minimum_bsdf_pdf = select(
+                  min(minimum_bsdf_pdf, surface_sample.evaluation.pdf),
+                  minimum_bsdf_pdf,
+                  transparent);
+            }
             previous_mis_origin_normal = select(
                 context.shading.shading_normal,
                 previous_mis_origin_normal,

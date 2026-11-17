@@ -354,69 +354,114 @@ using namespace compiler::cycles_svm;
 
 [[nodiscard]] Float3 svm_mix(UInt type, Float t,
                              Expr<luisa::float3> color1,
-                             Expr<luisa::float3> color2) noexcept {
+                             Expr<luisa::float3> color2,
+                             std::uint32_t blend_mask = ~0u) noexcept {
   Float3 result = make_float3(0.0f);
+  const auto has = [blend_mask](NodeMix mode) noexcept {
+    const auto bit = static_cast<std::uint32_t>(mode);
+    return bit >= 32u || (blend_mask & (1u << bit)) != 0u;
+  };
   $switch(type) {
-    $case(static_cast<std::uint32_t>(NODE_MIX_BLEND)) {
-      result = mix_blend(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_ADD)) {
-      result = mix_add(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_MUL)) {
-      result = mix_multiply(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_SCREEN)) {
-      result = mix_screen(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_OVERLAY)) {
-      result = mix_overlay(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_SUB)) {
-      result = mix_subtract(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_DIV)) {
-      result = mix_divide(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_DIFF)) {
-      result = mix_difference(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_EXCLUSION)) {
-      result = mix_exclusion(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_DARK)) {
-      result = mix_darken(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_LIGHT)) {
-      result = mix_lighten(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_DODGE)) {
-      result = mix_dodge(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_BURN)) {
-      result = mix_burn(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_HUE)) {
-      result = mix_hue(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_SAT)) {
-      result = mix_saturation(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_VAL)) {
-      result = mix_value(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_COL)) {
-      result = mix_color(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_SOFT)) {
-      result = mix_soft_light(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_LINEAR)) {
-      result = mix_linear_light(t, color1, color2);
-    };
-    $case(static_cast<std::uint32_t>(NODE_MIX_CLAMP)) {
-      result = luisa::compute::clamp(color1, 0.0f, 1.0f);
-    };
+    if (has(NODE_MIX_BLEND)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_BLEND)) {
+        result = mix_blend(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_ADD)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_ADD)) {
+        result = mix_add(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_MUL)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_MUL)) {
+        result = mix_multiply(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_SCREEN)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_SCREEN)) {
+        result = mix_screen(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_OVERLAY)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_OVERLAY)) {
+        result = mix_overlay(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_SUB)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_SUB)) {
+        result = mix_subtract(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_DIV)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_DIV)) {
+        result = mix_divide(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_DIFF)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_DIFF)) {
+        result = mix_difference(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_EXCLUSION)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_EXCLUSION)) {
+        result = mix_exclusion(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_DARK)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_DARK)) {
+        result = mix_darken(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_LIGHT)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_LIGHT)) {
+        result = mix_lighten(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_DODGE)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_DODGE)) {
+        result = mix_dodge(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_BURN)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_BURN)) {
+        result = mix_burn(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_HUE)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_HUE)) {
+        result = mix_hue(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_SAT)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_SAT)) {
+        result = mix_saturation(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_VAL)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_VAL)) {
+        result = mix_value(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_COL)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_COL)) {
+        result = mix_color(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_SOFT)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_SOFT)) {
+        result = mix_soft_light(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_LINEAR)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_LINEAR)) {
+        result = mix_linear_light(t, color1, color2);
+      };
+    }
+    if (has(NODE_MIX_CLAMP)) {
+      $case(static_cast<std::uint32_t>(NODE_MIX_CLAMP)) {
+        result = luisa::compute::clamp(color1, 0.0f, 1.0f);
+      };
+    }
     $default{};
   };
   return result;
@@ -424,8 +469,9 @@ using namespace compiler::cycles_svm;
 
 [[nodiscard]] Float3 svm_mix_clamped_factor(
     UInt type, Float t, Expr<luisa::float3> color1,
-    Expr<luisa::float3> color2) noexcept {
-  return svm_mix(type, luisa::compute::clamp(t, 0.0f, 1.0f), color1, color2);
+    Expr<luisa::float3> color2, std::uint32_t blend_mask = ~0u) noexcept {
+  return svm_mix(type, luisa::compute::clamp(t, 0.0f, 1.0f), color1, color2,
+                 blend_mask);
 }
 
 [[nodiscard]] Float3 gamma_color(Expr<luisa::float3> color_value,
@@ -545,7 +591,8 @@ void node_invert(Cursor &cursor, Stack &stack) noexcept {
   };
 }
 
-void node_mix(Cursor &cursor, Stack &stack) noexcept {
+void node_mix(Cursor &cursor, Stack &stack,
+              std::uint32_t blend_mask) noexcept {
   const auto mix_type = cursor.word();
   const auto color1_x = cursor.word();
   const auto color1_y = cursor.word();
@@ -562,11 +609,12 @@ void node_mix(Cursor &cursor, Stack &stack) noexcept {
   const Float3 color2 =
       stack_load_input_float3(stack, color2_x, color2_y, color2_z);
   const Float3 result =
-      svm_mix_clamped_factor(mix_type, factor, color1, color2);
+      svm_mix_clamped_factor(mix_type, factor, color1, color2, blend_mask);
   stack_store_float3(stack, output_offset, result);
 }
 
-void node_mix_color(Cursor &cursor, Stack &stack) noexcept {
+void node_mix_color(Cursor &cursor, Stack &stack,
+                    std::uint32_t blend_mask) noexcept {
   const auto blend_type = cursor.word();
   const auto a_x = cursor.word();
   const auto a_y = cursor.word();
@@ -586,7 +634,7 @@ void node_mix_color(Cursor &cursor, Stack &stack) noexcept {
   };
   const Float3 a = stack_load_input_float3(stack, a_x, a_y, a_z);
   const Float3 b = stack_load_input_float3(stack, b_x, b_y, b_z);
-  Float3 result = svm_mix(blend_type, t, a, b);
+  Float3 result = svm_mix(blend_type, t, a, b, blend_mask);
   $if (use_clamp_result != 0u) {
     result = luisa::compute::clamp(result, 0.0f, 1.0f);
   };

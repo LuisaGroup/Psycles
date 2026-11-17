@@ -46,6 +46,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     _total_aa_samples = 0u;
     _rendered_samples = 0u;
     _path_trace_delivered = false;
+    _last_render_timings.reset();
     _window = effective_window(settings);
     const auto count = std::max<std::size_t>(pixel_count(), 1u);
   _combined = _scene->device.create_buffer<luisa::float4>(count);
@@ -101,6 +102,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
       _scene->volume_metadata.has_volumes()
           ? std::make_unique<VolumeGuidingFilter>(_scene->device)
           : nullptr;
+  prepare_film_pass_accessor();
 
   auto scene = _scene;
   const auto render_settings = _settings;
@@ -290,7 +292,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
   auto light_transport = make_light_transport_callables(direct_light_sampling);
     auto light_distribution_sample_callable =
         make_light_distribution_sample_callable(scene);
-  auto light_tree_callables = make_light_tree_callables(scene);
+  auto light_tree_callables = make_light_tree_callables(
+      scene, scene->volume_metadata.stack_size != 0u);
 
   auto surface_callables = make_surface_callables(scene);
     auto shadow_trace_callables =
@@ -311,6 +314,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .use_light_tree = use_light_tree,
         .reflective_caustics = reflective_caustics,
         .refractive_caustics = refractive_caustics,
+        .has_filter_glossy = integrator.filter_glossy > 0.0f,
         .has_subsurface = scene->has_subsurface,
         .ambient_occlusion_bounce_approximation =
             integrator.ambient_occlusion_bounces != 0u,
@@ -321,6 +325,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             diagnostic_layout.surface_closure_count_histogram_base),
         .staged_surface_sorting = _options.staged_surface_sorting,
         .volume_stack_size = scene->volume_metadata.stack_size,
+        .transparent_max_bounces = transparent_max_bounces,
         .camera_may_be_inside_volume = camera_may_be_inside_volume,
         .volume_state = std::move(volume_state),
         .light_transport = std::move(light_transport),
@@ -337,6 +342,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
       _scene->device, kernel_config,
         PathKernelExecutorConfig{
             .scheduler = _options.scheduler,
+          .render_pixel_count = static_cast<std::uint32_t>(count),
           .wavefront_frame_capacity = wavefront_frame_capacity,
             .wavefront_execution_block_size =
                 _options.wavefront_execution_block_size,

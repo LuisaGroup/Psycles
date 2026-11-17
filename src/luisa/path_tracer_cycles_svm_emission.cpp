@@ -7,6 +7,8 @@
 #include "path_tracer_cycles_svm_kernel_globals.h"
 #include "path_tracer_cycles_svm_shader_data.h"
 
+#include <psycles/luisa/cycles_svm_translator.h>
+
 #include <algorithm>
 
 namespace psycles::luisa_backend::detail {
@@ -38,7 +40,8 @@ Float3 evaluate_cycles_svm_lamp_emission(
     // light_sample_shader_eval_forward uses visibility NONE and EMISSION.
     // Caustic suppression therefore cannot be active in this domain.
     const PathCyclesSvmKernelGlobals kg{
-        scene, parameters, scene->camera.projection, true, true};
+        scene, parameters, scene->camera.projection, true, true,
+        PathCyclesSvmShaderDomain::light_emission};
     const auto identity = make_float4x4(1.0f);
     svm::TransformState transforms{parameters.camera_transform,
                                    parameters.camera_inverse_transform,
@@ -66,15 +69,24 @@ Float3 evaluate_cycles_svm_lamp_emission(
     $if(primitive != svm::primitive_none) {
       cycles_svm_shader_setup_backfacing(sd);
     };
-    const auto usage = scene->cycles_svm->compilation.table.usage_for(
-        abi::SHADER_TYPE_SURFACE);
-    svm::eval_nodes_assume_valid(
-        kg, *scene->cycles_svm->word_buffer, abi::SHADER_TYPE_SURFACE,
-        scene->cycles_svm->kernel_features,
-        svm::kernel_feature_node_mask_surface_light,
-        usage.node_types_used,
-        transforms, sd, state,
-        std::max<std::size_t>(1u, usage.peak_stack_usage), usage.noise_usage);
+    const auto usage = cycles_svm_domain_entry_usage(
+        *scene, PathCyclesSvmShaderDomain::light_emission);
+    const auto active_mask = cycles_svm_domain_shader_mask(
+        *scene, PathCyclesSvmShaderDomain::light_emission);
+    svm::translate_svm_nodes_assume_valid(svm::SvmTranslationRequest{
+        .kernel_globals = kg,
+        .table = scene->cycles_svm->compilation.table,
+        .words = *scene->cycles_svm->word_buffer,
+        .shader_type = abi::SHADER_TYPE_SURFACE,
+        .kernel_features = scene->cycles_svm->kernel_features,
+        .node_feature_mask = svm::kernel_feature_node_mask_surface_light,
+        .node_types_used = usage.node_types_used,
+        .transform_state = transforms,
+        .shader_data = sd,
+        .path_state = state,
+        .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+        .noise_usage = usage.noise_usage,
+        .active_shader_mask = active_mask});
     $if(((sd.flag & svm::shader_data_emission) != 0u) &
         (abs(dot(sd.Ng, sd.wi)) > 0.0f)) {
       emission = sd.closure_emission_background;

@@ -20,7 +20,10 @@ struct CyclesSvmShadowShaderData {
     Expr<unsigned> primitive, Expr<luisa::float2> barycentric,
     Expr<float> distance, Expr<float> ray_dP, Expr<float> ray_dD,
     Expr<float> ray_time, Expr<unsigned> lcg_state,
-    const Var<RenderKernelParameters> &parameters) noexcept;
+    const Var<RenderKernelParameters> &parameters,
+    Var<InstanceGpu> *out_instance = nullptr,
+    cycles_svm::TriangleVertices *out_vertices = nullptr,
+    cycles_svm::TriangleNormals *out_normals = nullptr) noexcept;
 
 // Cycles shader_setup_from_ray, with intersection barycentrics and native
 // object/triangle identity. ShaderData and SVM scratch never cross a cut.

@@ -42,6 +42,7 @@ void cycles_light_tree_to_mesh_local_space(
 // the two importance equations while tracing the kernel AST. No per-query
 // volume-mode branch remains in generated code.
 [[nodiscard]] LightTreeCallables make_light_tree_callables(
-    const std::shared_ptr<LuisaSceneData> &scene) noexcept;
+    const std::shared_ptr<LuisaSceneData> &scene,
+    bool allow_volume_origin = true) noexcept;
 
 }// namespace psycles::luisa_backend::detail

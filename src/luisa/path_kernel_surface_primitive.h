@@ -4,6 +4,7 @@
 #include "path_tracer_lighting.h"
 
 #include <memory>
+#include <optional>
 
 namespace psycles::luisa_backend::detail {
 
@@ -32,10 +33,14 @@ struct SurfacePrimitiveGeometryContext {
   UInt cycles_surface_shader;
   UInt cycles_object_index;
   UInt cycles_primitive_index;
+  std::optional<UInt> cycles_shader_flags;
+  std::optional<UInt> cycles_object_flags;
   VolumeStackEntry volume_stack_entry;
   Bool surface_has_volume;
   Bool surface_has_bssrdf_bump;
   SurfacePoint point;
+  Float shadow_terminator_geometry_offset{0.0f};
+  bool lazy_cycles_geometry{false};
 };
 
 // Runtime primitive dispatch assembled at the host/JIT stage. Each dynamic

@@ -239,10 +239,13 @@ void PathKernelPipeline::emit(
           sample.invocation.config.volume_state) {
         namespace abi = compiler::cycles_svm;
         const auto &scene = sample.invocation.config.scene;
-        const Expr<Buffer<abi::KernelShader>> shaders{
-            *scene->cycles_svm->kernel_shader_buffer};
-        const auto shader_flags = shaders->read(
-            surface.cycles_surface_shader & cycles_svm::shader_mask).flags;
+        const UInt shader_flags =
+            surface.cycles_shader_flags
+                ? *surface.cycles_shader_flags
+                : (*scene->cycles_svm->kernel_shader_buffer)
+                      ->read(surface.cycles_surface_shader &
+                             cycles_svm::shader_mask)
+                      .flags.cast<unsigned>();
         $if((shader_flags & static_cast<unsigned>(abi::SD_HAS_ONLY_VOLUME)) != 0u) {
           const auto next = cycles_volume_boundary::advance(
               sample.throughput, sample.volume_bounds_bounce,

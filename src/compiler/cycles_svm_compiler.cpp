@@ -305,6 +305,8 @@ private:
   AttributeRequestSet _attribute_requests;
   ShaderCompileMetadata _metadata;
   ShaderEntryUsageTable _entry_usage{};
+  SvmShaderIr _ir{};
+  std::vector<SvmBlockIr *> _ir_block_stack{};
   GraphNode *_current_node{};
   ShaderType _current_type{SHADER_TYPE_SURFACE};
   bool _background{};
@@ -321,6 +323,24 @@ private:
     const auto entry = _current_type == SHADER_TYPE_BUMP
                            ? SHADER_TYPE_SURFACE : _current_type;
     return _entry_usage[static_cast<std::size_t>(entry)];
+  }
+
+  void begin_ir_jump_block(bool jump_if_one,
+                           SVMStackOffset cond_offset) {
+    if (_ir_block_stack.empty()) {
+      return;
+    }
+    auto &parent = *_ir_block_stack.back();
+    parent.push_back(SvmOpIr{.is_conditional = true,
+                             .jump_if_one = jump_if_one,
+                             .cond_stack_offset = cond_offset});
+    _ir_block_stack.push_back(&parent.back().children);
+  }
+
+  void end_ir_jump_block() noexcept {
+    if (_ir_block_stack.size() > 1u) {
+      _ir_block_stack.pop_back();
+    }
   }
 
   [[nodiscard]] bool reject(std::string diagnostic) {
@@ -631,21 +651,243 @@ private:
             ? node_type_with_derivatives(type)
             : type;
     const auto is_noise = resolved == NODE_TEX_NOISE;
-    const auto prior_noise = is_noise ? current_entry_usage().noise_usage
-                                      : NoiseUsage::none();
-    static_cast<void>(add_node(resolved));
+    const auto is_holdout = resolved == NODE_CLOSURE_HOLDOUT;
+    const auto op_offset = add_node_typed(resolved);
     _stream.add_node_data(payload, payload_size);
+    SvmInstructionSpecialization inst_spec{};
     if (is_noise) {
       auto &usage = current_entry_usage();
       if (payload == nullptr || payload_size != sizeof(SVMNodeTexNoise)) {
         usage.noise_usage.shape_mask = NoiseUsage::all_shapes;
+        _metadata.noise_may_have_distortion = true;
+        _metadata.noise_may_need_color = true;
       } else {
         SVMNodeTexNoise noise{};
         std::memcpy(&noise, payload, sizeof(noise));
-        usage.noise_usage = prior_noise;
         usage.noise_usage.add(noise.dimensions,
                               static_cast<std::uint32_t>(noise.noise_type));
+        const bool has_dist = (noise.distortion.bits & 0x7fffffffu) != 0u;
+        const bool need_col = noise.color_offset != SVM_STACK_INVALID;
+        _metadata.noise_may_have_distortion =
+            _metadata.noise_may_have_distortion || has_dist;
+        _metadata.noise_may_need_color =
+            _metadata.noise_may_need_color || need_col;
+        inst_spec.noise_usage = NoiseUsage::none();
+        inst_spec.noise_usage.add(noise.dimensions,
+                                  static_cast<std::uint32_t>(noise.noise_type));
+        inst_spec.noise_may_have_distortion = has_dist;
+        inst_spec.noise_may_need_color = need_col;
       }
+    } else if (resolved == NODE_MIX || resolved == NODE_MIX_COLOR) {
+      if (payload == nullptr || payload_size < sizeof(std::uint32_t)) {
+        _metadata.mix_blend_mask = ~0u;
+      } else {
+        std::uint32_t blend{};
+        std::memcpy(&blend, payload, sizeof(blend));
+        const auto m = (blend < 32u ? (1u << blend) : ~0u);
+        _metadata.mix_blend_mask |= m;
+        inst_spec.mix_blend_mask = m;
+      }
+    } else if (resolved == NODE_NORMAL_MAP) {
+      if (payload == nullptr || payload_size != sizeof(SVMNodeNormalMap)) {
+        _metadata.normal_map_space_mask = ~0u;
+        _metadata.normal_map_uses_original_base = true;
+      } else {
+        SVMNodeNormalMap nm{};
+        std::memcpy(&nm, payload, sizeof(nm));
+        const auto sp = static_cast<std::uint32_t>(nm.space);
+        const auto m = (sp < 32u ? (1u << sp) : ~0u);
+        _metadata.normal_map_space_mask |= m;
+        if (nm.use_original_base != 0) {
+          _metadata.normal_map_uses_original_base = true;
+        }
+        inst_spec.normal_map_space_mask = m;
+        inst_spec.normal_map_uses_original_base = nm.use_original_base != 0;
+      }
+    } else if (resolved == NODE_TEX_COORD ||
+               resolved == NODE_TEX_COORD_DERIVATIVE) {
+      if (payload == nullptr || payload_size != sizeof(SVMNodeTexCoord)) {
+        _metadata.tex_coord_mask = ~0u;
+      } else {
+        SVMNodeTexCoord tc{};
+        std::memcpy(&tc, payload, sizeof(tc));
+        const auto ty = static_cast<std::uint32_t>(tc.texco_type);
+        const auto m = (ty < 32u ? (1u << ty) : ~0u);
+        _metadata.tex_coord_mask |= m;
+        inst_spec.tex_coord_mask = m;
+      }
+    } else if (resolved == NODE_SET_BUMP) {
+      if (payload == nullptr || payload_size != sizeof(SVMNodeSetBump)) {
+        _metadata.bump_uses_object_space = true;
+      } else {
+        SVMNodeSetBump sb{};
+        std::memcpy(&sb, payload, sizeof(sb));
+        if (sb.use_object_space != 0u) {
+          _metadata.bump_uses_object_space = true;
+        }
+        inst_spec.bump_uses_object_space = sb.use_object_space != 0u;
+      }
+    } else if (resolved == NODE_CURVES) {
+      if (payload == nullptr || payload_size < sizeof(SVMNodeCurves)) {
+        _metadata.curves_may_extrapolate = true;
+      } else {
+        SVMNodeCurves cv{};
+        std::memcpy(&cv, payload, sizeof(cv));
+        if (cv.extrapolate != 0u) {
+          _metadata.curves_may_extrapolate = true;
+        }
+        inst_spec.curves_may_extrapolate = cv.extrapolate != 0u;
+      }
+    } else if (resolved == NODE_MATH) {
+      if (payload == nullptr || payload_size != sizeof(SVMNodeMath)) {
+        _metadata.math_type_mask = ~0ull;
+      } else {
+        SVMNodeMath m{};
+        std::memcpy(&m, payload, sizeof(m));
+        const auto op = static_cast<std::uint32_t>(m.math_type);
+        const auto mask = (op < 64u ? (1ull << op) : ~0ull);
+        _metadata.math_type_mask |= mask;
+        inst_spec.math_type_mask = mask;
+      }
+    } else if (resolved == NODE_VECTOR_MATH ||
+               resolved == NODE_VECTOR_MATH_DERIVATIVE) {
+      if (payload == nullptr || payload_size != sizeof(SVMNodeVectorMath)) {
+        _metadata.vector_math_type_mask = ~0ull;
+      } else {
+        SVMNodeVectorMath vm{};
+        std::memcpy(&vm, payload, sizeof(vm));
+        const auto op = static_cast<std::uint32_t>(vm.math_type);
+        const auto mask = (op < 64u ? (1ull << op) : ~0ull);
+        _metadata.vector_math_type_mask |= mask;
+        inst_spec.vector_math_type_mask = mask;
+      }
+    } else if (resolved == NODE_MAPPING ||
+               resolved == NODE_MAPPING_DERIVATIVE) {
+      if (payload == nullptr || payload_size != sizeof(SVMNodeMapping)) {
+        _metadata.mapping_type_mask = ~0u;
+        _metadata.mapping_may_rotate = true;
+      } else {
+        SVMNodeMapping mp{};
+        std::memcpy(&mp, payload, sizeof(mp));
+        const auto ty = static_cast<std::uint32_t>(mp.mapping_type);
+        const auto mask = (ty < 32u ? (1u << ty) : ~0u);
+        const bool rot =
+            ((mp.rotation.x.bits | mp.rotation.y.bits | mp.rotation.z.bits) &
+             0x7fffffffu) != 0u;
+        _metadata.mapping_type_mask |= mask;
+        _metadata.mapping_may_rotate = _metadata.mapping_may_rotate || rot;
+        inst_spec.mapping_type_mask = mask;
+        inst_spec.mapping_may_rotate = rot;
+      }
+    } else if (resolved == NODE_MAP_RANGE) {
+      if (payload == nullptr || payload_size != sizeof(SVMNodeMapRange)) {
+        _metadata.map_range_type_mask = ~0u;
+      } else {
+        SVMNodeMapRange mr{};
+        std::memcpy(&mr, payload, sizeof(mr));
+        const auto ty = static_cast<std::uint32_t>(mr.range_type);
+        const auto mask = (ty < 32u ? (1u << ty) : ~0u);
+        _metadata.map_range_type_mask |= mask;
+        inst_spec.map_range_type_mask = mask;
+      }
+    } else if (resolved == NODE_VECTOR_MAP_RANGE) {
+      if (payload == nullptr || payload_size != sizeof(SVMNodeVectorMapRange)) {
+        _metadata.map_range_type_mask = ~0u;
+      } else {
+        SVMNodeVectorMapRange mr{};
+        std::memcpy(&mr, payload, sizeof(mr));
+        const auto ty = static_cast<std::uint32_t>(mr.range_type);
+        const auto mask = (ty < 32u ? (1u << ty) : ~0u);
+        _metadata.map_range_type_mask |= mask;
+        inst_spec.map_range_type_mask = mask;
+      }
+    } else if (resolved == NODE_TEX_VORONOI) {
+      if (payload == nullptr || payload_size != sizeof(SVMNodeTexVoronoi)) {
+        _metadata.voronoi_dimension_mask = ~0u;
+        _metadata.voronoi_feature_mask = ~0u;
+        _metadata.voronoi_metric_mask = ~0u;
+        _metadata.voronoi_may_have_detail = true;
+        _metadata.voronoi_may_normalize = true;
+        _metadata.voronoi_may_need_color = true;
+        _metadata.voronoi_may_need_position = true;
+        _metadata.voronoi_may_need_radius = true;
+      } else {
+        SVMNodeTexVoronoi vor{};
+        std::memcpy(&vor, payload, sizeof(vor));
+        const auto dm = (vor.dimensions >= 1u && vor.dimensions <= 4u)
+                            ? (1u << vor.dimensions)
+                            : ~0u;
+        const auto feat = static_cast<std::uint32_t>(vor.feature);
+        const auto fm = (feat < 32u ? (1u << feat) : ~0u);
+        const auto met = static_cast<std::uint32_t>(vor.metric);
+        const auto mm = (met < 32u ? (1u << met) : ~0u);
+        const bool det = (vor.detail.bits & 0x7fffffffu) != 0u;
+        const bool norm = vor.normalize != 0u;
+        const bool col = vor.color_offset != SVM_STACK_INVALID;
+        const bool pos = vor.position_offset != SVM_STACK_INVALID ||
+                         vor.w_out_offset != SVM_STACK_INVALID;
+        const bool rad = vor.radius_offset != SVM_STACK_INVALID;
+        _metadata.voronoi_dimension_mask |= dm;
+        _metadata.voronoi_feature_mask |= fm;
+        _metadata.voronoi_metric_mask |= mm;
+        _metadata.voronoi_may_have_detail =
+            _metadata.voronoi_may_have_detail || det;
+        _metadata.voronoi_may_normalize =
+            _metadata.voronoi_may_normalize || norm;
+        _metadata.voronoi_may_need_color =
+            _metadata.voronoi_may_need_color || col;
+        _metadata.voronoi_may_need_position =
+            _metadata.voronoi_may_need_position || pos;
+        _metadata.voronoi_may_need_radius =
+            _metadata.voronoi_may_need_radius || rad;
+        inst_spec.voronoi_dimension_mask = dm;
+        inst_spec.voronoi_feature_mask = fm;
+        inst_spec.voronoi_metric_mask = mm;
+        inst_spec.voronoi_may_have_detail = det;
+        inst_spec.voronoi_may_normalize = norm;
+        inst_spec.voronoi_may_need_color = col;
+        inst_spec.voronoi_may_need_position = pos;
+        inst_spec.voronoi_may_need_radius = rad;
+      }
+    } else if (resolved == NODE_TEX_WAVE) {
+      if (payload == nullptr || payload_size != sizeof(SVMNodeTexWave)) {
+        _metadata.wave_type_mask = ~0u;
+        _metadata.wave_profile_mask = ~0u;
+        _metadata.wave_may_have_distortion = true;
+      } else {
+        SVMNodeTexWave wv{};
+        std::memcpy(&wv, payload, sizeof(wv));
+        const auto wt = static_cast<std::uint32_t>(wv.wave_type);
+        const auto wp = static_cast<std::uint32_t>(wv.profile);
+        const auto wtm = (wt < 32u ? (1u << wt) : ~0u);
+        const auto wpm = (wp < 32u ? (1u << wp) : ~0u);
+        const bool dist = (wv.distortion.bits & 0x7fffffffu) != 0u;
+        _metadata.wave_type_mask |= wtm;
+        _metadata.wave_profile_mask |= wpm;
+        _metadata.wave_may_have_distortion =
+            _metadata.wave_may_have_distortion || dist;
+        inst_spec.wave_type_mask = wtm;
+        inst_spec.wave_profile_mask = wpm;
+        inst_spec.wave_may_have_distortion = dist;
+      }
+    } else if (is_holdout && _current_type == SHADER_TYPE_SURFACE) {
+      const auto cu =
+          node != nullptr ? node->get_surface_closure_usage() : ClosureUsage{};
+      _metadata.surface_closure_usage.merge(cu);
+      inst_spec.closure_usage = cu;
+      inst_spec.may_have_thin_film = false;
+    }
+    if (!_ir_block_stack.empty() && resolved != NODE_JUMP_IF_ONE &&
+        resolved != NODE_JUMP_IF_ZERO && resolved != NODE_END &&
+        resolved != NODE_SHADER_JUMP) {
+      _ir_block_stack.back()->push_back(SvmOpIr{
+          .is_conditional = false,
+          .instruction = SvmInstructionIr{
+              .opcode = resolved,
+              .payload_offset = static_cast<std::uint32_t>(op_offset + 1u),
+              .payload_word_count =
+                  static_cast<std::uint32_t>(payload_size / sizeof(std::uint32_t)),
+              .specialization = inst_spec}});
     }
     if (node != nullptr) {
       node->added_to_svm = true;
@@ -658,6 +900,11 @@ private:
       std::abort();
     }
     _stream.add_node_data(payload, payload_size);
+    if (!_ir_block_stack.empty() && !_ir_block_stack.back()->empty() &&
+        !_ir_block_stack.back()->back().is_conditional) {
+      _ir_block_stack.back()->back().instruction.payload_word_count +=
+          static_cast<std::uint32_t>(payload_size / sizeof(std::uint32_t));
+    }
   }
 
   void add_bsdf_node_payload(const SVMNodeClosureBsdf &node,
@@ -666,14 +913,76 @@ private:
     add_node_payload(_current_node, NODE_CLOSURE_BSDF, &node, sizeof(node),
                      false);
     add_node_data(payload, payload_size);
+    if (_current_type == SHADER_TYPE_SURFACE) {
+      ClosureUsage cu{};
+      bool may_film = true;
+      if (_current_node != nullptr) {
+        cu = _current_node->get_surface_closure_usage();
+        cu.svm_bsdf_node_mask |=
+            ClosureUsage::bit(static_cast<std::uint32_t>(node.closure_type));
+        const bool film_bearing =
+            _current_node->type == node_type::principled_bsdf ||
+            _current_node->type == node_type::glass_bsdf ||
+            _current_node->type == node_type::metallic_bsdf;
+        may_film = film_bearing && !thin_film_input_is_inactive(_current_node);
+        _metadata.surface_closure_usage.merge(cu);
+      } else {
+        _metadata.surface_closure_usage = ClosureUsage{};
+      }
+      if (!_ir_block_stack.empty() && !_ir_block_stack.back()->empty() &&
+          !_ir_block_stack.back()->back().is_conditional) {
+        auto &spec = _ir_block_stack.back()->back().instruction.specialization;
+        spec.closure_usage = cu;
+        spec.may_have_thin_film = may_film;
+      }
+    }
+  }
+
+  [[nodiscard]] std::size_t add_node_typed(ShaderNodeType type) {
+    const auto offset = _stream.add_node(type);
+    current_entry_usage().node_types_used[type] = true;
+    return offset;
   }
 
   [[nodiscard]] std::size_t add_node(ShaderNodeType type) override {
-    const auto offset = _stream.add_node(type);
-    current_entry_usage().node_types_used[type] = true;
+    const auto offset = add_node_typed(type);
+    if (!_ir_block_stack.empty() && type != NODE_END &&
+        type != NODE_SHADER_JUMP && type != NODE_JUMP_IF_ONE &&
+        type != NODE_JUMP_IF_ZERO) {
+      _ir_block_stack.back()->push_back(SvmOpIr{
+          .is_conditional = false,
+          .instruction = SvmInstructionIr{
+              .opcode = type,
+              .payload_offset = static_cast<std::uint32_t>(offset + 1u),
+              .payload_word_count = 0u}});
+    }
     if (type == NODE_TEX_NOISE) {
       // Untyped/raw Noise opcodes carry no shape proof.
       current_entry_usage().noise_usage.shape_mask = NoiseUsage::all_shapes;
+      _metadata.noise_may_have_distortion = true;
+      _metadata.noise_may_need_color = true;
+    } else if (type == NODE_MATH) {
+      _metadata.math_type_mask = ~0ull;
+    } else if (type == NODE_VECTOR_MATH || type == NODE_VECTOR_MATH_DERIVATIVE) {
+      _metadata.vector_math_type_mask = ~0ull;
+    } else if (type == NODE_MAPPING || type == NODE_MAPPING_DERIVATIVE) {
+      _metadata.mapping_type_mask = ~0u;
+      _metadata.mapping_may_rotate = true;
+    } else if (type == NODE_MAP_RANGE || type == NODE_VECTOR_MAP_RANGE) {
+      _metadata.map_range_type_mask = ~0u;
+    } else if (type == NODE_TEX_VORONOI) {
+      _metadata.voronoi_dimension_mask = ~0u;
+      _metadata.voronoi_feature_mask = ~0u;
+      _metadata.voronoi_metric_mask = ~0u;
+      _metadata.voronoi_may_have_detail = true;
+      _metadata.voronoi_may_normalize = true;
+      _metadata.voronoi_may_need_color = true;
+      _metadata.voronoi_may_need_position = true;
+      _metadata.voronoi_may_need_radius = true;
+    } else if (type == NODE_TEX_WAVE) {
+      _metadata.wave_type_mask = ~0u;
+      _metadata.wave_profile_mask = ~0u;
+      _metadata.wave_may_have_distortion = true;
     }
     return offset;
   }
@@ -1052,15 +1361,18 @@ private:
 
         if (closure1->link != nullptr) {
           const auto start = _stream.size();
+          const auto cond_offset = stack_assign(factor);
           static_cast<void>(add_node(
               nullptr, NODE_JUMP_IF_ONE,
               SVMNodeJumpIfOne{.jump_offset = 0,
-                               .stack_offset = stack_assign(factor),
+                               .stack_offset = cond_offset,
                                ._pad = {0u, 0u, 0u}}));
+          begin_ir_jump_block(true, cond_offset);
           if (!generate_multi_closure(root_node, closure1->link->parent,
                                       state)) {
             return false;
           }
+          end_ir_jump_block();
           constexpr auto node_size =
               1u + sizeof(SVMNodeJumpIfOne) / sizeof(std::uint32_t);
           _stream.set_word(start + 1u,
@@ -1069,15 +1381,18 @@ private:
         }
         if (closure2->link != nullptr) {
           const auto start = _stream.size();
+          const auto cond_offset = stack_assign(factor);
           static_cast<void>(add_node(
               nullptr, NODE_JUMP_IF_ZERO,
               SVMNodeJumpIfZero{.jump_offset = 0,
-                                .stack_offset = stack_assign(factor),
+                                .stack_offset = cond_offset,
                                 ._pad = {0u, 0u, 0u}}));
+          begin_ir_jump_block(false, cond_offset);
           if (!generate_multi_closure(root_node, closure2->link->parent,
                                       state)) {
             return false;
           }
+          end_ir_jump_block();
           constexpr auto node_size =
               1u + sizeof(SVMNodeJumpIfZero) / sizeof(std::uint32_t);
           _stream.set_word(start + 1u,
@@ -1119,6 +1434,9 @@ private:
 
   [[nodiscard]] bool compile_type(ShaderType type) {
     _current_type = type;
+    const auto ir_entry =
+        type == SHADER_TYPE_BUMP ? SHADER_TYPE_SURFACE : type;
+    _ir_block_stack = {&_ir.routines[static_cast<std::size_t>(ir_entry)]};
     reset_type_state();
     CompilerState state{_graph.node_id_capacity()};
     GraphInput *root_input = nullptr;
@@ -1194,7 +1512,10 @@ private:
     result.attribute_requests.assign(_attribute_requests.requests().begin(),
                                      _attribute_requests.requests().end());
     result.peak_stack_usage = _stack.peak();
-    if (result.valid) { result.entry_usage = _entry_usage; }
+    if (result.valid) {
+      result.entry_usage = _entry_usage;
+      result.ir = _ir;
+    }
     result.metadata = _metadata;
     return result;
   }
@@ -1215,7 +1536,33 @@ public:
     // are never consumed by the scene linker, while inert holes explicitly
     // carry false metadata below.
     _metadata.may_have_thin_film = false;
+    _metadata.surface_closure_usage = ClosureUsage::none();
+    _metadata.mix_blend_mask = 0u;
+    _metadata.normal_map_space_mask = 0u;
+    _metadata.normal_map_uses_original_base = false;
+    _metadata.noise_may_have_distortion = false;
+    _metadata.noise_may_need_color = false;
+    _metadata.tex_coord_mask = 0u;
+    _metadata.bump_uses_object_space = false;
+    _metadata.curves_may_extrapolate = false;
+    _metadata.math_type_mask = 0ull;
+    _metadata.vector_math_type_mask = 0ull;
+    _metadata.mapping_type_mask = 0u;
+    _metadata.mapping_may_rotate = false;
+    _metadata.map_range_type_mask = 0u;
+    _metadata.voronoi_dimension_mask = 0u;
+    _metadata.voronoi_feature_mask = 0u;
+    _metadata.voronoi_metric_mask = 0u;
+    _metadata.voronoi_may_have_detail = false;
+    _metadata.voronoi_may_normalize = false;
+    _metadata.voronoi_may_need_color = false;
+    _metadata.voronoi_may_need_position = false;
+    _metadata.voronoi_may_need_radius = false;
+    _metadata.wave_type_mask = 0u;
+    _metadata.wave_profile_mask = 0u;
+    _metadata.wave_may_have_distortion = false;
     _metadata.num_closures = _graph.get_num_closures();
+    _metadata.surface_num_closures = _graph.get_num_surface_closures();
     for (auto &usage : _entry_usage) {
       usage.noise_usage = NoiseUsage::none();
     }

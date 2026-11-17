@@ -194,13 +194,16 @@ public:
               const Var<ShadowIntersectionCall> &intersection,
               Expr<bool> has_transparent_shadow,
               Expr<std::uint32_t> transparent_maximum) noexcept {
-    const auto duplicate = contains(intersection);
-    $if(!duplicate) {
-      $if(!has_transparent_shadow) {
-        _blocked = 1u;
-        query_candidate.terminate();
-      }
-      $else {
+    // Stored candidates in _hits[0.._count) are exclusively transparent-shadow
+    // primitives, so an opaque candidate can never be a duplicate of any
+    // retained hit. Terminate immediately without probing storage.
+    $if(!has_transparent_shadow) {
+      _blocked = 1u;
+      query_candidate.terminate();
+    }
+    $else {
+      const auto duplicate = contains(intersection);
+      $if(!duplicate) {
         _total += 1u;
         $if(_total > transparent_maximum) {
           _blocked = 1u;
@@ -241,6 +244,46 @@ struct TraversalCurveMetadata {
   TraversalPrimitiveMetadata primitive;
   Var<CurveSegmentGpu> segment;
 };
+
+struct ResolvedTriangleIdentity {
+  UInt inst;
+  UInt prim;
+};
+
+[[nodiscard]] ResolvedTriangleIdentity resolve_excluded_triangle_identity(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const ScenePrimitiveIdentity &identity) noexcept {
+  UInt inst = surface_ray::invalid_primitive;
+  UInt prim = surface_ray::invalid_primitive;
+  $if((identity.primitive != surface_ray::invalid_primitive) &
+      (identity.object < scene->traversal_object_instance_count)) {
+    const auto entry =
+        (*scene->traversal_object_instance_buffer)->read(identity.object);
+    const auto valid = (entry.x != surface_ray::invalid_primitive) &
+                       (identity.primitive >= entry.y);
+    inst = select(surface_ray::invalid_primitive, entry.x, valid);
+    prim = select(surface_ray::invalid_primitive, identity.primitive - entry.y,
+                  valid);
+  };
+  return {.inst = std::move(inst), .prim = std::move(prim)};
+}
+
+[[nodiscard]] Var<luisa::compute::CommittedHit> surface_hit_to_committed(
+    const Var<luisa::compute::SurfaceHit> &surface_hit,
+    Expr<float> ray_t_max) noexcept {
+  Var<luisa::compute::CommittedHit> hit;
+  const auto missed = surface_hit->miss();
+  hit->inst = surface_hit->inst;
+  hit->prim = surface_hit->prim;
+  hit->bary = surface_hit->bary;
+  hit->hit_type = select(
+      static_cast<std::uint32_t>(luisa::compute::HitType::Surface),
+      static_cast<std::uint32_t>(luisa::compute::HitType::Miss),
+      missed);
+  hit->committed_ray_t =
+      select(surface_hit->committed_ray_t, ray_t_max, missed);
+  return hit;
+}
 
 class UnifiedSceneTraversalComponent final : public SceneTraversalComponent {
 
@@ -306,7 +349,8 @@ private:
         const Var<luisa::compute::Ray> &ray,
         Expr<std::uint32_t> visibility_mask,
         const ScenePrimitiveIdentity &source,
-        const ScenePrimitiveIdentity &light) const noexcept {
+        const ScenePrimitiveIdentity &light,
+        bool has_light_exclusion = true) const noexcept {
     if (_plan.primitives.empty()) {
       Var<luisa::compute::CommittedHit> miss;
       miss->inst = surface_ray::invalid_primitive;
@@ -316,6 +360,54 @@ private:
           static_cast<std::uint32_t>(luisa::compute::HitType::Miss);
       miss->committed_ray_t = ray->t_max();
       return miss;
+    }
+
+    const auto finish = [&](auto &&query) {
+      auto hit = query.trace();
+      // CommittedHit identifies a miss through hit_type; its other payload
+      // fields are not a portable miss-distance contract (native SPIR-V
+      // initializes them to zero). Cycles keeps the original traversal bound
+      // when no primitive commits. Establish that scene-traversal invariant
+      // here for both closest and closest-shadow consumers.
+      hit->committed_ray_t =
+          select(hit->committed_ray_t, ray->t_max(), hit->miss());
+      return hit;
+    };
+
+    if (_plan.primitives.triangles && !_plan.primitives.curves &&
+        scene->traversal_object_instance_buffer.has_value()) {
+      if (!has_light_exclusion) {
+        const auto src = resolve_excluded_triangle_identity(scene, source);
+        const Bool bypass_src = (src.inst == surface_ray::invalid_primitive);
+        const auto handle_excluded_src =
+            [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+              $if(bypass_src) {
+                candidate.commit();
+              }
+              $else {
+                const auto hit = candidate.hit();
+                $if(!((hit->inst == src.inst) & (hit->prim == src.prim))) {
+                  candidate.commit();
+                };
+              };
+            };
+        return finish(
+            scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
+                .on_surface_candidate(handle_excluded_src));
+      }
+      const auto src = resolve_excluded_triangle_identity(scene, source);
+      const auto dst = resolve_excluded_triangle_identity(scene, light);
+      const auto handle_excluded_both =
+          [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+            const auto hit = candidate.hit();
+            const auto excluded =
+                ((hit->inst == src.inst) & (hit->prim == src.prim)) |
+                ((hit->inst == dst.inst) & (hit->prim == dst.prim));
+            $if(!excluded) { candidate.commit(); };
+          };
+      return finish(
+          scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
+              .on_surface_candidate(handle_excluded_both));
     }
 
     const auto handle_surface =
@@ -355,17 +447,6 @@ private:
           };
         };
 
-    const auto finish = [&](auto &&query) {
-      auto hit = query.trace();
-      // CommittedHit identifies a miss through hit_type; its other payload
-      // fields are not a portable miss-distance contract (native SPIR-V
-      // initializes them to zero). Cycles keeps the original traversal bound
-      // when no primitive commits. Establish that scene-traversal invariant
-      // here for both closest and closest-shadow consumers.
-      hit->committed_ray_t =
-          select(hit->committed_ray_t, ray->t_max(), hit->miss());
-      return hit;
-    };
     if (_plan.primitives.mixed()) {
       return finish(
           scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
@@ -393,6 +474,70 @@ private:
       return reducer.summary();
     }
 
+    if (can_use_fast_triangle_shadow(scene)) {
+      const auto src = resolve_excluded_triangle_identity(scene, source);
+      const auto dst = resolve_excluded_triangle_identity(scene, light);
+      if (!scene->has_transparent_shadow_materials) {
+        const auto handle_opaque_shadow =
+            [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+              const auto hit = candidate.hit();
+              const auto excluded =
+                  ((hit->inst == src.inst) & (hit->prim == src.prim)) |
+                  ((hit->inst == dst.inst) & (hit->prim == dst.prim));
+              $if(!excluded) {
+                candidate.commit();
+                candidate.terminate();
+              };
+            };
+        const auto any_hit =
+            scene->accel->traverse_any(ray, {.visibility_mask = visibility_mask})
+                .on_surface_candidate(handle_opaque_shadow)
+                .trace();
+        Var<ShadowIntersectionSummaryCall> result;
+        result->count = 0u;
+        result->total = 0u;
+        result->blocked = select(0u, 1u, !any_hit->miss());
+        return result;
+      }
+
+      const auto opacity_words =
+          Expr<Buffer<luisa::uint>>{*scene->traversal_shadow_opacity_buffer};
+      const auto handle_fast_surface =
+          [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+            const auto hit = candidate.hit();
+            const auto excluded =
+                ((hit->inst == src.inst) & (hit->prim == src.prim)) |
+                ((hit->inst == dst.inst) & (hit->prim == dst.prim));
+            $if(!excluded) {
+              const auto code = opacity_words.read(hit->inst);
+              Bool has_transparent = code != 0u;
+              if (scene->has_mixed_shadow_opacity_instances) {
+                has_transparent = code == ~0u;
+                $if((code != 0u) & (code != ~0u)) {
+                  const auto word =
+                      opacity_words.read(code + (hit->prim >> 5u));
+                  has_transparent = ((word >> (hit->prim & 31u)) & 1u) != 0u;
+                };
+              }
+              Var<ShadowIntersectionCall> intersection;
+              intersection->instance = hit->inst;
+              intersection->primitive = hit->prim;
+              intersection->hit_type =
+                  static_cast<std::uint32_t>(luisa::compute::HitType::Surface);
+              intersection->distance = hit->committed_ray_t;
+              intersection->barycentric = hit->bary;
+              reducer.reduce(candidate, intersection, has_transparent,
+                             transparent_maximum);
+            };
+          };
+      const auto ignored =
+          scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
+              .on_surface_candidate(handle_fast_surface)
+              .trace();
+      static_cast<void>(ignored);
+      return reducer.summary();
+    }
+
     const auto handle_surface =
         [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
           const auto hit = candidate.hit();
@@ -403,13 +548,30 @@ private:
           const auto excluded = source.matches(object, primitive) |
                                 light.matches(object, primitive);
           $if(!excluded) {
-            const auto material_slot = scene->heap
-                                           ->buffer<luisa::uint>(
-                                               metadata.instance.bindless_base +
-                                               4u)
-                                           .read(hit->prim);
-            const auto material_flags =
-                resolve_material_flags(scene, metadata, material_slot);
+            Bool has_transparent = false;
+            if (scene->traversal_shadow_opacity_buffer.has_value()) {
+              if (scene->has_transparent_shadow_materials) {
+                const auto opacity_words = Expr<Buffer<luisa::uint>>{
+                    *scene->traversal_shadow_opacity_buffer};
+                const auto code = opacity_words.read(hit->inst);
+                has_transparent = code == ~0u;
+                $if((code != 0u) & (code != ~0u)) {
+                  const auto word =
+                      opacity_words.read(code + (hit->prim >> 5u));
+                  has_transparent = ((word >> (hit->prim & 31u)) & 1u) != 0u;
+                };
+              }
+            } else {
+              const auto material_slot = scene->heap
+                                             ->buffer<luisa::uint>(
+                                                 metadata.instance.bindless_base +
+                                                 4u)
+                                             .read(hit->prim);
+              const auto material_flags =
+                  resolve_material_flags(scene, metadata, material_slot);
+              has_transparent =
+                  (material_flags & material_flag_has_transparent_shadow) != 0u;
+            }
             Var<ShadowIntersectionCall> intersection;
             intersection->instance = hit->inst;
             intersection->primitive = hit->prim;
@@ -417,10 +579,8 @@ private:
                 static_cast<std::uint32_t>(luisa::compute::HitType::Surface);
             intersection->distance = hit->committed_ray_t;
             intersection->barycentric = hit->bary;
-            reducer.reduce(
-                candidate, intersection,
-                (material_flags & material_flag_has_transparent_shadow) != 0u,
-                transparent_maximum);
+            reducer.reduce(candidate, intersection, has_transparent,
+                           transparent_maximum);
           };
         };
     const auto handle_procedural = [&](luisa::compute::ProceduralCandidate
@@ -486,11 +646,214 @@ private:
     return reducer.summary();
   }
 
+  [[nodiscard]] bool can_use_fast_triangle_shadow(
+      const std::shared_ptr<LuisaSceneData> &scene) const noexcept {
+    return _plan.primitives.triangles && !_plan.primitives.curves &&
+           scene->traversal_object_instance_buffer.has_value() &&
+           scene->traversal_shadow_opacity_buffer.has_value();
+  }
+
+  [[nodiscard]] Var<CompactTriangleShadowState> reduce_triangle_shadow_fast(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,
+      const ScenePrimitiveIdentity &source, const ScenePrimitiveIdentity &light,
+      Expr<std::uint32_t> transparent_maximum) const noexcept {
+    Var<CompactTriangleShadowState> state;
+    state->packed_state = 0u;
+    state->max_dist = ray->t_max();
+    if (!scene->has_transparent_shadow_materials) {
+      const auto src = resolve_excluded_triangle_identity(scene, source);
+      const auto dst = resolve_excluded_triangle_identity(scene, light);
+      const Bool bypass_excl =
+          (src.inst == surface_ray::invalid_primitive) &
+          (dst.inst == surface_ray::invalid_primitive);
+      const auto handle_opaque_shadow =
+          [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+            $if(bypass_excl) {
+              candidate.commit();
+              candidate.terminate();
+            }
+            $else {
+              const auto hit = candidate.hit();
+              const auto excluded =
+                  ((hit->inst == src.inst) & (hit->prim == src.prim)) |
+                  ((hit->inst == dst.inst) & (hit->prim == dst.prim));
+              $if(!excluded) {
+                candidate.commit();
+                candidate.terminate();
+              };
+            };
+          };
+      const auto any_hit =
+          scene->accel->traverse_any(ray, {.visibility_mask = visibility_mask})
+              .on_surface_candidate(handle_opaque_shadow)
+              .trace();
+      state->packed_state = select(0u, 1u << 5u, !any_hit->miss());
+      return state;
+    }
+    const auto src = resolve_excluded_triangle_identity(scene, source);
+    const auto dst = resolve_excluded_triangle_identity(scene, light);
+
+    const UInt max_trans = transparent_maximum;
+    const auto opacity_words =
+        Expr<Buffer<luisa::uint>>{*scene->traversal_shadow_opacity_buffer};
+    const auto handle_transparent_shadow =
+        [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+          const auto hit = candidate.hit();
+          const auto excluded =
+              ((hit->inst == src.inst) & (hit->prim == src.prim)) |
+              ((hit->inst == dst.inst) & (hit->prim == dst.prim));
+          $if(!excluded) {
+            const auto code = opacity_words.read(hit->inst);
+            Bool has_transparent = code != 0u;
+            if (scene->has_mixed_shadow_opacity_instances) {
+              has_transparent = code == ~0u;
+              $if((code != 0u) & (code != ~0u)) {
+                const auto word =
+                    opacity_words.read(code + (hit->prim >> 5u));
+                has_transparent =
+                    ((word >> (hit->prim & 31u)) & 1u) != 0u;
+              };
+            }
+            $if(!has_transparent) {
+              state->packed_state |= (1u << 5u);
+              candidate.terminate();
+            }
+            $else {
+              const auto cur_count = state->packed_state & 7u;
+              Bool duplicate = false;
+              for (auto index = std::size_t{0u};
+                   index < shadow_intersection_batch_capacity; ++index) {
+                const auto idx = static_cast<std::uint32_t>(index);
+                duplicate |= (idx < cur_count) &
+                             (state->inst[idx] == hit->inst) &
+                             (state->prim[idx] == hit->prim);
+              }
+              $if(!duplicate) {
+                const auto next_total = (state->packed_state >> 6u) + 1u;
+                        state->packed_state =
+                            (state->packed_state & 0x3fu) | (next_total << 6u);
+                        $if(next_total > max_trans) {
+                          state->packed_state |= (1u << 5u);
+                          candidate.terminate();
+                        }
+                        $else {
+                          constexpr auto capacity = static_cast<std::uint32_t>(
+                              shadow_intersection_batch_capacity);
+                          const auto recompute_farthest = [&]() noexcept {
+                            UInt rep = 0u;
+                            Float farthest = state->dist[0u];
+                            for (auto i = std::size_t{1u}; i < capacity; ++i) {
+                              const auto d =
+                                  state->dist[static_cast<std::uint32_t>(i)];
+                              const auto f = d > farthest;
+                              rep = select(rep, static_cast<std::uint32_t>(i), f);
+                              farthest = select(farthest, d, f);
+                            }
+                            state->max_dist = farthest;
+                            state->packed_state =
+                                (state->packed_state & ~(3u << 3u)) |
+                                (rep << 3u);
+                          };
+                          $if(cur_count < capacity) {
+                            state->inst[cur_count] = hit->inst;
+                            state->prim[cur_count] = hit->prim;
+                            state->dist[cur_count] = hit->committed_ray_t;
+                            state->bx[cur_count] = hit->bary.x;
+                            state->by[cur_count] = hit->bary.y;
+                            const auto next_count = cur_count + 1u;
+                            state->packed_state =
+                                (state->packed_state & ~7u) | next_count;
+                            $if(next_count == capacity) { recompute_farthest(); }
+                            $else {
+                              state->packed_state =
+                                  (state->packed_state & ~(3u << 3u)) |
+                                  (next_count << 3u);
+                            };
+                          }
+                          $else {
+                            $if(hit->committed_ray_t < state->max_dist) {
+                              const auto rep =
+                                  (state->packed_state >> 3u) & 3u;
+                              state->inst[rep] = hit->inst;
+                              state->prim[rep] = hit->prim;
+                              state->dist[rep] = hit->committed_ray_t;
+                              state->bx[rep] = hit->bary.x;
+                              state->by[rep] = hit->bary.y;
+                              recompute_farthest();
+                            };
+                          };
+                        };
+                      };
+                    };
+                  };
+        };
+    const auto ignored =
+        scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
+            .on_surface_candidate(handle_transparent_shadow)
+            .trace();
+    static_cast<void>(ignored);
+    return state;
+  }
+
   [[nodiscard]] Bool trace_ambient_occlusion(
       const std::shared_ptr<LuisaSceneData> &scene,
       const Var<luisa::compute::Ray> &ray,
       const ScenePrimitiveIdentity &source,
       Expr<bool> only_local) const noexcept {
+    if (_plan.primitives.triangles && !_plan.primitives.curves &&
+        scene->traversal_object_instance_buffer.has_value()) {
+      Bool occluded = false;
+      const auto src = resolve_excluded_triangle_identity(scene, source);
+      $if(only_local) {
+        if (scene->ambient_occlusion_local_accel) {
+          const auto handle_local_ao =
+              [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+                const auto hit = candidate.hit();
+                const auto primary_instance =
+                    (*scene->ambient_occlusion_local_accel)
+                        ->instance_user_id(hit->inst);
+                const auto accepted =
+                    (primary_instance == src.inst) & (hit->prim != src.prim);
+                $if(accepted) {
+                  candidate.commit();
+                  candidate.terminate();
+                };
+              };
+          const auto any_hit =
+              (*scene->ambient_occlusion_local_accel)
+                  ->traverse_any(ray, {.visibility_mask = 0xffu})
+                  .on_surface_candidate(handle_local_ao)
+                  .trace();
+          occluded = !any_hit->miss();
+        }
+      }
+      $else {
+        const Bool bypass_src = (src.inst == surface_ray::invalid_primitive);
+        const auto handle_global_ao =
+            [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+              $if(bypass_src) {
+                candidate.commit();
+                candidate.terminate();
+              }
+              $else {
+                const auto hit = candidate.hit();
+                $if(!((hit->inst == src.inst) & (hit->prim == src.prim))) {
+                  candidate.commit();
+                  candidate.terminate();
+                };
+              };
+            };
+        const auto any_hit =
+            scene->accel
+                ->traverse_any(ray, {.visibility_mask = shadow_visibility})
+                .on_surface_candidate(handle_global_ao)
+                .trace();
+        occluded = !any_hit->miss();
+      };
+      return occluded;
+    }
+
     Bool occluded = false;
 
     const auto handle_surface = [&](
@@ -596,7 +959,7 @@ public:
           Expr<std::uint32_t> visibility_mask,
           const ScenePrimitiveIdentity &source) const noexcept override {
     return trace(scene, ray, visibility_mask, source,
-                 ScenePrimitiveIdentity::invalid());
+                 ScenePrimitiveIdentity::invalid(), false);
   }
 
   Var<luisa::compute::CommittedHit>
@@ -605,7 +968,7 @@ public:
                  Expr<std::uint32_t> visibility_mask,
                  const ScenePrimitiveIdentity &source,
                  const ScenePrimitiveIdentity &light) const noexcept override {
-    return trace(scene, ray, visibility_mask, source, light);
+    return trace(scene, ray, visibility_mask, source, light, true);
   }
 
   Bool ambient_occluded(
@@ -621,6 +984,34 @@ public:
       const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,
       const ScenePrimitiveIdentity &source, const ScenePrimitiveIdentity &light,
       Expr<std::uint32_t> transparent_maximum) const noexcept override {
+    if (can_use_fast_triangle_shadow(scene)) {
+      const auto state = reduce_triangle_shadow_fast(
+          scene, ray, visibility_mask, source, light, transparent_maximum);
+      const auto count = state->packed_state & 7u;
+      const auto blocked = (state->packed_state >> 5u) & 1u;
+      const auto total = state->packed_state >> 6u;
+      Var<ShadowIntersectionBatchCall> batch;
+      for (auto index = std::size_t{0u};
+           index < shadow_intersection_batch_capacity; ++index) {
+        const auto idx = static_cast<std::uint32_t>(index);
+        auto &hit = batch->hits[idx];
+        initialize_shadow_intersection(hit, ray->t_max());
+        if (scene->has_transparent_shadow_materials) {
+          $if(idx < count) {
+            hit->instance = state->inst[idx];
+            hit->primitive = state->prim[idx];
+            hit->hit_type =
+                static_cast<std::uint32_t>(luisa::compute::HitType::Surface);
+            hit->distance = state->dist[idx];
+            hit->barycentric = make_float2(state->bx[idx], state->by[idx]);
+          };
+        }
+      }
+      batch->count = count;
+      batch->total = total;
+      batch->blocked = blocked;
+      return batch;
+    }
     LocalShadowHitStorage storage{ray->t_max()};
     const auto summary = reduce_shadow_candidates(
         scene, ray, visibility_mask, source, light, transparent_maximum,
@@ -640,7 +1031,227 @@ public:
       Expr<std::uint32_t> transparent_maximum,
       const ShadowIntersectionBatchStorage &storage,
       Expr<std::uint32_t> storage_invocation,
-      Expr<std::uint32_t> storage_capacity) const noexcept override {
+      Expr<std::uint32_t> storage_capacity,
+      std::uint32_t max_transparent_bounces = ~0u) const noexcept override {
+    if (can_use_fast_triangle_shadow(scene)) {
+      if (!scene->has_transparent_shadow_materials) {
+        const auto state = reduce_triangle_shadow_fast(
+            scene, ray, visibility_mask, source, light, transparent_maximum);
+        Var<ShadowIntersectionSummaryCall> result;
+        result->count = 0u;
+        result->total = 0u;
+        result->blocked = (state->packed_state >> 5u) & 1u;
+        return result;
+      }
+      constexpr auto capacity =
+          static_cast<std::uint32_t>(shadow_intersection_batch_capacity);
+      const bool bounded_by_capacity = max_transparent_bounces <= capacity;
+      const auto src = resolve_excluded_triangle_identity(scene, source);
+      const auto dst = resolve_excluded_triangle_identity(scene, light);
+      const UInt max_trans = transparent_maximum;
+      const UInt inv = storage_invocation;
+      const UInt cap = storage_capacity;
+      UInt packed_state = 0u;
+      const auto opacity_words =
+          Expr<Buffer<luisa::uint>>{*scene->traversal_shadow_opacity_buffer};
+      if (bounded_by_capacity) {
+        const auto handle_bounded_summary =
+            [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+              const auto hit = candidate.hit();
+              const auto excluded =
+                  ((hit->inst == src.inst) & (hit->prim == src.prim)) |
+                  ((hit->inst == dst.inst) & (hit->prim == dst.prim));
+              $if(!excluded) {
+                $if(max_trans == 0u) {
+                  candidate.commit();
+                  candidate.terminate();
+                }
+                $else {
+                  const auto code = opacity_words.read(hit->inst);
+                  Bool has_transparent = code != 0u;
+                  if (scene->has_mixed_shadow_opacity_instances) {
+                    has_transparent = code == ~0u;
+                    $if((code != 0u) & (code != ~0u)) {
+                      const auto word =
+                          opacity_words.read(code + (hit->prim >> 5u));
+                      has_transparent =
+                          ((word >> (hit->prim & 31u)) & 1u) != 0u;
+                    };
+                  }
+                  $if(!has_transparent) {
+                    candidate.commit();
+                    candidate.terminate();
+                  }
+                  $else {
+                    const auto cur_count = packed_state & 7u;
+                    Bool duplicate = false;
+                    $if(cur_count != 0u) {
+                      const auto id0 = storage.read_identity(inv, 0u, cap);
+                      duplicate = (id0.x == hit->inst) & (id0.y == hit->prim);
+                      $if(cur_count > 1u) {
+                        const auto id1 = storage.read_identity(inv, 1u, cap);
+                        duplicate |=
+                            (id1.x == hit->inst) & (id1.y == hit->prim);
+                        $if(cur_count > 2u) {
+                          const auto id2 = storage.read_identity(inv, 2u, cap);
+                          duplicate |=
+                              (id2.x == hit->inst) & (id2.y == hit->prim);
+                          $if(cur_count > 3u) {
+                            const auto id3 =
+                                storage.read_identity(inv, 3u, cap);
+                            duplicate |=
+                                (id3.x == hit->inst) & (id3.y == hit->prim);
+                          };
+                        };
+                      };
+                    };
+                    $if(!duplicate) {
+                      const auto next_total = (packed_state >> 6u) + 1u;
+                      $if(next_total > max_trans) {
+                        candidate.commit();
+                        candidate.terminate();
+                      }
+                      $else {
+                        Var<ShadowIntersectionCall> candidate_rec;
+                        candidate_rec->instance = hit->inst;
+                        candidate_rec->primitive = hit->prim;
+                        candidate_rec->hit_type = static_cast<std::uint32_t>(
+                            luisa::compute::HitType::Surface);
+                        candidate_rec->distance = hit->committed_ray_t;
+                        candidate_rec->barycentric = hit->bary;
+                        storage.write(inv, cur_count, candidate_rec, cap);
+                        packed_state = (cur_count + 1u) | (next_total << 6u);
+                      };
+                    };
+                  };
+                };
+              };
+            };
+        const auto blocker_hit =
+            scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
+                .on_surface_candidate(handle_bounded_summary)
+                .trace();
+        Var<ShadowIntersectionSummaryCall> result;
+        result->count = packed_state & 7u;
+        result->total = packed_state >> 6u;
+        result->blocked = select(0u, 1u, !blocker_hit->miss());
+        return result;
+      }
+
+      Float max_dist = ray->t_max();
+      const auto handle_transparent_summary =
+          [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+            const auto hit = candidate.hit();
+            const auto excluded =
+                ((hit->inst == src.inst) & (hit->prim == src.prim)) |
+                ((hit->inst == dst.inst) & (hit->prim == dst.prim));
+            $if(!excluded) {
+              $if(max_trans == 0u) {
+                candidate.commit();
+                candidate.terminate();
+              }
+              $else {
+                const auto code = opacity_words.read(hit->inst);
+                Bool has_transparent = code != 0u;
+                if (scene->has_mixed_shadow_opacity_instances) {
+                  has_transparent = code == ~0u;
+                  $if((code != 0u) & (code != ~0u)) {
+                    const auto word =
+                        opacity_words.read(code + (hit->prim >> 5u));
+                    has_transparent =
+                        ((word >> (hit->prim & 31u)) & 1u) != 0u;
+                  };
+                }
+                $if(!has_transparent) {
+                  candidate.commit();
+                  candidate.terminate();
+                }
+                $else {
+                  const auto cur_count = packed_state & 7u;
+                  Bool duplicate = false;
+                  $if(cur_count != 0u) {
+                    const auto id0 = storage.read_identity(inv, 0u, cap);
+                    duplicate = (id0.x == hit->inst) & (id0.y == hit->prim);
+                    $if(cur_count > 1u) {
+                      const auto id1 = storage.read_identity(inv, 1u, cap);
+                      duplicate |= (id1.x == hit->inst) & (id1.y == hit->prim);
+                      $if(cur_count > 2u) {
+                        const auto id2 = storage.read_identity(inv, 2u, cap);
+                        duplicate |=
+                            (id2.x == hit->inst) & (id2.y == hit->prim);
+                        $if(cur_count > 3u) {
+                          const auto id3 = storage.read_identity(inv, 3u, cap);
+                          duplicate |=
+                              (id3.x == hit->inst) & (id3.y == hit->prim);
+                        };
+                      };
+                    };
+                  };
+                  $if(!duplicate) {
+                    const auto next_total = (packed_state >> 6u) + 1u;
+                    $if(next_total > max_trans) {
+                      candidate.commit();
+                      candidate.terminate();
+                    }
+                    $else {
+                      packed_state =
+                          (packed_state & 0x3fu) | (next_total << 6u);
+                      Var<ShadowIntersectionCall> candidate_rec;
+                      candidate_rec->instance = hit->inst;
+                      candidate_rec->primitive = hit->prim;
+                      candidate_rec->hit_type = static_cast<std::uint32_t>(
+                          luisa::compute::HitType::Surface);
+                      candidate_rec->distance = hit->committed_ray_t;
+                      candidate_rec->barycentric = hit->bary;
+                      Bool need_recompute = false;
+                      $if(cur_count < capacity) {
+                        storage.write(inv, cur_count, candidate_rec, cap);
+                        const auto next_count = cur_count + 1u;
+                        packed_state = (packed_state & ~7u) | next_count;
+                        need_recompute =
+                            (next_count == capacity) & (max_trans > capacity);
+                        $if(!need_recompute) {
+                          packed_state = (packed_state & ~(3u << 3u)) |
+                                         ((next_count & 3u) << 3u);
+                        };
+                      }
+                      $else {
+                        $if(hit->committed_ray_t < max_dist) {
+                          const auto rep = (packed_state >> 3u) & 3u;
+                          storage.write(inv, rep, candidate_rec, cap);
+                          need_recompute = true;
+                        };
+                      };
+                      $if(need_recompute) {
+                        UInt rep = 0u;
+                        Float farthest = storage.read_distance(inv, 0u, cap);
+                        for (auto i = std::size_t{1u}; i < capacity; ++i) {
+                          const auto d = storage.read_distance(
+                              inv, static_cast<std::uint32_t>(i), cap);
+                          const auto f = d > farthest;
+                          rep = select(rep, static_cast<std::uint32_t>(i), f);
+                          farthest = select(farthest, d, f);
+                        }
+                        max_dist = farthest;
+                        packed_state =
+                            (packed_state & ~(3u << 3u)) | (rep << 3u);
+                      };
+                    };
+                  };
+                };
+              };
+            };
+          };
+      const auto blocker_hit =
+          scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
+              .on_surface_candidate(handle_transparent_summary)
+              .trace();
+      Var<ShadowIntersectionSummaryCall> result;
+      result->count = packed_state & 7u;
+      result->total = packed_state >> 6u;
+      result->blocked = select(0u, 1u, !blocker_hit->miss());
+      return result;
+    }
     SoAShadowHitStorage hits{&storage, storage_invocation, storage_capacity};
     return reduce_shadow_candidates(scene, ray, visibility_mask, source, light,
                                     transparent_maximum, hits);

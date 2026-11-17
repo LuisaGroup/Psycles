@@ -72,7 +72,7 @@ class VolumeNodeView {
 public:
   VolumeNodeView(Cursor &cursor, Stack &stack) noexcept
       : _cursor{cursor}, _stack{stack} {}
-  UInt word(std::size_t offset) const noexcept {
+  Expr<std::uint32_t> word(std::size_t offset) const noexcept {
     return _cursor.word_at(
         static_cast<unsigned>(offset / sizeof(std::uint32_t)));
   }
@@ -85,7 +85,7 @@ public:
   }
   Float mix(std::size_t offset) const noexcept {
     return stack_load_float_default(
-        _stack, _cursor.byte(word(offset), offset % 4u), 1.0f);
+        _stack, _cursor.byte(word(offset), static_cast<std::uint32_t>(offset % 4u)), 1.0f);
   }
 };
 
@@ -295,7 +295,7 @@ void node_principled_volume(const KernelGlobals &kg, Cursor &cursor,
             const auto attr =
                 find_attribute(kg, sd,
                                node.word(offsetof(Node, attr_density))
-                                   .as<int>()
+                                   .bitcast<int>()
                                    .cast<luisa::ulong>());
             $if(is_attribute_found(attr)) {
               density = max(density * primitive_volume_attribute_float(
@@ -308,7 +308,7 @@ void node_principled_volume(const KernelGlobals &kg, Cursor &cursor,
             const auto attr =
                 find_attribute(kg, sd,
                                node.word(offsetof(Node, attr_color))
-                                   .as<int>()
+                                   .bitcast<int>()
                                    .cast<luisa::ulong>());
             $if(is_attribute_found(attr)) {
               color *= primitive_volume_attribute_float3(kg, sd, attr, true);
@@ -337,7 +337,7 @@ void node_principled_volume(const KernelGlobals &kg, Cursor &cursor,
               const auto attr =
                   find_attribute(kg, sd,
                                  node.word(offsetof(Node, attr_temperature))
-                                     .as<int>()
+                                     .bitcast<int>()
                                      .cast<luisa::ulong>());
               $if(is_attribute_found(attr)) {
                 temperature *= max(

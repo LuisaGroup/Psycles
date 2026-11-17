@@ -122,12 +122,91 @@ template<MicrofacetDistribution Distribution>
 template<MicrofacetDistribution Distribution, typename Closure>
 [[nodiscard]] BsdfEvaluation microfacet_eval(
     const KernelGlobals &kernel_globals, const Closure &closure,
-    Expr<luisa::float3> wi, Expr<luisa::float3> wo) noexcept {
+    Expr<luisa::float3> wi, Expr<luisa::float3> wo,
+    bool allow_transmission = true) noexcept {
+  using Usage = compiler::cycles_svm::ClosureUsage;
+  const auto usage = kernel_globals.closure_usage();
+  constexpr auto trans_mask =
+      Distribution == MicrofacetDistribution::ggx
+          ? (Usage::bit(closure_type::type_microfacet_ggx_refraction) |
+             Usage::bit(closure_type::type_microfacet_ggx_glass) |
+             Usage::bit(closure_type::type_microfacet_multi_ggx_glass))
+          : (Usage::bit(closure_type::type_microfacet_beckmann_refraction) |
+             Usage::bit(closure_type::type_microfacet_beckmann_glass));
+  const bool may_transmit =
+      allow_transmission &&
+      (usage.surface_closure_mask & trans_mask) != 0ull;
+  const bool may_anisotropic =
+      usage.has_fresnel(Usage::fresnel_anisotropic);
+
   BsdfEvaluation result{.value = make_float3(0.0f), .pdf = 0.0f};
   const auto &microfacet = closure.param;
   const auto normal = closure.common.N;
   const auto cosine_incoming = dot(normal, wi);
   const auto cosine_outgoing = dot(normal, wo);
+
+  if (!may_transmit) {
+    const auto rejected = (cosine_incoming <= 0.0f) |
+                          (cosine_outgoing < 0.0f) |
+                          roughness_is_almost_specular(microfacet);
+    $if(!rejected) {
+      Float3 half_vector = wi + wo;
+      const auto inverse_half_length =
+          safe_divide(1.0f, sqrt(dot(half_vector, half_vector)));
+      half_vector *= inverse_half_length;
+      const auto cosine_half_incoming = dot(half_vector, wi);
+      const auto fresnel = microfacet_fresnel(
+          kernel_globals, closure, cosine_half_incoming, false);
+      $if(!all(fresnel.reflectance == make_float3(0.0f))) {
+        const auto cosine_normal_half = dot(normal, half_vector);
+        Float distribution;
+        Float lambda_incoming;
+        Float lambda_outgoing;
+        const auto eval_isotropic = [&] {
+          const auto alpha_squared =
+              microfacet.alpha_x * microfacet.alpha_y;
+          distribution = microfacet_distribution<Distribution>(
+              alpha_squared, cosine_normal_half);
+          lambda_incoming = microfacet_lambda<Distribution>(
+              alpha_squared, cosine_incoming);
+          lambda_outgoing = microfacet_lambda<Distribution>(
+              alpha_squared, cosine_outgoing);
+        };
+        if (!may_anisotropic) {
+          eval_isotropic();
+        } else {
+          $if(microfacet.alpha_x == microfacet.alpha_y) {
+            eval_isotropic();
+          }
+          $else {
+            const auto basis = sample_mapping::make_orthonormals_tangent(
+                normal, microfacet.T);
+            const auto local_half = make_float3(
+                dot(basis.tangent, half_vector),
+                dot(basis.bitangent, half_vector), cosine_normal_half);
+            const auto local_incoming = make_float3(
+                dot(basis.tangent, wi), dot(basis.bitangent, wi),
+                cosine_incoming);
+            const auto local_outgoing = make_float3(
+                dot(basis.tangent, wo), dot(basis.bitangent, wo),
+                cosine_outgoing);
+            distribution = microfacet_anisotropic_distribution<Distribution>(
+                microfacet.alpha_x, microfacet.alpha_y, local_half);
+            lambda_incoming = microfacet_anisotropic_lambda<Distribution>(
+                microfacet.alpha_x, microfacet.alpha_y, local_incoming);
+            lambda_outgoing = microfacet_anisotropic_lambda<Distribution>(
+                microfacet.alpha_x, microfacet.alpha_y, local_outgoing);
+          };
+        }
+        const auto common = 0.25f * distribution / cosine_incoming;
+        result.pdf = common / (1.0f + lambda_incoming);
+        result.value = fresnel.reflectance * common /
+                       (1.0f + lambda_outgoing + lambda_incoming);
+      };
+    };
+    return result;
+  }
+
   const auto is_transmission = cosine_outgoing < 0.0f;
   const auto has_reflection =
       !closure_type::is_refraction_microfacet(closure.common.type);
@@ -159,8 +238,7 @@ template<MicrofacetDistribution Distribution, typename Closure>
       Float distribution;
       Float lambda_incoming;
       Float lambda_outgoing;
-      $if((microfacet.alpha_x == microfacet.alpha_y) |
-          is_transmission) {
+      const auto eval_isotropic = [&] {
         const auto alpha_squared =
             microfacet.alpha_x * microfacet.alpha_y;
         distribution = microfacet_distribution<Distribution>(
@@ -169,26 +247,34 @@ template<MicrofacetDistribution Distribution, typename Closure>
             alpha_squared, cosine_incoming);
         lambda_outgoing = microfacet_lambda<Distribution>(
             alpha_squared, cosine_outgoing);
-      }
-      $else {
-        const auto basis = sample_mapping::make_orthonormals_tangent(
-            normal, microfacet.T);
-        const auto local_half = make_float3(
-            dot(basis.tangent, half_vector),
-            dot(basis.bitangent, half_vector), cosine_normal_half);
-        const auto local_incoming = make_float3(
-            dot(basis.tangent, wi), dot(basis.bitangent, wi),
-            cosine_incoming);
-        const auto local_outgoing = make_float3(
-            dot(basis.tangent, wo), dot(basis.bitangent, wo),
-            cosine_outgoing);
-        distribution = microfacet_anisotropic_distribution<Distribution>(
-            microfacet.alpha_x, microfacet.alpha_y, local_half);
-        lambda_incoming = microfacet_anisotropic_lambda<Distribution>(
-            microfacet.alpha_x, microfacet.alpha_y, local_incoming);
-        lambda_outgoing = microfacet_anisotropic_lambda<Distribution>(
-            microfacet.alpha_x, microfacet.alpha_y, local_outgoing);
       };
+      if (!may_anisotropic) {
+        eval_isotropic();
+      } else {
+        $if((microfacet.alpha_x == microfacet.alpha_y) |
+            is_transmission) {
+          eval_isotropic();
+        }
+        $else {
+          const auto basis = sample_mapping::make_orthonormals_tangent(
+              normal, microfacet.T);
+          const auto local_half = make_float3(
+              dot(basis.tangent, half_vector),
+              dot(basis.bitangent, half_vector), cosine_normal_half);
+          const auto local_incoming = make_float3(
+              dot(basis.tangent, wi), dot(basis.bitangent, wi),
+              cosine_incoming);
+          const auto local_outgoing = make_float3(
+              dot(basis.tangent, wo), dot(basis.bitangent, wo),
+              cosine_outgoing);
+          distribution = microfacet_anisotropic_distribution<Distribution>(
+              microfacet.alpha_x, microfacet.alpha_y, local_half);
+          lambda_incoming = microfacet_anisotropic_lambda<Distribution>(
+              microfacet.alpha_x, microfacet.alpha_y, local_incoming);
+          lambda_outgoing = microfacet_anisotropic_lambda<Distribution>(
+              microfacet.alpha_x, microfacet.alpha_y, local_outgoing);
+        };
+      }
 
       const auto common = distribution / cosine_incoming *
           select(0.25f,
@@ -217,7 +303,23 @@ template<MicrofacetDistribution Distribution, typename Closure>
 [[nodiscard]] BsdfSample microfacet_sample(
     const KernelGlobals &kernel_globals, const Closure &closure,
     Expr<luisa::float3> geometric_normal, Expr<luisa::float3> wi,
-    Expr<luisa::float3> random) noexcept {
+    Expr<luisa::float3> random,
+    bool allow_transmission = true) noexcept {
+  using Usage = compiler::cycles_svm::ClosureUsage;
+  const auto usage = kernel_globals.closure_usage();
+  constexpr auto trans_mask =
+      Distribution == MicrofacetDistribution::ggx
+          ? (Usage::bit(closure_type::type_microfacet_ggx_refraction) |
+             Usage::bit(closure_type::type_microfacet_ggx_glass) |
+             Usage::bit(closure_type::type_microfacet_multi_ggx_glass))
+          : (Usage::bit(closure_type::type_microfacet_beckmann_refraction) |
+             Usage::bit(closure_type::type_microfacet_beckmann_glass));
+  const bool may_transmit =
+      allow_transmission &&
+      (usage.surface_closure_mask & trans_mask) != 0ull;
+  const bool may_anisotropic =
+      usage.has_fresnel(Usage::fresnel_anisotropic);
+
   BsdfSample result{.value = make_float3(0.0f),
                     .wo = make_float3(0.0f),
                     .pdf = 0.0f,
@@ -228,8 +330,6 @@ template<MicrofacetDistribution Distribution, typename Closure>
   const auto normal = closure.common.N;
   const auto cosine_incoming = dot(normal, wi);
   $if(cosine_incoming > 0.0f) {
-    const auto eta = microfacet.ior;
-    const auto inverse_eta = safe_divide(1.0f, eta);
     Bool singular = roughness_is_almost_specular(microfacet);
     Float3 half_vector;
     Float3 local_half = make_float3(0.0f);
@@ -238,17 +338,23 @@ template<MicrofacetDistribution Distribution, typename Closure>
     $else {
       Float3 basis_x;
       Float3 basis_y;
-      $if(microfacet.alpha_x == microfacet.alpha_y) {
+      if (!may_anisotropic) {
         const auto basis = sample_mapping::make_orthonormals(normal);
         basis_x = basis.tangent;
         basis_y = basis.bitangent;
+      } else {
+        $if(microfacet.alpha_x == microfacet.alpha_y) {
+          const auto basis = sample_mapping::make_orthonormals(normal);
+          basis_x = basis.tangent;
+          basis_y = basis.bitangent;
+        }
+        $else {
+          const auto basis = sample_mapping::make_orthonormals_tangent(
+              normal, microfacet.T);
+          basis_x = basis.tangent;
+          basis_y = basis.bitangent;
+        };
       }
-      $else {
-        const auto basis = sample_mapping::make_orthonormals_tangent(
-            normal, microfacet.T);
-        basis_x = basis.tangent;
-        basis_y = basis.bitangent;
-      };
       local_incoming = make_float3(dot(basis_x, wi), dot(basis_y, wi),
                                    cosine_incoming);
       if constexpr (Distribution == MicrofacetDistribution::ggx) {
@@ -265,7 +371,70 @@ template<MicrofacetDistribution Distribution, typename Closure>
     };
     const auto cosine_half_incoming = dot(half_vector, wi);
     const auto fresnel = microfacet_fresnel(
-        kernel_globals, closure, cosine_half_incoming);
+        kernel_globals, closure, cosine_half_incoming, may_transmit);
+
+    if (!may_transmit) {
+      $if(!all(fresnel.reflectance == make_float3(0.0f))) {
+        result.wo = 2.0f * cosine_half_incoming * half_vector - wi;
+        const auto cosine_outgoing = dot(normal, result.wo);
+        const auto cosine_geometric_outgoing =
+            dot(geometric_normal, result.wo);
+        $if((cosine_geometric_outgoing >= 0.0f) & (cosine_outgoing >= 0.0f)) {
+          result.value = fresnel.reflectance;
+          result.pdf = 1.0f;
+          $if(singular) {
+            result.pdf = 1.0e6f;
+            result.value *= 1.0e6f;
+          }
+          $else {
+            Float distribution;
+            Float lambda_incoming;
+            Float lambda_outgoing;
+            const auto sample_isotropic = [&] {
+              const auto alpha_squared =
+                  microfacet.alpha_x * microfacet.alpha_y;
+              distribution = microfacet_distribution<Distribution>(
+                  alpha_squared, local_half.z);
+              lambda_outgoing = microfacet_lambda<Distribution>(
+                  alpha_squared, cosine_outgoing);
+              lambda_incoming = microfacet_lambda<Distribution>(
+                  alpha_squared, cosine_incoming);
+            };
+            if (!may_anisotropic) {
+              sample_isotropic();
+            } else {
+              $if(microfacet.alpha_x == microfacet.alpha_y) {
+                sample_isotropic();
+              }
+              $else {
+                const auto local_outgoing =
+                    2.0f * cosine_half_incoming * local_half - local_incoming;
+                distribution =
+                    microfacet_anisotropic_distribution<Distribution>(
+                        microfacet.alpha_x, microfacet.alpha_y, local_half);
+                lambda_outgoing = microfacet_anisotropic_lambda<Distribution>(
+                    microfacet.alpha_x, microfacet.alpha_y, local_outgoing);
+                lambda_incoming = microfacet_anisotropic_lambda<Distribution>(
+                    microfacet.alpha_x, microfacet.alpha_y, local_incoming);
+              };
+            }
+            const auto common = 0.25f * distribution / cosine_incoming;
+            result.pdf = common / (1.0f + lambda_incoming);
+            result.value *= common / (1.0f + lambda_incoming + lambda_outgoing);
+          };
+          result.sampled_roughness =
+              make_float2(microfacet.alpha_x, microfacet.alpha_y);
+          result.eta = 1.0f;
+          result.label = closure_type::label_reflect |
+                         select(closure_type::label_glossy,
+                                closure_type::label_singular, singular);
+        };
+      };
+      return;
+    }
+
+    const auto eta = microfacet.ior;
+    const auto inverse_eta = safe_divide(1.0f, eta);
     const auto fresnel_is_zero =
         all(fresnel.reflectance == make_float3(0.0f)) &
         all(fresnel.transmittance == make_float3(0.0f));
@@ -311,7 +480,7 @@ template<MicrofacetDistribution Distribution, typename Closure>
           Float distribution;
           Float lambda_incoming;
           Float lambda_outgoing;
-          $if((microfacet.alpha_x == microfacet.alpha_y) | refract) {
+          const auto sample_isotropic = [&] {
             const auto alpha_squared =
                 microfacet.alpha_x * microfacet.alpha_y;
             distribution = microfacet_distribution<Distribution>(
@@ -320,18 +489,25 @@ template<MicrofacetDistribution Distribution, typename Closure>
                 alpha_squared, cosine_outgoing);
             lambda_incoming = microfacet_lambda<Distribution>(
                 alpha_squared, cosine_incoming);
-          }
-          $else {
-            const auto local_outgoing =
-                2.0f * cosine_half_incoming * local_half - local_incoming;
-            distribution =
-                microfacet_anisotropic_distribution<Distribution>(
-                    microfacet.alpha_x, microfacet.alpha_y, local_half);
-            lambda_outgoing = microfacet_anisotropic_lambda<Distribution>(
-                microfacet.alpha_x, microfacet.alpha_y, local_outgoing);
-            lambda_incoming = microfacet_anisotropic_lambda<Distribution>(
-                microfacet.alpha_x, microfacet.alpha_y, local_incoming);
           };
+          if (!may_anisotropic) {
+            sample_isotropic();
+          } else {
+            $if((microfacet.alpha_x == microfacet.alpha_y) | refract) {
+              sample_isotropic();
+            }
+            $else {
+              const auto local_outgoing =
+                  2.0f * cosine_half_incoming * local_half - local_incoming;
+              distribution =
+                  microfacet_anisotropic_distribution<Distribution>(
+                      microfacet.alpha_x, microfacet.alpha_y, local_half);
+              lambda_outgoing = microfacet_anisotropic_lambda<Distribution>(
+                  microfacet.alpha_x, microfacet.alpha_y, local_outgoing);
+              lambda_incoming = microfacet_anisotropic_lambda<Distribution>(
+                  microfacet.alpha_x, microfacet.alpha_y, local_incoming);
+            };
+          }
           const auto common = distribution / cosine_incoming *
               select(0.25f,
                      abs(cosine_half_incoming *
@@ -362,9 +538,10 @@ template<MicrofacetDistribution Distribution, typename Closure>
 template<typename Closure>
 [[nodiscard]] BsdfEvaluation ggx_eval(
     const KernelGlobals &kernel_globals, const Closure &closure,
-    Expr<luisa::float3> wi, Expr<luisa::float3> wo) noexcept {
+    Expr<luisa::float3> wi, Expr<luisa::float3> wo,
+    bool allow_transmission = true) noexcept {
   auto result = microfacet_eval<MicrofacetDistribution::ggx>(
-      kernel_globals, closure, wi, wo);
+      kernel_globals, closure, wi, wo, allow_transmission);
   result.value *= closure.param.energy_scale;
   return result;
 }
@@ -373,9 +550,11 @@ template<typename Closure>
 [[nodiscard]] BsdfSample ggx_sample(
     const KernelGlobals &kernel_globals, const Closure &closure,
     Expr<luisa::float3> geometric_normal, Expr<luisa::float3> wi,
-    Expr<luisa::float3> random) noexcept {
+    Expr<luisa::float3> random,
+    bool allow_transmission = true) noexcept {
   auto result = microfacet_sample<MicrofacetDistribution::ggx>(
-      kernel_globals, closure, geometric_normal, wi, random);
+      kernel_globals, closure, geometric_normal, wi, random,
+      allow_transmission);
   result.value *= closure.param.energy_scale;
   return result;
 }
@@ -385,42 +564,42 @@ template<typename Closure>
 BsdfEvaluation bsdf_microfacet_ggx_eval(
     const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
     Expr<luisa::float3> wi, Expr<luisa::float3> wo) noexcept {
-  return ggx_eval(kernel_globals, closure, wi, wo);
+  return ggx_eval(kernel_globals, closure, wi, wo, true);
 }
 
 BsdfEvaluation bsdf_microfacet_ggx_eval(
     const KernelGlobals &kernel_globals,
     const MicrofacetConductorClosure &closure,
     Expr<luisa::float3> wi, Expr<luisa::float3> wo) noexcept {
-  return ggx_eval(kernel_globals, closure, wi, wo);
+  return ggx_eval(kernel_globals, closure, wi, wo, false);
 }
 
 BsdfEvaluation bsdf_microfacet_ggx_eval(
     const KernelGlobals &kernel_globals,
     const MicrofacetF82TintClosure &closure,
     Expr<luisa::float3> wi, Expr<luisa::float3> wo) noexcept {
-  return ggx_eval(kernel_globals, closure, wi, wo);
+  return ggx_eval(kernel_globals, closure, wi, wo, false);
 }
 
 BsdfSample bsdf_microfacet_ggx_sample(
     const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
     Expr<luisa::float3> Ng, Expr<luisa::float3> wi,
     Expr<luisa::float3> random) noexcept {
-  return ggx_sample(kernel_globals, closure, Ng, wi, random);
+  return ggx_sample(kernel_globals, closure, Ng, wi, random, true);
 }
 
 BsdfSample bsdf_microfacet_ggx_sample(
     const KernelGlobals &kernel_globals,
     const MicrofacetConductorClosure &closure, Expr<luisa::float3> Ng,
     Expr<luisa::float3> wi, Expr<luisa::float3> random) noexcept {
-  return ggx_sample(kernel_globals, closure, Ng, wi, random);
+  return ggx_sample(kernel_globals, closure, Ng, wi, random, false);
 }
 
 BsdfSample bsdf_microfacet_ggx_sample(
     const KernelGlobals &kernel_globals,
     const MicrofacetF82TintClosure &closure, Expr<luisa::float3> Ng,
     Expr<luisa::float3> wi, Expr<luisa::float3> random) noexcept {
-  return ggx_sample(kernel_globals, closure, Ng, wi, random);
+  return ggx_sample(kernel_globals, closure, Ng, wi, random, false);
 }
 
 BsdfEvaluation bsdf_microfacet_beckmann_eval(

@@ -1,6 +1,7 @@
 set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_bsdf_tables.cpp
     src/luisa/cycles_svm.cpp
+    src/luisa/cycles_svm_translator.cpp
     src/luisa/cycles_svm_ashikhmin_shirley.cpp
     src/luisa/cycles_svm_bsdf.cpp
     src/luisa/cycles_svm_surface_shader.cpp

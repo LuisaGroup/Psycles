@@ -62,7 +62,8 @@ valid_backend_native_record(std::size_t index, luisa::float4 actual,
   constexpr auto curve_unknown_source = std::size_t{5u};
   constexpr auto transformed_overlap = std::size_t{16u};
   constexpr auto near_overlap = std::size_t{20u};
-  const auto miss = equal_record(actual, make_float4(0.0f));
+  const auto miss = equal_record(actual, make_float4(0.0f)) ||
+                    near(actual.y, static_cast<float>(invalid_primitive));
   if ((index == filtered_coincident_endpoint ||
        index == filtered_coincident_truncated) &&
       miss) {

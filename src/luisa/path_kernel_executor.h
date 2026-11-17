@@ -19,6 +19,7 @@ class PathKernelExecutorImpl;
 
 struct PathKernelExecutorConfig {
   LuisaPathScheduler scheduler{LuisaPathScheduler::megakernel};
+    std::uint32_t render_pixel_count{0u};
     std::uint32_t wavefront_frame_capacity{1u << 20u};
     std::uint32_t wavefront_execution_block_size{32u};
     std::uint32_t wavefront_graph_worker_count{0u};

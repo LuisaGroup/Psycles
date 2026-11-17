@@ -13,9 +13,6 @@ void emit_surface_emission(
   auto &point = surface.point;
   auto &ray = sample.ray;
   auto &hit_position = surface.hit_position;
-  auto &wp0 = surface.wp0;
-  auto &wp1 = surface.wp1;
-  auto &wp2 = surface.wp2;
   auto &cycles_object_index = surface.cycles_object_index;
   auto &cycles_primitive_index = surface.cycles_primitive_index;
   auto &path_step = bounce.path_step;
@@ -77,7 +74,8 @@ void emit_surface_emission(
             (!mis_competition_skipped) &
             select(samples_front, samples_back, point.back_facing);
         $if(has_mis) {
-          surface.ensure_world_triangle_vertices();
+          const auto [wp0, wp1, wp2] =
+              surface.resolve_world_triangle_vertices();
           Bool competing = (path_depth > 0u) & (!mis_competition_skipped);
           const auto oriented_geometric_normal = select(
               point.geometric_normal, -point.geometric_normal, point.back_facing);

@@ -627,12 +627,20 @@ struct LuisaSceneData {
     // candidate callbacks; full material bindings remain the shading source.
     Buffer<SceneTraversalInstanceGpu> traversal_instance_buffer;
     Buffer<luisa::uint> traversal_material_flags_buffer;
+    std::optional<Buffer<luisa::uint2>> traversal_object_instance_buffer;
+    std::uint32_t traversal_object_instance_count{};
+    std::optional<Buffer<luisa::uint>> traversal_shadow_opacity_buffer;
+    bool has_transparent_shadow_materials{true};
+    bool has_mixed_shadow_opacity_instances{true};
+    std::vector<luisa::uint> primary_to_subsurface_local_host;
+    std::optional<Buffer<luisa::uint>> primary_to_subsurface_local_buffer;
     Buffer<AttributeBindingGpu> attribute_binding_buffer;
     Buffer<AttributeRangeGpu> attribute_range_buffer;
     std::uint32_t attribute_binding_slot{};
     std::uint32_t attribute_range_slot{};
     Buffer<LightGpu> light_buffer;
     std::uint32_t light_count{};
+    std::uint32_t light_type_mask{0xfu};
     // Portal records follow regular lights in light_buffer and never enter
     // the direct-light distribution. Their offset is exactly light_count.
     std::uint32_t portal_count{};
@@ -676,6 +684,7 @@ struct LuisaSceneData {
     // distinction explicit. Curves are intentionally absent.
     std::optional<Accel> ambient_occlusion_local_accel;
     Accel accel;
+    std::shared_ptr<const struct FilmPassAccessorGpu> film_pass_accessor;
     CameraDesc camera;
     VolumeSceneMetadata volume_metadata;
     std::shared_ptr<const VolumeMajorantScenePlan> volume_majorant_plan;
@@ -729,6 +738,30 @@ inline constexpr auto light_pass_buffer_count =
 
 struct BackgroundSamplingDistribution;
 
+using FilmSampleVerifyShader = luisa::compute::Shader1D<
+    luisa::compute::Buffer<luisa::uint>,
+    luisa::compute::Buffer<luisa::uint>,
+    std::uint32_t,
+    std::uint32_t>;
+
+using FilmPassResolveShader = luisa::compute::Shader1D<
+    luisa::compute::Buffer<luisa::float4>,
+    luisa::compute::Buffer<luisa::float4>,
+    luisa::compute::Buffer<luisa::float4>,
+    luisa::compute::Buffer<luisa::float4>,
+    luisa::compute::Buffer<luisa::uint>,
+    luisa::compute::Buffer<float>,
+    std::uint32_t,
+    std::uint32_t,
+    std::uint32_t,
+    std::uint32_t,
+    float>;
+
+struct FilmPassAccessorGpu {
+    FilmSampleVerifyShader verify_sample_count;
+    FilmPassResolveShader resolve_pass;
+};
+
 class LuisaRenderSession final : public contract::RenderSession {
 
 private:
@@ -748,6 +781,9 @@ private:
     Buffer<luisa::float4> _path_trace;
     Buffer<luisa::float4> _sobol_table;
     Buffer<float> _pixel_filter_table;
+    Buffer<luisa::uint> _sample_mismatch_flag;
+    Buffer<float> _resolved_pass_staging;
+    std::vector<float> _resolved_pass_host;
     std::shared_ptr<const BackgroundSamplingDistribution> _background_sampling;
     std::shared_ptr<const VolumeMajorantRuntime> _volume_majorants;
     std::uint32_t _sobol_sequence_size{};
@@ -758,11 +794,13 @@ private:
     std::unique_ptr<VolumeGuidingFilter>
         _volume_guiding_filter;
     bool _path_trace_delivered{false};
+    std::optional<contract::RenderSampleTimings> _last_render_timings;
     std::atomic_bool _cancelled{false};
 
 private:
     [[nodiscard]] std::size_t pixel_count() const noexcept;
     void prepare_sobol_table(std::uint32_t total_samples);
+    void prepare_film_pass_accessor();
     void initialize(const RenderSettings &settings);
     [[nodiscard]] bool write_passes(contract::OutputSink &output);
     void deliver_path_trace();
@@ -779,6 +817,8 @@ private:
         const SampleRange &samples,
         contract::OutputSink &output) override;
     void cancel() noexcept override;
+    [[nodiscard]] std::optional<contract::RenderSampleTimings>
+    last_render_timings() const noexcept override;
 };
 
 [[nodiscard]] MaterialBindingGpu to_luisa(

@@ -20,10 +20,10 @@ inline constexpr auto pi_over_two = 1.57079632679489661923f;
 inline constexpr auto two_pi = 6.28318530717958647692f;
 
 [[nodiscard]] Float wave_coordinate(UInt wave_type, UInt bands_direction,
-                                    UInt rings_direction,
-                                    Float3 point) noexcept {
-  Float coordinate = 0.0f;
-  $if(wave_type == static_cast<std::uint32_t>(NODE_WAVE_BANDS)) {
+                                    UInt rings_direction, Float3 point,
+                                    std::uint32_t type_mask) noexcept {
+  const auto bands_fn = [&]() noexcept -> Float {
+    Float coordinate = 0.0f;
     $if(bands_direction ==
         static_cast<std::uint32_t>(NODE_WAVE_BANDS_DIRECTION_X)) {
       coordinate = point.x * 20.0f;
@@ -37,8 +37,9 @@ inline constexpr auto two_pi = 6.28318530717958647692f;
       coordinate = point.z * 20.0f;
     }
     $else { coordinate = (point.x + point.y + point.z) * 10.0f; };
-  }
-  $else {
+    return coordinate;
+  };
+  const auto rings_fn = [&]() noexcept -> Float {
     Float3 radial = point;
     $if(rings_direction ==
         static_cast<std::uint32_t>(NODE_WAVE_RINGS_DIRECTION_X)) {
@@ -52,23 +53,59 @@ inline constexpr auto two_pi = 6.28318530717958647692f;
           static_cast<std::uint32_t>(NODE_WAVE_RINGS_DIRECTION_Z)) {
       radial *= make_float3(1.0f, 1.0f, 0.0f);
     };
-    coordinate = length(radial) * 20.0f;
+    return length(radial) * 20.0f;
+  };
+  const bool may_bands = (type_mask & (1u << NODE_WAVE_BANDS)) != 0u;
+  const bool may_rings = (type_mask & (1u << NODE_WAVE_RINGS)) != 0u;
+  if (may_bands && !may_rings) {
+    return bands_fn();
+  }
+  if (!may_bands && may_rings) {
+    return rings_fn();
+  }
+  Float coordinate = 0.0f;
+  $if(wave_type == static_cast<std::uint32_t>(NODE_WAVE_BANDS)) {
+    coordinate = bands_fn();
+  }
+  $else {
+    coordinate = rings_fn();
   };
   return coordinate;
 }
 
-[[nodiscard]] Float wave_profile(UInt profile, Float coordinate) noexcept {
+[[nodiscard]] Float wave_profile(UInt profile, Float coordinate,
+                                 std::uint32_t profile_mask) noexcept {
+  const bool may_sin = (profile_mask & (1u << NODE_WAVE_PROFILE_SIN)) != 0u;
+  const bool may_saw = (profile_mask & (1u << NODE_WAVE_PROFILE_SAW)) != 0u;
+  const bool may_tri = (profile_mask & (1u << NODE_WAVE_PROFILE_TRI)) != 0u;
+  if (may_sin && !may_saw && !may_tri) {
+    return 0.5f + 0.5f * sin(coordinate - pi_over_two);
+  }
+  if (!may_sin && may_saw && !may_tri) {
+    const auto scaled = coordinate / two_pi;
+    return scaled - floor(scaled);
+  }
+  if (!may_sin && !may_saw && may_tri) {
+    const auto scaled = coordinate / two_pi;
+    return abs(scaled - floor(scaled + 0.5f)) * 2.0f;
+  }
   Float factor = 0.0f;
   $if(profile == static_cast<std::uint32_t>(NODE_WAVE_PROFILE_SIN)) {
-    factor = 0.5f + 0.5f * sin(coordinate - pi_over_two);
+    if (may_sin) {
+      factor = 0.5f + 0.5f * sin(coordinate - pi_over_two);
+    }
   }
   $elif(profile == static_cast<std::uint32_t>(NODE_WAVE_PROFILE_SAW)) {
-    coordinate /= two_pi;
-    factor = coordinate - floor(coordinate);
+    if (may_saw) {
+      coordinate /= two_pi;
+      factor = coordinate - floor(coordinate);
+    }
   }
   $else {
-    coordinate /= two_pi;
-    factor = abs(coordinate - floor(coordinate + 0.5f)) * 2.0f;
+    if (may_tri) {
+      coordinate /= two_pi;
+      factor = abs(coordinate - floor(coordinate + 0.5f)) * 2.0f;
+    }
   };
   return factor;
 }
@@ -134,7 +171,8 @@ evaluate_brick(Float3 point, Float mortar_size, Float mortar_smooth, Float bias,
 
 } // namespace
 
-void node_tex_wave(Cursor &cursor, Stack &stack) noexcept {
+void node_tex_wave(Cursor &cursor, Stack &stack,
+                   WaveStaticOptions options) noexcept {
   const auto wave_type = cursor.word();
   const auto bands_direction = cursor.word();
   const auto rings_direction = cursor.word();
@@ -153,22 +191,24 @@ void node_tex_wave(Cursor &cursor, Stack &stack) noexcept {
   auto point = stack_load_float3(stack, coordinate_offset) *
                stack_load_input_float(stack, scale_bits);
   point = (point + 0.000001f) * 0.999999f;
-  auto coordinate =
-      wave_coordinate(wave_type, bands_direction, rings_direction, point);
+  auto coordinate = wave_coordinate(wave_type, bands_direction, rings_direction,
+                                    point, options.type_mask);
   coordinate += stack_load_input_float(stack, phase_bits);
-  const auto distortion = stack_load_input_float(stack, distortion_bits);
-  $if(distortion != 0.0f) {
-    const auto detail = stack_load_input_float(stack, detail_bits);
-    const auto detail_scale = stack_load_input_float(stack, detail_scale_bits);
-    const auto detail_roughness =
-        stack_load_input_float(stack, detail_roughness_bits);
-    coordinate +=
-        distortion * (cycles_wave::distortion_noise(point * detail_scale,
-                                                    detail, detail_roughness) *
-                          2.0f -
-                      1.0f);
-  };
-  const auto factor = wave_profile(profile, coordinate);
+  if (options.may_have_distortion) {
+    const auto distortion = stack_load_input_float(stack, distortion_bits);
+    $if(distortion != 0.0f) {
+      const auto detail = stack_load_input_float(stack, detail_bits);
+      const auto detail_scale = stack_load_input_float(stack, detail_scale_bits);
+      const auto detail_roughness =
+          stack_load_input_float(stack, detail_roughness_bits);
+      coordinate +=
+          distortion * (cycles_wave::distortion_noise(point * detail_scale,
+                                                      detail, detail_roughness) *
+                            2.0f -
+                        1.0f);
+    };
+  }
+  const auto factor = wave_profile(profile, coordinate, options.profile_mask);
   $if(factor_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
     stack_store_float(stack, factor_offset, factor);
   };

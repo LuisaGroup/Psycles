@@ -48,6 +48,7 @@ _KNOWN_LUISA_BACKENDS = {
     "fallback",
     "hip",
     "metal",
+    "metal4",
     "remote",
     "simd",
     "vk",
@@ -76,6 +77,11 @@ _PSYCLES_TIMING_PATTERNS = {
         re.MULTILINE,
     ),
 }
+_PSYCLES_PASS_OUTPUT_PATTERN = re.compile(
+    r"^Luisa pass output completed in ([0-9.eE+-]+) s"
+    r"(?: \(render call ([0-9.eE+-]+) s\))?$",
+    re.MULTILINE,
+)
 
 
 def _positive_integer(value: str) -> int:
@@ -229,6 +235,21 @@ def _arguments() -> argparse.Namespace:
         "--cycles-gpu-device-name",
         default="",
         help="case-insensitive Cycles GPU device-name filter",
+    )
+    parser.add_argument(
+        "--cycles-metalrt",
+        choices=("AUTO", "ON", "OFF"),
+        default=None,
+        help="optional Cycles MetalRT intersection mode when GPU device is METAL",
+    )
+    parser.add_argument(
+        "--cycles-warmup-samples",
+        type=_nonnegative_integer,
+        default=0,
+        help=(
+            "optional untracked warmup sample count rendered in-process "
+            "before timing Cycles"
+        ),
     )
     parser.add_argument(
         "--cycles-cpu-device-name",
@@ -408,8 +429,10 @@ def _cycles_command(
     samples: int,
     device: str,
     device_name: str,
+    metalrt: str | None = None,
+    warmup_samples: int = 0,
 ) -> list[str]:
-    return [
+    command = [
         str(blender),
         str(blend),
         "--background",
@@ -428,6 +451,11 @@ def _cycles_command(
         "--device-name",
         device_name,
     ]
+    if metalrt is not None and device.strip().upper() == "METAL":
+        command.extend(["--metalrt", metalrt])
+    if warmup_samples > 0:
+        command.extend(["--warmup-samples", str(warmup_samples)])
+    return command
 
 
 def _export_command(
@@ -618,18 +646,71 @@ def _parse_psycles_timings(output: str) -> dict[str, float]:
             raise RuntimeError(
                 f"Psycles output did not report {name}"
             )
-        timings[name] = float(match.group(1))
+        value = float(match.group(1))
+        if not math.isfinite(value) or value < 0.0:
+            raise RuntimeError(
+                f"Psycles reported invalid {name}: {match.group(1)}"
+            )
+        timings[name] = value
+    pass_match = _PSYCLES_PASS_OUTPUT_PATTERN.search(output)
+    if pass_match is not None:
+        pass_output_seconds = float(pass_match.group(1))
+        if not math.isfinite(pass_output_seconds) or pass_output_seconds < 0.0:
+            raise RuntimeError(
+                "Psycles reported invalid pass_output_seconds"
+            )
+        timings["pass_output_seconds"] = pass_output_seconds
+        if pass_match.group(2) is not None:
+            render_call_seconds = float(pass_match.group(2))
+            if (
+                not math.isfinite(render_call_seconds)
+                or render_call_seconds < 0.0
+                or render_call_seconds + 1e-6 < timings["render_seconds"]
+            ):
+                raise RuntimeError(
+                    "Psycles reported inconsistent render_call_seconds"
+                )
+            timings["render_call_seconds"] = render_call_seconds
     return timings
+
+
+_CYCLES_TIMED_BEGIN = "=== PSYCLES_CYCLES_TIMED_RENDER_BEGIN ==="
+_CYCLES_TIMED_END = "=== PSYCLES_CYCLES_TIMED_RENDER_END ==="
+_CYCLES_BATCH_PATTERN = re.compile(
+    r"Rendered\s+(\d+)\s+samples\s+in\s+([0-9.eE+-]+)\s+seconds\s+"
+    r"\([0-9.eE+-]+\s+seconds\s+per\s+sample\)"
+)
+_CYCLES_PATH_TRACING_WALL_PATTERN = re.compile(
+    r"^\s*\|\s+Path Tracing\s+([0-9.eE+-]+)\s+[0-9.eE+-]+\s*$",
+    re.MULTILINE,
+)
+
+
+def _extract_cycles_timed_output(output: str) -> str:
+    begin_count = output.count(_CYCLES_TIMED_BEGIN)
+    end_count = output.count(_CYCLES_TIMED_END)
+    if begin_count == 0 and end_count == 0:
+        return output
+    if begin_count != 1 or end_count != 1:
+        raise RuntimeError(
+            "Cycles warmup output must contain matching timed-render markers"
+        )
+    begin_index = output.index(_CYCLES_TIMED_BEGIN) + len(_CYCLES_TIMED_BEGIN)
+    end_index = output.index(_CYCLES_TIMED_END)
+    if end_index < begin_index:
+        raise RuntimeError("Cycles timed-render markers are out of order")
+    return output[begin_index:end_index]
 
 
 def _parse_cycles_timings(
     output: str, metadata: dict[str, Any],
-) -> dict[str, float | str]:
+) -> dict[str, float | int | str]:
     # elapsed_seconds surrounds bpy.ops.render(): it also includes scene
     # synchronization and other setup, not just the integrator's main loop.
+    timed_output = _extract_cycles_timed_output(output)
     marker = "Rendering in main loop is done in "
-    matches = re.findall(re.escape(marker) + r"(\S+) seconds\.", output)
-    if output.count(marker) != 1 or len(matches) != 1:
+    matches = re.findall(re.escape(marker) + r"(\S+) seconds\.", timed_output)
+    if timed_output.count(marker) != 1 or len(matches) != 1:
         raise RuntimeError("Cycles must report exactly one main-loop interval")
     try:
         render_seconds = float(matches[0])
@@ -645,11 +726,47 @@ def _parse_cycles_timings(
         or not 0.0 <= render_seconds <= render_call_seconds
     ):
         raise RuntimeError("Cycles reported inconsistent main-loop/render-call intervals")
-    return {
+    result: dict[str, float | int | str] = {
         "render_seconds": render_seconds,
         "render_call_seconds": render_call_seconds,
         "timing_scope": "cycles_main_loop_wall",
     }
+    warmup_elapsed = metadata.get("warmup_elapsed_seconds")
+    if isinstance(warmup_elapsed, (int, float)) and not isinstance(warmup_elapsed, bool):
+        if math.isfinite(float(warmup_elapsed)) and float(warmup_elapsed) >= 0.0:
+            result["warmup_elapsed_seconds"] = float(warmup_elapsed)
+    pt_match = _CYCLES_PATH_TRACING_WALL_PATTERN.search(timed_output)
+    if pt_match is not None:
+        pt_wall = float(pt_match.group(1))
+        if math.isfinite(pt_wall) and 0.0 <= pt_wall <= render_seconds + 1e-3:
+            result["path_tracing_seconds"] = pt_wall
+    batches = [
+        (int(count_str), float(seconds_str))
+        for count_str, seconds_str in _CYCLES_BATCH_PATTERN.findall(timed_output)
+    ]
+    if (
+        len(batches) >= 2
+        and batches[0][0] == 1
+        and all(count > 0 and math.isfinite(sec) and sec >= 0.0 for count, sec in batches)
+    ):
+        total_batch_samples = sum(count for count, _ in batches)
+        first_sample_seconds = batches[0][1]
+        steady_samples = sum(count for count, _ in batches[1:])
+        steady_elapsed = sum(sec for _, sec in batches[1:])
+        if steady_samples > 0:
+            steady_per_sample = steady_elapsed / steady_samples
+            pso_excluded = steady_per_sample * total_batch_samples
+            result.update({
+                "first_sample_seconds": first_sample_seconds,
+                "steady_state_samples": steady_samples,
+                "steady_state_elapsed_seconds": steady_elapsed,
+                "steady_state_per_sample_seconds": steady_per_sample,
+                "first_sample_pso_overhead_seconds": max(
+                    0.0, first_sample_seconds - steady_per_sample
+                ),
+                "pso_excluded_render_seconds": pso_excluded,
+            })
+    return result
 
 
 def _require_output(path: pathlib.Path) -> None:
@@ -871,6 +988,14 @@ def _relative_performance(
             )
         gpu_key = gpu_keys[0]
     gpu_seconds = float(cycles[gpu_key]["render_seconds"])
+    gpu_pso_excluded = cycles[gpu_key].get("pso_excluded_render_seconds")
+    gpu_pso_excluded_seconds = (
+        float(gpu_pso_excluded)
+        if isinstance(gpu_pso_excluded, (int, float))
+        and not isinstance(gpu_pso_excluded, bool)
+        and float(gpu_pso_excluded) > 0.0
+        else None
+    )
     cpu_seconds = (
         float(cycles["cpu"]["render_seconds"])
         if "cpu" in cycles
@@ -887,6 +1012,15 @@ def _relative_performance(
                 render_seconds / gpu_seconds
             ),
         }
+        if gpu_pso_excluded_seconds is not None:
+            result[backend].update({
+                f"speedup_over_cycles_{gpu_key}_pso_excluded": (
+                    gpu_pso_excluded_seconds / render_seconds
+                ),
+                f"slowdown_vs_cycles_{gpu_key}_pso_excluded": (
+                    render_seconds / gpu_pso_excluded_seconds
+                ),
+            })
         if cpu_seconds is not None:
             result[backend].update({
                 "speedup_over_cycles_cpu": (
@@ -967,6 +1101,16 @@ def _main() -> int:
             "cycles_gpu_device": gpu_device,
             "cycles_gpu_device_name": (
                 arguments.cycles_gpu_device_name
+            ),
+            **(
+                {"cycles_metalrt": arguments.cycles_metalrt}
+                if arguments.cycles_metalrt is not None
+                else {}
+            ),
+            **(
+                {"cycles_warmup_samples": arguments.cycles_warmup_samples}
+                if arguments.cycles_warmup_samples > 0
+                else {}
             ),
             "psycles_environment": {
                 name: os.environ.get(name)
@@ -1094,6 +1238,8 @@ def _main() -> int:
                 samples=arguments.samples,
                 device=device,
                 device_name=device_name,
+                metalrt=arguments.cycles_metalrt,
+                warmup_samples=arguments.cycles_warmup_samples,
             )
             metadata_path = output.with_suffix(".json")
             stage = f"cycles_{key}"

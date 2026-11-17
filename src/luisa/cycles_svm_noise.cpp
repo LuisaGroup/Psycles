@@ -125,54 +125,69 @@ template<typename Coordinate>
 }
 
 template<typename Coordinate>
-[[nodiscard]] const auto &noise_texture_callable(std::uint32_t type_mask) noexcept {
-  return cached_noise_callable(type_mask,
-      [type_mask](Coordinate coordinate, Float detail, Float roughness,
-         Float lacunarity, Float offset, Float gain, Float distortion,
-         UInt type, Bool normalize, Bool color_needed) noexcept {
-        $if (distortion != 0.0f) {
-          if constexpr (std::is_same_v<Coordinate, Float>) {
-            coordinate +=
-                cycles_noise::signed_noise(
-                    coordinate + random_offset<Coordinate>(0.0f)) *
-                distortion;
-          } else if constexpr (std::is_same_v<Coordinate, Float2>) {
-            coordinate +=
-                make_float2(
-                    cycles_noise::signed_noise(
-                        coordinate + random_offset<Coordinate>(0.0f)),
-                    cycles_noise::signed_noise(
-                        coordinate + random_offset<Coordinate>(1.0f))) *
-                distortion;
-          } else if constexpr (std::is_same_v<Coordinate, Float3>) {
-            coordinate +=
-                make_float3(
-                    cycles_noise::signed_noise(
-                        coordinate + random_offset<Coordinate>(0.0f)),
-                    cycles_noise::signed_noise(
-                        coordinate + random_offset<Coordinate>(1.0f)),
-                    cycles_noise::signed_noise(
-                        coordinate + random_offset<Coordinate>(2.0f))) *
-                distortion;
-          } else {
-            coordinate +=
-                make_float4(
-                    cycles_noise::signed_noise(
-                        coordinate + random_offset<Coordinate>(0.0f)),
-                    cycles_noise::signed_noise(
-                        coordinate + random_offset<Coordinate>(1.0f)),
-                    cycles_noise::signed_noise(
-                        coordinate + random_offset<Coordinate>(2.0f)),
-                    cycles_noise::signed_noise(
-                        coordinate + random_offset<Coordinate>(3.0f))) *
-                distortion;
-          }
-        };
+[[nodiscard]] const auto &noise_texture_callable(
+    std::uint32_t type_mask, NoiseStaticOptions options) noexcept {
+  const std::uint32_t key =
+      type_mask |
+      (options.may_have_distortion ? (1u << 8u) : 0u) |
+      (options.may_need_color ? (1u << 9u) : 0u);
+  return cached_noise_callable(
+      key,
+      [type_mask, options](Coordinate coordinate, Float detail, Float roughness,
+                           Float lacunarity, Float offset, Float gain,
+                           Float distortion, UInt type, Bool normalize,
+                           Bool color_needed) noexcept {
+        if (options.may_have_distortion) {
+          $if (distortion != 0.0f) {
+            if constexpr (std::is_same_v<Coordinate, Float>) {
+              coordinate +=
+                  cycles_noise::signed_noise(
+                      coordinate + random_offset<Coordinate>(0.0f)) *
+                  distortion;
+            } else if constexpr (std::is_same_v<Coordinate, Float2>) {
+              coordinate +=
+                  make_float2(
+                      cycles_noise::signed_noise(
+                          coordinate + random_offset<Coordinate>(0.0f)),
+                      cycles_noise::signed_noise(
+                          coordinate + random_offset<Coordinate>(1.0f))) *
+                  distortion;
+            } else if constexpr (std::is_same_v<Coordinate, Float3>) {
+              coordinate +=
+                  make_float3(
+                      cycles_noise::signed_noise(
+                          coordinate + random_offset<Coordinate>(0.0f)),
+                      cycles_noise::signed_noise(
+                          coordinate + random_offset<Coordinate>(1.0f)),
+                      cycles_noise::signed_noise(
+                          coordinate + random_offset<Coordinate>(2.0f))) *
+                  distortion;
+            } else {
+              coordinate +=
+                  make_float4(
+                      cycles_noise::signed_noise(
+                          coordinate + random_offset<Coordinate>(0.0f)),
+                      cycles_noise::signed_noise(
+                          coordinate + random_offset<Coordinate>(1.0f)),
+                      cycles_noise::signed_noise(
+                          coordinate + random_offset<Coordinate>(2.0f)),
+                      cycles_noise::signed_noise(
+                          coordinate + random_offset<Coordinate>(3.0f))) *
+                  distortion;
+            }
+          };
+        } else {
+          static_cast<void>(distortion);
+        }
 
         const auto &select_noise = noise_select_callable<Coordinate>(type_mask);
         const Float value = select_noise(
             coordinate, detail, roughness, lacunarity, offset, gain, type,
             normalize);
+        if (!options.may_need_color) {
+          static_cast<void>(color_needed);
+          return make_float4(make_float3(value), value);
+        }
         Float3 color = make_float3(value);
         $if (color_needed) {
           constexpr auto seed = first_color_seed<Coordinate>();
@@ -200,33 +215,37 @@ template<typename Coordinate>
     Expr<std::uint32_t> dimensions, Float3 vector, Float w, Float detail,
     Float roughness, Float lacunarity, Float offset, Float gain,
     Float distortion, Expr<std::uint32_t> type, Bool normalize,
-    Bool color_needed, NoiseUsage usage) noexcept {
+    Bool color_needed, NoiseUsage usage, NoiseStaticOptions options) noexcept {
   Float4 result = make_float4(0.0f);
   $switch (dimensions) {
     if (noise_types_for(usage, 1u) != 0u) {
       $case(1u) {
-        result = noise_texture_callable<Float>(noise_types_for(usage, 1u))(
+        result = noise_texture_callable<Float>(
+            noise_types_for(usage, 1u), options)(
             w, detail, roughness, lacunarity, offset, gain, distortion, type,
             normalize, color_needed);
       };
     }
     if (noise_types_for(usage, 2u) != 0u) {
       $case(2u) {
-        result = noise_texture_callable<Float2>(noise_types_for(usage, 2u))(
+        result = noise_texture_callable<Float2>(
+            noise_types_for(usage, 2u), options)(
             vector.xy(), detail, roughness, lacunarity, offset, gain,
             distortion, type, normalize, color_needed);
       };
     }
     if (noise_types_for(usage, 3u) != 0u) {
       $case(3u) {
-        result = noise_texture_callable<Float3>(noise_types_for(usage, 3u))(
+        result = noise_texture_callable<Float3>(
+            noise_types_for(usage, 3u), options)(
             vector, detail, roughness, lacunarity, offset, gain, distortion,
             type, normalize, color_needed);
       };
     }
     if (noise_types_for(usage, 4u) != 0u) {
       $case(4u) {
-        result = noise_texture_callable<Float4>(noise_types_for(usage, 4u))(
+        result = noise_texture_callable<Float4>(
+            noise_types_for(usage, 4u), options)(
             make_float4(vector, w), detail, roughness, lacunarity, offset, gain,
             distortion, type, normalize, color_needed);
       };
@@ -241,7 +260,8 @@ template<typename Coordinate>
 
 } // namespace
 
-void node_tex_noise(Cursor &cursor, Stack &stack, NoiseUsage usage) noexcept {
+void node_tex_noise(Cursor &cursor, Stack &stack, NoiseUsage usage,
+                    NoiseStaticOptions options) noexcept {
   const auto dimensions = cursor.word();
   const auto noise_type = cursor.word();
   const auto normalize = cursor.word() != 0u;
@@ -277,7 +297,7 @@ void node_tex_noise(Cursor &cursor, Stack &stack, NoiseUsage usage) noexcept {
       color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID);
   const auto result = evaluate_noise(
       dimensions, vector, w, detail, roughness, lacunarity, offset, gain,
-      distortion, noise_type, normalize, color_needed, usage);
+      distortion, noise_type, normalize, color_needed, usage, options);
   $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
     stack_store_float(stack, value_offset, result.w);
   };

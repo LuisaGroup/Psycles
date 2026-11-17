@@ -18,11 +18,15 @@ struct SceneTraversalTableBuildInput {
     std::span<const InstanceGpu> instances;
     std::span<const MaterialBindingGpu> geometry_materials;
     std::span<const MaterialBindingGpu> override_materials;
+    std::span<const GeometryUpload> geometry_uploads{};
 };
 
 struct SceneTraversalTableBuildResult {
     std::vector<SceneTraversalInstanceGpu> instances;
     std::vector<luisa::uint> material_flags;
+    std::vector<luisa::uint2> object_to_instance;
+    std::vector<luisa::uint> shadow_opacity_words;
+    bool has_transparent_shadow_materials{false};
     std::string diagnostic;
 
     [[nodiscard]] bool ok() const noexcept {
@@ -59,6 +63,7 @@ struct SceneTableUploadInput {
     luisa::vector<luisa::uint2> &light_tree_triangle_emitter_mappings;
     luisa::vector<luisa::uint> &light_tree_mesh_triangles;
     luisa::vector<luisa::uint4> &light_tree_triangle_lookup;
+    std::span<const GeometryUpload> geometry_uploads{};
 };
 
 struct SceneTableUploadResult {
