@@ -28,31 +28,76 @@ using namespace luisa::compute;
 using namespace compiler::cycles_svm;
 namespace layout = detail::closure_layout;
 
-static constexpr auto closure_rows = layout::ShaderClosure_sizeof / 16u;
+static constexpr auto closure_vec4s = layout::ShaderClosure_sizeof / 16u;
 static_assert(layout::ShaderClosure_sizeof % 16u == 0u);
 
 ClosurePool::ClosurePool(std::size_t capacity) noexcept
+    : ClosurePool{capacity, Options{}} {}
+
+ClosurePool::ClosurePool(std::size_t capacity, Options options) noexcept
     : _capacity{std::min(capacity, maximum_closure_capacity)},
-      _storage{std::max(_capacity, std::size_t{1u}) * closure_rows}, _count{0u},
+      _options{options},
+      _storage{std::max(_capacity, std::size_t{1u}) * closure_vec4s},
+      _count{0u},
       _left{static_cast<std::uint32_t>(_capacity)} {}
+
+UInt4 ClosurePool::load_vec4(Expr<std::uint32_t> slot,
+                             std::uint32_t vec_index) const noexcept {
+  if (_capacity <= 1u) {
+    return _storage[vec_index];
+  }
+  if (const auto c = detail::try_const_uint(slot)) {
+    return _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_index];
+  }
+  return _storage[slot * static_cast<std::uint32_t>(closure_vec4s) + vec_index];
+}
+
+void ClosurePool::store_vec4(Expr<std::uint32_t> slot,
+                             std::uint32_t vec_index,
+                             Expr<luisa::uint4> value) noexcept {
+  if (_capacity <= 1u) {
+    _storage[vec_index] = value;
+    return;
+  }
+  if (const auto c = detail::try_const_uint(slot)) {
+    _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_index] =
+        value;
+    return;
+  }
+  _storage[slot * static_cast<std::uint32_t>(closure_vec4s) + vec_index] = value;
+}
 
 UInt ClosurePool::load_word(Expr<std::uint32_t> slot,
                             std::uint32_t byte_offset) const noexcept {
-  // Do address arithmetic in the pointer-width domain, as a native array
-  // GEP does. A 32-bit multiply would introduce wraparound before indexing.
-  const auto row =
-      slot.cast<luisa::ulong>() * static_cast<luisa::ulong>(closure_rows) +
-      static_cast<luisa::ulong>(byte_offset / 16u);
-  return _storage[row][(byte_offset % 16u) / 4u];
+  const auto vec_offset = static_cast<std::uint32_t>(byte_offset / 16u);
+  const auto lane = static_cast<std::uint32_t>((byte_offset / 4u) & 3u);
+  if (_capacity <= 1u) {
+    return _storage[vec_offset][lane];
+  }
+  if (const auto c = detail::try_const_uint(slot)) {
+    return _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_offset]
+                   [lane];
+  }
+  return _storage[slot * static_cast<std::uint32_t>(closure_vec4s) + vec_offset]
+                 [lane];
 }
 
 void ClosurePool::store_word(Expr<std::uint32_t> slot,
                              std::uint32_t byte_offset,
                              Expr<std::uint32_t> value) noexcept {
-  const auto row =
-      slot.cast<luisa::ulong>() * static_cast<luisa::ulong>(closure_rows) +
-      static_cast<luisa::ulong>(byte_offset / 16u);
-  _storage[row][(byte_offset % 16u) / 4u] = value;
+  const auto vec_offset = static_cast<std::uint32_t>(byte_offset / 16u);
+  const auto lane = static_cast<std::uint32_t>((byte_offset / 4u) & 3u);
+  if (_capacity <= 1u) {
+    _storage[vec_offset][lane] = value;
+    return;
+  }
+  if (const auto c = detail::try_const_uint(slot)) {
+    _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_offset][lane] =
+        value;
+    return;
+  }
+  _storage[slot * static_cast<std::uint32_t>(closure_vec4s) + vec_offset]
+          [lane] = value;
 }
 
 Float ClosurePool::load_float(Expr<std::uint32_t> slot,
@@ -97,8 +142,12 @@ ClosurePool::allocate(Expr<std::uint32_t> closure_type,
                       Expr<luisa::float3> weight) noexcept {
   Allocation allocation{.index = _count, .valid = false};
   $if(_left != 0u) {
-    store_word(allocation.index, layout::ShaderClosure_type, closure_type);
-    store_float3(allocation.index, layout::ShaderClosure_weight, weight);
+    static_assert(layout::ShaderClosure_weight == 0u &&
+                  layout::ShaderClosure_type == 12u);
+    store_vec4(allocation.index, 0u,
+               make_uint4(weight.x.as<luisa::uint>(),
+                          weight.y.as<luisa::uint>(),
+                          weight.z.as<luisa::uint>(), closure_type));
     // Native closure_alloc initializes only type/weight. Scattering setup
     // owns sample_weight/N; other closure kinds must not clobber those lanes.
     _count += 1u;
@@ -115,10 +164,15 @@ Bool ClosurePool::allocate_extra(const Allocation &owner,
   $if(owner.valid) {
     $if(slot_count <= _left) {
       _left -= slot_count;
-      const auto pointer_field = payload == ExtraPayload::huang_hair
-                                     ? layout::HuangHairBSDF_extra
-                                     : layout::MicrofacetBsdf_fresnel;
-      store_word(owner.index, pointer_field, _count + _left);
+      if (payload == ExtraPayload::huang_hair) {
+        store_word(owner.index, layout::HuangHairBSDF_extra, _count + _left);
+      } else {
+        static_assert(layout::MicrofacetBsdf_fresnel_type == 48u &&
+                      layout::MicrofacetBsdf_fresnel == 56u);
+        const auto fresnel_type = load_vec4(owner.index, 3u).x;
+        store_vec4(owner.index, 3u,
+                   make_uint4(fresnel_type, 0u, _count + _left, 0u));
+      }
       allocated = true;
     }
     $else {
@@ -149,12 +203,35 @@ void ClosurePool::set_type(Expr<std::uint32_t> index,
 
 void ClosurePool::set_weight(Expr<std::uint32_t> index,
                              Expr<luisa::float3> weight) noexcept {
-  store_float3(index, layout::ShaderClosure_weight, weight);
+  static_assert(layout::ShaderClosure_weight == 0u &&
+                layout::ShaderClosure_type == 12u);
+  const auto v0 = load_vec4(index, 0u);
+  store_vec4(index, 0u,
+             make_uint4(weight.x.as<luisa::uint>(),
+                        weight.y.as<luisa::uint>(),
+                        weight.z.as<luisa::uint>(), v0.w));
+}
+
+void ClosurePool::set_weight_and_type(
+    Expr<std::uint32_t> index, Expr<luisa::float3> weight,
+    Expr<std::uint32_t> closure_type) noexcept {
+  static_assert(layout::ShaderClosure_weight == 0u &&
+                layout::ShaderClosure_type == 12u);
+  store_vec4(index, 0u,
+             make_uint4(weight.x.as<luisa::uint>(),
+                        weight.y.as<luisa::uint>(),
+                        weight.z.as<luisa::uint>(), closure_type));
 }
 
 void ClosurePool::add_weight(Expr<std::uint32_t> index,
                              Expr<luisa::float3> weight) noexcept {
-  set_weight(index, load_float3(index, layout::ShaderClosure_weight) + weight);
+  static_assert(layout::ShaderClosure_weight == 0u &&
+                layout::ShaderClosure_type == 12u);
+  const auto v0 = load_vec4(index, 0u);
+  store_vec4(index, 0u,
+             make_uint4((v0.x.as<float>() + weight.x).as<luisa::uint>(),
+                        (v0.y.as<float>() + weight.y).as<luisa::uint>(),
+                        (v0.z.as<float>() + weight.z).as<luisa::uint>(), v0.w));
 }
 
 void ClosurePool::set_sample_weight(Expr<std::uint32_t> index,
@@ -164,14 +241,36 @@ void ClosurePool::set_sample_weight(Expr<std::uint32_t> index,
 
 void ClosurePool::add_sample_weight(Expr<std::uint32_t> index,
                                     Expr<float> sample_weight) noexcept {
-  set_sample_weight(index,
-                    load_float(index, layout::ShaderClosure_sample_weight) +
-                        sample_weight);
+  static_assert(layout::ShaderClosure_sample_weight == 16u &&
+                layout::ShaderClosure_N == 20u);
+  const auto v1 = load_vec4(index, 1u);
+  store_vec4(
+      index, 1u,
+      make_uint4((v1.x.as<float>() + sample_weight).as<luisa::uint>(), v1.y,
+                 v1.z, v1.w));
 }
 
 void ClosurePool::set_normal(Expr<std::uint32_t> index,
                              Expr<luisa::float3> normal) noexcept {
-  store_float3(index, layout::ShaderClosure_N, normal);
+  static_assert(layout::ShaderClosure_sample_weight == 16u &&
+                layout::ShaderClosure_N == 20u);
+  const auto v1 = load_vec4(index, 1u);
+  store_vec4(index, 1u,
+             make_uint4(v1.x, normal.x.as<luisa::uint>(),
+                        normal.y.as<luisa::uint>(),
+                        normal.z.as<luisa::uint>()));
+}
+
+void ClosurePool::set_sample_weight_and_normal(
+    Expr<std::uint32_t> index, Expr<float> sample_weight,
+    Expr<luisa::float3> normal) noexcept {
+  static_assert(layout::ShaderClosure_sample_weight == 16u &&
+                layout::ShaderClosure_N == 20u);
+  store_vec4(index, 1u,
+             make_uint4(sample_weight.as<luisa::uint>(),
+                        normal.x.as<luisa::uint>(),
+                        normal.y.as<luisa::uint>(),
+                        normal.z.as<luisa::uint>()));
 }
 
 void ClosurePool::set_oren_nayar_param(Expr<std::uint32_t> index,
@@ -263,39 +362,95 @@ void ClosurePool::set_bssrdf_param(Expr<std::uint32_t> index,
 
 void ClosurePool::set_microfacet_param(Expr<std::uint32_t> index,
                                        const MicrofacetParam &param) noexcept {
-  store_float(index, layout::MicrofacetBsdf_alpha_x, param.alpha_x);
-  store_float(index, layout::MicrofacetBsdf_alpha_y, param.alpha_y);
-  store_float(index, layout::MicrofacetBsdf_ior, param.ior);
-  store_float(index, layout::MicrofacetBsdf_energy_scale, param.energy_scale);
-  store_word(index, layout::MicrofacetBsdf_fresnel_type, param.fresnel_type);
-  store_float3(index, layout::MicrofacetBsdf_T, param.T);
+  static_assert(layout::MicrofacetBsdf_alpha_x == 32u &&
+                layout::MicrofacetBsdf_alpha_y == 36u &&
+                layout::MicrofacetBsdf_ior == 40u &&
+                layout::MicrofacetBsdf_energy_scale == 44u &&
+                layout::MicrofacetBsdf_fresnel_type == 48u &&
+                layout::MicrofacetBsdf_fresnel == 56u &&
+                layout::MicrofacetBsdf_T == 64u);
+  store_vec4(index, 2u,
+             make_uint4(param.alpha_x.as<luisa::uint>(),
+                        param.alpha_y.as<luisa::uint>(),
+                        param.ior.as<luisa::uint>(),
+                        param.energy_scale.as<luisa::uint>()));
+  if (_options.may_have_extra_fresnel) {
+    const auto extra = load_vec4(index, 3u).z;
+    store_vec4(index, 3u, make_uint4(param.fresnel_type, 0u, extra, 0u));
+  } else {
+    store_vec4(index, 3u, make_uint4(param.fresnel_type, 0u, 0u, 0u));
+  }
+  if (_options.may_have_anisotropic_microfacet) {
+    store_vec4(index, 4u,
+               make_uint4(param.T.x.as<luisa::uint>(),
+                          param.T.y.as<luisa::uint>(),
+                          param.T.z.as<luisa::uint>(), 0u));
+  }
+}
+
+void ClosurePool::blur_microfacet_roughness(Expr<std::uint32_t> index,
+                                            Expr<float> roughness) noexcept {
+  static_assert(layout::MicrofacetBsdf_alpha_x == 32u &&
+                layout::MicrofacetBsdf_alpha_y == 36u);
+  const auto v2 = load_vec4(index, 2u);
+  const auto alpha_x = max(roughness, v2.x.as<float>());
+  const auto alpha_y = max(roughness, v2.y.as<float>());
+  store_vec4(index, 2u,
+             make_uint4(alpha_x.as<luisa::uint>(), alpha_y.as<luisa::uint>(),
+                        v2.z, v2.w));
 }
 
 void ClosurePool::set_generalized_schlick(
     Expr<std::uint32_t> index,
     const FresnelGeneralizedSchlick &fresnel) noexcept {
   const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
+  static_assert(layout::FresnelGeneralizedSchlick_f0 == 32u &&
+                layout::FresnelGeneralizedSchlick_f90 == 44u &&
+                layout::FresnelGeneralizedSchlick_exponent == 56u);
+  if (!_options.may_have_thin_film &&
+      !_options.may_have_custom_generalized_schlick &&
+      !_options.may_have_positive_exponent) {
+    store_vec4(tail, 2u,
+               make_uint4(fresnel.f0.x.as<luisa::uint>(),
+                          fresnel.f0.y.as<luisa::uint>(),
+                          fresnel.f0.z.as<luisa::uint>(), 0u));
+    return;
+  }
   constexpr auto film = layout::FresnelGeneralizedSchlick_thin_film;
-  store_float(tail, film + layout::FresnelThinFilm_thickness,
-              fresnel.thin_film.thickness);
-  store_float(tail, film + layout::FresnelThinFilm_ior, fresnel.thin_film.ior);
-  store_float3(tail, layout::FresnelGeneralizedSchlick_reflection_tint,
-               fresnel.reflection_tint);
-  store_float3(tail, layout::FresnelGeneralizedSchlick_transmission_tint,
-               fresnel.transmission_tint);
-  store_float3(tail, layout::FresnelGeneralizedSchlick_f0, fresnel.f0);
-  store_float3(tail, layout::FresnelGeneralizedSchlick_f90, fresnel.f90);
-  store_float(tail, layout::FresnelGeneralizedSchlick_exponent,
-              fresnel.exponent);
+  if (_options.may_have_thin_film) {
+    store_float(tail, film + layout::FresnelThinFilm_thickness,
+                fresnel.thin_film.thickness);
+    store_float(tail, film + layout::FresnelThinFilm_ior, fresnel.thin_film.ior);
+  }
+  if (_options.may_have_custom_generalized_schlick) {
+    store_float3(tail, layout::FresnelGeneralizedSchlick_reflection_tint,
+                 fresnel.reflection_tint);
+    store_float3(tail, layout::FresnelGeneralizedSchlick_transmission_tint,
+                 fresnel.transmission_tint);
+  }
+  store_vec4(tail, 2u,
+             make_uint4(fresnel.f0.x.as<luisa::uint>(),
+                        fresnel.f0.y.as<luisa::uint>(),
+                        fresnel.f0.z.as<luisa::uint>(),
+                        fresnel.f90.x.as<luisa::uint>()));
+  if (_options.may_have_positive_exponent ||
+      _options.may_have_custom_generalized_schlick) {
+    store_vec4(tail, 3u,
+               make_uint4(fresnel.f90.y.as<luisa::uint>(),
+                          fresnel.f90.z.as<luisa::uint>(),
+                          fresnel.exponent.as<luisa::uint>(), 0u));
+  }
 }
 
 void ClosurePool::set_fresnel_conductor(
     Expr<std::uint32_t> index, const FresnelConductor &fresnel) noexcept {
   const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
   constexpr auto film = layout::FresnelConductor_thin_film;
-  store_float(tail, film + layout::FresnelThinFilm_thickness,
-              fresnel.thin_film.thickness);
-  store_float(tail, film + layout::FresnelThinFilm_ior, fresnel.thin_film.ior);
+  if (_options.may_have_thin_film) {
+    store_float(tail, film + layout::FresnelThinFilm_thickness,
+                fresnel.thin_film.thickness);
+    store_float(tail, film + layout::FresnelThinFilm_ior, fresnel.thin_film.ior);
+  }
   store_float3(tail, layout::FresnelConductor_ior + layout::complex_Spectrum_re,
                fresnel.ior);
   store_float3(tail, layout::FresnelConductor_ior + layout::complex_Spectrum_im,
@@ -306,9 +461,11 @@ void ClosurePool::set_fresnel_f82_tint(Expr<std::uint32_t> index,
                                        const FresnelF82Tint &fresnel) noexcept {
   const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
   constexpr auto film = layout::FresnelF82Tint_thin_film;
-  store_float(tail, film + layout::FresnelThinFilm_thickness,
-              fresnel.thin_film.thickness);
-  store_float(tail, film + layout::FresnelThinFilm_ior, fresnel.thin_film.ior);
+  if (_options.may_have_thin_film) {
+    store_float(tail, film + layout::FresnelThinFilm_thickness,
+                fresnel.thin_film.thickness);
+    store_float(tail, film + layout::FresnelThinFilm_ior, fresnel.thin_film.ior);
+  }
   store_float3(tail, layout::FresnelF82Tint_f0, fresnel.f0);
   store_float3(tail, layout::FresnelF82Tint_b, fresnel.b);
 }
@@ -317,11 +474,18 @@ void ClosurePool::set_left(Expr<std::uint32_t> left) noexcept { _left = left; }
 
 ShaderClosureCommon
 ClosurePool::common(Expr<std::uint32_t> index) const noexcept {
-  return {.weight = load_float3(index, layout::ShaderClosure_weight),
-          .type = load_word(index, layout::ShaderClosure_type),
-          .sample_weight =
-              load_float(index, layout::ShaderClosure_sample_weight),
-          .N = load_float3(index, layout::ShaderClosure_N)};
+  static_assert(layout::ShaderClosure_weight == 0u &&
+                layout::ShaderClosure_type == 12u &&
+                layout::ShaderClosure_sample_weight == 16u &&
+                layout::ShaderClosure_N == 20u);
+  const auto v0 = load_vec4(index, 0u);
+  const auto v1 = load_vec4(index, 1u);
+  return {.weight = make_float3(v0.x.as<float>(), v0.y.as<float>(),
+                                v0.z.as<float>()),
+          .type = v0.w,
+          .sample_weight = v1.x.as<float>(),
+          .N = make_float3(v1.y.as<float>(), v1.z.as<float>(),
+                           v1.w.as<float>())};
 }
 
 OrenNayarClosure
@@ -442,33 +606,63 @@ ClosurePool::microfacet(Expr<std::uint32_t> index) const noexcept {
 FresnelGeneralizedSchlick
 ClosurePool::generalized_schlick(Expr<std::uint32_t> index) const noexcept {
   const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
+  const auto v2 = load_vec4(tail, 2u);
+  const auto f0 = make_float3(v2.x.as<float>(), v2.y.as<float>(),
+                              v2.z.as<float>());
+  if (!_options.may_have_thin_film &&
+      !_options.may_have_custom_generalized_schlick &&
+      !_options.may_have_positive_exponent) {
+    return {.thin_film = {.thickness = 0.0f, .ior = 0.0f},
+            .reflection_tint = make_float3(1.0f),
+            .transmission_tint = make_float3(0.0f),
+            .f0 = f0,
+            .f90 = make_float3(1.0f),
+            .exponent = -1.0f};
+  }
   constexpr auto film = layout::FresnelGeneralizedSchlick_thin_film;
-  return {
-      .thin_film = {.thickness = load_float(
-                        tail, film + layout::FresnelThinFilm_thickness),
-                    .ior =
-                        load_float(tail, film + layout::FresnelThinFilm_ior)},
-      .reflection_tint =
-          load_float3(tail, layout::FresnelGeneralizedSchlick_reflection_tint),
-      .transmission_tint = load_float3(
-          tail, layout::FresnelGeneralizedSchlick_transmission_tint),
-      .f0 = load_float3(tail, layout::FresnelGeneralizedSchlick_f0),
-      .f90 = load_float3(tail, layout::FresnelGeneralizedSchlick_f90),
-      .exponent = load_float(tail, layout::FresnelGeneralizedSchlick_exponent)};
+  FresnelThinFilm tf{.thickness = 0.0f, .ior = 0.0f};
+  if (_options.may_have_thin_film) {
+    tf.thickness = load_float(tail, film + layout::FresnelThinFilm_thickness);
+    tf.ior = load_float(tail, film + layout::FresnelThinFilm_ior);
+  }
+  Float3 refl_tint = make_float3(1.0f);
+  Float3 trans_tint = make_float3(0.0f);
+  if (_options.may_have_custom_generalized_schlick) {
+    refl_tint =
+        load_float3(tail, layout::FresnelGeneralizedSchlick_reflection_tint);
+    trans_tint =
+        load_float3(tail, layout::FresnelGeneralizedSchlick_transmission_tint);
+  }
+  Float3 f90 = make_float3(1.0f);
+  Float exponent = -1.0f;
+  if (_options.may_have_positive_exponent ||
+      _options.may_have_custom_generalized_schlick) {
+    const auto v3 = load_vec4(tail, 3u);
+    f90 = make_float3(v2.w.as<float>(), v3.x.as<float>(), v3.y.as<float>());
+    exponent = v3.z.as<float>();
+  }
+  return {.thin_film = tf,
+          .reflection_tint = refl_tint,
+          .transmission_tint = trans_tint,
+          .f0 = f0,
+          .f90 = f90,
+          .exponent = exponent};
 }
 
 MicrofacetConductorClosure
 ClosurePool::microfacet_conductor(Expr<std::uint32_t> index) const noexcept {
   const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
   constexpr auto film = layout::FresnelConductor_thin_film;
+  FresnelThinFilm tf{.thickness = 0.0f, .ior = 0.0f};
+  if (_options.may_have_thin_film) {
+    tf.thickness = load_float(tail, film + layout::FresnelThinFilm_thickness);
+    tf.ior = load_float(tail, film + layout::FresnelThinFilm_ior);
+  }
   return {
       .common = common(index),
       .param = microfacet_param(index),
       .conductor = {
-          .thin_film = {.thickness = load_float(
-                            tail, film + layout::FresnelThinFilm_thickness),
-                        .ior = load_float(tail,
-                                          film + layout::FresnelThinFilm_ior)},
+          .thin_film = tf,
           .ior = load_float3(tail, layout::FresnelConductor_ior +
                                        layout::complex_Spectrum_re),
           .extinction = load_float3(tail, layout::FresnelConductor_ior +
@@ -479,26 +673,33 @@ MicrofacetF82TintClosure
 ClosurePool::microfacet_f82_tint(Expr<std::uint32_t> index) const noexcept {
   const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
   constexpr auto film = layout::FresnelF82Tint_thin_film;
+  FresnelThinFilm tf{.thickness = 0.0f, .ior = 0.0f};
+  if (_options.may_have_thin_film) {
+    tf.thickness = load_float(tail, film + layout::FresnelThinFilm_thickness);
+    tf.ior = load_float(tail, film + layout::FresnelThinFilm_ior);
+  }
   return {.common = common(index),
           .param = microfacet_param(index),
           .f82_tint = {
-              .thin_film = {.thickness = load_float(
-                                tail, film + layout::FresnelThinFilm_thickness),
-                            .ior = load_float(
-                                tail, film + layout::FresnelThinFilm_ior)},
+              .thin_film = tf,
               .f0 = load_float3(tail, layout::FresnelF82Tint_f0),
               .b = load_float3(tail, layout::FresnelF82Tint_b)}};
 }
 
 MicrofacetParam
 ClosurePool::microfacet_param(Expr<std::uint32_t> index) const noexcept {
-  return {.alpha_x = load_float(index, layout::MicrofacetBsdf_alpha_x),
-          .alpha_y = load_float(index, layout::MicrofacetBsdf_alpha_y),
-          .ior = load_float(index, layout::MicrofacetBsdf_ior),
-          .energy_scale =
-              load_float(index, layout::MicrofacetBsdf_energy_scale),
+  const auto v2 = load_vec4(index, 2u);
+  Float3 tangent = make_float3(0.0f);
+  if (_options.may_have_anisotropic_microfacet) {
+    const auto v4 = load_vec4(index, 4u);
+    tangent = make_float3(v4.x.as<float>(), v4.y.as<float>(), v4.z.as<float>());
+  }
+  return {.alpha_x = v2.x.as<float>(),
+          .alpha_y = v2.y.as<float>(),
+          .ior = v2.z.as<float>(),
+          .energy_scale = v2.w.as<float>(),
           .fresnel_type = load_word(index, layout::MicrofacetBsdf_fresnel_type),
-          .T = load_float3(index, layout::MicrofacetBsdf_T)};
+          .T = tangent};
 }
 
 namespace detail {
@@ -536,12 +737,24 @@ void node_mix_closure(Cursor &cursor, Stack &stack) noexcept {
   const Float weight = clamp(stack_load_input_float(stack, factor), 0.0f, 1.0f);
   const auto input_weight =
       stack_load_float_default(stack, input_weight_offset, 1.0f);
-  $if(weight1_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, weight1_offset, input_weight * (1.0f - weight));
-  };
-  $if(weight2_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, weight2_offset, input_weight * weight);
-  };
+  if (const auto w1 = try_const_uint(weight1_offset)) {
+    if (*w1 != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float(stack, *w1, input_weight * (1.0f - weight));
+    }
+  } else {
+    $if(weight1_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float(stack, weight1_offset, input_weight * (1.0f - weight));
+    };
+  }
+  if (const auto w2 = try_const_uint(weight2_offset)) {
+    if (*w2 != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float(stack, *w2, input_weight * weight);
+    }
+  } else {
+    $if(weight2_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float(stack, weight2_offset, input_weight * weight);
+    };
+  }
 }
 
 void node_closure_emission(const KernelGlobals &kernel_globals,
@@ -554,11 +767,19 @@ void node_closure_emission(const KernelGlobals &kernel_globals,
   Float3 weight = closure_weight;
   Bool active = true;
 
-  $if(mix_weight_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    const auto mix_weight = stack_load_float(stack, mix_weight_offset);
-    $if(mix_weight == 0.0f) { active = false; }
-    $else { weight *= mix_weight; };
-  };
+  if (const auto mwo = try_const_uint(mix_weight_offset)) {
+    if (*mwo != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      const auto mix_weight = stack_load_float(stack, *mwo);
+      $if(mix_weight == 0.0f) { active = false; }
+      $else { weight *= mix_weight; };
+    }
+  } else {
+    $if(mix_weight_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      const auto mix_weight = stack_load_float(stack, mix_weight_offset);
+      $if(mix_weight == 0.0f) { active = false; }
+      $else { weight *= mix_weight; };
+    };
+  }
 
   $if(active) {
     $if((shader_data.flag & shader_data_is_volume_shader_eval) != 0u) {
@@ -590,11 +811,19 @@ void node_closure_holdout(Cursor &cursor, Stack &stack,
   const auto mix_weight_offset = cursor.byte(cursor.word(), 0u);
   Float3 weight = closure_weight;
   Bool active = true;
-  $if(mix_weight_offset != static_cast<unsigned>(SVM_STACK_INVALID)) {
-    const auto mix_weight = stack_load_float(stack, mix_weight_offset);
-    $if(mix_weight == 0.0f) { active = false; }
-    $else { weight *= mix_weight; };
-  };
+  if (const auto mwo = try_const_uint(mix_weight_offset)) {
+    if (*mwo != static_cast<unsigned>(SVM_STACK_INVALID)) {
+      const auto mix_weight = stack_load_float(stack, *mwo);
+      $if(mix_weight == 0.0f) { active = false; }
+      $else { weight *= mix_weight; };
+    }
+  } else {
+    $if(mix_weight_offset != static_cast<unsigned>(SVM_STACK_INVALID)) {
+      const auto mix_weight = stack_load_float(stack, mix_weight_offset);
+      $if(mix_weight == 0.0f) { active = false; }
+      $else { weight *= mix_weight; };
+    };
+  }
   $if(active) {
     if (shader_data.closure != nullptr) {
       static_cast<void>(shader_data.closure->allocate(
@@ -614,11 +843,19 @@ void node_closure_background(Cursor &cursor, Stack &stack,
   Float3 weight = closure_weight;
   Bool active = true;
 
-  $if(mix_weight_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    const auto mix_weight = stack_load_float(stack, mix_weight_offset);
-    $if(mix_weight == 0.0f) { active = false; }
-    $else { weight *= mix_weight; };
-  };
+  if (const auto mwo = try_const_uint(mix_weight_offset)) {
+    if (*mwo != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      const auto mix_weight = stack_load_float(stack, *mwo);
+      $if(mix_weight == 0.0f) { active = false; }
+      $else { weight *= mix_weight; };
+    }
+  } else {
+    $if(mix_weight_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      const auto mix_weight = stack_load_float(stack, mix_weight_offset);
+      $if(mix_weight == 0.0f) { active = false; }
+      $else { weight *= mix_weight; };
+    };
+  }
 
   $if(active) {
     $if((shader_data.flag & shader_data_emission) != 0u) {
@@ -640,150 +877,318 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
   const auto closure_type = cursor.word();
   const auto packed = cursor.word();
   const auto mix_weight_offset = cursor.byte(packed, 0u);
+  const auto const_ct = try_const_uint(closure_type);
+  const auto const_mwo = try_const_uint(mix_weight_offset);
+  const bool unit_mix_weight =
+      const_mwo.has_value() &&
+      *const_mwo == static_cast<std::uint32_t>(SVM_STACK_INVALID);
   const auto mix_weight =
       stack_load_float_default(stack, mix_weight_offset, 1.0f);
 
   if (shader_type != SHADER_TYPE_SURFACE) {
-    node_closure_bsdf_skip(cursor, closure_type);
+    if (!cursor.is_static()) {
+      node_closure_bsdf_skip(cursor, closure_type);
+    }
     return;
   }
 
+  const auto usage = kernel_globals.closure_usage();
+  const auto node_mask = usage.svm_bsdf_node_mask;
+
+  const auto emit_diffuse = [&]() noexcept {
+    const auto color_x = cursor.word();
+    const auto color_y = cursor.word();
+    const auto color_z = cursor.word();
+    const auto roughness_input = cursor.word();
+    const auto normal_packed = cursor.word();
+    const auto normal_offset = cursor.byte(normal_packed, 0u);
+    auto normal =
+        stack_load_float3_default(stack, normal_offset, shader_data.N);
+    normal = native_vector_math::safe_normalize_nonzero_or(normal,
+                                                           shader_data.N);
+
+    const auto weight = closure_weight * mix_weight;
+    const bool may_lambertian =
+        (usage.diffuse_node_mask & ClosureUsage::diffuse_lambertian) != 0u;
+    const bool may_oren_nayar =
+        (usage.diffuse_node_mask & ClosureUsage::diffuse_oren_nayar) != 0u;
+    if (may_lambertian && !may_oren_nayar) {
+      static_cast<void>(color_x);
+      static_cast<void>(color_y);
+      static_cast<void>(color_z);
+      static_cast<void>(roughness_input);
+      diffuse_setup(shader_data, normal, weight);
+    } else {
+      const auto roughness = stack_load_input_float(stack, roughness_input);
+      if (!may_lambertian && may_oren_nayar) {
+        const auto color = clamp(
+            stack_load_input_float3(stack, color_x, color_y, color_z), 0.0f,
+            1.0f);
+        oren_nayar_setup(shader_data, normal, weight, roughness, color);
+      } else {
+        $if(roughness < 1.0e-5f) {
+          diffuse_setup(shader_data, normal, weight);
+        }
+        $else {
+          const auto color = clamp(
+              stack_load_input_float3(stack, color_x, color_y, color_z), 0.0f,
+              1.0f);
+          oren_nayar_setup(shader_data, normal, weight, roughness, color);
+        };
+      }
+    }
+  };
+
+  const auto emit_translucent = [&]() noexcept {
+    const auto unused_param = cursor.word();
+    const auto normal_packed = cursor.word();
+    static_cast<void>(unused_param);
+    const auto normal_offset = cursor.byte(normal_packed, 0u);
+    auto normal =
+        stack_load_float3_default(stack, normal_offset, shader_data.N);
+    normal = native_vector_math::safe_normalize_nonzero_or(normal,
+                                                           shader_data.N);
+    const auto weight = closure_weight * mix_weight;
+    translucent_setup(shader_data,
+                      detail::maybe_ensure_valid_specular_reflection(
+                          shader_data, normal),
+                      weight);
+  };
+
+  const auto emit_transparent = [&]() noexcept {
+    const auto unused_param = cursor.word();
+    const auto unused_normal = cursor.word();
+    static_cast<void>(unused_param);
+    static_cast<void>(unused_normal);
+    transparent_setup(shader_data, path_state, closure_weight * mix_weight);
+  };
+
+  const auto emit_static_bsdf = [&](std::uint32_t ct) noexcept {
+    switch (static_cast<ClosureType>(ct)) {
+      case CLOSURE_BSDF_PRINCIPLED_ID:
+        node_principled_bsdf(
+            kernel_globals, cursor, stack, mix_weight, true,
+            (kernel_features & kernel_feature_subsurface) != 0u, shader_data,
+            path_state, transition);
+        return;
+      case CLOSURE_BSDF_DIFFUSE_ID:
+        emit_diffuse();
+        return;
+      case CLOSURE_BSDF_TRANSLUCENT_ID:
+        emit_translucent();
+        return;
+      case CLOSURE_BSDF_TRANSPARENT_ID:
+        emit_transparent();
+        return;
+      case CLOSURE_BSDF_PHYSICAL_CONDUCTOR:
+      case CLOSURE_BSDF_F82_CONDUCTOR:
+        node_metallic_bsdf(kernel_globals, cursor, stack, ct, mix_weight,
+                           shader_data, path_state);
+        return;
+      case CLOSURE_BSDF_RAY_PORTAL_ID:
+        node_ray_portal(cursor, stack, closure_weight, mix_weight, shader_data);
+        return;
+      case CLOSURE_BSDF_MICROFACET_GGX_ID:
+      case CLOSURE_BSDF_MICROFACET_BECKMANN_ID:
+      case CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID:
+      case CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID:
+        node_glossy_bsdf(kernel_globals, cursor, stack, ct, mix_weight,
+                         closure_weight, shader_data, path_state);
+        return;
+      case CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID:
+      case CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID:
+        node_refraction_bsdf(kernel_globals, cursor, stack, ct, mix_weight,
+                             closure_weight, shader_data, path_state);
+        return;
+      case CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID:
+      case CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID:
+      case CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID:
+        node_glass_bsdf(kernel_globals, cursor, stack, ct, mix_weight,
+                        shader_data, path_state);
+        return;
+      case CLOSURE_BSDF_ASHIKHMIN_VELVET_ID:
+      case CLOSURE_BSDF_SHEEN_ID:
+        node_sheen(kernel_globals, cursor, stack, ct, closure_weight,
+                   mix_weight, shader_data);
+        return;
+      case CLOSURE_BSDF_GLOSSY_TOON_ID:
+      case CLOSURE_BSDF_DIFFUSE_TOON_ID:
+        node_toon(kernel_globals, cursor, stack, ct, closure_weight, mix_weight,
+                  shader_data, path_state);
+        return;
+      case CLOSURE_BSDF_HAIR_CHIANG_ID:
+      case CLOSURE_BSDF_HAIR_HUANG_ID:
+        if ((kernel_features & kernel_feature_hair) != 0u &&
+            (kernel_features & kernel_feature_node_principled_hair) != 0u) {
+          node_principled_hair(kernel_globals, cursor, stack, ct,
+                               closure_weight, mix_weight, shader_data,
+                               path_state);
+          return;
+        }
+        break;
+      case CLOSURE_BSDF_HAIR_REFLECTION_ID:
+      case CLOSURE_BSDF_HAIR_TRANSMISSION_ID:
+        if ((kernel_features & kernel_feature_hair) != 0u) {
+          node_hair(cursor, stack, ct, closure_weight, mix_weight, shader_data);
+          return;
+        }
+        break;
+      case CLOSURE_BSSRDF_BURLEY_ID:
+      case CLOSURE_BSSRDF_RANDOM_WALK_ID:
+      case CLOSURE_BSSRDF_RANDOM_WALK_LEGACY_ID:
+      case CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID:
+        if ((kernel_features & kernel_feature_subsurface) != 0u) {
+          node_bssrdf(cursor, stack, ct, closure_weight, mix_weight,
+                      shader_data, path_state);
+          return;
+        }
+        break;
+      default:
+        break;
+    }
+    if (!cursor.is_static()) {
+      node_closure_bsdf_skip(cursor, closure_type, node_mask);
+    }
+    transition.unsupported();
+  };
+
   if ((node_feature_mask & kernel_feature_node_bsdf) != 0u) {
-    $if(mix_weight == 0.0f) { node_closure_bsdf_skip(cursor, closure_type); }
+    if (const_ct.has_value()) {
+      if (unit_mix_weight) {
+        emit_static_bsdf(*const_ct);
+      } else {
+        $if(mix_weight != 0.0f) { emit_static_bsdf(*const_ct); }
+        $else {
+          if (!cursor.is_static()) {
+            node_closure_bsdf_skip(cursor, closure_type, node_mask);
+          }
+        };
+      }
+      return;
+    }
+
+    const auto cases = [&](std::initializer_list<ClosureType> types,
+                           auto &&body) noexcept {
+      luisa::vector<std::uint32_t> enabled;
+      enabled.reserve(types.size());
+      for (const auto type : types) {
+        const auto id = static_cast<std::uint32_t>(type);
+        if (usage.has_bsdf_node(id)) {
+          enabled.emplace_back(id);
+        }
+      }
+      if (!enabled.empty()) {
+        luisa::compute::detail::SwitchCaseStmtBuilder{
+            luisa::span<const std::uint32_t>{enabled}} %
+            std::forward<decltype(body)>(body);
+      }
+    };
+
+    $if(mix_weight == 0.0f) {
+      node_closure_bsdf_skip(cursor, closure_type, node_mask);
+    }
     $else {
       // Cycles dispatches the payload type once, preserving shared case bodies.
       // A missing physical pool still permits transparent/portal/Principled
       // shader-state effects; each native setup owns its allocation guard.
       $switch(closure_type) {
-        PSYCLES_SVM_CASE(CLOSURE_BSDF_PRINCIPLED_ID) {
-          node_principled_bsdf(kernel_globals, cursor, stack, mix_weight, true,
-                               (kernel_features & kernel_feature_subsurface) !=
-                                   0u,
-                               shader_data, path_state, transition);
-        };
-        PSYCLES_SVM_CASE(CLOSURE_BSDF_DIFFUSE_ID) {
-          const auto color_x = cursor.word();
-          const auto color_y = cursor.word();
-          const auto color_z = cursor.word();
-          const auto roughness_input = cursor.word();
-          const auto normal_packed = cursor.word();
-          const auto normal_offset = cursor.byte(normal_packed, 0u);
-          auto normal =
-              stack_load_float3_default(stack, normal_offset, shader_data.N);
-          normal = native_vector_math::safe_normalize_nonzero_or(normal,
-                                                                 shader_data.N);
-
-          const auto weight = closure_weight * mix_weight;
-          const auto roughness = stack_load_input_float(stack, roughness_input);
-          $if(roughness < 1.0e-5f) {
-            diffuse_setup(shader_data, normal, weight);
-          }
-          $else {
-            const auto color =
-                clamp(stack_load_input_float3(stack, color_x, color_y, color_z),
-                      0.0f, 1.0f);
-            oren_nayar_setup(shader_data, normal, weight, roughness, color);
+        if (usage.has_bsdf_node(CLOSURE_BSDF_PRINCIPLED_ID)) {
+          PSYCLES_SVM_CASE(CLOSURE_BSDF_PRINCIPLED_ID) {
+            node_principled_bsdf(
+                kernel_globals, cursor, stack, mix_weight, true,
+                (kernel_features & kernel_feature_subsurface) != 0u,
+                shader_data, path_state, transition);
           };
-        };
-        PSYCLES_SVM_CASE(CLOSURE_BSDF_TRANSLUCENT_ID) {
-          const auto unused_param = cursor.word();
-          const auto normal_packed = cursor.word();
-          static_cast<void>(unused_param);
-          const auto normal_offset = cursor.byte(normal_packed, 0u);
-          auto normal =
-              stack_load_float3_default(stack, normal_offset, shader_data.N);
-          normal = native_vector_math::safe_normalize_nonzero_or(normal,
-                                                                 shader_data.N);
-          const auto weight = closure_weight * mix_weight;
-          translucent_setup(shader_data,
-                            detail::maybe_ensure_valid_specular_reflection(
-                                shader_data, normal),
-                            weight);
-        };
-        PSYCLES_SVM_CASE(CLOSURE_BSDF_TRANSPARENT_ID) {
-          const auto unused_param = cursor.word();
-          const auto unused_normal = cursor.word();
-          static_cast<void>(unused_param);
-          static_cast<void>(unused_normal);
-          transparent_setup(shader_data, path_state,
-                            closure_weight * mix_weight);
-        };
-        $case(static_cast<std::uint32_t>(CLOSURE_BSDF_PHYSICAL_CONDUCTOR),
-              static_cast<std::uint32_t>(CLOSURE_BSDF_F82_CONDUCTOR)) {
-          node_metallic_bsdf(kernel_globals, cursor, stack, closure_type,
-                             mix_weight, shader_data, path_state);
-        };
-        PSYCLES_SVM_CASE(CLOSURE_BSDF_RAY_PORTAL_ID) {
-          node_ray_portal(cursor, stack, closure_weight, mix_weight,
-                          shader_data);
-        };
-        $case(
-            static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID),
-            static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_BECKMANN_ID),
-            static_cast<std::uint32_t>(CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID),
-            static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID)) {
-          node_glossy_bsdf(kernel_globals, cursor, stack, closure_type,
-                           mix_weight, closure_weight, shader_data, path_state);
-        };
-        $case(static_cast<std::uint32_t>(
-                  CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID),
-              static_cast<std::uint32_t>(
-                  CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID)) {
-          node_refraction_bsdf(kernel_globals, cursor, stack, closure_type,
-                               mix_weight, closure_weight, shader_data,
-                               path_state);
-        };
-        $case(static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID),
-              static_cast<std::uint32_t>(
-                  CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID),
-              static_cast<std::uint32_t>(
-                  CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID)) {
-          node_glass_bsdf(kernel_globals, cursor, stack, closure_type,
-                          mix_weight, shader_data, path_state);
-        };
-        PSYCLES_SVM_CASE(CLOSURE_BSDF_ASHIKHMIN_VELVET_ID) {
-          node_sheen(
-              kernel_globals, cursor, stack,
-              static_cast<std::uint32_t>(CLOSURE_BSDF_ASHIKHMIN_VELVET_ID),
-              closure_weight, mix_weight, shader_data);
-        };
-        PSYCLES_SVM_CASE(CLOSURE_BSDF_SHEEN_ID) {
-          node_sheen(kernel_globals, cursor, stack,
-                     static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID),
-                     closure_weight, mix_weight, shader_data);
-        };
-        $case(static_cast<std::uint32_t>(CLOSURE_BSDF_GLOSSY_TOON_ID),
-              static_cast<std::uint32_t>(CLOSURE_BSDF_DIFFUSE_TOON_ID)) {
+        }
+        if (usage.has_bsdf_node(CLOSURE_BSDF_DIFFUSE_ID)) {
+          PSYCLES_SVM_CASE(CLOSURE_BSDF_DIFFUSE_ID) { emit_diffuse(); };
+        }
+        if (usage.has_bsdf_node(CLOSURE_BSDF_TRANSLUCENT_ID)) {
+          PSYCLES_SVM_CASE(CLOSURE_BSDF_TRANSLUCENT_ID) { emit_translucent(); };
+        }
+        if (usage.has_bsdf_node(CLOSURE_BSDF_TRANSPARENT_ID)) {
+          PSYCLES_SVM_CASE(CLOSURE_BSDF_TRANSPARENT_ID) { emit_transparent(); };
+        }
+        cases({CLOSURE_BSDF_PHYSICAL_CONDUCTOR, CLOSURE_BSDF_F82_CONDUCTOR},
+              [&] {
+                node_metallic_bsdf(kernel_globals, cursor, stack, closure_type,
+                                   mix_weight, shader_data, path_state);
+              });
+        if (usage.has_bsdf_node(CLOSURE_BSDF_RAY_PORTAL_ID)) {
+          PSYCLES_SVM_CASE(CLOSURE_BSDF_RAY_PORTAL_ID) {
+            node_ray_portal(cursor, stack, closure_weight, mix_weight,
+                            shader_data);
+          };
+        }
+        cases({CLOSURE_BSDF_MICROFACET_GGX_ID,
+               CLOSURE_BSDF_MICROFACET_BECKMANN_ID,
+               CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID,
+               CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID},
+              [&] {
+                node_glossy_bsdf(kernel_globals, cursor, stack, closure_type,
+                                 mix_weight, closure_weight, shader_data,
+                                 path_state);
+              });
+        cases({CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID,
+               CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID},
+              [&] {
+                node_refraction_bsdf(kernel_globals, cursor, stack,
+                                     closure_type, mix_weight, closure_weight,
+                                     shader_data, path_state);
+              });
+        cases({CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID,
+               CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID,
+               CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID},
+              [&] {
+                node_glass_bsdf(kernel_globals, cursor, stack, closure_type,
+                                mix_weight, shader_data, path_state);
+              });
+        if (usage.has_bsdf_node(CLOSURE_BSDF_ASHIKHMIN_VELVET_ID)) {
+          PSYCLES_SVM_CASE(CLOSURE_BSDF_ASHIKHMIN_VELVET_ID) {
+            node_sheen(
+                kernel_globals, cursor, stack,
+                static_cast<std::uint32_t>(CLOSURE_BSDF_ASHIKHMIN_VELVET_ID),
+                closure_weight, mix_weight, shader_data);
+          };
+        }
+        if (usage.has_bsdf_node(CLOSURE_BSDF_SHEEN_ID)) {
+          PSYCLES_SVM_CASE(CLOSURE_BSDF_SHEEN_ID) {
+            node_sheen(kernel_globals, cursor, stack,
+                       static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID),
+                       closure_weight, mix_weight, shader_data);
+          };
+        }
+        cases({CLOSURE_BSDF_GLOSSY_TOON_ID, CLOSURE_BSDF_DIFFUSE_TOON_ID}, [&] {
           node_toon(kernel_globals, cursor, stack, closure_type, closure_weight,
                     mix_weight, shader_data, path_state);
-        };
+        });
         if ((kernel_features & kernel_feature_hair) != 0u) {
           if ((kernel_features & kernel_feature_node_principled_hair) != 0u) {
-            $case(static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_CHIANG_ID),
-                  static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_HUANG_ID)) {
-              node_principled_hair(kernel_globals, cursor, stack, closure_type,
-                                   closure_weight, mix_weight, shader_data,
-                                   path_state);
-            };
+            cases({CLOSURE_BSDF_HAIR_CHIANG_ID, CLOSURE_BSDF_HAIR_HUANG_ID},
+                  [&] {
+                    node_principled_hair(kernel_globals, cursor, stack,
+                                         closure_type, closure_weight,
+                                         mix_weight, shader_data, path_state);
+                  });
           }
-          $case(static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_REFLECTION_ID),
-                static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_TRANSMISSION_ID)) {
-            node_hair(cursor, stack, closure_type, closure_weight, mix_weight,
-                      shader_data);
-          };
+          cases({CLOSURE_BSDF_HAIR_REFLECTION_ID,
+                 CLOSURE_BSDF_HAIR_TRANSMISSION_ID},
+                [&] {
+                  node_hair(cursor, stack, closure_type, closure_weight,
+                            mix_weight, shader_data);
+                });
         }
         if ((kernel_features & kernel_feature_subsurface) != 0u) {
-          $case(
-              static_cast<std::uint32_t>(CLOSURE_BSSRDF_BURLEY_ID),
-              static_cast<std::uint32_t>(CLOSURE_BSSRDF_RANDOM_WALK_ID),
-              static_cast<std::uint32_t>(CLOSURE_BSSRDF_RANDOM_WALK_LEGACY_ID),
-              static_cast<std::uint32_t>(CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID)) {
-            node_bssrdf(cursor, stack, closure_type, closure_weight, mix_weight,
-                        shader_data, path_state);
-          };
+          cases({CLOSURE_BSSRDF_BURLEY_ID, CLOSURE_BSSRDF_RANDOM_WALK_ID,
+                 CLOSURE_BSSRDF_RANDOM_WALK_LEGACY_ID,
+                 CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID},
+                [&] {
+                  node_bssrdf(cursor, stack, closure_type, closure_weight,
+                              mix_weight, shader_data, path_state);
+                });
         }
         $default {
-          node_closure_bsdf_skip(cursor, closure_type);
+          node_closure_bsdf_skip(cursor, closure_type, node_mask);
           transition.unsupported();
         };
       };
@@ -792,10 +1197,38 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
   }
 
   if ((node_feature_mask & kernel_feature_node_emission) != 0u) {
+    if (const_ct.has_value()) {
+      if (*const_ct != static_cast<std::uint32_t>(CLOSURE_BSDF_PRINCIPLED_ID) ||
+          !usage.has_bsdf_node(CLOSURE_BSDF_PRINCIPLED_ID)) {
+        if (!cursor.is_static()) {
+          node_closure_bsdf_skip(cursor, closure_type, node_mask);
+        }
+        return;
+      }
+      if (unit_mix_weight) {
+        node_principled_bsdf(kernel_globals, cursor, stack, mix_weight, false,
+                             false, shader_data, path_state, transition);
+      } else {
+        $if(mix_weight != 0.0f) {
+          node_principled_bsdf(kernel_globals, cursor, stack, mix_weight, false,
+                               false, shader_data, path_state, transition);
+        }
+        $else {
+          if (!cursor.is_static()) {
+            node_closure_bsdf_skip(cursor, closure_type, node_mask);
+          }
+        };
+      }
+      return;
+    }
+    if (!usage.has_bsdf_node(CLOSURE_BSDF_PRINCIPLED_ID)) {
+      node_closure_bsdf_skip(cursor, closure_type, node_mask);
+      return;
+    }
     $if((mix_weight == 0.0f) |
         (closure_type !=
          static_cast<std::uint32_t>(CLOSURE_BSDF_PRINCIPLED_ID))) {
-      node_closure_bsdf_skip(cursor, closure_type);
+      node_closure_bsdf_skip(cursor, closure_type, node_mask);
     }
     $else {
       // Cycles evaluates Principled emission with num_closure_left == 0.
@@ -807,114 +1240,64 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
     return;
   }
 
-  node_closure_bsdf_skip(cursor, closure_type);
+  if (!cursor.is_static()) {
+    node_closure_bsdf_skip(cursor, closure_type, node_mask);
+  }
 }
 
 void node_closure_bsdf_skip(Cursor &cursor,
-                            Expr<std::uint32_t> closure_type) noexcept {
+                            Expr<std::uint32_t> closure_type,
+                            std::uint64_t svm_bsdf_node_mask) noexcept {
   UInt words = static_cast<std::uint32_t>(sizeof(SVMNodeSimpleBsdfData) /
                                           sizeof(std::uint32_t));
+  const auto skip_cases = [&](std::initializer_list<ClosureType> types,
+                              std::uint32_t word_count) noexcept {
+    luisa::vector<std::uint32_t> enabled;
+    enabled.reserve(types.size());
+    for (const auto type : types) {
+      const auto id = static_cast<std::uint32_t>(type);
+      if (id >= 64u || (svm_bsdf_node_mask & (std::uint64_t{1u} << id)) != 0ull) {
+        enabled.emplace_back(id);
+      }
+    }
+    if (!enabled.empty()) {
+      luisa::compute::detail::SwitchCaseStmtBuilder{
+          luisa::span<const std::uint32_t>{enabled}} %
+          [&] { words = word_count; };
+    }
+  };
   $switch(closure_type) {
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_PRINCIPLED_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodePrincipledBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_HAIR_CHIANG_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodePrincipledHairBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_HAIR_HUANG_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodePrincipledHairBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_PHYSICAL_CONDUCTOR) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeMetallicBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_F82_CONDUCTOR) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeMetallicBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_DIFFUSE_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeDiffuseBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_OREN_NAYAR_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeDiffuseBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_BURLEY_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeDiffuseBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_RAY_PORTAL_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeRayPortalBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_MICROFACET_GGX_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeGlossyBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_MICROFACET_BECKMANN_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeGlossyBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeGlossyBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeGlossyBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeRefractionBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeRefractionBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeGlassBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeGlassBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeGlassBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_GLOSSY_TOON_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeToonBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_DIFFUSE_TOON_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeToonBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_HAIR_REFLECTION_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeHairBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSDF_HAIR_TRANSMISSION_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeHairBsdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSSRDF_BURLEY_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeBssrdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSSRDF_RANDOM_WALK_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeBssrdfData) /
-                                         sizeof(std::uint32_t));
-    };
-    PSYCLES_SVM_CASE(CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID) {
-      words = static_cast<std::uint32_t>(sizeof(SVMNodeBssrdfData) /
-                                         sizeof(std::uint32_t));
-    };
+    skip_cases({CLOSURE_BSDF_PRINCIPLED_ID},
+               sizeof(SVMNodePrincipledBsdfData) / sizeof(std::uint32_t));
+    skip_cases({CLOSURE_BSDF_HAIR_CHIANG_ID, CLOSURE_BSDF_HAIR_HUANG_ID},
+               sizeof(SVMNodePrincipledHairBsdfData) / sizeof(std::uint32_t));
+    skip_cases({CLOSURE_BSDF_PHYSICAL_CONDUCTOR, CLOSURE_BSDF_F82_CONDUCTOR},
+               sizeof(SVMNodeMetallicBsdfData) / sizeof(std::uint32_t));
+    skip_cases({CLOSURE_BSDF_DIFFUSE_ID, CLOSURE_BSDF_OREN_NAYAR_ID,
+                CLOSURE_BSDF_BURLEY_ID},
+               sizeof(SVMNodeDiffuseBsdfData) / sizeof(std::uint32_t));
+    skip_cases({CLOSURE_BSDF_RAY_PORTAL_ID},
+               sizeof(SVMNodeRayPortalBsdfData) / sizeof(std::uint32_t));
+    skip_cases({CLOSURE_BSDF_MICROFACET_GGX_ID,
+                CLOSURE_BSDF_MICROFACET_BECKMANN_ID,
+                CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID,
+                CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID},
+               sizeof(SVMNodeGlossyBsdfData) / sizeof(std::uint32_t));
+    skip_cases({CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID,
+                CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID},
+               sizeof(SVMNodeRefractionBsdfData) / sizeof(std::uint32_t));
+    skip_cases({CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID,
+                CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID,
+                CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID},
+               sizeof(SVMNodeGlassBsdfData) / sizeof(std::uint32_t));
+    skip_cases({CLOSURE_BSDF_GLOSSY_TOON_ID, CLOSURE_BSDF_DIFFUSE_TOON_ID},
+               sizeof(SVMNodeToonBsdfData) / sizeof(std::uint32_t));
+    skip_cases({CLOSURE_BSDF_HAIR_REFLECTION_ID,
+                CLOSURE_BSDF_HAIR_TRANSMISSION_ID},
+               sizeof(SVMNodeHairBsdfData) / sizeof(std::uint32_t));
+    skip_cases({CLOSURE_BSSRDF_BURLEY_ID, CLOSURE_BSSRDF_RANDOM_WALK_ID,
+                CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID},
+               sizeof(SVMNodeBssrdfData) / sizeof(std::uint32_t));
     $default{};
   };
   cursor.advance(words);

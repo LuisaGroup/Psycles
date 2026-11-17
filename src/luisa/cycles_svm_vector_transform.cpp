@@ -43,10 +43,10 @@ void object_position_transform(Float3 &value,
       value = cycles_transform::point(shader_data.ob_tfm_motion, value);
     }
     $else {
-      value = cycles_transform::point(transform_state.object_to_world, value);
+      value = cycles_transform::point(transform_state.fetch_object_to_world(), value);
     };
   } else {
-    value = cycles_transform::point(transform_state.object_to_world, value);
+    value = cycles_transform::point(transform_state.fetch_object_to_world(), value);
   }
 }
 
@@ -59,10 +59,10 @@ void object_position_transform(Dual3 &value,
       value = transform_point(shader_data.ob_tfm_motion, value);
     }
     $else {
-      value = transform_point(transform_state.object_to_world, value);
+      value = transform_point(transform_state.fetch_object_to_world(), value);
     };
   } else {
-    value = transform_point(transform_state.object_to_world, value);
+    value = transform_point(transform_state.fetch_object_to_world(), value);
   }
 }
 
@@ -75,10 +75,10 @@ void object_inverse_position_transform(Float3 &value,
       value = cycles_transform::point(shader_data.ob_itfm_motion, value);
     }
     $else {
-      value = cycles_transform::point(transform_state.world_to_object, value);
+      value = cycles_transform::point(transform_state.fetch_world_to_object(), value);
     };
   } else {
-    value = cycles_transform::point(transform_state.world_to_object, value);
+    value = cycles_transform::point(transform_state.fetch_world_to_object(), value);
   }
 }
 
@@ -94,12 +94,12 @@ void object_normal_transform(Float3 &value,
     }
     $elif(is_object) {
       value = normalize_cycles(cycles_transform::direction_transposed(
-          transform_state.world_to_object, value));
+          transform_state.fetch_world_to_object(), value));
     };
   } else {
     $if(is_object) {
       value = normalize_cycles(cycles_transform::direction_transposed(
-          transform_state.world_to_object, value));
+          transform_state.fetch_world_to_object(), value));
     };
   }
 }
@@ -122,12 +122,12 @@ void object_normal_transform(Dual3 &value,
                                               value));
     }
     $elif(is_object) {
-      value = normalize_dual_cycles(transform(transform_state.world_to_object,
+      value = normalize_dual_cycles(transform(transform_state.fetch_world_to_object(),
                                               value));
     };
   } else {
     $if(is_object) {
-      value = normalize_dual_cycles(transform(transform_state.world_to_object,
+      value = normalize_dual_cycles(transform(transform_state.fetch_world_to_object(),
                                               value));
     };
   }
@@ -147,12 +147,12 @@ void object_inverse_normal_transform(Float3 &value,
     }
     $elif(is_object) {
       value = safe_normalize_cycles(cycles_transform::direction_transposed(
-          transform_state.object_to_world, value));
+          transform_state.fetch_object_to_world(), value));
     };
   } else {
     $if(is_object) {
       value = safe_normalize_cycles(cycles_transform::direction_transposed(
-          transform_state.object_to_world, value));
+          transform_state.fetch_object_to_world(), value));
     };
   }
 }
@@ -167,10 +167,10 @@ void object_dir_transform(Float3 &value,
     }
     $else {
       value =
-          cycles_transform::direction(transform_state.object_to_world, value);
+          cycles_transform::direction(transform_state.fetch_object_to_world(), value);
     };
   } else {
-    value = cycles_transform::direction(transform_state.object_to_world, value);
+    value = cycles_transform::direction(transform_state.fetch_object_to_world(), value);
   }
 }
 
@@ -184,10 +184,10 @@ void object_inverse_dir_transform(Float3 &value,
     }
     $else {
       value =
-          cycles_transform::direction(transform_state.world_to_object, value);
+          cycles_transform::direction(transform_state.fetch_world_to_object(), value);
     };
   } else {
-    value = cycles_transform::direction(transform_state.world_to_object, value);
+    value = cycles_transform::direction(transform_state.fetch_world_to_object(), value);
   }
 }
 

@@ -34,6 +34,10 @@ struct SurfacePopulationContext {
     const Var<RenderKernelParameters> &parameters;
     CameraProjection camera_projection;
     const PathSurfaceAmbientOcclusionContext *ambient_occlusion;
+    std::optional<Expr<std::uint32_t>> cycles_shader_flags{};
+    std::optional<Expr<std::uint32_t>> cycles_object_flags{};
+    bool lazy_cycles_transforms{false};
+    bool may_filter_glossy{true};
 };
 
 using SurfacePreparationCallable = Callable<SurfacePreparationCall(

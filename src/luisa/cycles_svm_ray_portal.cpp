@@ -54,8 +54,8 @@ void node_ray_portal(Cursor &cursor, Stack &stack,
           static_cast<std::uint32_t>(CLOSURE_BSDF_RAY_PORTAL_ID), weight);
       $if(allocated.valid) {
         $if(is_zero(direction)) { direction = -shader_data.wi; };
-        pool.set_sample_weight(allocated.index, sample_weight);
-        pool.set_normal(allocated.index, shader_data.N);
+        pool.set_sample_weight_and_normal(allocated.index, sample_weight,
+                                          shader_data.N);
         pool.set_ray_portal_param(
             allocated.index,
             {.P = position,

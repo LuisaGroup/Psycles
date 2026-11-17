@@ -44,8 +44,8 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
 
     def test_native_apple_matrix_is_accepted(self) -> None:
         self.assertEqual(
-            self.runner._backend_list("fallback,metal"),
-            ("fallback", "metal"),
+            self.runner._backend_list("fallback,metal,metal4"),
+            ("fallback", "metal", "metal4"),
         )
         self.assertEqual(
             self.runner._device_key("METAL"),
@@ -302,6 +302,25 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.runner._parse_psycles_timings(
                 "Rendered 640x480 at 64 spp in 40.75 s: image.ppm\n"
+            )
+        extended_output = (
+            output
+            + "Luisa pass output completed in 0.125 s (render call 40.89 s)\n"
+        )
+        self.assertEqual(
+            self.runner._parse_psycles_timings(extended_output),
+            {
+                "scene_compile_seconds": 2.5,
+                "shader_jit_seconds": 1.25,
+                "render_seconds": 40.75,
+                "pass_output_seconds": 0.125,
+                "render_call_seconds": 40.89,
+            },
+        )
+        with self.assertRaises(RuntimeError):
+            self.runner._parse_psycles_timings(
+                output
+                + "Luisa pass output completed in 0.125 s (render call 10.0 s)\n"
             )
 
     def test_cycles_command_enables_original_main_loop_timer(self) -> None:
@@ -710,6 +729,66 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             self.runner._blender_build_identity(
                 {"blender_build": invalid}, source
             )
+
+    def test_cycles_warmup_and_pso_excluded_timings(self) -> None:
+        command = self.runner._cycles_command(
+            pathlib.Path("/blender"),
+            pathlib.Path("/scene.blend"),
+            pathlib.Path("/golden.py"),
+            pathlib.Path("/cycles.exr"),
+            width=1920,
+            height=1080,
+            samples=64,
+            device="METAL",
+            device_name="Apple M5 Pro",
+            metalrt="ON",
+            warmup_samples=16,
+        )
+        self.assertEqual(
+            command[command.index("--metalrt") + 1],
+            "ON",
+        )
+        self.assertEqual(
+            command[command.index("--warmup-samples") + 1],
+            "16",
+        )
+        output = (
+            "=== PSYCLES_CYCLES_WARMUP_BEGIN ===\n"
+            "00:02.000 cycles | Rendering in main loop is done in 1.9 seconds.\n"
+            "=== PSYCLES_CYCLES_WARMUP_END ===\n"
+            "=== PSYCLES_CYCLES_TIMED_RENDER_BEGIN ===\n"
+            "00:05.500 cycles | Rendered 1 samples in 0.40 seconds (0.40 seconds per sample), occupancy: 0.02\n"
+            "00:11.800 cycles | Rendered 63 samples in 6.30 seconds (0.10 seconds per sample), occupancy: 0.35\n"
+            "00:11.950 cycles | Rendering in main loop is done in 6.85 seconds.\n"
+            "                            |           Path Tracing             6.700000             0.104688\n"
+            "=== PSYCLES_CYCLES_TIMED_RENDER_END ===\n"
+        )
+        timings = self.runner._parse_cycles_timings(
+            output,
+            {"elapsed_seconds": 7.25, "warmup_elapsed_seconds": 4.1},
+        )
+        self.assertAlmostEqual(timings["render_seconds"], 6.85)
+        self.assertAlmostEqual(timings["path_tracing_seconds"], 6.70)
+        self.assertAlmostEqual(timings["warmup_elapsed_seconds"], 4.1)
+        self.assertAlmostEqual(timings["first_sample_seconds"], 0.40)
+        self.assertAlmostEqual(timings["steady_state_per_sample_seconds"], 0.10)
+        self.assertAlmostEqual(timings["first_sample_pso_overhead_seconds"], 0.30)
+        self.assertAlmostEqual(timings["pso_excluded_render_seconds"], 6.40)
+        manifest = {
+            "renderers": {
+                "cycles": {"metal": timings},
+                "psycles": {
+                    "metal4-wavefront-staged": {"render_seconds": 3.20}
+                },
+            }
+        }
+        rel = self.runner._relative_performance(manifest, "metal")
+        self.assertAlmostEqual(
+            rel["metal4-wavefront-staged"][
+                "speedup_over_cycles_metal_pso_excluded"
+            ],
+            2.0,
+        )
 
 
 if __name__ == "__main__":

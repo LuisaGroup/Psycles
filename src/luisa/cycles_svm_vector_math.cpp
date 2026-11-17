@@ -327,18 +327,26 @@ struct DualVectorMathResult {
                 derivative_exponent * exponent.dy};
 }
 
+[[nodiscard]] constexpr bool vector_math_enabled(std::uint64_t mask,
+                                                 NodeVectorMathType op) noexcept {
+  const auto idx = static_cast<std::uint32_t>(op);
+  return idx < 64u && (mask & (1ull << idx)) != 0ull;
+}
+
 [[nodiscard]] ::psycles::luisa_backend::detail::SurfaceVectorMathResult
-evaluate_primal(UInt type, Float3 a, Float3 b, Float3 c,
-                Float param1) noexcept {
+evaluate_primal(UInt type, Float3 a, Float3 b, Float3 c, Float param1,
+                std::uint64_t type_mask) noexcept {
   using GraphOperation = compiler::VectorMathOperation;
   ::psycles::luisa_backend::detail::SurfaceVectorMathResult result{
       .value = 0.0f, .vector = make_float3(0.0f)};
-#define PSYCLES_PRIMAL_CASE(node, operation)                                \
-  PSYCLES_VECTOR_MATH_CASE(node) {                                         \
-    result = ::psycles::luisa_backend::detail::                            \
-        evaluate_surface_vector_math_operation(GraphOperation::operation, \
-                                                a, b, c, param1);          \
-  };
+#define PSYCLES_PRIMAL_CASE(node, operation)                                 \
+  if (vector_math_enabled(type_mask, node)) {                                \
+    PSYCLES_VECTOR_MATH_CASE(node) {                                         \
+      result = ::psycles::luisa_backend::detail::                            \
+          evaluate_surface_vector_math_operation(GraphOperation::operation,  \
+                                                 a, b, c, param1);           \
+    };                                                                       \
+  }
   $switch (type) {
     PSYCLES_PRIMAL_CASE(NODE_VECTOR_MATH_ADD, add)
     PSYCLES_PRIMAL_CASE(NODE_VECTOR_MATH_SUBTRACT, subtract)
@@ -378,95 +386,96 @@ evaluate_primal(UInt type, Float3 a, Float3 b, Float3 c,
 
 [[nodiscard]] DualVectorMathResult evaluate_dual(
     UInt type, const Dual3 &a, const Dual3 &b, const Dual3 &c,
-    const Dual1 &param1) noexcept {
+    const Dual1 &param1, std::uint64_t type_mask) noexcept {
   DualVectorMathResult result{.value = zero_dual1(),
                               .vector = zero_dual3()};
+#define PSYCLES_DUAL_IF(node) if (vector_math_enabled(type_mask, node)) PSYCLES_VECTOR_MATH_CASE(node)
   $switch (type) {
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_ADD) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_ADD) {
       result.vector = dual_add(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_SUBTRACT) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_SUBTRACT) {
       result.vector = dual_subtract(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_MULTIPLY) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_MULTIPLY) {
       result.vector = dual_multiply(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_DIVIDE) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_DIVIDE) {
       result.vector = safe_dual_divide(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_CROSS_PRODUCT) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_CROSS_PRODUCT) {
       result.vector = dual_cross(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_PROJECT) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_PROJECT) {
       result.vector = dual_project(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_REFLECT) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_REFLECT) {
       result.vector = dual_reflect(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_DOT_PRODUCT) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_DOT_PRODUCT) {
       result.value = dual_dot(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_DISTANCE) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_DISTANCE) {
       result.value = dual_length(dual_subtract(a, b));
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_LENGTH) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_LENGTH) {
       result.value = dual_length(a);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_SCALE) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_SCALE) {
       result.vector = dual_multiply(a, param1);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_NORMALIZE) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_NORMALIZE) {
       result.vector = safe_normalize_dual(a);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_SNAP) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_SNAP) {
       result.vector = dual_multiply(dual_floor(safe_dual_divide(a, b)), b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_FLOOR) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_FLOOR) {
       result.vector = dual_floor(a);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_CEIL) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_CEIL) {
       result.vector = dual_ceil(a);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_MODULO) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_MODULO) {
       result.vector = dual_safe_fmod(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_FRACTION) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_FRACTION) {
       result.vector = dual_subtract(a, dual_floor(a));
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_ABSOLUTE) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_ABSOLUTE) {
       result.vector = dual_absolute(a);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_MINIMUM) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_MINIMUM) {
       result.vector = dual_minimum(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_MAXIMUM) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_MAXIMUM) {
       result.vector = dual_maximum(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_WRAP) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_WRAP) {
       result.vector = dual_wrap(a, b, c);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_SINE) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_SINE) {
       result.vector = dual_sine(a);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_COSINE) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_COSINE) {
       result.vector = dual_cosine(a);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_TANGENT) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_TANGENT) {
       result.vector = dual_tangent(a);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_REFRACT) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_REFRACT) {
       result.vector = dual_refract(a, b, param1);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_FACEFORWARD) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_FACEFORWARD) {
       result.vector = dual_faceforward(a, b, c);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_MULTIPLY_ADD) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_MULTIPLY_ADD) {
       result.vector = dual_add(dual_multiply(a, b), c);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_POWER) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_POWER) {
       result.vector = dual_safe_power(a, b);
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_SIGN) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_SIGN) {
       result.vector = constant_dual3(
           make_float3(select(select(1.0f, -1.0f, a.val.x < 0.0f), 0.0f,
                              a.val.x == 0.0f),
@@ -475,58 +484,103 @@ evaluate_primal(UInt type, Float3 a, Float3 b, Float3 c,
                       select(select(1.0f, -1.0f, a.val.z < 0.0f), 0.0f,
                              a.val.z == 0.0f)));
     };
-    PSYCLES_VECTOR_MATH_CASE(NODE_VECTOR_MATH_ROUND) {
+    PSYCLES_DUAL_IF(NODE_VECTOR_MATH_ROUND) {
       result.vector = dual_floor(
           dual_add(a, constant_dual3(make_float3(0.5f))));
     };
     $default {};
   };
+#undef PSYCLES_DUAL_IF
   return result;
 }
 
 } // namespace
 
-void node_vector_math(Cursor &cursor, Stack &stack,
-                      bool use_derivatives) noexcept {
-  const UInt math_type = cursor.word();
-  const UInt a_x = cursor.word();
-  const UInt a_y = cursor.word();
-  const UInt a_z = cursor.word();
-  const UInt b_x = cursor.word();
-  const UInt b_y = cursor.word();
-  const UInt b_z = cursor.word();
-  const UInt c_x = cursor.word();
-  const UInt c_y = cursor.word();
-  const UInt c_z = cursor.word();
-  const UInt param1_bits = cursor.word();
-  const UInt packed_outputs = cursor.word();
-  const UInt value_offset = cursor.byte(packed_outputs, 0u);
-  const UInt vector_offset = cursor.byte(packed_outputs, 1u);
+void node_vector_math(Cursor &cursor, Stack &stack, bool use_derivatives,
+                      std::uint64_t type_mask) noexcept {
+  const auto math_type = cursor.word();
+  const auto a_x = cursor.word();
+  const auto a_y = cursor.word();
+  const auto a_z = cursor.word();
+  const auto b_x = cursor.word();
+  const auto b_y = cursor.word();
+  const auto b_z = cursor.word();
+  const auto c_x = cursor.word();
+  const auto c_y = cursor.word();
+  const auto c_z = cursor.word();
+  const auto param1_bits = cursor.word();
+  const auto packed_outputs = cursor.word();
+  const auto value_offset = cursor.byte(packed_outputs, 0u);
+  const auto vector_offset = cursor.byte(packed_outputs, 1u);
+
+  static constexpr std::uint64_t uses_c_mask =
+      (1ull << NODE_VECTOR_MATH_WRAP) |
+      (1ull << NODE_VECTOR_MATH_FACEFORWARD) |
+      (1ull << NODE_VECTOR_MATH_MULTIPLY_ADD);
+  static constexpr std::uint64_t uses_param1_mask =
+      (1ull << NODE_VECTOR_MATH_SCALE) |
+      (1ull << NODE_VECTOR_MATH_REFRACT);
+  static constexpr std::uint64_t unary_or_scale_mask =
+      (1ull << NODE_VECTOR_MATH_LENGTH) |
+      (1ull << NODE_VECTOR_MATH_SCALE) |
+      (1ull << NODE_VECTOR_MATH_NORMALIZE) |
+      (1ull << NODE_VECTOR_MATH_FLOOR) |
+      (1ull << NODE_VECTOR_MATH_CEIL) |
+      (1ull << NODE_VECTOR_MATH_FRACTION) |
+      (1ull << NODE_VECTOR_MATH_ABSOLUTE) |
+      (1ull << NODE_VECTOR_MATH_SINE) |
+      (1ull << NODE_VECTOR_MATH_COSINE) |
+      (1ull << NODE_VECTOR_MATH_TANGENT) |
+      (1ull << NODE_VECTOR_MATH_SIGN) |
+      (1ull << NODE_VECTOR_MATH_ROUND);
+  const bool needs_b = (type_mask & ~unary_or_scale_mask) != 0ull;
+  const bool needs_c = (type_mask & uses_c_mask) != 0ull;
+  const bool needs_param1 = (type_mask & uses_param1_mask) != 0ull;
+  static constexpr std::uint64_t scalar_out_mask =
+      (1ull << NODE_VECTOR_MATH_DOT_PRODUCT) |
+      (1ull << NODE_VECTOR_MATH_DISTANCE) |
+      (1ull << NODE_VECTOR_MATH_LENGTH);
+  const bool may_write_value = (type_mask & scalar_out_mask) != 0ull;
+  const bool may_write_vector = (type_mask & ~scalar_out_mask) != 0ull;
 
   if (use_derivatives) {
-    const auto result = evaluate_dual(
-        math_type, stack_load_input_dual_float3(stack, a_x, a_y, a_z),
-        stack_load_input_dual_float3(stack, b_x, b_y, b_z),
-        stack_load_input_dual_float3(stack, c_x, c_y, c_z),
-        stack_load_input_dual_float(stack, param1_bits));
-    $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_dual1(stack, value_offset, result.value);
-    };
-    $if (vector_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_dual3(stack, vector_offset, result.vector);
-    };
+    const auto a = stack_load_input_dual_float3(stack, a_x, a_y, a_z);
+    const auto b = needs_b ? stack_load_input_dual_float3(stack, b_x, b_y, b_z)
+                           : zero_dual3();
+    const auto c = needs_c ? stack_load_input_dual_float3(stack, c_x, c_y, c_z)
+                           : zero_dual3();
+    const auto p1 = needs_param1 ? stack_load_input_dual_float(stack, param1_bits)
+                                 : zero_dual1();
+    const auto result = evaluate_dual(math_type, a, b, c, p1, type_mask);
+    if (may_write_value) {
+      $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+        stack_store_dual1(stack, value_offset, result.value);
+      };
+    }
+    if (may_write_vector) {
+      $if (vector_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+        stack_store_dual3(stack, vector_offset, result.vector);
+      };
+    }
   } else {
-    const auto result = evaluate_primal(
-        math_type, stack_load_input_float3(stack, a_x, a_y, a_z),
-        stack_load_input_float3(stack, b_x, b_y, b_z),
-        stack_load_input_float3(stack, c_x, c_y, c_z),
-        stack_load_input_float(stack, param1_bits));
-    $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_float(stack, value_offset, result.value);
-    };
-    $if (vector_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_float3(stack, vector_offset, result.vector);
-    };
+    const auto a = stack_load_input_float3(stack, a_x, a_y, a_z);
+    const Float3 b = needs_b ? stack_load_input_float3(stack, b_x, b_y, b_z)
+                             : Float3{make_float3(0.0f)};
+    const Float3 c = needs_c ? stack_load_input_float3(stack, c_x, c_y, c_z)
+                             : Float3{make_float3(0.0f)};
+    const Float p1 = needs_param1 ? stack_load_input_float(stack, param1_bits)
+                                  : Float{0.0f};
+    const auto result = evaluate_primal(math_type, a, b, c, p1, type_mask);
+    if (may_write_value) {
+      $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+        stack_store_float(stack, value_offset, result.value);
+      };
+    }
+    if (may_write_vector) {
+      $if (vector_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+        stack_store_float3(stack, vector_offset, result.vector);
+      };
+    }
   }
 }
 

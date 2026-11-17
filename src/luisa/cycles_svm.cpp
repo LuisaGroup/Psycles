@@ -32,6 +32,18 @@ TransformState::TransformState(
       object_to_world{object_to_world_transform},
       world_to_object{world_to_object_transform} {}
 
+TransformState::TransformState(
+    Expr<luisa::float4x4> camera_to_world_transform,
+    Expr<luisa::float4x4> world_to_camera_transform,
+    std::function<Float4x4()> fetch_o2w,
+    std::function<Float4x4()> fetch_w2o) noexcept
+    : camera_to_world{camera_to_world_transform},
+      world_to_camera{world_to_camera_transform},
+      object_to_world{make_float4x4(1.0f)},
+      world_to_object{make_float4x4(1.0f)},
+      lazy_object_to_world{std::move(fetch_o2w)},
+      lazy_world_to_object{std::move(fetch_w2o)} {}
+
 ShaderData::ShaderData(
     Expr<luisa::float3> position, Expr<luisa::float3> normal,
     Expr<luisa::float3> geometric_normal, Expr<luisa::float3> incoming,
@@ -93,9 +105,18 @@ void eval_nodes_impl(
                SVM_STACK_SIZE, stack_size);
   detail::Stack stack{stack_size};
   Float3 closure_weight = make_float3(0.0f);
-  UInt offset = (shader_data.shader & shader_mask) *
-                (1u + static_cast<std::uint32_t>(sizeof(SVMNodeShaderJump) /
-                                                 sizeof(std::uint32_t)));
+  const UInt jump_base = (shader_data.shader & shader_mask) *
+                         (1u + static_cast<std::uint32_t>(
+                                   sizeof(SVMNodeShaderJump) /
+                                   sizeof(std::uint32_t)));
+  UInt offset =
+      diagnose_failures
+          ? jump_base
+          : words.read(jump_base +
+                       (shader_type == SHADER_TYPE_SURFACE        ? 1u
+                        : shader_type == SHADER_TYPE_VOLUME       ? 2u
+                        : shader_type == SHADER_TYPE_DISPLACEMENT ? 3u
+                                                                  : 0u));
   std::optional<Bool> diagnostic_active;
   if constexpr (diagnose_failures) {
     diagnostic_active.emplace(true);
@@ -125,32 +146,30 @@ void eval_nodes_impl(
           }
         };
       }
-      if (node_types_used[NODE_SHADER_JUMP]) {
-        PSYCLES_SVM_CASE(NODE_SHADER_JUMP) {
-          const auto offset_surface = cursor.word();
-          const auto offset_volume = cursor.word();
-          const auto offset_displacement = cursor.word();
-          switch (shader_type) {
-          case SHADER_TYPE_SURFACE:
-            offset = offset_surface;
-            break;
-          case SHADER_TYPE_VOLUME:
-            offset = offset_volume;
-            break;
-          case SHADER_TYPE_DISPLACEMENT:
-            offset = offset_displacement;
-            break;
-          case SHADER_TYPE_BUMP:
-            if constexpr (diagnose_failures) {
+      if constexpr (diagnose_failures) {
+        if (node_types_used[NODE_SHADER_JUMP]) {
+          PSYCLES_SVM_CASE(NODE_SHADER_JUMP) {
+            const auto offset_surface = cursor.word();
+            const auto offset_volume = cursor.word();
+            const auto offset_displacement = cursor.word();
+            switch (shader_type) {
+            case SHADER_TYPE_SURFACE:
+              offset = offset_surface;
+              break;
+            case SHADER_TYPE_VOLUME:
+              offset = offset_volume;
+              break;
+            case SHADER_TYPE_DISPLACEMENT:
+              offset = offset_displacement;
+              break;
+            case SHADER_TYPE_BUMP:
               result->status =
                   static_cast<std::uint32_t>(EvaluationStatus::ended);
               *diagnostic_active = false;
-            } else {
-              $return();
+              break;
             }
-            break;
-          }
-        };
+          };
+        }
       }
       if (node_types_used[NODE_CLOSURE_BSDF]) {
         PSYCLES_SVM_CASE(NODE_CLOSURE_BSDF) {
@@ -319,7 +338,8 @@ void eval_nodes_impl(
                   cursor, stack, kernel_globals, transform_state, shader_data,
                   path_state, false,
                   (node_feature_mask & kernel_feature_node_volume) != 0u,
-                  (kernel_features & kernel_feature_object_motion) != 0u));
+                  (kernel_features & kernel_feature_object_motion) != 0u,
+                  diagnose_failures ? ~0u : kernel_globals.tex_coord_mask()));
         };
       }
       if (node_types_used[NODE_TEX_COORD_DERIVATIVE]) {
@@ -330,7 +350,8 @@ void eval_nodes_impl(
                 detail::node_tex_coord(
                     cursor, stack, kernel_globals, transform_state,
                     shader_data, path_state, true, false,
-                    (kernel_features & kernel_feature_object_motion) != 0u));
+                    (kernel_features & kernel_feature_object_motion) != 0u,
+                    diagnose_failures ? ~0u : kernel_globals.tex_coord_mask()));
           }
         };
       }
@@ -378,7 +399,8 @@ void eval_nodes_impl(
         PSYCLES_SVM_CASE(NODE_TEX_NOISE) {
           PSYCLES_SVM_OUTLINE_NODE(
               "svm_node_tex_noise",
-              detail::node_tex_noise(cursor, stack, noise_usage));
+              detail::node_tex_noise(cursor, stack, noise_usage,
+                                     kernel_globals.noise_static_options()));
         };
       }
       if (node_types_used[NODE_TEX_WHITE_NOISE]) {
@@ -399,8 +421,9 @@ void eval_nodes_impl(
               "svm_node_tex_voronoi",
               detail::node_tex_voronoi(
                   cursor, stack,
-                  (node_feature_mask & kernel_feature_node_voronoi_extra) !=
-                      0u));
+                  (node_feature_mask & kernel_feature_node_voronoi_extra) != 0u,
+                  diagnose_failures ? VoronoiStaticOptions{}
+                                    : kernel_globals.voronoi_static_options()));
         };
       }
       if (node_types_used[NODE_TEX_GABOR]) {
@@ -414,7 +437,10 @@ void eval_nodes_impl(
         PSYCLES_SVM_CASE(NODE_TEX_WAVE) {
           PSYCLES_SVM_OUTLINE_NODE(
               "svm_node_tex_wave",
-              detail::node_tex_wave(cursor, stack));
+              detail::node_tex_wave(
+                  cursor, stack,
+                  diagnose_failures ? WaveStaticOptions{}
+                                    : kernel_globals.wave_static_options()));
         };
       }
       if (node_types_used[NODE_TEX_MAGIC]) {
@@ -444,7 +470,10 @@ void eval_nodes_impl(
       if (node_types_used[NODE_CURVES]) {
         PSYCLES_SVM_CASE(NODE_CURVES) {
           PSYCLES_SVM_OUTLINE_NODE(
-              "svm_node_curves", detail::node_curves(cursor, stack));
+              "svm_node_curves",
+              detail::node_curves(
+                  cursor, stack,
+                  diagnose_failures || kernel_globals.curves_may_extrapolate()));
         };
       }
       if (node_types_used[NODE_FLOAT_CURVE]) {
@@ -559,7 +588,10 @@ void eval_nodes_impl(
         PSYCLES_SVM_CASE(NODE_MAPPING) {
           PSYCLES_SVM_OUTLINE_NODE(
               "svm_node_mapping_float3",
-              detail::node_mapping(cursor, stack, false));
+              detail::node_mapping(
+                  cursor, stack, false,
+                  diagnose_failures ? MappingStaticOptions{}
+                                    : kernel_globals.mapping_static_options()));
         };
       }
       if (node_types_used[NODE_MAPPING_DERIVATIVE]) {
@@ -567,7 +599,11 @@ void eval_nodes_impl(
           if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
             PSYCLES_SVM_OUTLINE_NODE(
                 "svm_node_mapping_derivative",
-                detail::node_mapping(cursor, stack, true));
+                detail::node_mapping(
+                    cursor, stack, true,
+                    diagnose_failures
+                        ? MappingStaticOptions{}
+                        : kernel_globals.mapping_static_options()));
           }
         };
       }
@@ -597,7 +633,10 @@ void eval_nodes_impl(
         PSYCLES_SVM_CASE(NODE_VECTOR_MATH) {
           PSYCLES_SVM_OUTLINE_NODE(
               "svm_node_vector_math_float3",
-              detail::node_vector_math(cursor, stack, false));
+              detail::node_vector_math(
+                  cursor, stack, false,
+                  diagnose_failures ? ~0ull
+                                    : kernel_globals.vector_math_type_mask()));
         };
       }
       if (node_types_used[NODE_VECTOR_MATH_DERIVATIVE]) {
@@ -605,7 +644,11 @@ void eval_nodes_impl(
           if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
             PSYCLES_SVM_OUTLINE_NODE(
                 "svm_node_vector_math_derivative",
-                detail::node_vector_math(cursor, stack, true));
+                detail::node_vector_math(
+                    cursor, stack, true,
+                    diagnose_failures
+                        ? ~0ull
+                        : kernel_globals.vector_math_type_mask()));
           }
         };
       }
@@ -616,7 +659,10 @@ void eval_nodes_impl(
               detail::node_set_bump(
                   cursor, stack, transform_state, shader_data,
                   (node_feature_mask & kernel_feature_node_bump) != 0u,
-                  (kernel_features & kernel_feature_object_motion) != 0u));
+                  (kernel_features & kernel_feature_object_motion) != 0u,
+                  diagnose_failures ||
+                      (node_feature_mask & kernel_feature_node_bump_state) != 0u,
+                  diagnose_failures || kernel_globals.bump_uses_object_space()));
         };
       }
       if (node_types_used[NODE_CLOSURE_SET_NORMAL]) {
@@ -634,7 +680,10 @@ void eval_nodes_impl(
                 detail::node_enter_bump_eval(
                     cursor, stack, kernel_globals, transform_state,
                     shader_data,
-                    (kernel_features & kernel_feature_object_motion) != 0u));
+                    (kernel_features & kernel_feature_object_motion) != 0u,
+                    diagnose_failures ||
+                        kernel_globals.surface_attribute_summary()
+                            .has_undisplaced_position));
           }
         };
       }
@@ -683,7 +732,10 @@ void eval_nodes_impl(
       if (node_types_used[NODE_MATH]) {
         PSYCLES_SVM_CASE(NODE_MATH) {
           PSYCLES_SVM_OUTLINE_NODE(
-              "svm_node_math", detail::node_math(cursor, stack));
+              "svm_node_math",
+              detail::node_math(
+                  cursor, stack,
+                  diagnose_failures ? ~0ull : kernel_globals.math_type_mask()));
         };
       }
       if (node_types_used[NODE_GAMMA]) {
@@ -780,7 +832,8 @@ void eval_nodes_impl(
       if (node_types_used[NODE_MIX]) {
         PSYCLES_SVM_CASE(NODE_MIX) {
           PSYCLES_SVM_OUTLINE_NODE(
-              "svm_node_mix", detail::node_mix(cursor, stack));
+              "svm_node_mix",
+              detail::node_mix(cursor, stack, kernel_globals.mix_blend_mask()));
         };
       }
       if (node_types_used[NODE_SEPARATE_COLOR]) {
@@ -901,12 +954,16 @@ void eval_nodes_impl(
       }
       if (node_types_used[NODE_MAP_RANGE]) {
         PSYCLES_SVM_CASE(NODE_MAP_RANGE) {
-          detail::node_map_range(cursor, stack);
+          detail::node_map_range(
+              cursor, stack,
+              diagnose_failures ? ~0u : kernel_globals.map_range_type_mask());
         };
       }
       if (node_types_used[NODE_VECTOR_MAP_RANGE]) {
         PSYCLES_SVM_CASE(NODE_VECTOR_MAP_RANGE) {
-          detail::node_vector_map_range(cursor, stack);
+          detail::node_vector_map_range(
+              cursor, stack,
+              diagnose_failures ? ~0u : kernel_globals.map_range_type_mask());
         };
       }
       if (node_types_used[NODE_CLAMP]) {
@@ -918,7 +975,9 @@ void eval_nodes_impl(
       if (node_types_used[NODE_MIX_COLOR]) {
         PSYCLES_SVM_CASE(NODE_MIX_COLOR) {
           PSYCLES_SVM_OUTLINE_NODE(
-              "svm_node_mix_color", detail::node_mix_color(cursor, stack));
+              "svm_node_mix_color",
+              detail::node_mix_color(cursor, stack,
+                                     kernel_globals.mix_blend_mask()));
         };
       }
       if (node_types_used[NODE_MIX_FLOAT]) {
@@ -998,6 +1057,9 @@ void eval_nodes_assume_valid(
     const TransformState &transform_state, ShaderData &shader_data,
     const PathState &path_state, std::size_t stack_size,
     NoiseUsage noise_usage) noexcept {
+  if (shader_type == SHADER_TYPE_BUMP) {
+    return;
+  }
   $outline_with_name("svm_eval_nodes") {
     eval_nodes_impl<false>(kernel_globals, words, shader_type, kernel_features,
                            node_feature_mask, node_types_used, transform_state,

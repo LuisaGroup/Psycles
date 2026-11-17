@@ -835,7 +835,7 @@ endif()
 # full parent-restoring frames. Reuse the same differential executable with a
 # root-tail Mix scene so every enabled backend also compiles and executes the
 # scalar no-restoration JIT shape.
-foreach(_backend IN ITEMS fallback simd metal hip vk)
+foreach(_backend IN ITEMS fallback simd metal metal4 hip vk)
     if(TARGET luisa-compute-backend-${_backend})
         add_test(
             NAME psycles.luisa_compact_surface_tail_${_backend}

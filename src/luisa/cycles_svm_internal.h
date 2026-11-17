@@ -6,6 +6,9 @@
 
 #include <psycles/luisa/cycles_svm.h>
 
+#include <optional>
+#include <span>
+
 #include <luisa/dsl/builtin.h>
 #include <luisa/dsl/local.h>
 
@@ -60,23 +63,39 @@ class Cursor final {
 
 private:
   luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> _words;
-  luisa::compute::UInt &_offset;
+  luisa::compute::UInt *_offset{nullptr};
+  const std::uint32_t *_static_words{nullptr};
+  std::size_t _static_count{};
+  std::size_t _static_index{};
+  std::uint32_t _global_base_offset{};
 
 public:
   Cursor(luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> words,
          luisa::compute::UInt &offset) noexcept;
+  Cursor(luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> words,
+         std::span<const std::uint32_t> static_words,
+         std::uint32_t global_base_offset) noexcept;
 
-  [[nodiscard]] luisa::compute::UInt word() noexcept;
-  [[nodiscard]] luisa::compute::UInt
+  [[nodiscard]] bool is_static() const noexcept {
+    return _static_words != nullptr;
+  }
+
+  [[nodiscard]] luisa::compute::Expr<std::uint32_t> word() noexcept;
+  [[nodiscard]] luisa::compute::Expr<std::uint32_t>
   word_at(luisa::compute::Expr<std::uint32_t> relative_word) const noexcept;
-  [[nodiscard]] luisa::compute::Float floating() noexcept;
-  [[nodiscard]] luisa::compute::Float
+  [[nodiscard]] luisa::compute::Expr<float> floating() noexcept;
+  [[nodiscard]] luisa::compute::Expr<float>
   floating_at(luisa::compute::Expr<std::uint32_t> relative_word) const noexcept;
   void advance(luisa::compute::Expr<std::uint32_t> word_count) noexcept;
-  [[nodiscard]] luisa::compute::UInt
+  [[nodiscard]] luisa::compute::Expr<std::uint32_t>
   byte(luisa::compute::Expr<std::uint32_t> word,
        std::uint32_t byte_index) const noexcept;
 };
+
+[[nodiscard]] std::optional<std::uint32_t>
+try_const_uint(luisa::compute::Expr<std::uint32_t> expr) noexcept;
+[[nodiscard]] std::optional<std::int32_t>
+try_const_int(luisa::compute::Expr<std::int32_t> expr) noexcept;
 
 [[nodiscard]] luisa::compute::Float4x4
 transform_from_rows(luisa::compute::Expr<luisa::float4> x,
@@ -228,7 +247,8 @@ void node_tex_coord(Cursor &cursor, Stack &stack,
                     const TransformState &transform_state,
                     const ShaderData &shader_data, const PathState &path_state,
                     bool use_derivatives, bool volume_enabled,
-                    bool object_motion_enabled) noexcept;
+                    bool object_motion_enabled,
+                    std::uint32_t tex_coord_mask = ~0u) noexcept;
 void node_tex_image(Cursor &cursor, Stack &stack,
                     const KernelGlobals &kernel_globals,
                     ShaderData &shader_data, bool use_derivatives) noexcept;
@@ -245,25 +265,35 @@ void node_tex_sky(Cursor &cursor, Stack &stack,
                   const KernelGlobals &kernel_globals,
                   ShaderData &shader_data,
                   const PathState &path_state) noexcept;
-void node_mapping(Cursor &cursor, Stack &stack, bool use_derivatives) noexcept;
+void node_mapping(Cursor &cursor, Stack &stack, bool use_derivatives,
+                  MappingStaticOptions options = {}) noexcept;
 void node_texture_mapping(Cursor &cursor, Stack &stack,
                           bool use_derivatives) noexcept;
 void node_min_max(Cursor &cursor, Stack &stack) noexcept;
-void node_vector_math(Cursor &cursor, Stack &stack,
-                      bool use_derivatives) noexcept;
+void node_vector_math(Cursor &cursor, Stack &stack, bool use_derivatives,
+                      std::uint64_t type_mask = ~0ull) noexcept;
+[[nodiscard]] AttributeDescriptor find_attribute_from_base_offset(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    luisa::compute::Expr<std::uint32_t> base_attr_offset,
+    luisa::compute::Expr<luisa::ulong> id) noexcept;
+
 void node_tex_noise(Cursor &cursor, Stack &stack,
-                    compiler::cycles_svm::NoiseUsage usage = {}) noexcept;
+                    compiler::cycles_svm::NoiseUsage usage = {},
+                    NoiseStaticOptions options = {}) noexcept;
 void node_tex_white_noise(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_gradient(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_voronoi(Cursor &cursor, Stack &stack,
-                      bool voronoi_extra_enabled) noexcept;
+                      bool voronoi_extra_enabled,
+                      VoronoiStaticOptions options = {}) noexcept;
 void node_tex_gabor(Cursor &cursor, Stack &stack) noexcept;
-void node_tex_wave(Cursor &cursor, Stack &stack) noexcept;
+void node_tex_wave(Cursor &cursor, Stack &stack,
+                   WaveStaticOptions options = {}) noexcept;
 void node_tex_magic(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_checker(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_brick(Cursor &cursor, Stack &stack) noexcept;
 void node_rgb_ramp(Cursor &cursor, Stack &stack) noexcept;
-void node_curves(Cursor &cursor, Stack &stack) noexcept;
+void node_curves(Cursor &cursor, Stack &stack,
+                 bool may_extrapolate = true) noexcept;
 void node_float_curve(Cursor &cursor, Stack &stack) noexcept;
 void node_attr_surface(Cursor &cursor, Stack &stack,
                        const KernelGlobals &kernel_globals,
@@ -290,13 +320,16 @@ void node_light_falloff(Cursor &cursor, Stack &stack,
                         const ShaderData &shader_data) noexcept;
 void node_ies(Cursor &cursor, Stack &stack,
               const KernelGlobals &kernel_globals) noexcept;
-void node_math(Cursor &cursor, Stack &stack) noexcept;
+void node_math(Cursor &cursor, Stack &stack,
+               std::uint64_t type_mask = ~0ull) noexcept;
 void node_hsv(Cursor &cursor, Stack &stack) noexcept;
 void node_gamma(Cursor &cursor, Stack &stack) noexcept;
 void node_brightness(Cursor &cursor, Stack &stack) noexcept;
 void node_invert(Cursor &cursor, Stack &stack) noexcept;
-void node_mix(Cursor &cursor, Stack &stack) noexcept;
-void node_mix_color(Cursor &cursor, Stack &stack) noexcept;
+void node_mix(Cursor &cursor, Stack &stack,
+              std::uint32_t blend_mask = ~0u) noexcept;
+void node_mix_color(Cursor &cursor, Stack &stack,
+                    std::uint32_t blend_mask = ~0u) noexcept;
 void node_mix_float(Cursor &cursor, Stack &stack) noexcept;
 void node_mix_vector(Cursor &cursor, Stack &stack) noexcept;
 void node_mix_vector_non_uniform(Cursor &cursor, Stack &stack) noexcept;
@@ -320,14 +353,16 @@ void node_wireframe(Cursor &cursor, Stack &stack,
 void node_set_bump(Cursor &cursor, Stack &stack,
                    const TransformState &transform_state,
                    const ShaderData &shader_data, bool bump_feature_enabled,
-                   bool object_motion_enabled) noexcept;
+                   bool object_motion_enabled, bool bump_state_enabled = true,
+                   bool bump_object_space_enabled = true) noexcept;
 void node_set_normal(Cursor &cursor, Stack &stack,
                      ShaderData &shader_data) noexcept;
 void node_enter_bump_eval(Cursor &cursor, Stack &stack,
                           const KernelGlobals &kernel_globals,
                           const TransformState &transform_state,
                           ShaderData &shader_data,
-                          bool object_motion_enabled) noexcept;
+                          bool object_motion_enabled,
+                          bool may_have_undisplaced_position = true) noexcept;
 void node_leave_bump_eval(Cursor &cursor, Stack &stack,
                           ShaderData &shader_data) noexcept;
 void node_set_displacement(Cursor &cursor, Stack &stack,
@@ -345,8 +380,10 @@ void node_vector_displacement(Cursor &cursor, Stack &stack,
                               bool bump_feature_enabled,
                               bool object_motion_enabled) noexcept;
 void node_clamp(Cursor &cursor, Stack &stack) noexcept;
-void node_map_range(Cursor &cursor, Stack &stack) noexcept;
-void node_vector_map_range(Cursor &cursor, Stack &stack) noexcept;
+void node_map_range(Cursor &cursor, Stack &stack,
+                    std::uint32_t type_mask = ~0u) noexcept;
+void node_vector_map_range(Cursor &cursor, Stack &stack,
+                           std::uint32_t type_mask = ~0u) noexcept;
 void node_blackbody(Cursor &cursor, Stack &stack,
                     const KernelGlobals &kernel_globals) noexcept;
 void node_wavelength(Cursor &cursor, Stack &stack,
@@ -379,6 +416,283 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                        const PathState &path_state,
                        const EvaluationTransition &transition) noexcept;
 void node_closure_bsdf_skip(
-    Cursor &cursor, luisa::compute::Expr<std::uint32_t> closure_type) noexcept;
+    Cursor &cursor, luisa::compute::Expr<std::uint32_t> closure_type,
+    std::uint64_t svm_bsdf_node_mask = ~0ull) noexcept;
+
+// Forwarding wrapper around KernelGlobals so scoped AST specializations
+// (e.g. per-instruction or per-attribute) override only the queried metadata.
+class DelegatingKernelGlobals : public KernelGlobals {
+protected:
+  const KernelGlobals &_inner;
+
+public:
+  explicit DelegatingKernelGlobals(const KernelGlobals &inner) noexcept
+      : _inner{inner} {}
+
+  [[nodiscard]] luisa::compute::Float cycles_bsdf_data(
+      luisa::compute::Expr<std::uint32_t> index) const noexcept override {
+    return _inner.cycles_bsdf_data(index);
+  }
+  [[nodiscard]] luisa::compute::Bool caustics_reflective() const noexcept override {
+    return _inner.caustics_reflective();
+  }
+  [[nodiscard]] luisa::compute::Bool caustics_refractive() const noexcept override {
+    return _inner.caustics_refractive();
+  }
+  [[nodiscard]] luisa::compute::Float
+  transparent_roughness_squared_threshold() const noexcept override {
+    return _inner.transparent_roughness_squared_threshold();
+  }
+  [[nodiscard]] luisa::compute::Bool
+  background_use_sun_guiding() const noexcept override {
+    return _inner.background_use_sun_guiding();
+  }
+  [[nodiscard]] bool
+  has_shadow_terminator_shading_offset() const noexcept override {
+    return _inner.has_shadow_terminator_shading_offset();
+  }
+  [[nodiscard]] bool may_have_thin_film() const noexcept override {
+    return _inner.may_have_thin_film();
+  }
+  [[nodiscard]] compiler::cycles_svm::ClosureUsage
+  closure_usage() const noexcept override {
+    return _inner.closure_usage();
+  }
+  [[nodiscard]] SurfaceAttributeSummary
+  surface_attribute_summary() const noexcept override {
+    return _inner.surface_attribute_summary();
+  }
+  [[nodiscard]] SurfaceAttributeSummary
+  attribute_summary_for_id(std::uint64_t id) const noexcept override {
+    return _inner.attribute_summary_for_id(id);
+  }
+  [[nodiscard]] NormalMapUsage normal_map_usage() const noexcept override {
+    return _inner.normal_map_usage();
+  }
+  [[nodiscard]] std::uint32_t mix_blend_mask() const noexcept override {
+    return _inner.mix_blend_mask();
+  }
+  [[nodiscard]] NoiseStaticOptions
+  noise_static_options() const noexcept override {
+    return _inner.noise_static_options();
+  }
+  [[nodiscard]] std::uint32_t tex_coord_mask() const noexcept override {
+    return _inner.tex_coord_mask();
+  }
+  [[nodiscard]] bool bump_uses_object_space() const noexcept override {
+    return _inner.bump_uses_object_space();
+  }
+  [[nodiscard]] bool curves_may_extrapolate() const noexcept override {
+    return _inner.curves_may_extrapolate();
+  }
+  [[nodiscard]] std::uint64_t math_type_mask() const noexcept override {
+    return _inner.math_type_mask();
+  }
+  [[nodiscard]] std::uint64_t vector_math_type_mask() const noexcept override {
+    return _inner.vector_math_type_mask();
+  }
+  [[nodiscard]] MappingStaticOptions
+  mapping_static_options() const noexcept override {
+    return _inner.mapping_static_options();
+  }
+  [[nodiscard]] std::uint32_t map_range_type_mask() const noexcept override {
+    return _inner.map_range_type_mask();
+  }
+  [[nodiscard]] VoronoiStaticOptions
+  voronoi_static_options() const noexcept override {
+    return _inner.voronoi_static_options();
+  }
+  [[nodiscard]] WaveStaticOptions
+  wave_static_options() const noexcept override {
+    return _inner.wave_static_options();
+  }
+  [[nodiscard]] bool has_curves() const noexcept override {
+    return _inner.has_curves();
+  }
+  [[nodiscard]] luisa::compute::Float object_shadow_terminator_shading_offset(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept override {
+    return _inner.object_shadow_terminator_shading_offset(object);
+  }
+  [[nodiscard]] std::optional<luisa::compute::Float> object_volume_density(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept override {
+    return _inner.object_volume_density(object);
+  }
+  [[nodiscard]] luisa::compute::Float
+  ies(luisa::compute::Expr<std::uint32_t> offset) const noexcept override {
+    return _inner.ies(offset);
+  }
+  [[nodiscard]] const InfoServices *info_services() const noexcept override {
+    return _inner.info_services();
+  }
+  [[nodiscard]] TriangleVertices triangle_vertices(
+      luisa::compute::Expr<std::uint32_t> object,
+      luisa::compute::Expr<std::uint32_t> prim) const noexcept override {
+    return _inner.triangle_vertices(object, prim);
+  }
+  [[nodiscard]] TriangleVertices
+  motion_triangle_vertices(luisa::compute::Expr<std::uint32_t> object,
+                           luisa::compute::Expr<std::uint32_t> prim,
+                           luisa::compute::Expr<float> time) const noexcept override {
+    return _inner.motion_triangle_vertices(object, prim, time);
+  }
+  [[nodiscard]] luisa::compute::Float3 film_rgb_to_y() const noexcept override {
+    return _inner.film_rgb_to_y();
+  }
+  [[nodiscard]] luisa::compute::Float3
+  primitive_tangent(const ShaderData &shader_data) const noexcept override {
+    return _inner.primitive_tangent(shader_data);
+  }
+  [[nodiscard]] Dual3 primitive_tangent_derivative(
+      const ShaderData &shader_data) const noexcept override {
+    return _inner.primitive_tangent_derivative(shader_data);
+  }
+  [[nodiscard]] luisa::compute::UInt object_attribute_map_offset(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept override {
+    return _inner.object_attribute_map_offset(object);
+  }
+  [[nodiscard]] luisa::compute::Var<compiler::cycles_svm::AttributeMap>
+  attribute_map(
+      luisa::compute::Expr<std::uint32_t> offset) const noexcept override {
+    return _inner.attribute_map(offset);
+  }
+  [[nodiscard]] luisa::compute::Float attribute_float(
+      luisa::compute::Expr<std::int32_t> offset) const noexcept override {
+    return _inner.attribute_float(offset);
+  }
+  [[nodiscard]] luisa::compute::Float2 attribute_float2(
+      luisa::compute::Expr<std::int32_t> offset) const noexcept override {
+    return _inner.attribute_float2(offset);
+  }
+  [[nodiscard]] luisa::compute::Var<compiler::cycles_svm::packed_float3>
+  attribute_float3(
+      luisa::compute::Expr<std::int32_t> offset) const noexcept override {
+    return _inner.attribute_float3(offset);
+  }
+  [[nodiscard]] luisa::compute::Float4 attribute_float4(
+      luisa::compute::Expr<std::int32_t> offset) const noexcept override {
+    return _inner.attribute_float4(offset);
+  }
+  [[nodiscard]] luisa::compute::Var<compiler::cycles_svm::uchar4>
+  attribute_uchar4(
+      luisa::compute::Expr<std::int32_t> offset) const noexcept override {
+    return _inner.attribute_uchar4(offset);
+  }
+  [[nodiscard]] luisa::compute::Var<compiler::cycles_svm::packed_normal>
+  attribute_normal(
+      luisa::compute::Expr<std::int32_t> offset) const noexcept override {
+    return _inner.attribute_normal(offset);
+  }
+  [[nodiscard]] luisa::compute::UInt3 triangle_vertex_indices(
+      luisa::compute::Expr<std::uint32_t> prim) const noexcept override {
+    return _inner.triangle_vertex_indices(prim);
+  }
+  [[nodiscard]] luisa::compute::Int object_normal_offset(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept override {
+    return _inner.object_normal_offset(object);
+  }
+  [[nodiscard]] luisa::compute::UInt object_num_geom_steps(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept override {
+    return _inner.object_num_geom_steps(object);
+  }
+  [[nodiscard]] luisa::compute::Int object_num_vertices(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept override {
+    return _inner.object_num_vertices(object);
+  }
+  [[nodiscard]] luisa::compute::Int object_num_primitives(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept override {
+    return _inner.object_num_primitives(object);
+  }
+  [[nodiscard]] luisa::compute::Float3 object_dupli_generated(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept override {
+    return _inner.object_dupli_generated(object);
+  }
+  [[nodiscard]] luisa::compute::Float3 object_dupli_uv(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept override {
+    return _inner.object_dupli_uv(object);
+  }
+  [[nodiscard]] luisa::compute::UInt camera_type() const noexcept override {
+    return _inner.camera_type();
+  }
+  [[nodiscard]] luisa::compute::Float camera_width() const noexcept override {
+    return _inner.camera_width();
+  }
+  [[nodiscard]] luisa::compute::Float camera_height() const noexcept override {
+    return _inner.camera_height();
+  }
+  [[nodiscard]] luisa::compute::Float3 camera_world_to_ndc(
+      const ShaderData &shader_data,
+      luisa::compute::Expr<luisa::float3> position) const noexcept override {
+    return _inner.camera_world_to_ndc(shader_data, position);
+  }
+  [[nodiscard]] luisa::compute::Var<compiler::cycles_svm::KernelCurve>
+  curve(luisa::compute::Expr<std::uint32_t> prim) const noexcept override {
+    return _inner.curve(prim);
+  }
+  [[nodiscard]] luisa::compute::Int object_position_offset(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept override {
+    return _inner.object_position_offset(object);
+  }
+  [[nodiscard]] luisa::compute::Float4
+  curve_key(luisa::compute::Expr<std::int32_t> key) const noexcept override {
+    return _inner.curve_key(key);
+  }
+  [[nodiscard]] luisa::compute::Bool film_is_rec709() const noexcept override {
+    return _inner.film_is_rec709();
+  }
+  [[nodiscard]] luisa::compute::Float3 film_xyz_to_r() const noexcept override {
+    return _inner.film_xyz_to_r();
+  }
+  [[nodiscard]] luisa::compute::Float3 film_xyz_to_g() const noexcept override {
+    return _inner.film_xyz_to_g();
+  }
+  [[nodiscard]] luisa::compute::Float3 film_xyz_to_b() const noexcept override {
+    return _inner.film_xyz_to_b();
+  }
+  [[nodiscard]] luisa::compute::Float3
+  film_rec709_to_r() const noexcept override {
+    return _inner.film_rec709_to_r();
+  }
+  [[nodiscard]] luisa::compute::Float3
+  film_rec709_to_g() const noexcept override {
+    return _inner.film_rec709_to_g();
+  }
+  [[nodiscard]] luisa::compute::Float3
+  film_rec709_to_b() const noexcept override {
+    return _inner.film_rec709_to_b();
+  }
+  [[nodiscard]] luisa::compute::Float3
+  object_inverse_position_transform_if_object(
+      const ShaderData &shader_data,
+      luisa::compute::Expr<luisa::float3> value) const noexcept override {
+    return _inner.object_inverse_position_transform_if_object(shader_data,
+                                                              value);
+  }
+  [[nodiscard]] Dual3 object_inverse_position_transform_if_object_derivative(
+      const ShaderData &shader_data, const Dual3 &value) const noexcept override {
+    return _inner.object_inverse_position_transform_if_object_derivative(
+        shader_data, value);
+  }
+  [[nodiscard]] luisa::compute::Float3 object_inverse_position_transform(
+      const ShaderData &shader_data,
+      luisa::compute::Expr<luisa::float3> value) const noexcept override {
+    return _inner.object_inverse_position_transform(shader_data, value);
+  }
+  [[nodiscard]] luisa::compute::Float4 kernel_image_interp_with_udim(
+      ShaderData &shader_data,
+      luisa::compute::Expr<std::int32_t> image_texture_id,
+      const Dual2 &uv) const noexcept override {
+    return _inner.kernel_image_interp_with_udim(shader_data, image_texture_id,
+                                                uv);
+  }
+  [[nodiscard]] luisa::compute::Float4 kernel_image_interp_3d(
+      ShaderData &shader_data,
+      luisa::compute::Expr<std::int32_t> image_texture_id,
+      luisa::compute::Expr<luisa::float3> position,
+      luisa::compute::Expr<std::int32_t> interpolation,
+      luisa::compute::Expr<bool> stochastic) const noexcept override {
+    return _inner.kernel_image_interp_3d(shader_data, image_texture_id,
+                                         position, interpolation, stochastic);
+  }
+};
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

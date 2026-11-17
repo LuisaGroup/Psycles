@@ -98,12 +98,10 @@ void diffuse_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
   if (shader_data.closure == nullptr) {
     return;
   }
-  auto &pool = *shader_data.closure;
-  const auto allocated = bsdf_allocate(shader_data, weight);
+  const auto allocated = bsdf_allocate_typed(
+      shader_data, weight, static_cast<std::uint32_t>(CLOSURE_BSDF_DIFFUSE_ID),
+      normal);
   $if(allocated.valid) {
-    pool.set_normal(allocated.index, normal);
-    pool.set_type(allocated.index,
-                  static_cast<std::uint32_t>(CLOSURE_BSDF_DIFFUSE_ID));
     shader_data.flag |= shader_data_bsdf | shader_data_bsdf_has_eval;
   };
 }
@@ -115,11 +113,10 @@ void oren_nayar_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
     return;
   }
   auto &pool = *shader_data.closure;
-  const auto allocated = bsdf_allocate(shader_data, weight);
+  const auto allocated = bsdf_allocate_typed(
+      shader_data, weight,
+      static_cast<std::uint32_t>(CLOSURE_BSDF_OREN_NAYAR_ID), normal);
   $if(allocated.valid) {
-    pool.set_normal(allocated.index, normal);
-    pool.set_type(allocated.index,
-                  static_cast<std::uint32_t>(CLOSURE_BSDF_OREN_NAYAR_ID));
     pool.set_oren_nayar_param(
         allocated.index,
         oren_nayar_param(color, dot(normal, shader_data.wi), roughness));
@@ -132,12 +129,10 @@ void translucent_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
   if (shader_data.closure == nullptr) {
     return;
   }
-  auto &pool = *shader_data.closure;
-  const auto allocated = bsdf_allocate(shader_data, weight);
+  const auto allocated = bsdf_allocate_typed(
+      shader_data, weight,
+      static_cast<std::uint32_t>(CLOSURE_BSDF_TRANSLUCENT_ID), normal);
   $if(allocated.valid) {
-    pool.set_normal(allocated.index, normal);
-    pool.set_type(allocated.index,
-                  static_cast<std::uint32_t>(CLOSURE_BSDF_TRANSLUCENT_ID));
     shader_data.flag |= shader_data_bsdf | shader_data_bsdf_has_eval |
                         shader_data_bsdf_has_transmission;
   };
@@ -174,8 +169,8 @@ void transparent_setup(ShaderData &shader_data, const PathState &path_state,
         const auto allocated = pool.allocate(
             static_cast<std::uint32_t>(CLOSURE_BSDF_TRANSPARENT_ID), weight);
         $if(allocated.valid) {
-          pool.set_sample_weight(allocated.index, sample_weight);
-          pool.set_normal(allocated.index, shader_data.N);
+          pool.set_sample_weight_and_normal(allocated.index, sample_weight,
+                                            shader_data.N);
         }
         $elif(terminating) { pool.set_left(0u); };
       }

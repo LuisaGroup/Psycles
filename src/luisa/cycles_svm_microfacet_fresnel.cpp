@@ -8,6 +8,8 @@
 
 #include <psycles/luisa/cycles_closure.h>
 
+#include <bit>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
@@ -71,14 +73,15 @@ void apply_lobe_mask(Expr<std::uint32_t> type,
 
 [[nodiscard]] MicrofacetFresnelEvaluation generalized_schlick_fresnel(
     const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
-    Expr<float> cosine_incoming) noexcept {
+    Expr<float> cosine_incoming, bool may_transmit) noexcept {
   const auto fresnel = closure.load_generalized_schlick();
   MicrofacetFresnelEvaluation result{
       .reflectance = make_float3(0.0f),
       .transmittance = make_float3(0.0f),
       .cosine_transmitted = 0.0f};
+  const auto usage = kernel_globals.closure_usage();
   const auto without_thin_film = [&] {
-    $if(fresnel.exponent < 0.0f) {
+    const auto negative_exponent_path = [&] {
       const auto dielectric =
           fresnel_dielectric(cosine_incoming, closure.param.ior);
       const auto real_f0 = f0_from_ior(closure.param.ior);
@@ -87,32 +90,44 @@ void apply_lobe_mask(Expr<std::uint32_t> type,
                 0.0f, 1.0f);
       const auto reflected = lerp(fresnel.f0, fresnel.f90, interpolation);
       result.reflectance = reflected * fresnel.reflection_tint;
-      result.transmittance =
-          (make_float3(1.0f) - reflected) * fresnel.transmission_tint;
-      result.cosine_transmitted = dielectric.cosine_transmitted;
-    }
-    $else {
-      const auto cosine_transmitted_squared =
-          1.0f - (1.0f - square(cosine_incoming)) /
-                     square(closure.param.ior);
-      $if(cosine_transmitted_squared <= 0.0f) {
-        result.reflectance = fresnel.reflection_tint;
-        result.transmittance = make_float3(0.0f);
-      }
-      $else {
-        result.cosine_transmitted = sqrt(cosine_transmitted_squared);
-        const auto fresnel_angle = select(
-            cosine_incoming, result.cosine_transmitted,
-            closure.param.ior < 1.0f);
-        const auto interpolation =
-            pow(1.0f - fresnel_angle, fresnel.exponent);
-        const auto reflected = lerp(fresnel.f0, fresnel.f90, interpolation);
-        result.reflectance = reflected * fresnel.reflection_tint;
+      if (may_transmit) {
         result.transmittance =
-            (make_float3(1.0f) - reflected) *
-            fresnel.transmission_tint;
-      };
+            (make_float3(1.0f) - reflected) * fresnel.transmission_tint;
+        result.cosine_transmitted = dielectric.cosine_transmitted;
+      }
     };
+    if (!usage.has_fresnel(
+            compiler::cycles_svm::ClosureUsage::fresnel_positive_exponent)) {
+      negative_exponent_path();
+    } else {
+      $if(fresnel.exponent < 0.0f) { negative_exponent_path(); }
+      $else {
+        const auto cosine_transmitted_squared =
+            1.0f - (1.0f - square(cosine_incoming)) /
+                       square(closure.param.ior);
+        $if(cosine_transmitted_squared <= 0.0f) {
+          result.reflectance = fresnel.reflection_tint;
+          if (may_transmit) {
+            result.transmittance = make_float3(0.0f);
+          }
+        }
+        $else {
+          const auto cos_t = sqrt(cosine_transmitted_squared);
+          const auto fresnel_angle = select(
+              cosine_incoming, cos_t, closure.param.ior < 1.0f);
+          const auto interpolation =
+              pow(1.0f - fresnel_angle, fresnel.exponent);
+          const auto reflected = lerp(fresnel.f0, fresnel.f90, interpolation);
+          result.reflectance = reflected * fresnel.reflection_tint;
+          if (may_transmit) {
+            result.cosine_transmitted = cos_t;
+            result.transmittance =
+                (make_float3(1.0f) - reflected) *
+                fresnel.transmission_tint;
+          }
+        };
+      };
+    }
   };
   if (kernel_globals.may_have_thin_film()) {
     $if(fresnel.thin_film.thickness >
@@ -122,10 +137,12 @@ void apply_lobe_mask(Expr<std::uint32_t> type,
           fresnel.thin_film.ior, closure.param.ior, fresnel.f0,
           cosine_incoming);
       result.reflectance = film.reflectance * fresnel.reflection_tint;
-      result.transmittance =
-          (make_float3(1.0f) - film.reflectance) *
-          fresnel.transmission_tint;
-      result.cosine_transmitted = film.cosine_transmitted;
+      if (may_transmit) {
+        result.transmittance =
+            (make_float3(1.0f) - film.reflectance) *
+            fresnel.transmission_tint;
+        result.cosine_transmitted = film.cosine_transmitted;
+      }
     }
     $else { without_thin_film(); };
   } else {
@@ -235,83 +252,129 @@ Float3 fresnel_f82(Expr<float> cosine_incoming,
 
 MicrofacetFresnelEvaluation microfacet_fresnel(
     const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
-    Expr<float> cosine_incoming) noexcept {
+    Expr<float> cosine_incoming, bool may_transmit) noexcept {
+  using Usage = compiler::cycles_svm::ClosureUsage;
+  const auto usage = kernel_globals.closure_usage();
   MicrofacetFresnelEvaluation result{
-      .reflectance = make_float3(1.0f),
-      .transmittance = make_float3(1.0f),
+      .reflectance = make_float3(0.0f),
+      .transmittance = make_float3(0.0f),
       .cosine_transmitted = 0.0f};
-  $if(closure.param.fresnel_type ==
-      static_cast<std::uint32_t>(MicrofacetFresnel::dielectric)) {
+  constexpr auto model_bits =
+      Usage::fresnel_dielectric | Usage::fresnel_conductor |
+      Usage::fresnel_f82_tint | Usage::fresnel_generalized_schlick |
+      Usage::fresnel_none;
+  const auto active_models = usage.microfacet_fresnel_mask & model_bits;
+  const auto eval_dielectric = [&] {
     const auto dielectric =
         fresnel_dielectric(cosine_incoming, closure.param.ior);
     result.reflectance = make_float3(dielectric.reflectance);
-    result.transmittance = make_float3(1.0f - dielectric.reflectance);
-    result.cosine_transmitted = dielectric.cosine_transmitted;
-  }
-  $elif(closure.param.fresnel_type ==
-        static_cast<std::uint32_t>(MicrofacetFresnel::conductor)) {
-    if (closure.storage != nullptr) {
-      // The storage handle projects Cycles' tagged fresnel pointer. Only
-      // this live branch may dereference the conductor's extra payload.
-      const auto typed = closure.storage->microfacet_conductor(closure.storage_index);
-      result = conductor_fresnel(kernel_globals, typed.conductor, cosine_incoming);
-    } else {
-      result.reflectance = make_float3(0.0f);
-      result.transmittance = make_float3(0.0f);
-    }
-  }
-  $elif(closure.param.fresnel_type ==
-        static_cast<std::uint32_t>(MicrofacetFresnel::f82_tint)) {
-    if (closure.storage != nullptr) {
-      const auto typed = closure.storage->microfacet_f82_tint(closure.storage_index);
-      result = f82_tint_fresnel(kernel_globals, typed.f82_tint, cosine_incoming);
-    } else {
-      result.reflectance = make_float3(0.0f);
-      result.transmittance = make_float3(0.0f);
-    }
-  }
-  $elif(closure.param.fresnel_type ==
-        static_cast<std::uint32_t>(MicrofacetFresnel::generalized_schlick)) {
-    result = generalized_schlick_fresnel(kernel_globals, closure,
-                                         cosine_incoming);
-  }
-  $elif(closure.param.fresnel_type ==
-        static_cast<std::uint32_t>(MicrofacetFresnel::none)) {
-    /* NONE is the exact pure-lobe path. */
-    $if(has_transmission(closure.common.type)) {
-      const auto dielectric =
-          fresnel_dielectric(cosine_incoming, closure.param.ior);
+    if (may_transmit) {
+      result.transmittance = make_float3(1.0f - dielectric.reflectance);
       result.cosine_transmitted = dielectric.cosine_transmitted;
-      $if(dielectric.reflectance == 1.0f) {
-        result.transmittance = make_float3(0.0f);
+    }
+  };
+  const auto eval_conductor = [&] {
+    if (closure.storage != nullptr) {
+      const auto typed =
+          closure.storage->microfacet_conductor(closure.storage_index);
+      result =
+          conductor_fresnel(kernel_globals, typed.conductor, cosine_incoming);
+    }
+  };
+  const auto eval_f82 = [&] {
+    if (closure.storage != nullptr) {
+      const auto typed =
+          closure.storage->microfacet_f82_tint(closure.storage_index);
+      result = f82_tint_fresnel(kernel_globals, typed.f82_tint, cosine_incoming);
+    }
+  };
+  const auto eval_gs = [&] {
+    result = generalized_schlick_fresnel(
+        kernel_globals, closure, cosine_incoming, may_transmit);
+  };
+  const auto eval_none = [&] {
+    result.reflectance = make_float3(1.0f);
+    if (may_transmit) {
+      result.transmittance = make_float3(1.0f);
+      $if(has_transmission(closure.common.type)) {
+        const auto dielectric =
+            fresnel_dielectric(cosine_incoming, closure.param.ior);
+        result.cosine_transmitted = dielectric.cosine_transmitted;
+        $if(dielectric.reflectance == 1.0f) {
+          result.transmittance = make_float3(0.0f);
+        };
       };
+    }
+  };
+
+  if (std::has_single_bit(active_models)) {
+    if (active_models == Usage::fresnel_dielectric) {
+      eval_dielectric();
+    } else if (active_models == Usage::fresnel_conductor) {
+      eval_conductor();
+    } else if (active_models == Usage::fresnel_f82_tint) {
+      eval_f82();
+    } else if (active_models == Usage::fresnel_generalized_schlick) {
+      eval_gs();
+    } else if (active_models == Usage::fresnel_none) {
+      eval_none();
+    }
+  } else {
+    $switch(closure.param.fresnel_type) {
+      if (usage.has_fresnel(Usage::fresnel_dielectric)) {
+        $case(static_cast<std::uint32_t>(MicrofacetFresnel::dielectric)) {
+          eval_dielectric();
+        };
+      }
+      if (usage.has_fresnel(Usage::fresnel_conductor)) {
+        $case(static_cast<std::uint32_t>(MicrofacetFresnel::conductor)) {
+          eval_conductor();
+        };
+      }
+      if (usage.has_fresnel(Usage::fresnel_f82_tint)) {
+        $case(static_cast<std::uint32_t>(MicrofacetFresnel::f82_tint)) {
+          eval_f82();
+        };
+      }
+      if (usage.has_fresnel(Usage::fresnel_generalized_schlick)) {
+        $case(static_cast<std::uint32_t>(
+            MicrofacetFresnel::generalized_schlick)) {
+          eval_gs();
+        };
+      }
+      if (usage.has_fresnel(Usage::fresnel_none)) {
+        $case(static_cast<std::uint32_t>(MicrofacetFresnel::none)) {
+          eval_none();
+        };
+      }
+      $default{};
     };
   }
-  $else {
-    /* SVM retains no DIELECTRIC_TINT payload (Cycles uses it only for OSL).
-     * Fail closed instead of interpreting an unknown tag as NONE. */
-    result.reflectance = make_float3(0.0f);
-    result.transmittance = make_float3(0.0f);
-  };
-  apply_lobe_mask(closure.common.type, result);
+  if (may_transmit) {
+    apply_lobe_mask(closure.common.type, result);
+  }
   return result;
 }
 
 MicrofacetFresnelEvaluation microfacet_fresnel(
     const KernelGlobals &kernel_globals,
     const MicrofacetConductorClosure &closure,
-    Expr<float> cosine_incoming) noexcept {
+    Expr<float> cosine_incoming, bool may_transmit) noexcept {
   auto result = conductor_fresnel(kernel_globals, closure.conductor, cosine_incoming);
-  apply_lobe_mask(closure.common.type, result);
+  if (may_transmit) {
+    apply_lobe_mask(closure.common.type, result);
+  }
   return result;
 }
 
 MicrofacetFresnelEvaluation microfacet_fresnel(
     const KernelGlobals &kernel_globals,
     const MicrofacetF82TintClosure &closure,
-    Expr<float> cosine_incoming) noexcept {
+    Expr<float> cosine_incoming, bool may_transmit) noexcept {
   auto result = f82_tint_fresnel(kernel_globals, closure.f82_tint, cosine_incoming);
-  apply_lobe_mask(closure.common.type, result);
+  if (may_transmit) {
+    apply_lobe_mask(closure.common.type, result);
+  }
   return result;
 }
 

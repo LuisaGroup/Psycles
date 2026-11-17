@@ -570,6 +570,7 @@ void spot_parameters(
 }
 
 void analytic_parameters(
+    std::uint32_t light_type_mask,
     Var<LightGpu> light,
     Float3 original_point,
     Float3 evaluation_point,
@@ -577,39 +578,55 @@ void analytic_parameters(
     Float distance,
     ExactEmitterState &state,
     bool in_volume) noexcept {
+    constexpr auto area_bit =
+        1u << static_cast<std::uint32_t>(contract::LightType::area);
+    constexpr auto point_bit =
+        1u << static_cast<std::uint32_t>(contract::LightType::point);
+    constexpr auto spot_bit =
+        1u << static_cast<std::uint32_t>(contract::LightType::spot);
+    constexpr auto distant_bit =
+        1u << static_cast<std::uint32_t>(contract::LightType::distant);
     const auto type = light.type;
-    $if (type == static_cast<std::uint32_t>(contract::LightType::area)) {
-        area_parameters(
-            light,
-            evaluation_point,
-            normal_or_direction,
-            state,
-            in_volume);
+    if ((light_type_mask & area_bit) != 0u) {
+        $if (type == static_cast<std::uint32_t>(contract::LightType::area)) {
+            area_parameters(
+                light,
+                evaluation_point,
+                normal_or_direction,
+                state,
+                in_volume);
+        };
     }
-    $elif (type == static_cast<std::uint32_t>(contract::LightType::point)) {
-        point_parameters(
-            light,
-            original_point,
-            evaluation_point,
-            state,
-            in_volume);
+    if ((light_type_mask & point_bit) != 0u) {
+        $if (type == static_cast<std::uint32_t>(contract::LightType::point)) {
+            point_parameters(
+                light,
+                original_point,
+                evaluation_point,
+                state,
+                in_volume);
+        };
     }
-    $elif (type == static_cast<std::uint32_t>(contract::LightType::spot)) {
-        spot_parameters(light, evaluation_point, state, in_volume);
+    if ((light_type_mask & spot_bit) != 0u) {
+        $if (type == static_cast<std::uint32_t>(contract::LightType::spot)) {
+            spot_parameters(light, evaluation_point, state, in_volume);
+        };
     }
-    $elif (type == static_cast<std::uint32_t>(contract::LightType::distant)) {
-        state.centroid = state.cone_axis;
-        state.point_to_centroid = -state.centroid;
-        state.cos_theta_u = cos(state.theta_e);
-        state.distances = make_float2(
-            1.0f / max(state.cos_theta_u, safe_distance),
-            1.0f);
-        state.theta_d = select(
-            distance,
-            1.0f,
-            distance >= ray_infinity);
-        state.visible = true;
-    };
+    if ((light_type_mask & distant_bit) != 0u) {
+        $if (type == static_cast<std::uint32_t>(contract::LightType::distant)) {
+            state.centroid = state.cone_axis;
+            state.point_to_centroid = -state.centroid;
+            state.cos_theta_u = cos(state.theta_e);
+            state.distances = make_float2(
+                1.0f / max(state.cos_theta_u, safe_distance),
+                1.0f);
+            state.theta_d = select(
+                distance,
+                1.0f,
+                distance >= ray_infinity);
+            state.visible = true;
+        };
+    }
 }
 
 [[nodiscard]] Float2 exact_emitter_importance(
@@ -635,6 +652,7 @@ void analytic_parameters(
     // allocating production geometry. Only trace resource references into
     // the callable when the complete triangle source relation is resident.
     const auto triangle_source_resident =
+        scene->emissive_triangle_count > 0u &&
         static_cast<bool>(scene->emissive_triangle_buffer) &&
         static_cast<bool>(scene->geometry_buffer) &&
         static_cast<bool>(scene->instance_buffer) &&
@@ -642,6 +660,8 @@ void analytic_parameters(
     const auto analytic_source_resident =
         scene->light_count > 0u &&
         static_cast<bool>(scene->light_buffer);
+    constexpr auto distant_bit =
+        1u << static_cast<std::uint32_t>(contract::LightType::distant);
 
     $if (source == static_cast<std::uint32_t>(
                        LightTreeEmitterSource::triangle)) {
@@ -654,27 +674,15 @@ void analytic_parameters(
             const auto triangle =
                 scene->heap->buffer<Triangle>(geometry.bindless_base)
                     .read(reference.primitive_index);
-            const auto positions = scene->heap->buffer<luisa::float3>(
-                geometry.bindless_base + 1u);
-            const auto applied_positions =
-                scene->heap->buffer<luisa::float3>(
-                    geometry.bindless_base + 9u);
             const auto representative_instance =
                 scene->instance_buffer->read(reference.instance_index);
             const auto transform_applied =
                 representative_instance.cycles_transform_applied != 0u;
-            const auto p0 = select(
-                positions.read(triangle.i0),
-                applied_positions.read(triangle.i0),
-                transform_applied);
-            const auto p1 = select(
-                positions.read(triangle.i1),
-                applied_positions.read(triangle.i1),
-                transform_applied);
-            const auto p2 = select(
-                positions.read(triangle.i2),
-                applied_positions.read(triangle.i2),
-                transform_applied);
+            const auto vertex_positions = scene->heap->buffer<luisa::float3>(
+                geometry.bindless_base + select(1u, 9u, transform_applied));
+            const auto p0 = vertex_positions.read(triangle.i0);
+            const auto p1 = vertex_positions.read(triangle.i1);
+            const auto p2 = vertex_positions.read(triangle.i2);
             state.centroid = (p0 + p1 + p2) * (1.0f / 3.0f);
             prepare_volume_query(
                 state,
@@ -704,12 +712,14 @@ void analytic_parameters(
             state.cone_axis = safe_normalize(
                 -light.axis_z,
                 make_float3(0.0f, 0.0f, -1.0f));
-            const auto distant =
-                light.type == static_cast<std::uint32_t>(
-                                  contract::LightType::distant);
-            $if (distant) {
-                state.centroid = state.cone_axis;
-            };
+            if ((scene->light_type_mask & distant_bit) != 0u) {
+                const auto distant =
+                    light.type == static_cast<std::uint32_t>(
+                                      contract::LightType::distant);
+                $if (distant) {
+                    state.centroid = state.cone_axis;
+                };
+            }
             prepare_volume_query(
                 state,
                 point,
@@ -718,6 +728,7 @@ void analytic_parameters(
                 evaluation_point,
                 in_volume);
             analytic_parameters(
+                scene->light_type_mask,
                 light,
                 point,
                 evaluation_point,
@@ -811,7 +822,32 @@ Float3 cycles_light_tree_volume_projection_direction(
 LightTreeImportanceComponent::LightTreeImportanceComponent(
     std::shared_ptr<LuisaSceneData> scene,
     bool in_volume) noexcept
-    : _scene{std::move(scene)}, _in_volume{in_volume} {}
+    : _scene{std::move(scene)}, _in_volume{in_volume} {
+    auto captured_scene = _scene;
+    _emitter_callable = std::make_shared<EmitterCallable>(
+        [captured_scene, in_volume](
+            UInt emitter_index,
+            Float3 point,
+            Float3 normal_or_direction,
+            Float distance,
+            Bool has_transmission) noexcept -> Float2 {
+            if (!captured_scene ||
+                captured_scene->light_tree_emitter_count == 0u ||
+                !captured_scene->light_tree_emitter_buffer) {
+                return Float2{make_float2(0.0f)};
+            }
+            Var<LightTreeEmitterGpu> emitter_value =
+                captured_scene->light_tree_emitter_buffer->read(emitter_index);
+            return exact_emitter_importance(
+                captured_scene,
+                emitter_value,
+                point,
+                normal_or_direction,
+                distance,
+                has_transmission,
+                in_volume);
+        });
+}
 
 Float2 LightTreeImportanceComponent::emitter(
     UInt emitter_index,
@@ -819,16 +855,12 @@ Float2 LightTreeImportanceComponent::emitter(
     Float3 normal_or_direction,
     Float distance,
     Bool has_transmission) const noexcept {
-    Var<LightTreeEmitterGpu> emitter_value =
-        _scene->light_tree_emitter_buffer->read(emitter_index);
-    return exact_emitter_importance(
-        _scene,
-        emitter_value,
+    return (*_emitter_callable)(
+        emitter_index,
         point,
         normal_or_direction,
         distance,
-        has_transmission,
-        _in_volume);
+        has_transmission);
 }
 
 Float2 LightTreeImportanceComponent::node(

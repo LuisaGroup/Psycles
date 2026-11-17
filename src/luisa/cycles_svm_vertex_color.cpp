@@ -57,9 +57,13 @@ void node_vertex_color_impl(Cursor &cursor, Stack &stack,
   const auto descriptor = find_attribute(
       kernel_globals, shader_data, node.layer_id.cast<luisa::ulong>());
 
+  const auto type_mask = kernel_globals.surface_attribute_summary().type_mask;
+  const bool may_float4_or_rgba =
+      (type_mask & ((1u << NODE_ATTR_FLOAT4) | (1u << NODE_ATTR_RGBA))) != 0u;
+  const bool may_float3 = (type_mask & (1u << NODE_ATTR_FLOAT3)) != 0u;
+
   $if(is_attribute_found(descriptor)) {
-    $if((descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_FLOAT4)) |
-        (descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_RGBA))) {
+    const auto eval_rgba = [&]() noexcept {
       if constexpr (use_derivatives) {
         auto vertex_color = primitive_surface_attribute_float4_derivative(
             kernel_globals, shader_data, descriptor);
@@ -79,8 +83,8 @@ void node_vertex_color_impl(Cursor &cursor, Stack &stack,
         color = vertex_color.xyz();
         alpha = vertex_color.w;
       }
-    }
-    $else {
+    };
+    const auto eval_rgb = [&]() noexcept {
       if constexpr (use_derivatives) {
         auto vertex_color = primitive_surface_attribute_float3_derivative(
             kernel_globals, shader_data, descriptor);
@@ -99,6 +103,17 @@ void node_vertex_color_impl(Cursor &cursor, Stack &stack,
       }
       alpha = 1.0f;
     };
+    if (may_float4_or_rgba && may_float3) {
+      $if((descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_FLOAT4)) |
+          (descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_RGBA))) {
+        eval_rgba();
+      }
+      $else { eval_rgb(); };
+    } else if (may_float4_or_rgba) {
+      eval_rgba();
+    } else if (may_float3) {
+      eval_rgb();
+    }
   };
 
   store_vertex_color(stack, node, color, alpha);

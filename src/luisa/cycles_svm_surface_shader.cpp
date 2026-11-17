@@ -118,8 +118,7 @@ surface_shader_exclude(Expr<std::uint32_t> type,
   Float accumulated_pdf = sum_pdf;
   Float accumulated_sample_weight = sum_sample_weight;
   Float accumulated_pdf_roughness_squared = sum_pdf_roughness_squared;
-  UInt index = 0u;
-  $while(index < pool.count()) {
+  const auto eval_slot = [&](Expr<std::uint32_t> index) noexcept {
     const auto common = pool.common(index);
     const auto eligible = closure::is_bsdf_or_bssrdf(common.type);
     $if(eligible & ((!has_skip) | (index != skip_index))) {
@@ -139,8 +138,16 @@ surface_shader_exclude(Expr<std::uint32_t> type,
       };
       accumulated_sample_weight += common.sample_weight;
     };
-    index += 1u;
   };
+  if (pool.capacity() <= 1u) {
+    $if(pool.count() != 0u) { eval_slot(0u); };
+  } else {
+    UInt index = 0u;
+    $while(index < pool.count()) {
+      eval_slot(index);
+      index += 1u;
+    };
+  }
   result.average_roughness_squared =
       select(0.0f, accumulated_pdf_roughness_squared / accumulated_pdf,
              accumulated_pdf > 0.0f);
@@ -166,14 +173,23 @@ void surface_shader_prepare_closures(
     ClosureTypeMask closure_types) noexcept {
   $if(blur_roughness > 0.0f) {
     auto &pool = *shader_data.closure;
-    UInt index = 0u;
-    $while(index < pool.count()) {
-      const auto common = pool.common(index);
-      $if(closure::is_bsdf(common.type)) {
-        bsdf_blur(pool, index, blur_roughness, closure_types);
+    if (pool.capacity() <= 1u) {
+      $if(pool.count() != 0u) {
+        const auto common = pool.common(0u);
+        $if(closure::is_bsdf(common.type)) {
+          bsdf_blur(pool, 0u, blur_roughness, closure_types);
+        };
       };
-      index += 1u;
-    };
+    } else {
+      UInt index = 0u;
+      $while(index < pool.count()) {
+        const auto common = pool.common(index);
+        $if(closure::is_bsdf(common.type)) {
+          bsdf_blur(pool, index, blur_roughness, closure_types);
+        };
+        index += 1u;
+      };
+    }
     shader_data.flag |= select(
         0u, shader_data_bsdf_has_eval,
         blur_roughness * blur_roughness >
@@ -198,6 +214,9 @@ SurfaceShaderClosurePick
 surface_shader_bsdf_bssrdf_pick(const ShaderData &shader_data,
                                 Expr<luisa::float3> random) noexcept {
   const auto &pool = *shader_data.closure;
+  if (pool.capacity() <= 1u) {
+    return {.index = 0u, .random = random};
+  }
   UInt sampled = 0u;
   Float3 reused_random = random;
 
@@ -240,6 +259,9 @@ Float3 surface_shader_bssrdf_sample_weight(
     const ShaderData &shader_data, Expr<std::uint32_t> closure_index) noexcept {
   const auto &pool = *shader_data.closure;
   const auto selected = pool.common(closure_index);
+  if (pool.capacity() <= 1u) {
+    return selected.weight;
+  }
   Float3 weight = selected.weight;
   $if(pool.count() > 1u) {
     Float sum_sample_weight = 0.0f;
@@ -277,17 +299,22 @@ surface_shader_bsdf_sample_closure(const KernelGlobals &kernel_globals,
     bsdf_eval_accum(result.evaluation, common, sampled.wo, weighted_value);
     const auto roughness_squared =
         bsdf_get_specular_roughness_squared(pool, pick.index);
-    $if(pool.count() > 1u) {
-      const auto weighted_pdf = sampled.pdf * common.sample_weight;
-      result.evaluation = surface_shader_bsdf_eval_mis(
-          kernel_globals, shader_data, sampled.wo, pick.index, true, 0u,
-          result.evaluation, weighted_pdf, common.sample_weight,
-          weighted_pdf * roughness_squared, closure_types);
-    }
-    $else {
+    if (pool.capacity() <= 1u) {
       result.evaluation.pdf = sampled.pdf;
       result.evaluation.average_roughness_squared = roughness_squared;
-    };
+    } else {
+      $if(pool.count() > 1u) {
+        const auto weighted_pdf = sampled.pdf * common.sample_weight;
+        result.evaluation = surface_shader_bsdf_eval_mis(
+            kernel_globals, shader_data, sampled.wo, pick.index, true, 0u,
+            result.evaluation, weighted_pdf, common.sample_weight,
+            weighted_pdf * roughness_squared, closure_types);
+      }
+      $else {
+        result.evaluation.pdf = sampled.pdf;
+        result.evaluation.average_roughness_squared = roughness_squared;
+      };
+    }
   };
   return result;
 }

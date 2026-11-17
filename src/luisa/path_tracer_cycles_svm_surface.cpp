@@ -9,6 +9,7 @@
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_noise.h>
 #include <psycles/luisa/cycles_path_state.h>
+#include <psycles/luisa/cycles_svm_translator.h>
 
 #include <algorithm>
 #include <memory>
@@ -148,33 +149,61 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
       // branch and closure reduction on non-AOV bounces.
       result.aov.normal = _shader_data->N;
       $if(query.include_aov) {
+        constexpr auto bit = [](std::uint32_t t) constexpr noexcept {
+          return svm_detail::ClosureTypeMask{1u} << t;
+        };
+        constexpr auto glossy_or_glass_mask =
+            bit(closure::type_microfacet_ggx) |
+            bit(closure::type_microfacet_beckmann) |
+            bit(closure::type_microfacet_multi_ggx) |
+            bit(closure::type_ashikhmin_shirley) |
+            bit(closure::type_ashikhmin_velvet) |
+            bit(closure::type_glossy_toon) |
+            bit(closure::type_hair_reflection) |
+            bit(closure::type_microfacet_beckmann_glass) |
+            bit(closure::type_microfacet_ggx_glass) |
+            bit(closure::type_microfacet_multi_ggx_glass) |
+            bit(closure::type_hair_chiang) | bit(closure::type_hair_huang);
+        constexpr auto transmission_or_glass_mask =
+            bit(closure::type_microfacet_beckmann_refraction) |
+            bit(closure::type_microfacet_ggx_refraction) |
+            bit(closure::type_thin_glass_transmission) |
+            bit(closure::type_hair_transmission) |
+            bit(closure::type_microfacet_beckmann_glass) |
+            bit(closure::type_microfacet_ggx_glass) |
+            bit(closure::type_microfacet_multi_ggx_glass);
+        const auto active_glossy_mask = _closure_types & glossy_or_glass_mask;
+        const auto active_transmission_mask =
+            _closure_types & transmission_or_glass_mask;
+
         Float3 diffuse = make_float3(0.0f);
         Float3 glossy = make_float3(0.0f);
         Float3 transmission = make_float3(0.0f);
         Float3 average_normal = make_float3(0.0f);
         Float roughness = 0.0f;
         Float roughness_weight = 0.0f;
-        UInt index = 0u;
-        $while(index < _closures->count()) {
+        const auto accumulate_aov_slot = [&](Expr<std::uint32_t> index) noexcept {
           const auto common = _closures->common(index);
           const auto is_bssrdf = closure::is_bssrdf(common.type);
           $if(closure::is_bsdf_diffuse(common.type) | is_bssrdf) {
-            diffuse += svm_detail::bsdf_albedo(
-                _kernel_globals, *_shader_data, index, true, true,
-                _closure_types);
+            diffuse += common.weight;
           };
-          $if(closure::is_bsdf_glossy(common.type) |
-              closure::is_glass(common.type)) {
-            glossy += svm_detail::bsdf_albedo(
-                _kernel_globals, *_shader_data, index, true, false,
-                _closure_types);
-          };
-          $if(closure::is_bsdf_transmission(common.type) |
-              closure::is_glass(common.type)) {
-            transmission += svm_detail::bsdf_albedo(
-                _kernel_globals, *_shader_data, index, false, true,
-                _closure_types);
-          };
+          if (active_glossy_mask != 0u) {
+            $if(closure::is_bsdf_glossy(common.type) |
+                closure::is_glass(common.type)) {
+              glossy += svm_detail::bsdf_albedo(
+                  _kernel_globals, *_shader_data, index, true, false,
+                  active_glossy_mask);
+            };
+          }
+          if (active_transmission_mask != 0u) {
+            $if(closure::is_bsdf_transmission(common.type) |
+                closure::is_glass(common.type)) {
+              transmission += svm_detail::bsdf_albedo(
+                  _kernel_globals, *_shader_data, index, false, true,
+                  active_transmission_mask);
+            };
+          }
           $if(closure::is_bsdf_or_bssrdf(common.type)) {
             const auto weight = abs((common.weight.x + common.weight.y +
                                      common.weight.z) /
@@ -194,8 +223,16 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
               };
             };
           }
-          index += 1u;
         };
+        if (_closures->capacity() <= 1u) {
+          $if(_closures->count() != 0u) { accumulate_aov_slot(0u); };
+        } else {
+          UInt index = 0u;
+          $while(index < _closures->count()) {
+            accumulate_aov_slot(index);
+            index += 1u;
+          };
+        }
 
         Float3 transparency = make_float3(0.0f);
         $if((flags & static_cast<std::uint32_t>(abi::SD_HAS_ONLY_VOLUME)) !=
@@ -350,26 +387,56 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           _kernel_globals{_scene, context},
           _closures{std::make_unique<svm::ClosurePool>(
               std::clamp<std::size_t>(
-                  _scene->volume_metadata.closure_allocation_budget,
-                  1u, svm::maximum_closure_capacity))},
+                  _scene->cycles_svm
+                      ? _scene->cycles_svm->compilation.max_surface_closures
+                      : _scene->volume_metadata.closure_allocation_budget,
+                  1u, svm::maximum_closure_capacity),
+              svm::ClosurePool::Options{
+                  .may_have_thin_film = _kernel_globals.may_have_thin_film(),
+                  .may_have_anisotropic_microfacet =
+                      _kernel_globals.closure_usage().has_fresnel(
+                          abi::ClosureUsage::fresnel_anisotropic),
+                  .may_have_custom_generalized_schlick =
+                      _kernel_globals.closure_usage().has_fresnel(
+                          abi::ClosureUsage::fresnel_custom_generalized_schlick),
+                  .may_have_positive_exponent =
+                      _kernel_globals.closure_usage().has_fresnel(
+                          abi::ClosureUsage::fresnel_positive_exponent),
+                  .may_have_extra_fresnel =
+                      _kernel_globals.closure_usage().has_fresnel(
+                          abi::ClosureUsage::fresnel_conductor |
+                          abi::ClosureUsage::fresnel_f82_tint |
+                          abi::ClosureUsage::fresnel_generalized_schlick)})},
           _closure_types{svm_detail::closure_types_for_kernel_features(
-              _scene->cycles_svm->kernel_features)},
+                             _scene->cycles_svm->kernel_features) &
+                         _kernel_globals.closure_usage().surface_closure_mask},
           _preparation_query{context.query},
           _include_aov_roughness{false} {
-      const Expr<Buffer<abi::KernelShader>> shaders{
-          *_scene->cycles_svm->kernel_shader_buffer};
-      const auto shader = shaders->read(
-          context.cycles_surface_shader & svm::shader_mask);
-      const auto object_flags =
-          _scene->cycles_svm->objects->object_flag_buffer->read(
-              context.cycles_object_index);
-      auto flags = shader.flags.cast<std::uint32_t>();
-      flags |= select(0u, static_cast<std::uint32_t>(abi::SD_BACKFACING),
-                      context.point.back_facing);
+      UInt flags;
+      if (context.cycles_shader_flags) {
+        flags = *context.cycles_shader_flags;
+      } else {
+        const Expr<Buffer<abi::KernelShader>> shaders{
+            *_scene->cycles_svm->kernel_shader_buffer};
+        const auto shader = shaders->read(
+            context.cycles_surface_shader & svm::shader_mask);
+        flags = shader.flags.cast<std::uint32_t>() |
+                select(0u, static_cast<std::uint32_t>(abi::SD_BACKFACING),
+                       context.point.back_facing);
+      }
+      const UInt object_flags =
+          context.cycles_object_flags
+              ? UInt{*context.cycles_object_flags}
+              : _scene->cycles_svm->objects->object_flag_buffer->read(
+                    context.cycles_object_index);
       const auto lcg_state = cycles_noise::hash_uint3(
           context.rng_hash ^ 0xb4bc3953u,
           context.rng_offset,
           context.sample_index);
+      const bool has_object_motion =
+          (_scene->cycles_svm->kernel_features &
+           svm::kernel_feature_object_motion) != 0u;
+      const auto identity = make_float4x4(1.0f);
       _shader_data = std::make_unique<svm::ShaderData>(
           context.point.position,
           context.point.shading_normal,
@@ -393,8 +460,10 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           context.point.barycentric_dy.y,
           context.point.dpdu,
           context.point.dpdv,
-          context.object_to_world,
-          context.world_to_object,
+          has_object_motion ? context.object_to_world
+                            : Expr<luisa::float4x4>{identity},
+          has_object_motion ? context.world_to_object
+                            : Expr<luisa::float4x4>{identity},
           lcg_state,
           _closures.get());
       /* KernelShader::flags contains only Cycles SD_SHADER_FLAGS; runtime
@@ -407,11 +476,35 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                                          abi::SD_BSSRDF)) == 0u);
       _shader_data->ray_P = context.ray_origin;
 
-      const svm::TransformState transform_state{
-          context.parameters.camera_transform,
-          context.parameters.camera_inverse_transform,
-          context.object_to_world,
-          context.world_to_object};
+      const auto unpack_tfm = [](Var<abi::PackedTransform> t) noexcept {
+        return svm_detail::transform_from_rows(
+            make_float4(t.x.x, t.x.y, t.x.z, t.x.w),
+            make_float4(t.y.x, t.y.y, t.y.z, t.y.w),
+            make_float4(t.z.x, t.z.y, t.z.z, t.z.w));
+      };
+      const auto scene_ref = _scene;
+      const auto obj_idx = context.cycles_object_index;
+      const svm::TransformState transform_state =
+          context.lazy_cycles_transforms
+              ? svm::TransformState{
+                    context.parameters.camera_transform,
+                    context.parameters.camera_inverse_transform,
+                    [scene_ref, obj_idx, unpack_tfm]() noexcept {
+                      return unpack_tfm(
+                          scene_ref->cycles_svm->objects->object_buffer
+                              ->read(obj_idx)
+                              .tfm);
+                    },
+                    [scene_ref, obj_idx, unpack_tfm]() noexcept {
+                      return unpack_tfm(
+                          scene_ref->cycles_svm->objects->object_buffer
+                              ->read(obj_idx)
+                              .itfm);
+                    }}
+              : svm::TransformState{context.parameters.camera_transform,
+                                    context.parameters.camera_inverse_transform,
+                                    context.object_to_world,
+                                    context.world_to_object};
       const svm::PathState path_state{
           cycles_path_state::from_contract_shader_visibility(
               context.point.ray_visibility),
@@ -426,28 +519,34 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
       const Expr<Buffer<luisa::uint>> words{
           *_scene->cycles_svm->word_buffer};
       const auto evaluate_material = [&] {
-        const auto usage = _scene->cycles_svm->compilation.table.usage_for(
-            abi::SHADER_TYPE_SURFACE);
+        const auto usage = cycles_svm_domain_entry_usage(
+            *_scene, PathCyclesSvmShaderDomain::surface_only);
+        const auto active_mask = cycles_svm_domain_shader_mask(
+            *_scene, PathCyclesSvmShaderDomain::surface_only);
         svm_detail::surface_shader_initialize_closures(
             *_closures, path_state.visibility, path_state.flag);
-        svm::eval_nodes_assume_valid(
-          _kernel_globals,
-          words,
-          abi::SHADER_TYPE_SURFACE,
-          _scene->cycles_svm->kernel_features,
-          svm::kernel_feature_node_mask_surface,
-          usage.node_types_used,
-          transform_state,
-          *_shader_data,
-          path_state,
-          std::max<std::size_t>(
-              1u,
-              usage.peak_stack_usage), usage.noise_usage);
+        svm::translate_svm_nodes_assume_valid(svm::SvmTranslationRequest{
+            .kernel_globals = _kernel_globals,
+            .table = _scene->cycles_svm->compilation.table,
+            .words = words,
+            .shader_type = abi::SHADER_TYPE_SURFACE,
+            .kernel_features = _scene->cycles_svm->kernel_features,
+            .node_feature_mask = svm::kernel_feature_node_mask_surface,
+            .node_types_used = usage.node_types_used,
+            .transform_state = transform_state,
+            .shader_data = *_shader_data,
+            .path_state = path_state,
+            .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+            .noise_usage = usage.noise_usage,
+            .active_shader_mask = active_mask});
       };
+      const bool may_filter_glossy = context.may_filter_glossy;
       const auto prepare_closures = [&] {
-        svm_detail::surface_shader_prepare_closures(
-            *_shader_data, context.query.glossy_filter_roughness,
-            _closure_types);
+        if (may_filter_glossy) {
+          svm_detail::surface_shader_prepare_closures(
+              *_shader_data, context.query.glossy_filter_roughness,
+              _closure_types);
+        }
       };
       // Cycles integrate_surface: SSS exits without bump never evaluate the
       // material. Bumped exits evaluate it once for the BSSRDF normal, then

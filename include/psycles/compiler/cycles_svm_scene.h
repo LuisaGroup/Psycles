@@ -24,6 +24,8 @@ struct ShaderTableImage {
   std::uint32_t peak_stack_usage{};
   std::uint32_t shader_count{};
   std::optional<ShaderEntryUsageTable> entry_usage;
+  // Linked structured SVM IR for re-targetable backend translators.
+  SvmTableIr ir;
 
   [[nodiscard]] ShaderEntryUsage usage_for(ShaderType type) const noexcept {
     const auto index = static_cast<std::size_t>(type);
@@ -68,6 +70,12 @@ struct CompiledShaderTable {
   // always-referenced default Principled graph in ShaderManager::add_default
   // (12 closures). Unrepresented shader-index holes add nothing further.
   std::uint32_t max_closures{12u};
+  // Tight upper bound on closures allocated by SHADER_TYPE_SURFACE across
+  // active surface shaders, clamped to [1, max_closures].
+  std::uint32_t max_surface_closures{1u};
+  // Union of SHADER_TYPE_SURFACE closure/layer specialization masks across the
+  // compiled shader table.
+  ClosureUsage surface_closure_usage{};
   // Parallel native DeviceScene::shaders image in the identical dense shader
   // index domain. Unrepresented source holes are byte-zero and unreachable.
   std::vector<KernelShader> kernel_shaders;
@@ -79,6 +87,7 @@ struct CompiledShaderTable {
   // attribute demand from each shader rather than from the scene-wide opcode
   // union; object/particle packing must make the same distinction.
   std::vector<std::array<bool, NODE_NUM>> shader_node_types_used;
+  std::vector<ShaderEntryUsage> shader_surface_entry_usage;
   // Exact first-insertion-wins Shader::attributes order. Geometry merges
   // these vectors in used-shader order before emitting its attribute map.
   std::vector<std::vector<std::uint64_t>>

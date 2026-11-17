@@ -79,7 +79,8 @@ void primitive_normal_set_undisplaced(
 void node_set_bump(Cursor &cursor, Stack &stack,
                    const TransformState &transform_state,
                    const ShaderData &shader_data, bool bump_feature_enabled,
-                   bool object_motion_enabled) noexcept {
+                   bool object_motion_enabled, bool bump_state_enabled,
+                   bool bump_object_space_enabled) noexcept {
   const auto scale_input = cursor.word();
   const auto strength_input = cursor.word();
   const auto bump_filter_width = cursor.floating();
@@ -99,24 +100,45 @@ void node_set_bump(Cursor &cursor, Stack &stack,
         stack_load_float3_default(stack, normal_offset, shader_data.N);
     Float3 dP_dx;
     Float3 dP_dy;
-    $if(bump_state_offset == static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    if (bump_state_enabled) {
+      if (const auto bso = try_const_uint(bump_state_offset)) {
+        if (*bso == static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+          const auto dP =
+              differential_from_compact(shader_data.Ng, shader_data.dP);
+          dP_dx = dP.dx;
+          dP_dy = dP.dy;
+        } else {
+          dP_dx = stack_load_float3(stack, *bso + 4u);
+          dP_dy = stack_load_float3(stack, *bso + 7u);
+        }
+      } else {
+        $if(bump_state_offset == static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+          const auto dP =
+              differential_from_compact(shader_data.Ng, shader_data.dP);
+          dP_dx = dP.dx;
+          dP_dy = dP.dy;
+        }
+        $else {
+          dP_dx = stack_load_float3(stack, bump_state_offset + 4u);
+          dP_dy = stack_load_float3(stack, bump_state_offset + 7u);
+        };
+      }
+    } else {
       const auto dP = differential_from_compact(shader_data.Ng, shader_data.dP);
       dP_dx = dP.dx;
       dP_dy = dP.dy;
     }
-    $else {
-      dP_dx = stack_load_float3(stack, bump_state_offset + 4u);
-      dP_dy = stack_load_float3(stack, bump_state_offset + 7u);
-    };
 
-    $if(use_object_space != 0u) {
-      object_inverse_normal_transform(normal_in, transform_state, shader_data,
-                                      object_motion_enabled);
-      object_inverse_dir_transform(dP_dx, transform_state, shader_data,
-                                   object_motion_enabled);
-      object_inverse_dir_transform(dP_dy, transform_state, shader_data,
-                                   object_motion_enabled);
-    };
+    if (bump_object_space_enabled) {
+      $if(use_object_space != 0u) {
+        object_inverse_normal_transform(normal_in, transform_state, shader_data,
+                                        object_motion_enabled);
+        object_inverse_dir_transform(dP_dx, transform_state, shader_data,
+                                     object_motion_enabled);
+        object_inverse_dir_transform(dP_dy, transform_state, shader_data,
+                                     object_motion_enabled);
+      };
+    }
 
     const auto rx = cross(dP_dy, normal_in);
     const auto ry = cross(normal_in, dP_dx);
@@ -145,10 +167,12 @@ void node_set_bump(Cursor &cursor, Stack &stack,
                                    (1.0f - strength) * normal_in);
     };
 
-    $if(use_object_space != 0u) {
-      object_normal_transform(normal_out, transform_state, shader_data,
-                              object_motion_enabled);
-    };
+    if (bump_object_space_enabled) {
+      $if(use_object_space != 0u) {
+        object_normal_transform(normal_out, transform_state, shader_data,
+                                object_motion_enabled);
+      };
+    }
     stack_store_float3(stack, output_offset, normal_out);
   } else {
     stack_store_float3(stack, output_offset, make_float3(0.0f));
@@ -169,11 +193,16 @@ void node_enter_bump_eval(Cursor &cursor, Stack &stack,
                           const KernelGlobals &kernel_globals,
                           const TransformState &transform_state,
                           ShaderData &shader_data,
-                          bool object_motion_enabled) noexcept {
+                          bool object_motion_enabled,
+                          bool may_have_undisplaced_position) noexcept {
   const auto state_offset = cursor.byte(cursor.word(), 0u);
 
   stack_store_float3(stack, state_offset, shader_data.P);
   stack_store_float(stack, state_offset + 3u, shader_data.dP);
+
+  if (!may_have_undisplaced_position) {
+    return;
+  }
 
   const auto descriptor = find_attribute(
       kernel_globals, shader_data,

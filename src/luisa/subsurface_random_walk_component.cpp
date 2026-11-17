@@ -1,6 +1,8 @@
 #include "subsurface_random_walk_component.h"
 #include "path_kernel_subsurface_intersection.h"
 
+#include <psycles/compiler/cycles_svm_closure_usage.h>
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sample_mapping.h>
 #include <psycles/luisa/cycles_sampler.h>
@@ -170,27 +172,31 @@ SubsurfaceRandomWalkComponent::coefficients(
     Float3 albedo,
     Float3 radius,
     Float anisotropy,
-    Float3 throughput) const noexcept {
-    const auto standard = method == static_cast<std::uint32_t>(
-                                      SurfaceBssrdfMethod::random_walk);
-    const auto van_de_hulst = standard | (anisotropy < 0.0f);
-
+    Float3 throughput,
+    bool may_have_legacy_or_skin) const noexcept {
     const auto modern = van_de_hulst_remap(
         albedo, radius, anisotropy);
-    const auto legacy_x = legacy_remap(
-        albedo.x, radius.x, anisotropy);
-    const auto legacy_y = legacy_remap(
-        albedo.y, radius.y, anisotropy);
-    const auto legacy_z = legacy_remap(
-        albedo.z, radius.z, anisotropy);
-    const auto legacy_sigma_t = make_float3(
-        legacy_x.sigma_t, legacy_y.sigma_t, legacy_z.sigma_t);
-    const auto legacy_alpha = make_float3(
-        legacy_x.alpha, legacy_y.alpha, legacy_z.alpha);
-    auto sigma_t = select(
-        legacy_sigma_t, modern.sigma_t, van_de_hulst);
-    auto alpha = select(
-        legacy_alpha, modern.alpha, van_de_hulst);
+    Float3 sigma_t = modern.sigma_t;
+    Float3 alpha = modern.alpha;
+    if (may_have_legacy_or_skin) {
+        const auto standard = method == static_cast<std::uint32_t>(
+                                          SurfaceBssrdfMethod::random_walk);
+        const auto van_de_hulst = standard | (anisotropy < 0.0f);
+        $if(!van_de_hulst) {
+            const auto legacy_x = legacy_remap(
+                albedo.x, radius.x, anisotropy);
+            const auto legacy_y = legacy_remap(
+                albedo.y, radius.y, anisotropy);
+            const auto legacy_z = legacy_remap(
+                albedo.z, radius.z, anisotropy);
+            sigma_t = make_float3(
+                legacy_x.sigma_t, legacy_y.sigma_t, legacy_z.sigma_t);
+            alpha = make_float3(
+                legacy_x.alpha, legacy_y.alpha, legacy_z.alpha);
+        };
+    } else {
+        static_cast<void>(method);
+    }
     throughput = safe_divide_color(throughput, albedo);
 
     const auto low_x = alpha.x < minimum_alpha;
@@ -224,7 +230,32 @@ SubsurfaceRandomWalkEntry
 SubsurfaceRandomWalkComponent::sample_entry(
     const SurfacePoint &point,
     const SurfaceSample &closure,
-    Float2 random) const noexcept {
+    Float2 random,
+    bool may_have_skin) const noexcept {
+    const auto cosine = dot(closure.bssrdf_normal, point.incoming);
+    if (!may_have_skin) {
+        const auto half = cycles_sample_mapping::sample_ggx_visible_normal(
+            closure.bssrdf_normal,
+            point.incoming,
+            closure.bssrdf_roughness,
+            random);
+        const auto cosine_half_incoming = dot(half, point.incoming);
+        const auto inverse_ior = 1.0f / closure.bssrdf_ior;
+        const auto argument = 1.0f -
+                              inverse_ior * inverse_ior *
+                                  (1.0f - cosine_half_incoming *
+                                              cosine_half_incoming);
+        const auto transmitted_cosine = max(sqrt(max(argument, 0.0f)), 1.0e-7f);
+        const auto coefficient = inverse_ior * cosine_half_incoming -
+                                 transmitted_cosine;
+        const auto refractive_direction =
+            -inverse_ior * point.incoming + coefficient * half;
+        const auto valid = (cosine > 0.0f) &
+                           (dot(point.geometric_normal, refractive_direction) <
+                            0.0f);
+        return {.direction = refractive_direction, .valid = valid};
+    }
+
     const auto skin = closure.bssrdf_method ==
                       static_cast<std::uint32_t>(
                           SurfaceBssrdfMethod::random_walk_skin);
@@ -240,7 +271,6 @@ SubsurfaceRandomWalkComponent::sample_entry(
             -closure.bssrdf_normal, diffuse_random)
             .direction;
 
-    const auto cosine = dot(closure.bssrdf_normal, point.incoming);
     const auto half = cycles_sample_mapping::sample_ggx_visible_normal(
         closure.bssrdf_normal,
         point.incoming,
@@ -279,21 +309,34 @@ Bool SubsurfaceRandomWalkComponent::transport(
     }
     const auto &subsurface_accel = *scene->subsurface_accel;
 
-    const auto legacy_encoded = state.encoded_anisotropy >= 1.0f;
-    const auto anisotropy = select(
-        state.encoded_anisotropy,
-        state.encoded_anisotropy - 2.0f,
-        legacy_encoded);
-    const auto method = select(
-        static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk),
-        static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk_legacy),
-        legacy_encoded);
+    const bool may_have_legacy_or_skin =
+        !scene->native_cycles_svm_surface || !scene->cycles_svm ||
+        (scene->cycles_svm->compilation.surface_closure_usage
+             .surface_closure_mask &
+         (compiler::cycles_svm::ClosureUsage::bit(
+              cycles_closure::type_bssrdf_random_walk_legacy) |
+          compiler::cycles_svm::ClosureUsage::bit(
+              cycles_closure::type_bssrdf_random_walk_skin))) != 0ull;
+    Float anisotropy = state.encoded_anisotropy;
+    UInt method = static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk);
+    if (may_have_legacy_or_skin) {
+        const auto legacy_encoded = state.encoded_anisotropy >= 1.0f;
+        anisotropy = select(
+            state.encoded_anisotropy,
+            state.encoded_anisotropy - 2.0f,
+            legacy_encoded);
+        method = select(
+            static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk),
+            static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk_legacy),
+            legacy_encoded);
+    }
     const auto mapped = coefficients(
         method,
         state.albedo,
         state.radius,
         anisotropy,
-        throughput);
+        throughput,
+        may_have_legacy_or_skin);
 
     const auto guide_normal = state.normal;
     const auto start_position = path.ray->origin();
@@ -328,7 +371,25 @@ Bool SubsurfaceRandomWalkComponent::transport(
         luisa::compute::HitType::Miss);
     exit_hit.committed_ray_t = 0.0f;
 
-    $if(mapped.valid) {
+    const bool can_use_local_subsurface_id =
+        scene->primary_to_subsurface_local_buffer.has_value() &&
+        scene->traversal_object_instance_buffer.has_value();
+    const UInt entry_primary_instance = path.pending_subsurface_hit.instance;
+    const UInt entry_primitive = path.pending_subsurface_hit.primitive;
+    UInt entry_local_instance = surface_ray::invalid_primitive;
+    Bool walk_active = mapped.valid;
+    if (can_use_local_subsurface_id) {
+        const auto table_size = static_cast<std::uint32_t>(
+            scene->primary_to_subsurface_local_host.size());
+        $if(entry_primary_instance < table_size) {
+            entry_local_instance =
+                (*scene->primary_to_subsurface_local_buffer)
+                    ->read(entry_primary_instance);
+        };
+        walk_active &= (entry_local_instance != surface_ray::invalid_primitive);
+    }
+
+    $if(walk_active) {
         $for(bounce, maximum_bounces) {
             local_rng_offset += cycles_path_state::bounce_dimension_count;
             const auto use_original = bounce <= similarity_level;
@@ -463,52 +524,93 @@ Bool SubsurfaceRandomWalkComponent::transport(
                 0.0f,
                 trace_maximum);
             const auto reject_entry_primitive = bounce == 0u;
-            auto candidate_hit = subsurface_accel
-                                     ->traverse(
-                                         query_ray,
-                                         {.visibility_mask = ~0u})
-                                     .on_surface_candidate(
-                                         [&](luisa::compute::SurfaceCandidate
-                                                 &candidate) noexcept {
-                                             const auto candidate_value =
-                                                 candidate.hit();
-                                             const auto primary_instance =
-                                                 subsurface_primary_instance(
-                                                     scene,
-                                                     candidate_value->inst);
-                                             const auto instance =
-                                                 scene->instance_buffer->read(
-                                                     primary_instance);
-                                             const auto object = select(
-                                                 primary_instance,
-                                                 instance.cycles_object_index,
-                                                 instance.cycles_object_index !=
-                                                     ~0u);
-                                             const auto self =
-                                                 surface_ray::same_primitive(
-                                                     primary_instance,
-                                                     candidate_value->prim,
-                                                     path.pending_subsurface_hit
-                                                         .instance,
-                                                     path.pending_subsurface_hit
-                                                         .primitive);
-                                             $if((object ==
-                                                  path.ray_source_object) &
-                                                 !(reject_entry_primitive &
-                                                   self)) {
-                                                 candidate.commit();
-                                             };
-                                         })
-                                     .on_procedural_candidate(
-                                         [](luisa::compute::ProceduralCandidate
-                                                &) noexcept {})
-                                     .trace();
-            const auto query_hit = !candidate_hit->miss();
+            Var<luisa::compute::CommittedHit> candidate_hit;
             UInt primary_hit_instance = surface_ray::invalid_primitive;
-            $if(query_hit) {
-                primary_hit_instance = subsurface_primary_instance(
-                    scene, candidate_hit->inst);
-            };
+            if (can_use_local_subsurface_id) {
+                const UInt instance_mask = 1u << (entry_local_instance & 7u);
+                if (scene->subsurface_instance_count <= 8u) {
+                    const Bool bypass_entry_filter = !reject_entry_primitive;
+                    const auto handle_subsurface_hit =
+                        [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+                            $if(bypass_entry_filter) {
+                                candidate.commit();
+                            }
+                            $else {
+                                const auto candidate_value = candidate.hit();
+                                $if(candidate_value->prim != entry_primitive) {
+                                    candidate.commit();
+                                };
+                            };
+                        };
+                    candidate_hit =
+                        subsurface_accel
+                            ->traverse(query_ray,
+                                       {.visibility_mask = instance_mask})
+                            .on_surface_candidate(handle_subsurface_hit)
+                            .trace();
+                } else {
+                    const auto handle_subsurface_hit =
+                        [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+                            const auto candidate_value = candidate.hit();
+                            $if((candidate_value->inst ==
+                                 entry_local_instance) &
+                                ((!reject_entry_primitive) |
+                                 (candidate_value->prim != entry_primitive))) {
+                                candidate.commit();
+                            };
+                        };
+                    candidate_hit =
+                        subsurface_accel
+                            ->traverse(query_ray,
+                                       {.visibility_mask = instance_mask})
+                            .on_surface_candidate(handle_subsurface_hit)
+                            .trace();
+                }
+                primary_hit_instance = entry_primary_instance;
+            } else {
+                candidate_hit = subsurface_accel
+                                    ->traverse(
+                                        query_ray,
+                                        {.visibility_mask = ~0u})
+                                    .on_surface_candidate(
+                                        [&](luisa::compute::SurfaceCandidate
+                                                &candidate) noexcept {
+                                            const auto candidate_value =
+                                                candidate.hit();
+                                            const auto primary_instance =
+                                                subsurface_primary_instance(
+                                                    scene,
+                                                    candidate_value->inst);
+                                            const auto instance =
+                                                scene->instance_buffer->read(
+                                                    primary_instance);
+                                            const auto object = select(
+                                                primary_instance,
+                                                instance.cycles_object_index,
+                                                instance.cycles_object_index !=
+                                                    ~0u);
+                                            const auto self =
+                                                surface_ray::same_primitive(
+                                                    primary_instance,
+                                                    candidate_value->prim,
+                                                    path.pending_subsurface_hit
+                                                        .instance,
+                                                    path.pending_subsurface_hit
+                                                        .primitive);
+                                            $if((object ==
+                                                 path.ray_source_object) &
+                                                !(reject_entry_primitive &
+                                                  self)) {
+                                                candidate.commit();
+                                            };
+                                        })
+                                    .trace();
+                $if(!candidate_hit->miss()) {
+                    primary_hit_instance = subsurface_primary_instance(
+                        scene, candidate_hit->inst);
+                };
+            }
+            const auto query_hit = !candidate_hit->miss();
             const auto query_distance = select(
                 trace_maximum,
                 candidate_hit->committed_ray_t,

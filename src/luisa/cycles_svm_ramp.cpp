@@ -41,29 +41,49 @@ namespace {
   return result;
 }
 
-[[nodiscard]] Float4 rgb_ramp_lookup_extrapolated(
-    Cursor &cursor, Expr<float> factor, Expr<bool> interpolate,
-    Expr<bool> extrapolate, Expr<std::uint32_t> table_size) noexcept {
+[[nodiscard]] Float curve_channel_lookup_clamped(
+    Cursor &cursor, Expr<float> factor, Expr<std::uint32_t> channel,
+    Expr<std::uint32_t> table_size) noexcept {
   const UInt last = table_size - 1u;
-  Float4 result = make_float4(0.0f);
+  const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
+  const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
+  const UInt element = cast<uint>(index);
+  const Float t = scaled - cast<float>(index);
+  Float result = cursor.floating_at(element * 4u + channel);
+  $if(t > 0.0f) {
+    const Float next = cursor.floating_at((element + 1u) * 4u + channel);
+    result = (1.0f - t) * result + t * next;
+  };
+  return result;
+}
+
+[[nodiscard]] Float curve_channel_lookup(
+    Cursor &cursor, Expr<float> factor, Expr<std::uint32_t> channel,
+    Expr<bool> extrapolate, bool may_extrapolate,
+    Expr<std::uint32_t> table_size) noexcept {
+  if (!may_extrapolate) {
+    return curve_channel_lookup_clamped(cursor, factor, channel, table_size);
+  }
+  const UInt last = table_size - 1u;
+  Float result = 0.0f;
   $if(((factor < 0.0f) | (factor > 1.0f)) & extrapolate) {
-    Float4 value = make_float4(0.0f);
-    Float4 delta = make_float4(0.0f);
+    Float value = 0.0f;
+    Float delta = 0.0f;
     Float distance = factor;
     $if(factor < 0.0f) {
-      value = table_read(cursor, 0u);
-      delta = value - table_read(cursor, 1u);
+      value = cursor.floating_at(channel);
+      delta = value - cursor.floating_at(4u + channel);
       distance = -factor;
     }
     $else {
-      value = table_read(cursor, last);
-      delta = value - table_read(cursor, last - 1u);
+      value = cursor.floating_at(last * 4u + channel);
+      delta = value - cursor.floating_at((last - 1u) * 4u + channel);
       distance = factor - 1.0f;
     };
     result = value + delta * distance * cast<float>(last);
   }
   $else {
-    result = rgb_ramp_lookup_clamped(cursor, factor, interpolate, table_size);
+    result = curve_channel_lookup_clamped(cursor, factor, channel, table_size);
   };
   return result;
 }
@@ -116,51 +136,60 @@ float_ramp_lookup_extrapolated(Cursor &cursor, Expr<float> factor,
 } // namespace
 
 void node_rgb_ramp(Cursor &cursor, Stack &stack) noexcept {
-  const UInt table_size = cursor.word();
+  const auto table_size = cursor.word();
   const Float factor = stack_load_input_float(stack, cursor.word());
-  const UInt packed = cursor.word();
-  const UInt interpolate = cursor.byte(packed, 0u);
-  const UInt color_offset = cursor.byte(packed, 1u);
-  const UInt alpha_offset = cursor.byte(packed, 2u);
+  const auto packed = cursor.word();
+  const auto interpolate = cursor.byte(packed, 0u);
+  const auto color_offset = cursor.byte(packed, 1u);
+  const auto alpha_offset = cursor.byte(packed, 2u);
 
   const Float4 color = rgb_ramp_lookup_clamped(
       cursor, factor, interpolate != 0u, table_size);
 
-  $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, color_offset, color.xyz());
-  };
-  $if(alpha_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, alpha_offset, color.w);
-  };
+  if (const auto co = try_const_uint(color_offset)) {
+    if (*co != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float3(stack, *co, color.xyz());
+    }
+  } else {
+    $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float3(stack, color_offset, color.xyz());
+    };
+  }
+  if (const auto ao = try_const_uint(alpha_offset)) {
+    if (*ao != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float(stack, *ao, color.w);
+    }
+  } else {
+    $if(alpha_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float(stack, alpha_offset, color.w);
+    };
+  }
   cursor.advance(table_size * 4u);
 }
 
-void node_curves(Cursor &cursor, Stack &stack) noexcept {
-  const UInt color_x = cursor.word();
-  const UInt color_y = cursor.word();
-  const UInt color_z = cursor.word();
+void node_curves(Cursor &cursor, Stack &stack, bool may_extrapolate) noexcept {
+  const auto color_x = cursor.word();
+  const auto color_y = cursor.word();
+  const auto color_z = cursor.word();
   const Float3 color =
       stack_load_input_float3(stack, color_x, color_y, color_z);
   const Float factor = stack_load_input_float(stack, cursor.word());
-  const Float min_x = cursor.floating();
-  const Float max_x = cursor.floating();
-  const UInt table_size = cursor.word();
-  const UInt packed = cursor.word();
-  const Bool extrapolate = cursor.byte(packed, 0u) != 0u;
-  const UInt output_offset = cursor.byte(packed, 1u);
+  const auto min_x = cursor.floating();
+  const auto max_x = cursor.floating();
+  const auto table_size = cursor.word();
+  const auto packed = cursor.word();
+  const auto extrapolate = cursor.byte(packed, 0u) != 0u;
+  const auto output_offset = cursor.byte(packed, 1u);
 
   const Float range_x = max_x - min_x;
   const Float3 relative = (color - min_x) / range_x;
-  const Float red = rgb_ramp_lookup_extrapolated(
-                        cursor, relative.x, true, extrapolate, table_size)
-                        .x;
-  const Float green = rgb_ramp_lookup_extrapolated(
-                          cursor, relative.y, true, extrapolate, table_size)
-                          .y;
-  const Float blue = rgb_ramp_lookup_extrapolated(
-                         cursor, relative.z, true, extrapolate, table_size)
-                         .z;
-  const Float3 mapped = make_float3(red, green, blue);
+  const Float3 mapped = make_float3(
+      curve_channel_lookup(cursor, relative.x, 0u, extrapolate,
+                           may_extrapolate, table_size),
+      curve_channel_lookup(cursor, relative.y, 1u, extrapolate,
+                           may_extrapolate, table_size),
+      curve_channel_lookup(cursor, relative.z, 2u, extrapolate,
+                           may_extrapolate, table_size));
   stack_store_float3(stack, output_offset,
                      (1.0f - factor) * color + factor * mapped);
   cursor.advance(table_size * 4u);
@@ -169,12 +198,12 @@ void node_curves(Cursor &cursor, Stack &stack) noexcept {
 void node_float_curve(Cursor &cursor, Stack &stack) noexcept {
   const Float factor = stack_load_input_float(stack, cursor.word());
   const Float input = stack_load_input_float(stack, cursor.word());
-  const Float min_x = cursor.floating();
-  const Float max_x = cursor.floating();
-  const UInt table_size = cursor.word();
-  const UInt packed = cursor.word();
-  const Bool extrapolate = cursor.byte(packed, 0u) != 0u;
-  const UInt output_offset = cursor.byte(packed, 1u);
+  const auto min_x = cursor.floating();
+  const auto max_x = cursor.floating();
+  const auto table_size = cursor.word();
+  const auto packed = cursor.word();
+  const auto extrapolate = cursor.byte(packed, 0u) != 0u;
+  const auto output_offset = cursor.byte(packed, 1u);
 
   const Float relative = (input - min_x) / (max_x - min_x);
   const Float value = float_ramp_lookup_extrapolated(cursor, relative, true,

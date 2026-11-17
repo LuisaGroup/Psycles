@@ -2,11 +2,34 @@
 
 #include "path_tracer_surfaces.h"
 
+#include <psycles/compiler/cycles_svm_compiler.h>
 #include <psycles/luisa/cycles_svm.h>
 
+#include <cstdint>
 #include <memory>
+#include <unordered_map>
+#include <vector>
 
 namespace psycles::luisa_backend::detail {
+
+enum class PathCyclesSvmShaderDomain : std::uint8_t {
+  all_shaders = 0u,
+  surface_only = 1u,
+  shadow_surface = 2u,
+  light_emission = 3u,
+  background = 4u,
+};
+
+[[nodiscard]] bool cycles_svm_has_domain_metadata(
+    const LuisaSceneData &scene) noexcept;
+
+[[nodiscard]] compiler::cycles_svm::ShaderEntryUsage
+cycles_svm_domain_entry_usage(const LuisaSceneData &scene,
+                              PathCyclesSvmShaderDomain domain) noexcept;
+
+[[nodiscard]] std::vector<std::uint8_t>
+cycles_svm_domain_shader_mask(const LuisaSceneData &scene,
+                              PathCyclesSvmShaderDomain domain) noexcept;
 
 // Host/JIT adapter from Psycles' uploaded scene resources to the exact
 // KernelGlobals services observed by the copied Cycles SVM handlers. Virtual
@@ -22,6 +45,29 @@ class PathCyclesSvmKernelGlobals final
     CameraProjection _camera_projection;
     bool _has_shadow_terminator_shading_offset{true};
     bool _may_have_thin_film{true};
+    compiler::cycles_svm::ClosureUsage _closure_usage{};
+    cycles_svm::SurfaceAttributeSummary _surface_attribute_summary{};
+    std::unordered_map<std::uint64_t, cycles_svm::SurfaceAttributeSummary>
+        _attribute_summaries_by_id;
+    bool _has_attribute_summary_table{false};
+    cycles_svm::NormalMapUsage _normal_map_usage{};
+    std::uint32_t _mix_blend_mask{~0u};
+    cycles_svm::NoiseStaticOptions _noise_static_options{};
+    std::uint32_t _tex_coord_mask{~0u};
+    bool _bump_uses_object_space{true};
+    bool _curves_may_extrapolate{true};
+    std::uint64_t _math_type_mask{~0ull};
+    std::uint64_t _vector_math_type_mask{~0ull};
+    cycles_svm::MappingStaticOptions _mapping_static_options{};
+    std::uint32_t _map_range_type_mask{~0u};
+    cycles_svm::VoronoiStaticOptions _voronoi_static_options{};
+    cycles_svm::WaveStaticOptions _wave_static_options{};
+    bool _has_curves{true};
+    bool _has_bicubic_images{true};
+    bool _has_failed_images{true};
+    bool _contiguous_texture_slots{false};
+    std::uint32_t _base_texture_slot{};
+    std::uint32_t _image_binding_count{};
     Bool _caustics_reflective;
     Bool _caustics_refractive;
     luisa::compute::Float4x4 _camera_to_world;
@@ -33,7 +79,9 @@ class PathCyclesSvmKernelGlobals final
         const Var<RenderKernelParameters> &parameters,
         CameraProjection camera_projection,
         Expr<bool> reflective_caustics,
-        Expr<bool> refractive_caustics) noexcept;
+        Expr<bool> refractive_caustics,
+        PathCyclesSvmShaderDomain domain =
+            PathCyclesSvmShaderDomain::all_shaders) noexcept;
     PathCyclesSvmKernelGlobals(
         std::shared_ptr<LuisaSceneData> scene,
         const SurfacePopulationContext &context) noexcept;
@@ -43,6 +91,23 @@ class PathCyclesSvmKernelGlobals final
     [[nodiscard]] Bool background_use_sun_guiding() const noexcept override;
     [[nodiscard]] bool has_shadow_terminator_shading_offset() const noexcept override;
     [[nodiscard]] bool may_have_thin_film() const noexcept override;
+    [[nodiscard]] compiler::cycles_svm::ClosureUsage closure_usage() const noexcept override;
+    [[nodiscard]] cycles_svm::SurfaceAttributeSummary surface_attribute_summary() const noexcept override;
+    [[nodiscard]] cycles_svm::SurfaceAttributeSummary attribute_summary_for_id(
+        std::uint64_t id) const noexcept override;
+    [[nodiscard]] cycles_svm::NormalMapUsage normal_map_usage() const noexcept override;
+    [[nodiscard]] std::uint32_t mix_blend_mask() const noexcept override;
+    [[nodiscard]] cycles_svm::NoiseStaticOptions noise_static_options() const noexcept override;
+    [[nodiscard]] std::uint32_t tex_coord_mask() const noexcept override;
+    [[nodiscard]] bool bump_uses_object_space() const noexcept override;
+    [[nodiscard]] bool curves_may_extrapolate() const noexcept override;
+    [[nodiscard]] std::uint64_t math_type_mask() const noexcept override;
+    [[nodiscard]] std::uint64_t vector_math_type_mask() const noexcept override;
+    [[nodiscard]] cycles_svm::MappingStaticOptions mapping_static_options() const noexcept override;
+    [[nodiscard]] std::uint32_t map_range_type_mask() const noexcept override;
+    [[nodiscard]] cycles_svm::VoronoiStaticOptions voronoi_static_options() const noexcept override;
+    [[nodiscard]] cycles_svm::WaveStaticOptions wave_static_options() const noexcept override;
+    [[nodiscard]] bool has_curves() const noexcept override;
     [[nodiscard]] Float object_shadow_terminator_shading_offset(
         Expr<std::uint32_t> object) const noexcept override;
     [[nodiscard]] std::optional<Float> object_volume_density(

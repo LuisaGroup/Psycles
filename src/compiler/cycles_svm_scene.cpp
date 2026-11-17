@@ -36,9 +36,35 @@ static_assert(jump_node_word_count == 4u);
   ShaderImage image;
   image.valid = true;
   image.metadata.may_have_thin_film = false;
+  image.metadata.surface_closure_usage = ClosureUsage::none();
+  image.metadata.mix_blend_mask = 0u;
+  image.metadata.normal_map_space_mask = 0u;
+  image.metadata.normal_map_uses_original_base = false;
+  image.metadata.noise_may_have_distortion = false;
+  image.metadata.noise_may_need_color = false;
+  image.metadata.tex_coord_mask = 0u;
+  image.metadata.bump_uses_object_space = false;
+  image.metadata.curves_may_extrapolate = false;
+  image.metadata.math_type_mask = 0ull;
+  image.metadata.vector_math_type_mask = 0ull;
+  image.metadata.mapping_type_mask = 0u;
+  image.metadata.mapping_may_rotate = false;
+  image.metadata.map_range_type_mask = 0u;
+  image.metadata.voronoi_dimension_mask = 0u;
+  image.metadata.voronoi_feature_mask = 0u;
+  image.metadata.voronoi_metric_mask = 0u;
+  image.metadata.voronoi_may_have_detail = false;
+  image.metadata.voronoi_may_normalize = false;
+  image.metadata.voronoi_may_need_color = false;
+  image.metadata.voronoi_may_need_position = false;
+  image.metadata.voronoi_may_need_radius = false;
+  image.metadata.wave_type_mask = 0u;
+  image.metadata.wave_profile_mask = 0u;
+  image.metadata.wave_may_have_distortion = false;
   image.words = {NODE_SHADER_JUMP, 4u, 5u, 6u, NODE_END, NODE_END, NODE_END};
   image.node_types_used[NODE_SHADER_JUMP] = true;
   image.node_types_used[NODE_END] = true;
+  image.ir = SvmShaderIr{};
   return image;
 }
 
@@ -49,6 +75,7 @@ static_assert(jump_node_word_count == 4u);
   const auto same_metadata =
       a.kernel_features == b.kernel_features &&
       a.num_closures == b.num_closures &&
+      a.surface_num_closures == b.surface_num_closures &&
       a.has_surface == b.has_surface &&
       a.has_surface_transparent == b.has_surface_transparent &&
       a.has_surface_raytrace == b.has_surface_raytrace &&
@@ -64,6 +91,31 @@ static_assert(jump_node_word_count == 4u);
       a.has_bssrdf_bump == b.has_bssrdf_bump &&
       a.has_light_path_node == b.has_light_path_node &&
       a.may_have_thin_film == b.may_have_thin_film &&
+      a.surface_closure_usage == b.surface_closure_usage &&
+      a.mix_blend_mask == b.mix_blend_mask &&
+      a.normal_map_space_mask == b.normal_map_space_mask &&
+      a.normal_map_uses_original_base == b.normal_map_uses_original_base &&
+      a.noise_may_have_distortion == b.noise_may_have_distortion &&
+      a.noise_may_need_color == b.noise_may_need_color &&
+      a.tex_coord_mask == b.tex_coord_mask &&
+      a.bump_uses_object_space == b.bump_uses_object_space &&
+      a.curves_may_extrapolate == b.curves_may_extrapolate &&
+      a.math_type_mask == b.math_type_mask &&
+      a.vector_math_type_mask == b.vector_math_type_mask &&
+      a.mapping_type_mask == b.mapping_type_mask &&
+      a.mapping_may_rotate == b.mapping_may_rotate &&
+      a.map_range_type_mask == b.map_range_type_mask &&
+      a.voronoi_dimension_mask == b.voronoi_dimension_mask &&
+      a.voronoi_feature_mask == b.voronoi_feature_mask &&
+      a.voronoi_metric_mask == b.voronoi_metric_mask &&
+      a.voronoi_may_have_detail == b.voronoi_may_have_detail &&
+      a.voronoi_may_normalize == b.voronoi_may_normalize &&
+      a.voronoi_may_need_color == b.voronoi_may_need_color &&
+      a.voronoi_may_need_position == b.voronoi_may_need_position &&
+      a.voronoi_may_need_radius == b.voronoi_may_need_radius &&
+      a.wave_type_mask == b.wave_type_mask &&
+      a.wave_profile_mask == b.wave_profile_mask &&
+      a.wave_may_have_distortion == b.wave_may_have_distortion &&
       a.emission_is_constant == b.emission_is_constant &&
       a.emission_from_auto_conversion == b.emission_from_auto_conversion &&
       std::bit_cast<std::uint32_t>(a.emission_estimate.x) ==
@@ -74,7 +126,7 @@ static_assert(jump_node_word_count == 4u);
           std::bit_cast<std::uint32_t>(b.emission_estimate.z);
   return lhs.words == rhs.words && lhs.node_types_used == rhs.node_types_used &&
          lhs.attribute_requests == rhs.attribute_requests &&
-         lhs.entry_usage == rhs.entry_usage &&
+         lhs.entry_usage == rhs.entry_usage && lhs.ir == rhs.ir &&
          lhs.peak_stack_usage == rhs.peak_stack_usage && same_metadata;
 }
 
@@ -265,6 +317,17 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
   result.words.resize(global_word_count);
 
   auto tail_base = shaders.size() * jump_node_word_count;
+  bool all_have_ir = true;
+  for (const auto &shader : shaders) {
+    if (!shader.ir.has_value()) {
+      all_have_ir = false;
+      break;
+    }
+  }
+  if (all_have_ir) {
+    result.ir.valid = true;
+    result.ir.shaders.reserve(shaders.size());
+  }
   for (auto shader_index = std::size_t{}; shader_index < shaders.size();
        ++shader_index) {
     const auto &shader = shaders[shader_index];
@@ -275,6 +338,13 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
           std::bit_cast<std::int32_t>(shader.words[entry]));
       const auto global = tail_base + local - jump_node_word_count;
       result.words[jump_base + entry] = static_cast<std::uint32_t>(global);
+    }
+    if (all_have_ir) {
+      auto relocated_ir = *shader.ir;
+      relocate_svm_shader_ir(
+          relocated_ir, static_cast<std::uint32_t>(tail_base),
+          static_cast<std::uint32_t>(jump_node_word_count));
+      result.ir.shaders.push_back(std::move(relocated_ir));
     }
     const auto tail = std::span{shader.words}.subspan(jump_node_word_count);
     std::copy(tail.begin(), tail.end(), result.words.data() + tail_base);
@@ -354,19 +424,29 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
         occupied_kernel[index].value_or(KernelShader{}));
   }
   result.shader_node_types_used.reserve(local.size());
+  result.shader_surface_entry_usage.reserve(local.size());
   result.shader_metadata.reserve(local.size());
   result.shader_attribute_ids_in_request_order.reserve(local.size());
   result.shader_attribute_ids_used.reserve(local.size());
+  result.surface_closure_usage = ClosureUsage::none();
   for (const auto &shader : local) {
     result.kernel_features |= shader.metadata.kernel_features;
+    result.surface_closure_usage.merge(shader.metadata.surface_closure_usage);
     // Scene::max_closure_global starts at one, then includes the permanently
     // referenced default Principled graph (12). A future persistent scene
     // updater must also retain the previous high watermark just as Cycles
     // does, rather than shrinking live allocations.
     result.max_closures = std::max(
         result.max_closures, std::min(shader.metadata.num_closures, 64u));
+    if (shader.metadata.has_surface) {
+      result.max_surface_closures = std::max(
+          result.max_surface_closures,
+          std::min(shader.metadata.surface_num_closures, 64u));
+    }
     result.shader_metadata.emplace_back(shader.metadata);
     result.shader_node_types_used.emplace_back(shader.node_types_used);
+    result.shader_surface_entry_usage.emplace_back(
+        shader.usage_for(SHADER_TYPE_SURFACE));
     auto &ordered_ids =
         result.shader_attribute_ids_in_request_order.emplace_back();
     ordered_ids.reserve(shader.attribute_requests.size());
@@ -378,6 +458,8 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
     std::ranges::sort(ids);
     ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
   }
+  result.max_surface_closures =
+      std::min(result.max_surface_closures, result.max_closures);
   result.table = link_shader_table(local);
   if (result.table.valid) {
     result.named_attributes = attribute_ids.bindings();
@@ -386,6 +468,7 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
   } else {
     result.kernel_shaders.clear();
     result.shader_metadata.clear();
+    result.shader_surface_entry_usage.clear();
   }
   return result;
 }

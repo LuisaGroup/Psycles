@@ -54,6 +54,10 @@ public:
         Expr<std::uint32_t> storage_capacity,
         Expr<std::uint32_t> storage_block_size) const noexcept;
 
+    [[nodiscard]] bool has_summary_callable() const noexcept {
+        return _storage != nullptr;
+    }
+
     [[nodiscard]] const IntersectShadowCallable &
     summary_callable() const noexcept;
 };
@@ -123,7 +127,8 @@ void sort_shadow_intersection_batch(
 [[nodiscard]] std::shared_ptr<const ShadowIntersectionComponent>
 make_shadow_intersection_component(
     const std::shared_ptr<LuisaSceneData> &scene,
-    std::shared_ptr<const ShadowIntersectionBatchStorage> storage = {}) noexcept;
+    std::shared_ptr<const ShadowIntersectionBatchStorage> storage = {},
+    std::uint32_t max_transparent_bounces = ~0u) noexcept;
 
 [[nodiscard]] ShadowTraceCallables make_shadow_trace_callables(
     const std::shared_ptr<LuisaSceneData> &scene,

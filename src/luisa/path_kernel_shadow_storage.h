@@ -26,25 +26,77 @@ namespace psycles::luisa_backend::detail {
 class ShadowIntersectionBatchStorage {
 
 private:
-    luisa::compute::SOA<ShadowIntersectionBatchCall> _batches;
+    // Flat uint2 SoA layout (13 uint2 words = 104B per invocation):
+    //   slots [hit*3 + 0]: (instance, primitive)
+    //   slots [hit*3 + 1]: (as<uint>(distance), hit_type)
+    //   slots [hit*3 + 2]: (as<uint>(barycentric.x), as<uint>(barycentric.y))
+    //   slot  [12]:        ((count & 7u) | ((blocked & 1u) << 3u), total)
+    luisa::compute::Buffer<luisa::uint2> _records;
     std::uint32_t _capacity{};
 
 public:
+    static constexpr std::uint32_t words_per_hit = 3u;
+    static constexpr std::uint32_t summary_slot =
+        static_cast<std::uint32_t>(shadow_intersection_batch_capacity) *
+        words_per_hit;
+    static constexpr std::uint32_t total_uint2_slots = summary_slot + 1u;
+
     ShadowIntersectionBatchStorage(luisa::compute::Device &device,
                                    std::uint32_t capacity) noexcept;
 
     [[nodiscard]] std::uint32_t capacity() const noexcept;
+
+    [[nodiscard]] std::size_t size_bytes() const noexcept {
+        return _records.size_bytes();
+    }
 
     [[nodiscard]] luisa::compute::Var<ShadowIntersectionCall>
     read(luisa::compute::Expr<std::uint32_t> invocation,
          luisa::compute::Expr<std::uint32_t> hit_index,
          luisa::compute::Expr<std::uint32_t> runtime_capacity) const noexcept;
 
+    [[nodiscard]] luisa::compute::UInt2
+    read_identity(luisa::compute::Expr<std::uint32_t> invocation,
+                  luisa::compute::Expr<std::uint32_t> hit_index,
+                  luisa::compute::Expr<std::uint32_t> runtime_capacity) const noexcept;
+
+    [[nodiscard]] luisa::compute::Float
+    read_distance(luisa::compute::Expr<std::uint32_t> invocation,
+                  luisa::compute::Expr<std::uint32_t> hit_index,
+                  luisa::compute::Expr<std::uint32_t> runtime_capacity) const noexcept;
+
     void write(luisa::compute::Expr<std::uint32_t> invocation,
                luisa::compute::Expr<std::uint32_t> hit_index,
                const luisa::compute::Var<ShadowIntersectionCall> &hit,
                luisa::compute::Expr<std::uint32_t> runtime_capacity) const
         noexcept;
+
+    void write_summary(
+        luisa::compute::Expr<std::uint32_t> invocation,
+        luisa::compute::Expr<std::uint32_t> count,
+        luisa::compute::Expr<std::uint32_t> total,
+        luisa::compute::Expr<std::uint32_t> blocked,
+        luisa::compute::Expr<std::uint32_t> runtime_capacity) const noexcept;
+
+    [[nodiscard]] luisa::compute::Var<ShadowIntersectionSummaryCall>
+    read_summary(
+        luisa::compute::Expr<std::uint32_t> invocation,
+        luisa::compute::Expr<std::uint32_t> runtime_capacity) const noexcept;
+
+    void write_batch(
+        luisa::compute::Expr<std::uint32_t> invocation,
+        const luisa::compute::Var<ShadowIntersectionBatchCall> &batch,
+        luisa::compute::Expr<std::uint32_t> runtime_capacity) const noexcept;
+
+    [[nodiscard]] luisa::compute::Var<ShadowIntersectionBatchCall>
+    read_batch(
+        luisa::compute::Expr<std::uint32_t> invocation,
+        luisa::compute::Expr<std::uint32_t> runtime_capacity) const noexcept;
+
+    void relocate(
+        luisa::compute::Expr<std::uint32_t> source,
+        luisa::compute::Expr<std::uint32_t> destination,
+        luisa::compute::Expr<std::uint32_t> runtime_capacity) const noexcept;
 
     // Materialization is intentionally a consumer-side operation. Calling it
     // only after the summary RayQuery callable returns keeps the four retained

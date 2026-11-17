@@ -81,6 +81,27 @@ def _arguments(scene: Any) -> argparse.Namespace:
         help="case-insensitive substring required in the selected device",
     )
     parser.add_argument(
+        "--metalrt",
+        choices=("AUTO", "ON", "OFF"),
+        default=None,
+        help="optional Cycles MetalRT intersection mode when using METAL",
+    )
+    parser.add_argument(
+        "--warmup-samples",
+        type=_nonnegative_integer,
+        default=0,
+        help="optional untracked warmup sample count rendered before timing",
+    )
+    parser.add_argument(
+        "--warmup-min-seconds",
+        type=float,
+        default=3.5,
+        help=(
+            "minimum warmup window in seconds so background Metal PSO "
+            "specialization finishes before the timed render"
+        ),
+    )
+    parser.add_argument(
         "--sampling-pattern",
         default="TABULATED_SOBOL",
         help="Cycles sampling pattern used by the reference render",
@@ -106,7 +127,8 @@ def _configure_cycles_device(
     scene: Any,
     requested_type: str,
     requested_name: str,
-) -> list[dict[str, Any]]:
+    metalrt_mode: str | None = None,
+) -> tuple[list[dict[str, Any]], str | None]:
     compute_type = requested_type.strip().upper()
     name_filter = requested_name.strip().casefold()
     if not compute_type:
@@ -135,7 +157,7 @@ def _configure_cycles_device(
                 f"{requested_name!r}"
             )
         scene.cycles.device = "CPU"
-        return [_device_record(device) for device in selected]
+        return [_device_record(device) for device in selected], None
 
     try:
         preferences.compute_device_type = compute_type
@@ -143,6 +165,16 @@ def _configure_cycles_device(
         raise RuntimeError(
             f"Cycles compute backend {compute_type!r} is unavailable"
         ) from exception
+    active_metalrt: str | None = None
+    if compute_type == "METAL":
+        if metalrt_mode is not None:
+            if not hasattr(preferences, "metalrt"):
+                raise RuntimeError(
+                    "Cycles preferences do not expose 'metalrt' on this build"
+                )
+            preferences.metalrt = metalrt_mode
+        if hasattr(preferences, "metalrt"):
+            active_metalrt = str(preferences.metalrt)
     preferences.get_devices()
     selected = [
         device
@@ -166,7 +198,7 @@ def _configure_cycles_device(
             f"{requested_name!r}; available devices: {available}"
         )
     scene.cycles.device = "GPU"
-    return [_device_record(device) for device in selected]
+    return [_device_record(device) for device in selected], active_metalrt
 
 
 def _configure_view_layer_passes(view_layer: Any) -> None:
@@ -260,10 +292,11 @@ def _main() -> None:
         else "BLENDER_EEVEE"
     )
     scene.render.engine = "CYCLES"
-    enabled_devices = _configure_cycles_device(
+    enabled_devices, active_metalrt = _configure_cycles_device(
         scene,
         arguments.cycles_device,
         arguments.device_name,
+        arguments.metalrt,
     )
     scene.cycles.samples = samples
     scene.cycles.seed = seed
@@ -291,9 +324,31 @@ def _main() -> None:
 
     enabled_view_layers = _configure_enabled_view_layer_passes(scene)
 
+    warmup_elapsed: float | None = None
+    if arguments.warmup_samples > 0:
+        print("=== PSYCLES_CYCLES_WARMUP_BEGIN ===", flush=True)
+        warmup_begin = time.perf_counter()
+        scene.cycles.samples = arguments.warmup_samples
+        bpy.ops.render.render(write_still=False)
+        first_warmup_elapsed = time.perf_counter() - warmup_begin
+        if (
+            arguments.warmup_min_seconds > 0.0
+            and first_warmup_elapsed < arguments.warmup_min_seconds
+        ):
+            time.sleep(arguments.warmup_min_seconds - first_warmup_elapsed)
+        scene.cycles.samples = min(arguments.warmup_samples, 4)
+        bpy.ops.render.render(write_still=False)
+        warmup_elapsed = time.perf_counter() - warmup_begin
+        scene.cycles.samples = samples
+        scene.render.filepath = str(output)
+        print("=== PSYCLES_CYCLES_WARMUP_END ===", flush=True)
+        print("=== PSYCLES_CYCLES_TIMED_RENDER_BEGIN ===", flush=True)
+
     begin = time.perf_counter()
     bpy.ops.render.render(write_still=True)
     elapsed = time.perf_counter() - begin
+    if arguments.warmup_samples > 0:
+        print("=== PSYCLES_CYCLES_TIMED_RENDER_END ===", flush=True)
 
     metadata = {
         "schema": "psycles.cycles-golden.v2",
@@ -307,6 +362,11 @@ def _main() -> None:
             arguments.cycles_device.strip().upper()
         ),
         "cycles_enabled_devices": enabled_devices,
+        **(
+            {"cycles_metalrt": active_metalrt}
+            if active_metalrt is not None
+            else {}
+        ),
         "frame": scene.frame_current,
         "camera": scene.camera.name if scene.camera else None,
         "width": width,
@@ -339,6 +399,14 @@ def _main() -> None:
         "denoising": scene.cycles.use_denoising,
         "transparent": scene.render.film_transparent,
         "elapsed_seconds": elapsed,
+        **(
+            {
+                "warmup_samples": arguments.warmup_samples,
+                "warmup_elapsed_seconds": warmup_elapsed,
+            }
+            if warmup_elapsed is not None
+            else {}
+        ),
         "passes": list(_GOLDEN_PASSES),
         "view_layers": enabled_view_layers,
     }

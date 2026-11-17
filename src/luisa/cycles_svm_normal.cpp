@@ -253,16 +253,31 @@ void node_normal_map(Cursor &cursor, Stack &stack,
   Bool linear_interpolate_strength = false;
   Bool active = true;
 
-  $if(space == static_cast<std::uint32_t>(NODE_NORMAL_MAP_TANGENT)) {
+  const auto nm_usage = kernel_globals.normal_map_usage();
+  const auto attr_summary = kernel_globals.surface_attribute_summary();
+  const bool may_tangent =
+      (nm_usage.space_mask &
+       (1u << static_cast<std::uint32_t>(NODE_NORMAL_MAP_TANGENT))) != 0u;
+  const bool may_non_tangent =
+      (nm_usage.space_mask &
+       ~(1u << static_cast<std::uint32_t>(NODE_NORMAL_MAP_TANGENT))) != 0u;
+  const bool may_undisplaced =
+      nm_usage.uses_original_base && attr_summary.has_undisplaced_normal;
+
+  const auto emit_tangent_space = [&]() noexcept {
     const Bool eligible =
         (shader_data.object != object_none) &
         ((shader_data.type & primitive_triangle) != 0u);
     $if(!eligible) { active = false; }
     $else {
-      const auto tangent_descriptor = find_attribute(
-          kernel_globals, shader_data, attr.cast<luisa::ulong>());
-      const auto sign_descriptor = find_attribute(
-          kernel_globals, shader_data, attr_sign.cast<luisa::ulong>());
+      const UInt base_attr_offset =
+          kernel_globals.object_attribute_map_offset(shader_data.object);
+      const auto tangent_descriptor = find_attribute_from_base_offset(
+          kernel_globals, shader_data, base_attr_offset,
+          attr.cast<luisa::ulong>());
+      const auto sign_descriptor = find_attribute_from_base_offset(
+          kernel_globals, shader_data, base_attr_offset,
+          attr_sign.cast<luisa::ulong>());
       $if(!is_attribute_found(tangent_descriptor) |
           !is_attribute_found(sign_descriptor)) {
         active = false;
@@ -274,26 +289,29 @@ void node_normal_map(Cursor &cursor, Stack &stack,
             kernel_globals, shader_data, sign_descriptor);
         Float3 base_normal;
         $if((shader_data.shader & shader_smooth_normal) != 0u) {
-          $if(use_original_base != 0u) {
-            const auto undisplaced = find_attribute(
-                kernel_globals, shader_data,
-                static_cast<luisa::ulong>(ATTR_STD_NORMAL_UNDISPLACED));
-            $if(is_attribute_found(undisplaced)) {
-              base_normal = primitive_surface_attribute_float3(
-                  kernel_globals, shader_data, undisplaced);
-              linear_interpolate_strength = true;
-            }
-            $else {
+          if (may_undisplaced) {
+            Bool got_undisplaced = false;
+            $if(use_original_base != 0u) {
+              const auto undisplaced = find_attribute_from_base_offset(
+                  kernel_globals, shader_data, base_attr_offset,
+                  static_cast<luisa::ulong>(ATTR_STD_NORMAL_UNDISPLACED));
+              $if(is_attribute_found(undisplaced)) {
+                base_normal = primitive_surface_attribute_float3(
+                    kernel_globals, shader_data, undisplaced);
+                linear_interpolate_strength = true;
+                got_undisplaced = true;
+              };
+            };
+            $if(!got_undisplaced) {
               base_normal = triangle_smooth_normal_unnormalized_object_space(
                   kernel_globals, transform_state, shader_data,
                   object_motion_enabled);
             };
-          }
-          $else {
+          } else {
             base_normal = triangle_smooth_normal_unnormalized_object_space(
                 kernel_globals, transform_state, shader_data,
                 object_motion_enabled);
-          };
+          }
         }
         $else {
           base_normal = shader_data.Ng;
@@ -317,8 +335,9 @@ void node_normal_map(Cursor &cursor, Stack &stack,
         $if(is_backfacing) { normal = -normal; };
       };
     };
-  }
-  $else {
+  };
+
+  const auto emit_non_tangent_space = [&]() noexcept {
     linear_interpolate_strength = true;
     $if((space == static_cast<std::uint32_t>(NODE_NORMAL_MAP_BLENDER_OBJECT)) |
         (space == static_cast<std::uint32_t>(NODE_NORMAL_MAP_BLENDER_WORLD))) {
@@ -334,6 +353,17 @@ void node_normal_map(Cursor &cursor, Stack &stack,
     $else { normal = safe_normalize_cycles(normal); };
     $if(is_backfacing) { normal = -normal; };
   };
+
+  if (may_tangent && may_non_tangent) {
+    $if(space == static_cast<std::uint32_t>(NODE_NORMAL_MAP_TANGENT)) {
+      emit_tangent_space();
+    }
+    $else { emit_non_tangent_space(); };
+  } else if (may_tangent) {
+    emit_tangent_space();
+  } else if (may_non_tangent) {
+    emit_non_tangent_space();
+  }
 
   $if(active) {
     $if(linear_interpolate_strength & (strength != 1.0f)) {

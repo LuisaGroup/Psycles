@@ -116,7 +116,106 @@ namespace abi = ::psycles::compiler::cycles_svm;
           .dy = cycles_transform::direction_transposed(transform, value.dy)};
 }
 
+[[nodiscard]] bool shader_in_domain(
+    const LuisaSceneData &scene, std::uint32_t shader_index,
+    PathCyclesSvmShaderDomain domain) noexcept {
+  const auto &compilation = scene.cycles_svm->compilation;
+  const auto bg_idx =
+      scene.cycles_background_shader_id != ~0u
+          ? (scene.cycles_background_shader_id & svm::shader_mask)
+          : ~0u;
+  const auto flags =
+      static_cast<std::uint32_t>(compilation.kernel_shaders[shader_index].flags);
+  const auto &entry = compilation.shader_surface_entry_usage[shader_index];
+  switch (domain) {
+    case PathCyclesSvmShaderDomain::all_shaders:
+      return true;
+    case PathCyclesSvmShaderDomain::surface_only:
+      return !(shader_index == bg_idx &&
+               entry.node_types_used[abi::NODE_CLOSURE_BACKGROUND]);
+    case PathCyclesSvmShaderDomain::shadow_surface:
+      return (flags &
+              static_cast<std::uint32_t>(abi::SD_HAS_TRANSPARENT_SHADOW |
+                                         abi::SD_RAY_PORTAL)) != 0u &&
+             (flags & static_cast<std::uint32_t>(abi::SD_HAS_ONLY_VOLUME)) == 0u;
+    case PathCyclesSvmShaderDomain::light_emission:
+      return (flags & static_cast<std::uint32_t>(abi::SD_HAS_CONSTANT_EMISSION)) ==
+                 0u &&
+             ((flags & static_cast<std::uint32_t>(abi::SD_HAS_EMISSION)) != 0u ||
+              entry.node_types_used[abi::NODE_CLOSURE_EMISSION] ||
+              entry.node_types_used[abi::NODE_CLOSURE_BACKGROUND] ||
+              shader_index == bg_idx);
+    case PathCyclesSvmShaderDomain::background:
+      return shader_index == bg_idx;
+  }
+  return true;
+}
+
 } // namespace
+
+bool cycles_svm_has_domain_metadata(const LuisaSceneData &scene) noexcept {
+  if (!scene.cycles_svm) {
+    return false;
+  }
+  const auto &compilation = scene.cycles_svm->compilation;
+  const auto count = static_cast<std::size_t>(compilation.table.shader_count);
+  return compilation.table.valid &&
+         compilation.shader_metadata.size() == count &&
+         compilation.shader_surface_entry_usage.size() == count &&
+         compilation.kernel_shaders.size() == count;
+}
+
+abi::ShaderEntryUsage cycles_svm_domain_entry_usage(
+    const LuisaSceneData &scene,
+    PathCyclesSvmShaderDomain domain) noexcept {
+  const auto &compilation = scene.cycles_svm->compilation;
+  const auto table_usage =
+      compilation.table.usage_for(abi::SHADER_TYPE_SURFACE);
+  if (!cycles_svm_has_domain_metadata(scene) ||
+      domain == PathCyclesSvmShaderDomain::all_shaders) {
+    return table_usage;
+  }
+  abi::ShaderEntryUsage result{};
+  result.node_types_used[abi::NODE_SHADER_JUMP] = true;
+  result.node_types_used[abi::NODE_END] = true;
+  result.noise_usage = abi::NoiseUsage::none();
+  const auto count = compilation.table.shader_count;
+  for (std::uint32_t i = 0u; i < count; ++i) {
+    if (!shader_in_domain(scene, i, domain)) {
+      continue;
+    }
+    const auto &entry = compilation.shader_surface_entry_usage[i];
+    for (std::size_t op = 0u; op < entry.node_types_used.size(); ++op) {
+      result.node_types_used[op] =
+          result.node_types_used[op] || entry.node_types_used[op];
+    }
+    result.peak_stack_usage =
+        std::max(result.peak_stack_usage, entry.peak_stack_usage);
+    result.noise_usage.shape_mask |= entry.noise_usage.shape_mask;
+  }
+  if (domain == PathCyclesSvmShaderDomain::shadow_surface ||
+      domain == PathCyclesSvmShaderDomain::light_emission) {
+    // Preserve the pre-optimization AST Stack array extent checked by
+    // test_luisa_cycles_svm_stack_extent; LLVM SROA drops unused lanes.
+    result.peak_stack_usage = table_usage.peak_stack_usage;
+  }
+  return result;
+}
+
+std::vector<std::uint8_t> cycles_svm_domain_shader_mask(
+    const LuisaSceneData &scene,
+    PathCyclesSvmShaderDomain domain) noexcept {
+  if (!cycles_svm_has_domain_metadata(scene) ||
+      domain == PathCyclesSvmShaderDomain::all_shaders) {
+    return {};
+  }
+  const auto count = scene.cycles_svm->compilation.table.shader_count;
+  std::vector<std::uint8_t> mask(count, 0u);
+  for (std::uint32_t i = 0u; i < count; ++i) {
+    mask[i] = shader_in_domain(scene, i, domain) ? 1u : 0u;
+  }
+  return mask;
+}
 
 PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     std::shared_ptr<LuisaSceneData> scene,
@@ -124,13 +223,15 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     : PathCyclesSvmKernelGlobals(
           std::move(scene), context.parameters, context.camera_projection,
           context.query.reflective_caustics,
-          context.query.refractive_caustics) {}
+          context.query.refractive_caustics,
+          PathCyclesSvmShaderDomain::surface_only) {}
 
 PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     std::shared_ptr<LuisaSceneData> scene,
     const Var<RenderKernelParameters> &parameters,
     CameraProjection camera_projection, Expr<bool> reflective_caustics,
-    Expr<bool> refractive_caustics) noexcept
+    Expr<bool> refractive_caustics,
+    PathCyclesSvmShaderDomain domain) noexcept
     : _scene{std::move(scene)},
       _parameters{parameters},
       _camera_projection{camera_projection},
@@ -144,12 +245,173 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
                "Native Cycles SVM surface requires a finalized scene image.");
   _has_shadow_terminator_shading_offset =
       _scene->cycles_svm->objects->image.has_shadow_terminator_shading_offset();
+  _has_curves = !_scene->curve_geometries.empty();
   const auto &compilation = _scene->cycles_svm->compilation;
   if (compilation.table.valid &&
       compilation.shader_metadata.size() == compilation.table.shader_count) {
-    _may_have_thin_film = std::ranges::any_of(
-        compilation.shader_metadata,
-        [](const auto &metadata) { return metadata.may_have_thin_film; });
+    const bool filter_domain =
+        cycles_svm_has_domain_metadata(*_scene) &&
+        domain != PathCyclesSvmShaderDomain::all_shaders;
+    bool thin_film = false;
+    auto closure_u = abi::ClosureUsage::none();
+    std::uint32_t mix_mask = 0u;
+    std::uint32_t nm_space_mask = 0u;
+    bool nm_orig_base = false;
+    bool noise_dist = false;
+    bool noise_col = false;
+    std::uint32_t tc_mask = 0u;
+    bool bump_obj = false;
+    bool curves_extrap = false;
+    std::uint64_t math_mask = 0ull;
+    std::uint64_t vec_math_mask = 0ull;
+    std::uint32_t map_type_mask = 0u;
+    bool map_rot = false;
+    std::uint32_t mr_type_mask = 0u;
+    std::uint32_t vor_dim_mask = 0u;
+    std::uint32_t vor_feat_mask = 0u;
+    std::uint32_t vor_met_mask = 0u;
+    bool vor_detail = false;
+    bool vor_norm = false;
+    bool vor_color = false;
+    bool vor_pos = false;
+    bool vor_rad = false;
+    std::uint32_t wave_ty_mask = 0u;
+    std::uint32_t wave_prof_mask = 0u;
+    bool wave_dist = false;
+    const auto count = compilation.table.shader_count;
+    for (std::uint32_t i = 0u; i < count; ++i) {
+      if (filter_domain && !shader_in_domain(*_scene, i, domain)) {
+        continue;
+      }
+      const auto &meta = compilation.shader_metadata[i];
+      thin_film = thin_film || meta.may_have_thin_film;
+      closure_u.merge(meta.surface_closure_usage);
+      mix_mask |= meta.mix_blend_mask;
+      nm_space_mask |= meta.normal_map_space_mask;
+      nm_orig_base = nm_orig_base || meta.normal_map_uses_original_base;
+      noise_dist = noise_dist || meta.noise_may_have_distortion;
+      noise_col = noise_col || meta.noise_may_need_color;
+      tc_mask |= meta.tex_coord_mask;
+      bump_obj = bump_obj || meta.bump_uses_object_space;
+      curves_extrap = curves_extrap || meta.curves_may_extrapolate;
+      math_mask |= meta.math_type_mask;
+      vec_math_mask |= meta.vector_math_type_mask;
+      map_type_mask |= meta.mapping_type_mask;
+      map_rot = map_rot || meta.mapping_may_rotate;
+      mr_type_mask |= meta.map_range_type_mask;
+      vor_dim_mask |= meta.voronoi_dimension_mask;
+      vor_feat_mask |= meta.voronoi_feature_mask;
+      vor_met_mask |= meta.voronoi_metric_mask;
+      vor_detail = vor_detail || meta.voronoi_may_have_detail;
+      vor_norm = vor_norm || meta.voronoi_may_normalize;
+      vor_color = vor_color || meta.voronoi_may_need_color;
+      vor_pos = vor_pos || meta.voronoi_may_need_position;
+      vor_rad = vor_rad || meta.voronoi_may_need_radius;
+      wave_ty_mask |= meta.wave_type_mask;
+      wave_prof_mask |= meta.wave_profile_mask;
+      wave_dist = wave_dist || meta.wave_may_have_distortion;
+    }
+    _may_have_thin_film = thin_film;
+    _closure_usage = filter_domain ? closure_u : compilation.surface_closure_usage;
+    _mix_blend_mask = mix_mask;
+    _normal_map_usage = {
+        .space_mask = nm_space_mask,
+        .uses_original_base = nm_orig_base};
+    _noise_static_options = {
+        .may_have_distortion = noise_dist,
+        .may_need_color = noise_col};
+    _tex_coord_mask = tc_mask;
+    _bump_uses_object_space = bump_obj;
+    _curves_may_extrapolate = curves_extrap;
+    _math_type_mask = math_mask;
+    _vector_math_type_mask = vec_math_mask;
+    _mapping_static_options = {
+        .type_mask = map_type_mask,
+        .may_rotate = map_rot};
+    _map_range_type_mask = mr_type_mask;
+    _voronoi_static_options = {
+        .dimension_mask = vor_dim_mask,
+        .feature_mask = vor_feat_mask,
+        .metric_mask = vor_met_mask,
+        .may_have_detail = vor_detail,
+        .may_normalize = vor_norm,
+        .may_need_color = vor_color,
+        .may_need_position = vor_pos,
+        .may_need_radius = vor_rad};
+    _wave_static_options = {
+        .type_mask = wave_ty_mask,
+        .profile_mask = wave_prof_mask,
+        .may_have_distortion = wave_dist};
+  }
+  const auto &geom_img = _scene->cycles_svm->geometry->image;
+  const bool has_curves = !geom_img.curves.empty();
+  const bool has_points = !geom_img.attributes.points.empty();
+  std::uint32_t elem_mask = 0u;
+  std::uint32_t type_mask = 0u;
+  bool has_undisp = false;
+  bool has_undisp_pos = false;
+  for (const auto &entry : geom_img.attributes.attribute_map) {
+    if (entry.id == static_cast<std::uint64_t>(abi::ATTR_STD_NONE)) {
+      continue;
+    }
+    const auto elem = static_cast<std::uint32_t>(entry.element);
+    if (elem == static_cast<std::uint32_t>(abi::ATTR_ELEMENT_NONE)) {
+      continue;
+    }
+    elem_mask |= elem;
+    const auto ty = static_cast<std::uint32_t>(entry.type);
+    const std::uint32_t ty_bit = (ty < 32u) ? (1u << ty) : 0u;
+    type_mask |= ty_bit;
+    if (entry.id == static_cast<std::uint64_t>(abi::ATTR_STD_NORMAL_UNDISPLACED)) {
+      has_undisp = true;
+    }
+    if (entry.id == static_cast<std::uint64_t>(abi::ATTR_STD_POSITION_UNDISPLACED)) {
+      has_undisp_pos = true;
+    }
+    auto &per_id = _attribute_summaries_by_id[entry.id];
+    if (per_id.element_mask == ~0u && per_id.type_mask == ~0u) {
+      per_id = {
+          .element_mask = 0u,
+          .type_mask = 0u,
+          .has_curves = has_curves,
+          .has_points = has_points,
+          .has_undisplaced_normal = false,
+          .has_undisplaced_position = false};
+    }
+    per_id.element_mask |= elem;
+    per_id.type_mask |= ty_bit;
+  }
+  for (auto &[id, per_id] : _attribute_summaries_by_id) {
+    (void)id;
+    per_id.has_undisplaced_normal = has_undisp;
+    per_id.has_undisplaced_position = has_undisp_pos;
+  }
+  _has_attribute_summary_table = true;
+  _surface_attribute_summary = {
+      .element_mask = elem_mask,
+      .type_mask = type_mask,
+      .has_curves = has_curves,
+      .has_points = has_points,
+      .has_undisplaced_normal = has_undisp,
+      .has_undisplaced_position = has_undisp_pos};
+
+  const auto &bindings = _scene->cycles_svm->image_bindings;
+  _has_bicubic_images = false;
+  _has_failed_images = false;
+  _contiguous_texture_slots = !bindings.empty();
+  _base_texture_slot = bindings.empty() ? 0u : bindings.front().texture_slot;
+  _image_binding_count = static_cast<std::uint32_t>(bindings.size());
+  for (std::size_t i = 0u; i < bindings.size(); ++i) {
+    const auto &b = bindings[i];
+    if ((b.sampler & cycles_svm_image_interpolation_mask) == 2u) {
+      _has_bicubic_images = true;
+    }
+    if ((b.sampler & cycles_svm_image_load_failed_flag) != 0u) {
+      _has_failed_images = true;
+    }
+    if (b.texture_slot != _base_texture_slot + static_cast<std::uint32_t>(i)) {
+      _contiguous_texture_slots = false;
+    }
   }
 }
 
@@ -178,6 +440,93 @@ bool PathCyclesSvmKernelGlobals::has_shadow_terminator_shading_offset() const no
 
 bool PathCyclesSvmKernelGlobals::may_have_thin_film() const noexcept {
   return _may_have_thin_film;
+}
+
+abi::ClosureUsage PathCyclesSvmKernelGlobals::closure_usage() const noexcept {
+  return _closure_usage;
+}
+
+svm::SurfaceAttributeSummary
+PathCyclesSvmKernelGlobals::surface_attribute_summary() const noexcept {
+  return _surface_attribute_summary;
+}
+
+svm::SurfaceAttributeSummary
+PathCyclesSvmKernelGlobals::attribute_summary_for_id(
+    std::uint64_t id) const noexcept {
+  if (!_has_attribute_summary_table) {
+    return _surface_attribute_summary;
+  }
+  if (const auto it = _attribute_summaries_by_id.find(id);
+      it != _attribute_summaries_by_id.end()) {
+    return it->second;
+  }
+  return {
+      .element_mask = 0u,
+      .type_mask = 0u,
+      .has_curves = _surface_attribute_summary.has_curves,
+      .has_points = _surface_attribute_summary.has_points,
+      .has_undisplaced_normal =
+          _surface_attribute_summary.has_undisplaced_normal,
+      .has_undisplaced_position =
+          _surface_attribute_summary.has_undisplaced_position};
+}
+
+svm::NormalMapUsage
+PathCyclesSvmKernelGlobals::normal_map_usage() const noexcept {
+  return _normal_map_usage;
+}
+
+std::uint32_t PathCyclesSvmKernelGlobals::mix_blend_mask() const noexcept {
+  return _mix_blend_mask;
+}
+
+svm::NoiseStaticOptions
+PathCyclesSvmKernelGlobals::noise_static_options() const noexcept {
+  return _noise_static_options;
+}
+
+std::uint32_t PathCyclesSvmKernelGlobals::tex_coord_mask() const noexcept {
+  return _tex_coord_mask;
+}
+
+bool PathCyclesSvmKernelGlobals::bump_uses_object_space() const noexcept {
+  return _bump_uses_object_space;
+}
+
+bool PathCyclesSvmKernelGlobals::curves_may_extrapolate() const noexcept {
+  return _curves_may_extrapolate;
+}
+
+std::uint64_t PathCyclesSvmKernelGlobals::math_type_mask() const noexcept {
+  return _math_type_mask;
+}
+
+std::uint64_t PathCyclesSvmKernelGlobals::vector_math_type_mask() const noexcept {
+  return _vector_math_type_mask;
+}
+
+svm::MappingStaticOptions
+PathCyclesSvmKernelGlobals::mapping_static_options() const noexcept {
+  return _mapping_static_options;
+}
+
+std::uint32_t PathCyclesSvmKernelGlobals::map_range_type_mask() const noexcept {
+  return _map_range_type_mask;
+}
+
+svm::VoronoiStaticOptions
+PathCyclesSvmKernelGlobals::voronoi_static_options() const noexcept {
+  return _voronoi_static_options;
+}
+
+svm::WaveStaticOptions
+PathCyclesSvmKernelGlobals::wave_static_options() const noexcept {
+  return _wave_static_options;
+}
+
+bool PathCyclesSvmKernelGlobals::has_curves() const noexcept {
+  return _has_curves;
 }
 
 std::optional<Float> PathCyclesSvmKernelGlobals::object_volume_density(
@@ -233,6 +582,11 @@ Float3 PathCyclesSvmKernelGlobals::film_rgb_to_y() const noexcept {
 Float3 PathCyclesSvmKernelGlobals::primitive_tangent(
     const svm::ShaderData &shader_data) const noexcept {
   Float3 result = svm_detail::normalize_cycles(shader_data.dPdu);
+  if (attribute_summary_for_id(
+          static_cast<std::uint64_t>(abi::ATTR_STD_GENERATED))
+          .element_mask == 0u) {
+    return result;
+  }
   const auto generated = svm::find_attribute(
       *this, shader_data, static_cast<luisa::ulong>(abi::ATTR_STD_GENERATED));
   const auto curve_or_point =
@@ -256,6 +610,11 @@ svm::Dual3 PathCyclesSvmKernelGlobals::primitive_tangent_derivative(
   svm::Dual3 result{.val = svm_detail::normalize_cycles(shader_data.dPdu),
                     .dx = make_float3(0.0f),
                     .dy = make_float3(0.0f)};
+  if (attribute_summary_for_id(
+          static_cast<std::uint64_t>(abi::ATTR_STD_GENERATED))
+          .element_mask == 0u) {
+    return result;
+  }
   const auto generated = svm::find_attribute(
       *this, shader_data, static_cast<luisa::ulong>(abi::ATTR_STD_GENERATED));
   const auto curve_or_point =
@@ -489,6 +848,29 @@ Float3 PathCyclesSvmKernelGlobals::object_inverse_position_transform(
 Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
     svm::ShaderData &, Expr<std::int32_t> image_texture_id,
     const svm::Dual2 &uv) const noexcept {
+  if (const auto cid = svm_detail::try_const_int(image_texture_id)) {
+    constexpr auto magenta = luisa::make_float4(1.0f, 0.0f, 1.0f, 1.0f);
+    if (*cid < 0 ||
+        static_cast<std::size_t>(*cid) >=
+            _scene->cycles_svm->image_bindings.size()) {
+      return make_float4(magenta);
+    }
+    const auto &b =
+        _scene->cycles_svm->image_bindings[static_cast<std::size_t>(*cid)];
+    if ((b.sampler & cycles_svm_image_load_failed_flag) != 0u) {
+      return make_float4(magenta);
+    }
+    auto texture = _scene->texture_heap->tex2d(b.texture_slot);
+    auto sample_uv = uv.val;
+    sample_uv.y = 1.0f - sample_uv.y;
+    if ((b.sampler & cycles_svm_image_interpolation_mask) == 2u) {
+      return sample_cycles_texture_2d_bicubic(
+          texture, sample_uv, [&](Float u, Float v) noexcept {
+            return texture.sample(make_float2(u, v));
+          });
+    }
+    return texture.sample(sample_uv);
+  }
   if (!_scene->cycles_svm->image_binding_buffer) {
     dsl::unreachable(
         "image SVM node reached without a Cycles image binding table");
@@ -497,7 +879,10 @@ Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
   return svm_detail::sample_scene_image_2d(
       _scene->texture_heap,
       *_scene->cycles_svm->image_binding_buffer,
-      image_texture_id, uv);
+      image_texture_id, uv,
+      _has_bicubic_images, _has_failed_images,
+      _contiguous_texture_slots, _base_texture_slot,
+      _image_binding_count);
 }
 
 Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_3d(

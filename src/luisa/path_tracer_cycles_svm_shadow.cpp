@@ -6,6 +6,7 @@
 #include "path_tracer_cycles_svm_shader_data.h"
 
 #include <psycles/luisa/cycles_noise.h>
+#include <psycles/luisa/cycles_svm_translator.h>
 
 #include <algorithm>
 #include <utility>
@@ -22,8 +23,14 @@ CyclesSvmShadowShaderData setup_cycles_svm_ray_shader_data(
     Expr<luisa::float2> barycentric, Expr<float> distance,
     Expr<float> ray_dP, Expr<float> ray_dD, Expr<float> ray_time,
     Expr<unsigned> lcg_state,
-    const Var<RenderKernelParameters> &parameters) noexcept {
+    const Var<RenderKernelParameters> &parameters,
+    Var<InstanceGpu> *out_instance,
+    svm::TriangleVertices *out_vertices,
+    svm::TriangleNormals *out_normals) noexcept {
   const auto instance = scene->instance_buffer->read(instance_id);
+  if (out_instance != nullptr) {
+    *out_instance = instance;
+  }
   const auto object_index = instance.cycles_object_index;
   const auto primitive_index =
       instance.cycles_primitive_offset + primitive_id;
@@ -35,9 +42,17 @@ CyclesSvmShadowShaderData setup_cycles_svm_ray_shader_data(
         make_float4(t.y.x, t.y.y, t.y.z, t.y.w),
         make_float4(t.z.x, t.z.y, t.z.z, t.z.w));
   };
-  svm::TransformState transforms{parameters.camera_transform,
-                                 parameters.camera_inverse_transform,
-                                 unpack(object.tfm), unpack(object.itfm)};
+  svm::TransformState transforms{
+      parameters.camera_transform,
+      parameters.camera_inverse_transform,
+      [scene, object_index, unpack]() noexcept {
+        return unpack(
+            scene->cycles_svm->objects->object_buffer->read(object_index).tfm);
+      },
+      [scene, object_index, unpack]() noexcept {
+        return unpack(
+            scene->cycles_svm->objects->object_buffer->read(object_index).itfm);
+      }};
   const auto identity = make_float4x4(1.0f);
   svm::ShaderData sd{make_float3(0.0f),
                      make_float3(0.0f),
@@ -69,11 +84,23 @@ CyclesSvmShadowShaderData setup_cycles_svm_ray_shader_data(
   sd.object_flag =
       scene->cycles_svm->objects->object_flag_buffer->read(object_index);
   sd.type = object.primitive_type.cast<unsigned>();
+  const auto pos_offset = object.position_offset.cast<unsigned>();
   const auto triangle_setup = [&] {
     assume(sd.type == static_cast<unsigned>(abi::PRIMITIVE_TRIANGLE));
     sd.shader = scene->cycles_svm->geometry->triangle_shader_buffer->read(sd.prim);
-    cycles_svm_triangle_shader_setup(
-        kg, transforms, kg.triangle_vertices(sd.object, sd.prim), sd);
+    const auto indices = kg.triangle_vertex_indices(sd.prim);
+    const auto &vertex_buf = scene->cycles_svm->geometry->triangle_vertex_buffer;
+    const auto unpack_v = [](Var<abi::packed_float3> v) noexcept {
+      return make_float3(v.x, v.y, v.z);
+    };
+    const svm::TriangleVertices vertices{
+        .v0 = unpack_v(vertex_buf->read(pos_offset + indices.x)),
+        .v1 = unpack_v(vertex_buf->read(pos_offset + indices.y)),
+        .v2 = unpack_v(vertex_buf->read(pos_offset + indices.z))};
+    if (out_vertices != nullptr) {
+      *out_vertices = vertices;
+    }
+    cycles_svm_triangle_shader_setup(kg, transforms, vertices, sd, out_normals);
   };
   const auto curve_setup = [&] {
     cycles_svm_curve_shader_setup(scene, kg, transforms, instance, primitive_id, ray, sd);
@@ -124,8 +151,9 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
     // Caustic suppression is conditioned on diffuse visibility in Cycles.
     // SURFACE_SHADOW has no diffuse visibility bit, so both configurations
     // have the same effective behavior here.
-    const PathCyclesSvmKernelGlobals kg{scene, parameters,
-                                        scene->camera.projection, true, true};
+    const PathCyclesSvmKernelGlobals kg{
+        scene, parameters, scene->camera.projection, true, true,
+        PathCyclesSvmShaderDomain::shadow_surface};
     auto setup = setup_cycles_svm_shadow_shader_data(
         scene, kg, ray, intersection, ray_dP, ray_dD, context, parameters);
     auto &sd = setup.shader_data;
@@ -137,7 +165,14 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
     const auto volume_only =
         (sd.flag & static_cast<unsigned>(abi::SD_HAS_ONLY_VOLUME)) != 0u;
     surface.volume_boundary = volume_only.cast<unsigned>();
-    $if(!volume_only) {
+    const Bool eval_shadow_svm =
+        cycles_svm_has_domain_metadata(*scene)
+            ? (!volume_only &
+               ((sd.flag &
+                 static_cast<unsigned>(abi::SD_HAS_TRANSPARENT_SHADOW |
+                                       abi::SD_RAY_PORTAL)) != 0u))
+            : !volume_only;
+    $if(eval_shadow_svm) {
       const svm::PathState state{
           svm::path_ray_visibility_shadow, 0u,
           context.path.ray_depth,          context.path.transparent_depth,
@@ -145,21 +180,24 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
           context.path.transmission_depth,
           (scene->cycles_svm->kernel_features & svm::kernel_feature_node_portal)
               ? UInt{context.path.portal_depth} : UInt{0u}};
-      svm::EvaluationResult result;
-      const auto usage = scene->cycles_svm->compilation.table.usage_for(
-          abi::SHADER_TYPE_SURFACE);
-      svm::eval_nodes(kg, *scene->cycles_svm->word_buffer,
-                      abi::SHADER_TYPE_SURFACE,
-                      scene->cycles_svm->kernel_features,
-                      svm::kernel_feature_node_mask_surface_shadow,
-                      usage.node_types_used,
-                      setup.transforms, sd, state, result,
-                      std::max<std::size_t>(
-                          1u, usage.peak_stack_usage), usage.noise_usage);
-      $if(result.status !=
-          static_cast<unsigned>(svm::EvaluationStatus::ended)) {
-        dsl::unreachable("native Cycles shadow SVM did not reach NODE_END");
-      };
+      const auto usage = cycles_svm_domain_entry_usage(
+          *scene, PathCyclesSvmShaderDomain::shadow_surface);
+      const auto active_mask = cycles_svm_domain_shader_mask(
+          *scene, PathCyclesSvmShaderDomain::shadow_surface);
+      svm::translate_svm_nodes_assume_valid(svm::SvmTranslationRequest{
+          .kernel_globals = kg,
+          .table = scene->cycles_svm->compilation.table,
+          .words = *scene->cycles_svm->word_buffer,
+          .shader_type = abi::SHADER_TYPE_SURFACE,
+          .kernel_features = scene->cycles_svm->kernel_features,
+          .node_feature_mask = svm::kernel_feature_node_mask_surface_shadow,
+          .node_types_used = usage.node_types_used,
+          .transform_state = setup.transforms,
+          .shader_data = sd,
+          .path_state = state,
+          .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+          .noise_usage = usage.noise_usage,
+          .active_shader_mask = active_mask});
     };
     // surface_shader_transparency and the explicit ray-portal shadow veto.
     // Transparency is a spectrum; Cycles does not clamp it to [0, 1].

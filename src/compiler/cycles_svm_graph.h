@@ -5,6 +5,7 @@
 #pragma once
 
 #include <psycles/compiler/cycles_svm_attribute_request.h>
+#include <psycles/compiler/cycles_svm_closure_usage.h>
 #include <psycles/compiler/cycles_svm_types.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/contract/scene.h>
@@ -164,6 +165,12 @@ struct GraphNode {
   [[nodiscard]] virtual ClosureType get_closure_type() const noexcept {
     return CLOSURE_NONE_ID;
   }
+  [[nodiscard]] virtual std::uint32_t
+  get_surface_closure_slots() const noexcept;
+  [[nodiscard]] virtual ClosureUsage
+  get_surface_closure_usage() const noexcept {
+    return ClosureUsage::none();
+  }
   [[nodiscard]] virtual ShaderNodeType shader_node_type() const noexcept;
   [[nodiscard]] virtual bool equals(const GraphNode &other) const noexcept;
   [[nodiscard]] virtual bool has_surface_emission() const noexcept;
@@ -212,6 +219,7 @@ public:
     return _diagnostic;
   }
   [[nodiscard]] std::uint32_t get_num_closures() const noexcept;
+  [[nodiscard]] std::uint32_t get_num_surface_closures() const noexcept;
   [[nodiscard]] const std::vector<std::unique_ptr<GraphNode>> &nodes() const
       noexcept {
     return _nodes;

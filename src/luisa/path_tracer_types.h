@@ -402,6 +402,18 @@ struct ShadowIntersectionBatchCall {
   luisa::uint blocked{};
 };
 
+struct CompactTriangleShadowState {
+  std::array<luisa::uint, shadow_intersection_batch_capacity> inst{};
+  std::array<luisa::uint, shadow_intersection_batch_capacity> prim{};
+  std::array<float, shadow_intersection_batch_capacity> dist{};
+  std::array<float, shadow_intersection_batch_capacity> bx{};
+  std::array<float, shadow_intersection_batch_capacity> by{};
+  luisa::uint packed_state{};
+  float max_dist{};
+};
+
+static_assert(sizeof(CompactTriangleShadowState) == 88u);
+
 struct ShadowSurfaceEvaluationCall {
     luisa::float3 transmittance{};
     luisa::uint object{};
@@ -813,6 +825,8 @@ LUISA_STRUCT(psycles::luisa_backend::detail::ShadowIntersectionSummaryCall,
              count, total, blocked){};
 LUISA_STRUCT(psycles::luisa_backend::detail::ShadowIntersectionBatchCall, hits,
              count, total, blocked){};
+LUISA_STRUCT(psycles::luisa_backend::detail::CompactTriangleShadowState, inst,
+             prim, dist, bx, by, packed_state, max_dist){};
 LUISA_STRUCT(psycles::luisa_backend::detail::ShadowSurfaceEvaluationCall,
              transmittance, object, primitive, kind, volume_boundary){};
 LUISA_STRUCT(

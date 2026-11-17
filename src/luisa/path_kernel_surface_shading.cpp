@@ -155,8 +155,14 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                  .ray_origin = sample.ray->origin(),
                  .ray_position_differential = surface.differential_radius,
                  .ray_direction_differential = sample.ray_dD,
-                 .object_to_world = surface.object_to_world,
-                 .world_to_object = surface.world_to_object,
+                 .object_to_world =
+                     surface.lazy_cycles_geometry
+                         ? Expr<luisa::float4x4>{make_float4x4(1.0f)}
+                         : Expr<luisa::float4x4>{surface.object_to_world},
+                 .world_to_object =
+                     surface.lazy_cycles_geometry
+                         ? Expr<luisa::float4x4>{make_float4x4(1.0f)}
+                         : Expr<luisa::float4x4>{surface.world_to_object},
                  .path_flags = sample.path_flags,
                  .portal_depth = sample.portal_depth,
                  .sample_index = sample.sample_index,
@@ -165,25 +171,56 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                  .parameters = kernel_parameters,
                  .camera_projection = config.camera_projection,
                  .ambient_occlusion =
-                     ambient_occlusion ? &*ambient_occlusion : nullptr});
+                     ambient_occlusion ? &*ambient_occlusion : nullptr,
+                 .cycles_shader_flags =
+                     surface.cycles_shader_flags
+                         ? std::optional<Expr<std::uint32_t>>{
+                               *surface.cycles_shader_flags}
+                         : std::nullopt,
+                 .cycles_object_flags =
+                     surface.cycles_object_flags
+                         ? std::optional<Expr<std::uint32_t>>{
+                               *surface.cycles_object_flags}
+                         : std::nullopt,
+                 .lazy_cycles_transforms = surface.lazy_cycles_geometry,
+                 .may_filter_glossy = config.has_filter_glossy});
         }
         if (scene->native_cycles_svm_surface) {
             namespace abi = compiler::cycles_svm;
-            LUISA_ASSERT(populated_surface != nullptr, "Holdout requires native surface population.");
-            const auto native = populated_surface->native_surface_state();
-            LUISA_ASSERT(native.has_value(), "Holdout requires retained ShaderData.");
-            auto &sd = native->shader_data;
-            // integrate_surface skips holdout at a BSSRDF exit. For ordinary
-            // events this precedes emission and the termination/roulette edge.
-            $if(!bounce.subsurface_exit &
-                (((sd.flag & unsigned(abi::SD_HOLDOUT)) != 0u) |
-                 ((sd.object_flag & unsigned(abi::SD_OBJECT_HOLDOUT_MASK)) != 0u)) &
-                ((path_flags & cycles_path_state::flag_transparent_background) != 0u)) {
-                const auto weight = cycles_svm::detail::surface_shader_apply_holdout(sd);
-                const auto weighted = weight * throughput;
-                sample.accumulate_transparency((weighted.x + weighted.y + weighted.z) * (1.0f / 3.0f));
-                $if(all(weight == make_float3(1.0f))) { $break; };
-            };
+            bool scene_may_have_holdout = true;
+            if (scene->cycles_svm != nullptr &&
+                scene->cycles_svm->objects != nullptr &&
+                scene->cycles_svm->objects->image.valid) {
+                const bool any_shader_holdout =
+                    !scene->cycles_svm->compilation.table.valid ||
+                    scene->cycles_svm->compilation.table
+                        .usage_for(abi::SHADER_TYPE_SURFACE)
+                        .node_types_used[abi::NODE_CLOSURE_HOLDOUT];
+                const bool any_object_holdout = std::any_of(
+                    scene->cycles_svm->objects->image.object_flags.begin(),
+                    scene->cycles_svm->objects->image.object_flags.end(),
+                    [](std::uint32_t f) noexcept {
+                        return (f & unsigned(abi::SD_OBJECT_HOLDOUT_MASK)) != 0u;
+                    });
+                scene_may_have_holdout = any_shader_holdout || any_object_holdout;
+            }
+            if (scene_may_have_holdout) {
+                LUISA_ASSERT(populated_surface != nullptr, "Holdout requires native surface population.");
+                const auto native = populated_surface->native_surface_state();
+                LUISA_ASSERT(native.has_value(), "Holdout requires retained ShaderData.");
+                auto &sd = native->shader_data;
+                // integrate_surface skips holdout at a BSSRDF exit. For ordinary
+                // events this precedes emission and the termination/roulette edge.
+                $if(!bounce.subsurface_exit &
+                    (((sd.flag & unsigned(abi::SD_HOLDOUT)) != 0u) |
+                     ((sd.object_flag & unsigned(abi::SD_OBJECT_HOLDOUT_MASK)) != 0u)) &
+                    ((path_flags & cycles_path_state::flag_transparent_background) != 0u)) {
+                    const auto weight = cycles_svm::detail::surface_shader_apply_holdout(sd);
+                    const auto weighted = weight * throughput;
+                    sample.accumulate_transparency((weighted.x + weighted.y + weighted.z) * (1.0f / 3.0f));
+                    $if(all(weight == make_float3(1.0f))) { $break; };
+                };
+            }
         }
         const auto preparation = populated_surface
                                      ? populated_surface->preparation()

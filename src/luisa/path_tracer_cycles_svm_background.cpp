@@ -8,6 +8,7 @@
 #include "path_tracer_cycles_svm_kernel_globals.h"
 
 #include <psycles/luisa/background_sampling.h>
+#include <psycles/luisa/cycles_svm_translator.h>
 
 namespace psycles::luisa_backend::detail {
 namespace svm = cycles_svm;
@@ -77,15 +78,33 @@ Float3 evaluate_cycles_svm_background_emission(
     CyclesSvmBackgroundEvaluation evaluation) noexcept {
   Float3 emission = make_float3(0.0f);
   Bool constant = false;
+  const bool has_domain_meta = cycles_svm_has_domain_metadata(*scene);
   // kernel_background_evaluate deliberately runs the full shader even if its
   // output is constant. Forward and sampled emission use KernelShader's fast path.
   if (evaluation != CyclesSvmBackgroundEvaluation::importance_bake) {
-    constant = cycles_svm_constant_emission(
-        *scene, scene->cycles_background_shader_id, emission);
+    if (has_domain_meta && scene->cycles_background_shader_id != ~0u) {
+      const auto bg_idx = scene->cycles_background_shader_id & svm::shader_mask;
+      const auto &compilation = scene->cycles_svm->compilation;
+      if (bg_idx < compilation.kernel_shaders.size()) {
+        const auto &bg_shader = compilation.kernel_shaders[bg_idx];
+        if ((bg_shader.flags &
+             static_cast<int>(abi::SD_HAS_CONSTANT_EMISSION)) != 0) {
+          const auto ce = bg_shader.constant_emission;
+          return make_float3(ce.x, ce.y, ce.z);
+        }
+      } else {
+        constant = cycles_svm_constant_emission(
+            *scene, scene->cycles_background_shader_id, emission);
+      }
+    } else {
+      constant = cycles_svm_constant_emission(
+          *scene, scene->cycles_background_shader_id, emission);
+    }
   }
   $if(!constant) {
     const PathCyclesSvmKernelGlobals kg{
-        scene, parameters, scene->camera.projection, true, true};
+        scene, parameters, scene->camera.projection, true, true,
+        PathCyclesSvmShaderDomain::background};
     auto sd = setup_cycles_svm_background_shader_data(
         *scene, origin, direction, differential, time, state.visibility, evaluation);
     sd.lcg_state = lcg_state;
@@ -93,14 +112,24 @@ Float3 evaluate_cycles_svm_background_emission(
     const svm::TransformState transforms{parameters.camera_transform,
                                          parameters.camera_inverse_transform,
                                          identity, identity};
-    const auto usage = scene->cycles_svm->compilation.table.usage_for(
-        abi::SHADER_TYPE_SURFACE);
-    svm::eval_nodes_assume_valid(
-        kg, *scene->cycles_svm->word_buffer, abi::SHADER_TYPE_SURFACE,
-        scene->cycles_svm->kernel_features, cycles_svm_background_feature_mask(evaluation),
-        usage.node_types_used,
-        transforms, sd, state,
-        std::max<std::size_t>(1u, usage.peak_stack_usage), usage.noise_usage);
+    const auto usage = cycles_svm_domain_entry_usage(
+        *scene, PathCyclesSvmShaderDomain::background);
+    const auto active_mask = cycles_svm_domain_shader_mask(
+        *scene, PathCyclesSvmShaderDomain::background);
+    svm::translate_svm_nodes_assume_valid(svm::SvmTranslationRequest{
+        .kernel_globals = kg,
+        .table = scene->cycles_svm->compilation.table,
+        .words = *scene->cycles_svm->word_buffer,
+        .shader_type = abi::SHADER_TYPE_SURFACE,
+        .kernel_features = scene->cycles_svm->kernel_features,
+        .node_feature_mask = cycles_svm_background_feature_mask(evaluation),
+        .node_types_used = usage.node_types_used,
+        .transform_state = transforms,
+        .shader_data = sd,
+        .path_state = state,
+        .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+        .noise_usage = usage.noise_usage,
+        .active_shader_mask = active_mask});
     $if((sd.flag & svm::shader_data_emission) != 0u) {
       emission = sd.closure_emission_background;
     };

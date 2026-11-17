@@ -12,7 +12,8 @@ using namespace luisa::compute;
 using namespace compiler::cycles_svm;
 
 void node_tex_voronoi(Cursor &cursor, Stack &stack,
-                      bool voronoi_extra_enabled) noexcept {
+                      bool voronoi_extra_enabled,
+                      VoronoiStaticOptions options) noexcept {
   const auto dimensions = cursor.word();
   const auto feature = cursor.word();
   const auto metric = cursor.word();
@@ -35,33 +36,63 @@ void node_tex_voronoi(Cursor &cursor, Stack &stack,
   const auto radius_offset = cursor.byte(second_outputs, 2u);
 
   const auto vector = stack_load_float3(stack, coordinate_offset);
-  const auto w = stack_load_input_float(stack, w_bits);
+  const Float w = (options.dimension_mask & ((1u << 1u) | (1u << 4u))) != 0u
+                      ? stack_load_input_float(stack, w_bits)
+                      : def(0.0f);
   const auto scale = stack_load_input_float(stack, scale_bits);
-  const auto detail = stack_load_input_float(stack, detail_bits);
-  const auto roughness = stack_load_input_float(stack, roughness_bits);
-  const auto lacunarity = stack_load_input_float(stack, lacunarity_bits);
-  const auto smoothness = stack_load_input_float(stack, smoothness_bits);
-  const auto exponent = stack_load_input_float(stack, exponent_bits);
+  const Float detail = options.may_have_detail
+                           ? stack_load_input_float(stack, detail_bits)
+                           : def(0.0f);
+  const Float roughness = options.may_have_detail
+                              ? stack_load_input_float(stack, roughness_bits)
+                              : def(0.0f);
+  const Float lacunarity = options.may_have_detail
+                               ? stack_load_input_float(stack, lacunarity_bits)
+                               : def(0.0f);
+  const Float smoothness =
+      (options.feature_mask & (1u << NODE_VORONOI_SMOOTH_F1)) != 0u
+          ? stack_load_input_float(stack, smoothness_bits)
+          : def(0.0f);
+  const Float exponent =
+      (options.metric_mask & (1u << NODE_VORONOI_MINKOWSKI)) != 0u
+          ? stack_load_input_float(stack, exponent_bits)
+          : def(0.0f);
   const auto randomness = stack_load_input_float(stack, randomness_bits);
 
-  const auto output = cycles_voronoi::evaluate_runtime(
-      voronoi_extra_enabled, dimensions, feature, metric, normalize, vector, w,
-      scale, detail, roughness, lacunarity, smoothness, exponent, randomness);
+  const cycles_voronoi::RuntimeFilterOptions filter{
+      .dimension_mask = options.dimension_mask,
+      .feature_mask = options.feature_mask,
+      .metric_mask = options.metric_mask,
+      .may_have_detail = options.may_have_detail,
+      .may_normalize = options.may_normalize,
+      .may_need_color = options.may_need_color,
+      .may_need_position = options.may_need_position,
+      .may_need_radius = options.may_need_radius};
+  const auto output = cycles_voronoi::evaluate_runtime_filtered(
+      voronoi_extra_enabled, filter, dimensions, feature, metric, normalize,
+      vector, w, scale, detail, roughness, lacunarity, smoothness, exponent,
+      randomness);
   $if (distance_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
     stack_store_float(stack, distance_offset, output.color_distance.w);
   };
-  $if (color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, color_offset, output.color_distance.xyz());
-  };
-  $if (position_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, position_offset, output.position.xyz());
-  };
-  $if (w_output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, w_output_offset, output.position.w);
-  };
-  $if (radius_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, radius_offset, output.radius);
-  };
+  if (options.may_need_color) {
+    $if (color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float3(stack, color_offset, output.color_distance.xyz());
+    };
+  }
+  if (options.may_need_position) {
+    $if (position_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float3(stack, position_offset, output.position.xyz());
+    };
+    $if (w_output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float(stack, w_output_offset, output.position.w);
+    };
+  }
+  if (options.may_need_radius) {
+    $if (radius_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      stack_store_float(stack, radius_offset, output.radius);
+    };
+  }
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

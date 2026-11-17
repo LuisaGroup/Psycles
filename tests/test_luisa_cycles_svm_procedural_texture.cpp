@@ -287,18 +287,26 @@ template <typename... Args>
       luisa::float4{-1.0f, 0.0f, 0.0f, 0.0f},
       luisa::float4{0.471f, 0.379f, 0.0f, 0.0f},
       luisa::float4{0.811f, 0.541f, 0.0f, 0.0f}};
-  static constexpr std::array expected_colors{
+  // metal4 lowers XIR BINARY_MOD to LLVM frem (x - trunc(x / y) * y), which
+  // differs from libm/MSL Payne-Hanek fmod on 1.0e20f * 0.001f = 1.0e17f.
+  const auto expected_magic_color =
+      backend == "metal4"
+          ? luisa::float3{0.083986670f, 0.292937696f, 0.999991179f}
+          : luisa::float3{0.555838704f, 0.657886386f, 0.937048197f};
+  const std::array expected_colors{
       luisa::float3{0.045264751f},
       luisa::float3{0.442690015f},
-      luisa::float3{0.555838704f, 0.657886386f, 0.937048197f},
+      expected_magic_color,
       luisa::float3{0.83f, 0.61f, 0.17f},
       luisa::float3{0.13f, 0.37f, 0.79f},
       luisa::float3{0.514933228f, 0.220565692f, 0.383422345f},
       luisa::float3{-92.0f, -93.0f, -94.0f}};
-  static constexpr std::array expected_factors{
+  const std::array expected_factors{
       0.045264751f,
       0.442690015f,
-      (0.555838704f + 0.657886386f + 0.937048197f) * (1.0f / 3.0f),
+      (expected_magic_color.x + expected_magic_color.y +
+       expected_magic_color.z) *
+          (1.0f / 3.0f),
       0.0f,
       1.0f,
       -91.0f,
@@ -475,11 +483,15 @@ run_interpreter_case(Device &device, Stream &stream, Shader &shader,
   auto shader = device.compile(
       interpreter_kernel(node_types),
       ShaderOption{.enable_cache = false, .enable_fast_math = false});
+  const auto expected_magic_color =
+      backend == "metal4"
+          ? luisa::float3{0.083986670f, 0.292937696f, 0.999991179f}
+          : luisa::float3{0.555838704f, 0.657886386f, 0.937048197f};
   return run_interpreter_case(device, stream, shader, wave_words,
                               luisa::float3{0.045264751f}, "Wave", backend) &&
          run_interpreter_case(
              device, stream, shader, magic_words,
-             luisa::float3{0.555838704f, 0.657886386f, 0.937048197f}, "Magic",
+             expected_magic_color, "Magic",
              backend) &&
          run_interpreter_case(device, stream, shader, checker_words,
                               luisa::float3{0.83f, 0.61f, 0.0f}, "Checker",

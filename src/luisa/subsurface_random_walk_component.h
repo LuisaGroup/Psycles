@@ -29,12 +29,14 @@ public:
         Float3 albedo,
         Float3 radius,
         Float anisotropy,
-        Float3 throughput) const noexcept;
+        Float3 throughput,
+        bool may_have_legacy_or_skin = true) const noexcept;
 
     [[nodiscard]] SubsurfaceRandomWalkEntry sample_entry(
         const SurfacePoint &point,
         const SurfaceSample &closure,
-        Float2 random) const noexcept;
+        Float2 random,
+        bool may_have_skin = true) const noexcept;
 
     // Mutates only the path state owned by Cycles' INTERSECT_SUBSURFACE stage:
     // throughput, exact pending exit, synthetic exit ray, and the outer RNG

@@ -18,9 +18,14 @@ namespace psycles::luisa_backend::detail {
 // equations into Luisa DSL. Surface and volume instances are constructed
 // separately, so volume mode is a compile-time property of the generated AST.
 class LightTreeImportanceComponent {
+  public:
+    using EmitterCallable = Callable<luisa::float2(
+        luisa::uint, luisa::float3, luisa::float3, float, bool)>;
+
   private:
     std::shared_ptr<LuisaSceneData> _scene;
     bool _in_volume;
+    std::shared_ptr<EmitterCallable> _emitter_callable;
 
   public:
     LightTreeImportanceComponent(

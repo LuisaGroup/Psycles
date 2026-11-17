@@ -76,14 +76,14 @@ private:
 
 public:
   struct NormalOffsets {
-    UInt normal;
-    UInt tangent;
-    UInt coat_normal;
+    Expr<std::uint32_t> normal;
+    Expr<std::uint32_t> tangent;
+    Expr<std::uint32_t> coat_normal;
   };
 
   explicit PrincipledDataView(Cursor &cursor) noexcept : _cursor{cursor} {}
 
-  [[nodiscard]] UInt distribution() const noexcept {
+  [[nodiscard]] Expr<std::uint32_t> distribution() const noexcept {
     return _cursor.word_at(distribution_word);
   }
   [[nodiscard]] Float ior(Stack &stack) const noexcept {
@@ -155,7 +155,7 @@ public:
   [[nodiscard]] Float coat_ior(Stack &stack) const noexcept {
     return input_float(stack, coat_ior_word);
   }
-  [[nodiscard]] UInt subsurface_method() const noexcept {
+  [[nodiscard]] Expr<std::uint32_t> subsurface_method() const noexcept {
     return _cursor.word_at(subsurface_method_word);
   }
   [[nodiscard]] Float3 subsurface_radius(Stack &stack) const noexcept {
@@ -179,6 +179,12 @@ public:
   [[nodiscard]] Int thin_wall(Stack &stack) const noexcept {
     const auto offset =
         _cursor.byte(_cursor.word_at(thin_wall_offset_word), 0u);
+    if (const auto c = try_const_uint(offset)) {
+      if (*c == static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+        return _cursor.word_at(thin_wall_value_word).bitcast<std::int32_t>();
+      }
+      return stack_load_int(stack, *c);
+    }
     Int value = _cursor.word_at(thin_wall_value_word).bitcast<std::int32_t>();
     $if(offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
       value = stack_load_int(stack, offset);
@@ -248,29 +254,83 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                           const PathState &path_state,
                           const EvaluationTransition &transition) noexcept {
   PrincipledDataView data{cursor};
+  const auto usage = kernel_globals.closure_usage();
+  const bool has_alpha = usage.has_principled(ClosureUsage::principled_alpha);
+  const bool has_sheen = usage.has_principled(ClosureUsage::principled_sheen);
+  const bool has_coat = usage.has_principled(ClosureUsage::principled_coat);
+  const bool has_emission =
+      usage.has_principled(ClosureUsage::principled_emission);
+  const bool has_anisotropic =
+      usage.has_principled(ClosureUsage::principled_anisotropic);
+  const bool has_metallic =
+      usage.has_principled(ClosureUsage::principled_metallic);
+  const bool has_transmission =
+      usage.has_principled(ClosureUsage::principled_transmission);
+  const bool has_thin_wall =
+      usage.has_principled(ClosureUsage::principled_thin_wall);
+  const bool has_thin_film =
+      kernel_globals.may_have_thin_film() &&
+      usage.has_principled(ClosureUsage::principled_thin_film);
+  const bool has_oren_nayar =
+      usage.has_principled(ClosureUsage::principled_oren_nayar);
+  const bool has_single_ggx =
+      usage.has_principled(ClosureUsage::principled_single_ggx);
+  const bool has_multi_ggx =
+      usage.has_principled(ClosureUsage::principled_multi_ggx);
+  const bool compiler_validated_dist =
+      usage.principled_mask != ClosureUsage::principled_all &&
+      (has_single_ggx != has_multi_ggx);
+  const bool has_coat_tint =
+      usage.has_principled(ClosureUsage::principled_coat_tint);
+  const bool has_coat_normal =
+      usage.has_principled(ClosureUsage::principled_coat_normal);
+  const bool has_nondefault_specular_ior =
+      usage.has_principled(ClosureUsage::principled_nondefault_specular_ior);
+  const bool has_specular_tint =
+      usage.has_principled(ClosureUsage::principled_specular_tint);
+  const bool has_subsurface =
+      subsurface_enabled &&
+      usage.has_principled(ClosureUsage::principled_subsurface);
 
-  const auto sheen_weight = max(data.sheen_weight(stack), 0.0f);
-  const auto coat_weight = max(data.coat_weight(stack), 0.0f);
+  Float sheen_weight = 0.0f;
+  if (has_sheen) {
+    sheen_weight = max(data.sheen_weight(stack), 0.0f);
+  }
+  Float coat_weight = 0.0f;
+  if (has_coat) {
+    coat_weight = max(data.coat_weight(stack), 0.0f);
+  }
   Bool subset_supported = true;
   Float metallic = 0.0f;
   Float transmission_weight = 0.0f;
   Float subsurface_weight = 0.0f;
   Int thin_wall = 0;
-  UInt distribution = 0u;
+  Bool preserve_energy = Bool{has_multi_ggx};
   if (evaluate_bsdf) {
-    metallic = clamp(data.metallic(stack), 0.0f, 1.0f);
-    transmission_weight = clamp(data.transmission_weight(stack), 0.0f, 1.0f);
-    if (subsurface_enabled) {
+    if (has_metallic) {
+      metallic = clamp(data.metallic(stack), 0.0f, 1.0f);
+    }
+    if (has_transmission) {
+      transmission_weight = clamp(data.transmission_weight(stack), 0.0f, 1.0f);
+    }
+    if (has_subsurface) {
       subsurface_weight = clamp(data.subsurface_weight(stack), 0.0f, 1.0f);
     }
-    thin_wall = data.thin_wall(stack);
-    distribution = data.distribution();
-    const Bool valid_distribution =
-        (distribution ==
-         static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
-        (distribution == static_cast<std::uint32_t>(
-                             CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
-    subset_supported &= valid_distribution;
+    if (has_thin_wall && (has_transmission || has_subsurface)) {
+      thin_wall = data.thin_wall(stack);
+    }
+    if (!compiler_validated_dist) {
+      const auto distribution = data.distribution();
+      const Bool valid_distribution =
+          (distribution ==
+           static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
+          (distribution == static_cast<std::uint32_t>(
+                               CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
+      subset_supported &= valid_distribution;
+      preserve_energy =
+          distribution ==
+          static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID);
+    }
   }
 
   const auto diffuse_visibility =
@@ -289,66 +349,88 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
 
     /* Before any actual shader components, apply transparency. */
     Float3 weight = make_float3(mix_weight);
-    const auto alpha = clamp(data.alpha(stack), 0.0f, 1.0f);
-    $if(alpha < 1.0f) {
-      transparent_setup(shader_data, path_state, weight * (1.0f - alpha));
-      weight *= alpha;
-    };
+    if (has_alpha) {
+      const auto alpha = clamp(data.alpha(stack), 0.0f, 1.0f);
+      $if(alpha < 1.0f) {
+        transparent_setup(shader_data, path_state, weight * (1.0f - alpha));
+        weight *= alpha;
+      };
+    }
 
     /* First layer: Sheen. Cycles blends its normal toward Coat Normal before
      * LTC setup, even though Coat itself is the next layer. */
-    $if(sheen_weight > CLOSURE_WEIGHT_CUTOFF) {
-      const auto sheen_tint = max(data.sheen_tint(stack), make_float3(0.0f));
-      const auto sheen_roughness =
-          clamp(data.sheen_roughness(stack), 0.0f, 1.0f);
-      const auto coat_normal = native_vector_math::safe_normalize_nonzero_or(
-          stack_load_float3_default(stack, normal_offsets.coat_normal, normal),
-          shader_data.N);
-      const auto sheen_normal = native_vector_math::safe_normalize_nonzero(
-          lerp(normal, coat_normal, clamp(coat_weight, 0.0f, 1.0f)));
-      const auto layer_albedo = principled_sheen_setup(
-          kernel_globals, shader_data, path_state,
-          sheen_weight * sheen_tint * weight, sheen_normal, sheen_roughness);
-      weight = closure_layering_weight(layer_albedo, weight);
-    };
+    if (has_sheen) {
+      $if(sheen_weight > CLOSURE_WEIGHT_CUTOFF) {
+        const auto sheen_tint = max(data.sheen_tint(stack), make_float3(0.0f));
+        const auto sheen_roughness =
+            clamp(data.sheen_roughness(stack), 0.0f, 1.0f);
+        Float3 sheen_normal = normal;
+        if (has_coat_normal) {
+          const auto coat_normal = native_vector_math::safe_normalize_nonzero_or(
+              stack_load_float3_default(stack, normal_offsets.coat_normal,
+                                        normal),
+              shader_data.N);
+          sheen_normal = native_vector_math::safe_normalize_nonzero(
+              lerp(normal, coat_normal, clamp(coat_weight, 0.0f, 1.0f)));
+        }
+        const auto layer_albedo = principled_sheen_setup(
+            kernel_globals, shader_data, path_state,
+            sheen_weight * sheen_tint * weight, sheen_normal, sheen_roughness);
+        weight = closure_layering_weight(layer_albedo, weight);
+      };
+    }
 
     /* Second layer: Coat. The reflective dielectric closure and the tinted
      * medium attenuation are distinct Cycles transitions: disabling
      * reflective caustics skips only the former. */
-    $if(coat_weight > CLOSURE_WEIGHT_CUTOFF) {
-      const auto coat_roughness =
-          clamp(data.coat_roughness(stack), 0.0f, 1.0f);
-      const auto coat_ior = max(data.coat_ior(stack), 1.0f);
-      const auto coat_tint = max(data.coat_tint(stack), make_float3(0.0f));
-      const auto coat_normal = native_vector_math::safe_normalize_nonzero_or(
-          stack_load_float3_default(stack, normal_offsets.coat_normal, normal),
-          shader_data.N);
-      const auto valid_coat_normal =
-          maybe_ensure_valid_specular_reflection(shader_data, coat_normal);
+    const auto valid_reflection_normal =
+        (evaluate_bsdf || (has_coat && !has_coat_normal))
+            ? maybe_ensure_valid_specular_reflection(shader_data, normal)
+            : normal;
+    if (has_coat) {
+      $if(coat_weight > CLOSURE_WEIGHT_CUTOFF) {
+        const auto coat_roughness =
+            clamp(data.coat_roughness(stack), 0.0f, 1.0f);
+        const auto coat_ior = max(data.coat_ior(stack), 1.0f);
+        Float3 valid_coat_normal = valid_reflection_normal;
+        if (has_coat_normal) {
+          const auto coat_normal = native_vector_math::safe_normalize_nonzero_or(
+              stack_load_float3_default(stack, normal_offsets.coat_normal,
+                                        normal),
+              shader_data.N);
+          valid_coat_normal =
+              maybe_ensure_valid_specular_reflection(shader_data, coat_normal);
+        }
 
-      $if(reflective_caustics) {
-        const auto layer_albedo = principled_coat_setup(
-            kernel_globals, shader_data, path_state, coat_weight * weight,
-            valid_coat_normal, coat_roughness, coat_ior);
-        weight = closure_layering_weight(layer_albedo, weight);
+        $if(reflective_caustics) {
+          const auto layer_albedo = principled_coat_setup(
+               kernel_globals, shader_data, path_state, coat_weight * weight,
+              valid_coat_normal, coat_roughness, coat_ior);
+          weight = closure_layering_weight(layer_albedo, weight);
+        };
+
+        if (has_coat_tint) {
+          const auto coat_tint = max(data.coat_tint(stack), make_float3(0.0f));
+          $if(any(coat_tint != make_float3(1.0f))) {
+            const auto cosine_incoming = dot(shader_data.wi, valid_coat_normal);
+            const auto cosine_transmitted =
+                sqrt(1.0f - square(1.0f / coat_ior) *
+                                (1.0f - square(cosine_incoming)));
+            const auto optical_depth = 1.0f / cosine_transmitted;
+            weight *= lerp(make_float3(1.0f),
+                           color_power(coat_tint, optical_depth), coat_weight);
+          };
+        }
       };
+    }
 
-      $if(any(coat_tint != make_float3(1.0f))) {
-        const auto cosine_incoming = dot(shader_data.wi, valid_coat_normal);
-        const auto cosine_transmitted =
-            sqrt(1.0f - square(1.0f / coat_ior) *
-                            (1.0f - square(cosine_incoming)));
-        const auto optical_depth = 1.0f / cosine_transmitted;
-        weight *= lerp(make_float3(1.0f),
-                       color_power(coat_tint, optical_depth), coat_weight);
+    if (has_emission) {
+      const auto emission =
+          data.emission_color(stack) * data.emission_strength(stack);
+      $if(any(emission != make_float3(0.0f))) {
+        emission_setup(shader_data, emission * weight);
       };
-    };
-
-    const auto emission =
-        data.emission_color(stack) * data.emission_strength(stack);
-    $if(any(emission != make_float3(0.0f))) {
-      emission_setup(shader_data, emission * weight);
-    };
+    }
 
     if (evaluate_bsdf) {
       const auto base_color = max(data.base_color(stack), make_float3(0.0f));
@@ -356,108 +438,123 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
           min(base_color, make_float3(1.0f));
       const auto ior = max(data.ior(stack), 1.0e-5f);
       const auto roughness = clamp(data.roughness(stack), 0.0f, 1.0f);
-      const auto valid_reflection_normal =
-          maybe_ensure_valid_specular_reflection(shader_data, normal);
-      const auto anisotropic = clamp(data.anisotropic(stack), 0.0f, 1.0f);
-      const auto specular_tint =
-          max(data.specular_tint(stack), make_float3(0.0f));
-      const auto thin_film_thickness = data.thin_film_thickness(stack);
-      const auto thin_film_ior =
-          select(0.0f, max(data.thin_film_ior(stack), 1.0e-5f),
-                 thin_film_thickness > THINFILM_THICKNESS_CUTOFF);
+      const Float3 specular_tint =
+          has_specular_tint ? max(data.specular_tint(stack), make_float3(0.0f))
+                            : make_float3(1.0f);
+      Float thin_film_thickness = 0.0f;
+      Float thin_film_ior = 0.0f;
+      if (has_thin_film) {
+        thin_film_thickness = data.thin_film_thickness(stack);
+        thin_film_ior =
+            select(0.0f, max(data.thin_film_ior(stack), 1.0e-5f),
+                   thin_film_thickness > THINFILM_THICKNESS_CUTOFF);
+      }
 
       Float alpha_x = square(roughness);
       Float alpha_y = alpha_x;
       Float3 tangent = make_float3(0.0f);
-      const auto tangent_offset = normal_offsets.tangent;
-      $if((anisotropic > 0.0f) &
-          (tangent_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID))) {
-        tangent = stack_load_float3(stack, tangent_offset);
-        const auto aspect = sqrt(1.0f - anisotropic * 0.9f);
-        alpha_x /= aspect;
-        alpha_y *= aspect;
-        const auto rotation = data.anisotropic_rotation(stack);
-        $if(rotation != 0.0f) {
-          tangent = rotate_around_axis(tangent, normal, rotation * two_pi);
+      if (has_anisotropic) {
+        const auto anisotropic = clamp(data.anisotropic(stack), 0.0f, 1.0f);
+        const auto tangent_offset = normal_offsets.tangent;
+        $if((anisotropic > 0.0f) &
+            (tangent_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID))) {
+          tangent = stack_load_float3(stack, tangent_offset);
+          const auto aspect = sqrt(1.0f - anisotropic * 0.9f);
+          alpha_x /= aspect;
+          alpha_y *= aspect;
+          const auto rotation = data.anisotropic_rotation(stack);
+          $if(rotation != 0.0f) {
+            tangent = rotate_around_axis(tangent, normal, rotation * two_pi);
+          };
         };
-      };
+      }
 
       /* Metallic component. Cycles' closure allocation is conditional on
        * reflective caustics, but attenuation of all lower BSDF components is
        * unconditional. */
-      $if(metallic > CLOSURE_WEIGHT_CUTOFF) {
-        $if(reflective_caustics) {
-          principled_metallic_setup(
-              kernel_globals, shader_data, metallic * weight,
-              valid_reflection_normal, tangent, alpha_x, alpha_y, base_color,
-              specular_tint, thin_film_thickness, thin_film_ior,
-              distribution == static_cast<std::uint32_t>(
-                                  CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
+      if (has_metallic) {
+        $if(metallic > CLOSURE_WEIGHT_CUTOFF) {
+          $if(reflective_caustics) {
+            principled_metallic_setup(
+                kernel_globals, shader_data, metallic * weight,
+                valid_reflection_normal, tangent, alpha_x, alpha_y, base_color,
+                specular_tint, thin_film_thickness, thin_film_ior,
+                preserve_energy);
+          };
+          weight *= 1.0f - metallic;
         };
-        weight *= 1.0f - metallic;
-      };
+      }
 
       /* Transmission component. Cycles' thin-walled branch first resolves
        * the two-interface Fresnel series into two independent closures;
        * thick walls retain the generalized-Schlick glass closure. */
-      $if (transmission_weight > CLOSURE_WEIGHT_CUTOFF) {
-        $if (reflective_caustics | refractive_caustics) {
-          $if(thin_wall != 0) {
-            principled_thin_wall_setup(
-                kernel_globals, shader_data, path_state,
-                transmission_weight * weight, valid_reflection_normal,
-                square(roughness), ior, reflective_caustics,
-                refractive_caustics, specular_tint, clamped_base_color,
-                thin_film_thickness, thin_film_ior);
-          }
-          $else {
-            principled_transmission_setup(
-                kernel_globals, shader_data, transmission_weight * weight,
-                valid_reflection_normal, roughness, ior, reflective_caustics,
-                refractive_caustics, specular_tint,
-                sqrt(clamped_base_color), thin_film_thickness, thin_film_ior,
-                distribution == static_cast<std::uint32_t>(
-                                    CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
+      if (has_transmission) {
+        $if(transmission_weight > CLOSURE_WEIGHT_CUTOFF) {
+          $if(reflective_caustics | refractive_caustics) {
+            if (has_thin_wall) {
+              $if(thin_wall != 0) {
+                principled_thin_wall_setup(
+                    kernel_globals, shader_data, path_state,
+                    transmission_weight * weight, valid_reflection_normal,
+                    square(roughness), ior, reflective_caustics,
+                    refractive_caustics, specular_tint, clamped_base_color,
+                    thin_film_thickness, thin_film_ior);
+              }
+              $else {
+                principled_transmission_setup(
+                    kernel_globals, shader_data, transmission_weight * weight,
+                    valid_reflection_normal, roughness, ior,
+                    reflective_caustics, refractive_caustics, specular_tint,
+                    sqrt(clamped_base_color), thin_film_thickness,
+                    thin_film_ior, preserve_energy);
+              };
+            } else {
+              principled_transmission_setup(
+                  kernel_globals, shader_data, transmission_weight * weight,
+                  valid_reflection_normal, roughness, ior, reflective_caustics,
+                  refractive_caustics, specular_tint, sqrt(clamped_base_color),
+                  thin_film_thickness, thin_film_ior, preserve_energy);
+            }
           };
+          weight *= 1.0f - transmission_weight;
         };
-        weight *= 1.0f - transmission_weight;
-      };
+      }
 
-      const auto specular_ior_level = max(data.specular_ior_level(stack), 0.0f);
       Float eta = ior;
       Float f0 = f0_from_ior(eta);
-      $if(specular_ior_level != 0.5f) {
-        f0 *= 2.0f * specular_ior_level;
-        eta = ior_from_f0(f0);
-        $if(ior < 1.0f) { eta = 1.0f / eta; };
-      };
+      if (has_nondefault_specular_ior) {
+        const auto specular_ior_level =
+            max(data.specular_ior_level(stack), 0.0f);
+        $if(specular_ior_level != 0.5f) {
+          f0 *= 2.0f * specular_ior_level;
+          eta = ior_from_f0(f0);
+          $if(ior < 1.0f) { eta = 1.0f / eta; };
+        };
+      }
 
-      $if(reflective_caustics &
-          ((eta != 1.0f) | (thin_film_thickness > THINFILM_THICKNESS_CUTOFF))) {
+      const Bool specular_active =
+          has_thin_film
+              ? (reflective_caustics &
+                 ((eta != 1.0f) |
+                  (thin_film_thickness > THINFILM_THICKNESS_CUTOFF)))
+              : (reflective_caustics & (eta != 1.0f));
+      $if(specular_active) {
         const auto layer_albedo = principled_specular_setup(
             kernel_globals, shader_data, weight, valid_reflection_normal,
             tangent, alpha_x, alpha_y, eta, f0, specular_tint,
-            thin_film_thickness, thin_film_ior,
-            distribution == static_cast<std::uint32_t>(
-                                CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
+            thin_film_thickness, thin_film_ior, preserve_energy);
         weight = closure_layering_weight(layer_albedo, weight);
       };
 
       /* Direct projection of Cycles' __SUBSURFACE__ feature guard. */
-      if (subsurface_enabled) {
+      if (has_subsurface) {
         /* Diffuse/Subsurface component. Thin Wall emits ordinary surface
          * lobes; thick walls allocate and finalize the typed Bssrdf record. */
         $if(subsurface_weight > CLOSURE_WEIGHT_CUTOFF) {
           const auto subsurface_anisotropy = data.subsurface_anisotropy(stack);
           const auto closure_weight =
               clamped_base_color * subsurface_weight * weight;
-          $if(thin_wall != 0) {
-            thin_subsurface_setup(
-                shader_data, normal, closure_weight, subsurface_anisotropy,
-                clamp(data.diffuse_roughness(stack), 0.0f, 1.0f),
-                clamped_base_color);
-          }
-          $else {
+          const auto emit_bssrdf = [&] {
             const auto method = data.subsurface_method();
             Float subsurface_ior = eta;
             $if(method == static_cast<std::uint32_t>(
@@ -472,20 +569,35 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                 clamped_base_color, valid_reflection_normal,
                 square(roughness), subsurface_ior, subsurface_anisotropy);
           };
+          if (has_thin_wall) {
+            $if(thin_wall != 0) {
+              thin_subsurface_setup(
+                  shader_data, normal, closure_weight, subsurface_anisotropy,
+                  clamp(data.diffuse_roughness(stack), 0.0f, 1.0f),
+                  clamped_base_color);
+            }
+            $else { emit_bssrdf(); };
+          } else {
+            emit_bssrdf();
+          }
         };
       }
 
-      const auto diffuse_roughness =
-          clamp(data.diffuse_roughness(stack), 0.0f, 1.0f);
       const auto diffuse_weight =
           base_color * (1.0f - subsurface_weight) * weight;
-      $if(diffuse_roughness < 1.0e-5f) {
+      if (has_oren_nayar) {
+        const auto diffuse_roughness =
+            clamp(data.diffuse_roughness(stack), 0.0f, 1.0f);
+        $if(diffuse_roughness < 1.0e-5f) {
+          diffuse_setup(shader_data, normal, diffuse_weight);
+        }
+        $else {
+          oren_nayar_setup(shader_data, normal, diffuse_weight,
+                           diffuse_roughness, base_color);
+        };
+      } else {
         diffuse_setup(shader_data, normal, diffuse_weight);
       }
-      $else {
-        oren_nayar_setup(shader_data, normal, diffuse_weight, diffuse_roughness,
-                         base_color);
-      };
     }
   }
   $else { transition.unsupported(); };

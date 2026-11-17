@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -168,6 +169,12 @@ struct SceneCompilation {
     [[nodiscard]] bool ok() const noexcept { return scene != nullptr; }
 };
 
+struct RenderSampleTimings {
+    double integration_seconds{};
+    double pass_output_seconds{};
+    double render_call_seconds{};
+};
+
 class RenderSession {
 
 public:
@@ -175,6 +182,10 @@ public:
     virtual void reset(const RenderSettings &settings) = 0;
     virtual bool render_samples(const SampleRange &samples, OutputSink &output) = 0;
     virtual void cancel() noexcept = 0;
+    [[nodiscard]] virtual std::optional<RenderSampleTimings>
+    last_render_timings() const noexcept {
+        return std::nullopt;
+    }
 };
 
 class RendererBackend {

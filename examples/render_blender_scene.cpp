@@ -721,6 +721,8 @@ int main(int argc, char **argv) {
         std::vector<psycles::io::ProgressiveSampleChunk> records;
     records.reserve((sample_count + probe_chunk_size - 1u) / probe_chunk_size);
     const auto render_begin = std::chrono::steady_clock::now();
+    double chunk_integration_seconds = 0.0;
+    bool has_chunk_integration_timings = true;
     for (std::uint32_t offset = 0u; offset < sample_count;) {
             const auto absolute_sample = sample_first + offset;
       const auto chunk_count =
@@ -734,6 +736,11 @@ int main(int argc, char **argv) {
         std::cerr << "error: sample-chunk pixel probe failed at "
                     << absolute_sample << '\n';
                 return EXIT_FAILURE;
+            }
+            if (const auto chunk_timings = session->last_render_timings()) {
+              chunk_integration_seconds += chunk_timings->integration_seconds;
+            } else {
+              has_chunk_integration_timings = false;
             }
             const auto &captures = pixel_sink.passes();
             if (captures.size() != settings.passes.size()) {
@@ -772,10 +779,13 @@ int main(int argc, char **argv) {
         if (!write_surface_closure_histogram_if_requested()) {
             return EXIT_FAILURE;
         }
-        const auto render_seconds =
+        const auto render_call_seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                       render_begin)
                 .count();
+        const auto render_seconds =
+            has_chunk_integration_timings ? chunk_integration_seconds
+                                          : render_call_seconds;
     std::cout << "Luisa/" << backend_name << '/'
               << psycles::luisa_backend::luisa_path_scheduler_name(scheduler)
               << " compiled " << imported.scene->geometries.size()
@@ -800,6 +810,10 @@ int main(int argc, char **argv) {
                "sample coverage\n";
         return EXIT_FAILURE;
     }
+    const auto render_call_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                    render_begin)
+            .count();
     if (path_trace_output) {
         if (!path_trace_sink->trace()) {
       std::cerr << "error: requested path trace was not produced\n";
@@ -815,10 +829,10 @@ int main(int argc, char **argv) {
     if (!write_surface_closure_histogram_if_requested()) {
         return EXIT_FAILURE;
     }
+    const auto session_timings = session->last_render_timings();
     const auto render_seconds =
-      std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                    render_begin)
-            .count();
+        session_timings ? session_timings->integration_seconds
+                        : render_call_seconds;
   const auto *combined = sink.find(psycles::contract::PassKind::combined);
   const auto *normal = sink.find(psycles::contract::PassKind::normal);
   const auto *albedo = sink.find(psycles::contract::PassKind::albedo);
@@ -900,7 +914,14 @@ int main(int argc, char **argv) {
         << "Rendered " << width << 'x' << height << " at " << sample_count
         << " spp from absolute sample range [" << sample_first << ", "
         << sample_first + sample_count << ") of " << samples << " in "
-        << render_seconds << " s: " << output << '\n'
+        << render_seconds << " s: " << output << '\n';
+    if (session_timings) {
+        std::cout << "Luisa pass output completed in "
+                  << session_timings->pass_output_seconds
+                  << " s (render call "
+                  << session_timings->render_call_seconds << " s)\n";
+    }
+    std::cout
         << "Linear Combined: " << combined_path << '\n'
         << "Linear Normal:   " << normal_path << '\n'
         << "Linear Albedo:   " << albedo_path << '\n'

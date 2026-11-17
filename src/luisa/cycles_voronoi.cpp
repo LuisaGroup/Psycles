@@ -2,6 +2,7 @@
 
 #include <psycles/luisa/cycles_noise.h>
 
+#include <bit>
 #include <cstdlib>
 #include <limits>
 #include <map>
@@ -24,6 +25,14 @@ struct RuntimeConfiguration {
     UInt feature;
     UInt metric;
     Bool normalize;
+};
+
+struct FilteredRuntimeConfiguration {
+    std::uint32_t dimensions;
+    UInt feature;
+    UInt metric;
+    Bool normalize;
+    RuntimeFilterOptions filter;
 };
 
 template<typename ConfigurationType>
@@ -89,6 +98,16 @@ needs_color(const RuntimeConfiguration &) noexcept {
 [[nodiscard]] constexpr bool
 needs_position(const RuntimeConfiguration &) noexcept {
     return true;
+}
+
+[[nodiscard]] constexpr bool
+needs_color(const FilteredRuntimeConfiguration &configuration) noexcept {
+    return configuration.filter.may_need_color;
+}
+
+[[nodiscard]] constexpr bool
+needs_position(const FilteredRuntimeConfiguration &configuration) noexcept {
+    return configuration.filter.may_need_position;
 }
 
 template<typename ConfigurationType>
@@ -202,6 +221,64 @@ template<typename ConfigurationType>
                 return minkowski();
         }
         return 0.0f;
+    } else if constexpr (std::is_same_v<ConfigurationType,
+                                        FilteredRuntimeConfiguration>) {
+        constexpr auto bit_euclidean = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiDistanceMetric::euclidean);
+        constexpr auto bit_manhattan = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiDistanceMetric::manhattan);
+        constexpr auto bit_chebychev = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiDistanceMetric::chebychev);
+        constexpr auto bit_minkowski = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiDistanceMetric::minkowski);
+        const auto mask = parameters.configuration.filter.metric_mask & 0xfu;
+        if (mask == 0u) {
+            return 0.0f;
+        }
+        if (mask == bit_euclidean) {
+            return sqrt(component_sum(delta * delta, dimension_count));
+        }
+        if (mask == bit_manhattan) {
+            return component_sum(delta, dimension_count);
+        }
+        if (mask == bit_chebychev) {
+            return component_max(delta, dimension_count);
+        }
+        if (mask == bit_minkowski) {
+            return minkowski();
+        }
+        Float result = 0.0f;
+        $switch (parameters.configuration.metric) {
+            if ((mask & bit_euclidean) != 0u) {
+                $case(static_cast<std::uint32_t>(
+                    compiler::VoronoiDistanceMetric::euclidean)) {
+                    result = sqrt(component_sum(delta * delta, dimension_count));
+                };
+            }
+            if ((mask & bit_manhattan) != 0u) {
+                $case(static_cast<std::uint32_t>(
+                    compiler::VoronoiDistanceMetric::manhattan)) {
+                    result = component_sum(delta, dimension_count);
+                };
+            }
+            if ((mask & bit_chebychev) != 0u) {
+                $case(static_cast<std::uint32_t>(
+                    compiler::VoronoiDistanceMetric::chebychev)) {
+                    result = component_max(delta, dimension_count);
+                };
+            }
+            if ((mask & bit_minkowski) != 0u) {
+                $case(static_cast<std::uint32_t>(
+                    compiler::VoronoiDistanceMetric::minkowski)) {
+                    result = minkowski();
+                };
+            }
+            $default {
+                luisa::compute::dsl::unreachable(
+                    "invalid Cycles Voronoi distance metric");
+            };
+        };
+        return result;
     } else {
         Float result = 0.0f;
         $switch (parameters.configuration.metric) {
@@ -257,6 +334,62 @@ voronoi_distance_bound(Float4 a, Float4 b,
             return voronoi_distance(a, b, parameters);
         }
         return distance_squared(a, b, dimension_count);
+    } else if constexpr (std::is_same_v<ConfigurationType,
+                                        FilteredRuntimeConfiguration>) {
+        constexpr auto bit_euclidean = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiDistanceMetric::euclidean);
+        constexpr auto bit_manhattan = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiDistanceMetric::manhattan);
+        constexpr auto bit_chebychev = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiDistanceMetric::chebychev);
+        constexpr auto bit_minkowski = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiDistanceMetric::minkowski);
+        const auto mask = parameters.configuration.filter.metric_mask & 0xfu;
+        if (mask == 0u) {
+            return 0.0f;
+        }
+        if (mask == bit_euclidean) {
+            return distance_squared(a, b, dimension_count);
+        }
+        if (mask == bit_minkowski) {
+            return minkowski_bound();
+        }
+        if ((mask & (bit_euclidean | bit_minkowski)) == 0u) {
+            return voronoi_distance(a, b, parameters);
+        }
+        const auto delta = abs(a - b);
+        Float result = 0.0f;
+        $switch (parameters.configuration.metric) {
+            if ((mask & bit_euclidean) != 0u) {
+                $case(static_cast<std::uint32_t>(
+                    compiler::VoronoiDistanceMetric::euclidean)) {
+                    result = distance_squared(a, b, dimension_count);
+                };
+            }
+            if ((mask & bit_manhattan) != 0u) {
+                $case(static_cast<std::uint32_t>(
+                    compiler::VoronoiDistanceMetric::manhattan)) {
+                    result = component_sum(delta, dimension_count);
+                };
+            }
+            if ((mask & bit_chebychev) != 0u) {
+                $case(static_cast<std::uint32_t>(
+                    compiler::VoronoiDistanceMetric::chebychev)) {
+                    result = component_max(delta, dimension_count);
+                };
+            }
+            if ((mask & bit_minkowski) != 0u) {
+                $case(static_cast<std::uint32_t>(
+                    compiler::VoronoiDistanceMetric::minkowski)) {
+                    result = minkowski_bound();
+                };
+            }
+            $default {
+                luisa::compute::dsl::unreachable(
+                    "invalid Cycles Voronoi distance metric");
+            };
+        };
+        return result;
     } else {
         Float result;
         $if (parameters.configuration.metric ==
@@ -566,6 +699,83 @@ evaluate_octave(const Parameters<ConfigurationType> &parameters,
             default:
                 return voronoi_f1(parameters, coordinate);
         }
+    } else if constexpr (std::is_same_v<ConfigurationType,
+                                        FilteredRuntimeConfiguration>) {
+        constexpr auto bit_f1 = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiFeature::f1);
+        constexpr auto bit_f2 = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiFeature::f2);
+        constexpr auto bit_smooth_f1 = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiFeature::smooth_f1);
+        const auto mask =
+            parameters.configuration.filter.feature_mask &
+            (bit_f1 | bit_f2 | bit_smooth_f1);
+        if (mask == 0u) {
+            return Octave{};
+        }
+        if (mask == bit_f1) {
+            return voronoi_f1(parameters, coordinate);
+        }
+        if (mask == bit_f2) {
+            return voronoi_f2(parameters, coordinate);
+        }
+        if (mask == bit_smooth_f1) {
+            Octave octave;
+            $if (parameters.smoothness != 0.0f) {
+                const auto smooth = voronoi_smooth_f1(parameters, coordinate);
+                assign_octave(octave, smooth);
+            }
+            $else {
+                const auto f1 = voronoi_f1(parameters, coordinate);
+                assign_octave(octave, f1);
+            };
+            return octave;
+        }
+        if (mask == (bit_f1 | bit_f2)) {
+            Octave result;
+            $if (parameters.configuration.feature ==
+                 static_cast<std::uint32_t>(compiler::VoronoiFeature::f2)) {
+                const auto f2 = voronoi_f2(parameters, coordinate);
+                assign_octave(result, f2);
+            }
+            $else {
+                const auto f1 = voronoi_f1(parameters, coordinate);
+                assign_octave(result, f1);
+            };
+            return result;
+        }
+        if (mask == (bit_f1 | bit_smooth_f1)) {
+            Octave result;
+            $if ((parameters.configuration.feature ==
+                  static_cast<std::uint32_t>(
+                      compiler::VoronoiFeature::smooth_f1)) &
+                 (parameters.smoothness != 0.0f)) {
+                const auto smooth = voronoi_smooth_f1(parameters, coordinate);
+                assign_octave(result, smooth);
+            }
+            $else {
+                const auto f1 = voronoi_f1(parameters, coordinate);
+                assign_octave(result, f1);
+            };
+            return result;
+        }
+        Octave result;
+        $if (parameters.configuration.feature == static_cast<std::uint32_t>(
+                 compiler::VoronoiFeature::f2)) {
+            const auto f2 = voronoi_f2(parameters, coordinate);
+            assign_octave(result, f2);
+        }
+        $elif ((parameters.configuration.feature == static_cast<std::uint32_t>(
+                    compiler::VoronoiFeature::smooth_f1)) &
+               (parameters.smoothness != 0.0f)) {
+            const auto smooth = voronoi_smooth_f1(parameters, coordinate);
+            assign_octave(result, smooth);
+        }
+        $else {
+            const auto f1 = voronoi_f1(parameters, coordinate);
+            assign_octave(result, f1);
+        };
+        return result;
     } else {
         Octave result;
         // Cycles' fractal_voronoi_x_fx has one shared F1 fallback for
@@ -727,6 +937,24 @@ template<typename ConfigurationType>
 [[nodiscard]] Octave
 fractal_distance_feature(const Parameters<ConfigurationType> &parameters,
                          Float4 coordinate) noexcept {
+    if constexpr (std::is_same_v<ConfigurationType,
+                                 FilteredRuntimeConfiguration>) {
+        if (!parameters.configuration.filter.may_have_detail) {
+            auto output = evaluate_octave(parameters, coordinate);
+            if (parameters.configuration.filter.may_normalize) {
+                $if (parameters.configuration.normalize) {
+                    output.distance /= parameters.max_distance;
+                };
+            }
+            if (needs_position(parameters.configuration)) {
+                output.position =
+                    select(make_float4(0.0f),
+                           output.position / parameters.scale,
+                           parameters.scale != 0.0f);
+            }
+            return output;
+        }
+    }
     Float amplitude = 1.0f;
     Float maximum_amplitude = 0.0f;
     Float frequency = 1.0f;
@@ -785,6 +1013,11 @@ fractal_distance_feature(const Parameters<ConfigurationType> &parameters,
         if (parameters.configuration.normalize) {
             normalize();
         }
+    } else if constexpr (std::is_same_v<ConfigurationType,
+                                        FilteredRuntimeConfiguration>) {
+        if (parameters.configuration.filter.may_normalize) {
+            $if (parameters.configuration.normalize) { normalize(); };
+        }
     } else {
         $if (parameters.configuration.normalize) { normalize(); };
     }
@@ -800,6 +1033,18 @@ template<typename ConfigurationType>
 [[nodiscard]] Float
 fractal_distance_to_edge(const Parameters<ConfigurationType> &parameters,
                          Float4 coordinate) noexcept {
+    if constexpr (std::is_same_v<ConfigurationType,
+                                 FilteredRuntimeConfiguration>) {
+        if (!parameters.configuration.filter.may_have_detail) {
+            auto distance = distance_to_edge(parameters, coordinate);
+            if (parameters.configuration.filter.may_normalize) {
+                $if (parameters.configuration.normalize) {
+                    distance /= parameters.max_distance;
+                };
+            }
+            return distance;
+        }
+    }
     Float amplitude = 1.0f;
     Float maximum_amplitude = parameters.max_distance;
     Float frequency = 1.0f;
@@ -838,6 +1083,13 @@ fractal_distance_to_edge(const Parameters<ConfigurationType> &parameters,
         if (parameters.configuration.normalize) {
             distance /= maximum_amplitude;
         }
+    } else if constexpr (std::is_same_v<ConfigurationType,
+                                        FilteredRuntimeConfiguration>) {
+        if (parameters.configuration.filter.may_normalize) {
+            $if (parameters.configuration.normalize) {
+                distance /= maximum_amplitude;
+            };
+        }
     } else {
         $if (parameters.configuration.normalize) {
             distance /= maximum_amplitude;
@@ -857,6 +1109,19 @@ template<typename ConfigurationType>
     if constexpr (std::is_same_v<ConfigurationType, Configuration>) {
         if (parameters.configuration.feature == compiler::VoronoiFeature::f2) {
             result *= 2.0f;
+        }
+    } else if constexpr (std::is_same_v<ConfigurationType,
+                                        FilteredRuntimeConfiguration>) {
+        constexpr auto bit_f2 = 1u << static_cast<std::uint32_t>(
+            compiler::VoronoiFeature::f2);
+        const auto f_mask = parameters.configuration.filter.feature_mask & 0x7u;
+        if (f_mask == bit_f2) {
+            result *= 2.0f;
+        } else if ((f_mask & bit_f2) != 0u) {
+            result *= select(
+                1.0f, 2.0f,
+                parameters.configuration.feature ==
+                    static_cast<std::uint32_t>(compiler::VoronoiFeature::f2));
         }
     } else {
         result *= select(
@@ -971,6 +1236,124 @@ evaluate_runtime_dimension(
                 result.color_distance =
                     make_float4(output.color, output.distance);
                 result.position = output.position;
+            }
+        };
+    };
+    return result;
+}
+
+template<std::uint32_t DimensionCount, bool VoronoiExtraEnabled>
+[[nodiscard]] luisa::compute::Var<EvaluationCall>
+evaluate_runtime_dimension_filtered(
+    RuntimeFilterOptions filter,
+    Float3 vector, Float w, Float scale, Float detail, Float roughness,
+    Float lacunarity, Float smoothness, Float exponent, Float randomness,
+    UInt feature, UInt metric, Bool normalize) noexcept {
+    static_assert(DimensionCount >= 1u && DimensionCount <= 4u);
+    Parameters<FilteredRuntimeConfiguration> parameters{
+        .configuration = FilteredRuntimeConfiguration{
+            .dimensions = DimensionCount,
+            .feature = feature,
+            .metric = metric,
+            .normalize = normalize,
+            .filter = filter},
+        .scale = scale,
+        .detail = filter.may_have_detail ? clamp(detail, 0.0f, 15.0f) : Float{0.0f},
+        .roughness = filter.may_have_detail ? clamp(roughness, 0.0f, 1.0f) : Float{0.0f},
+        .lacunarity = lacunarity,
+        .smoothness = (filter.feature_mask &
+                       (1u << static_cast<std::uint32_t>(
+                            compiler::VoronoiFeature::smooth_f1))) != 0u
+                          ? clamp(smoothness * 0.5f, 0.0f, 0.5f)
+                          : Float{0.0f},
+        .exponent = exponent,
+        .randomness = clamp(randomness, 0.0f, 1.0f),
+        .max_distance = 0.0f};
+    const auto coordinate =
+        input_coordinate(DimensionCount, vector, w) * scale;
+
+    luisa::compute::Var<EvaluationCall> result;
+    result.color_distance = make_float4(0.0f);
+    result.position = make_float4(0.0f);
+    result.radius = 0.0f;
+
+    constexpr auto bit_edge = 1u << static_cast<std::uint32_t>(
+        compiler::VoronoiFeature::distance_to_edge);
+    constexpr auto bit_radius = 1u << static_cast<std::uint32_t>(
+        compiler::VoronoiFeature::n_sphere_radius);
+    constexpr auto mask_dist_features =
+        (1u << static_cast<std::uint32_t>(compiler::VoronoiFeature::f1)) |
+        (1u << static_cast<std::uint32_t>(compiler::VoronoiFeature::f2)) |
+        (1u << static_cast<std::uint32_t>(compiler::VoronoiFeature::smooth_f1));
+
+    const bool has_edge = (filter.feature_mask & bit_edge) != 0u;
+    const bool has_radius =
+        (filter.feature_mask & bit_radius) != 0u && filter.may_need_radius;
+    const bool has_dist =
+        (filter.feature_mask & mask_dist_features) != 0u &&
+        (DimensionCount == 1u || VoronoiExtraEnabled);
+
+    const auto emit_edge = [&]() noexcept {
+        if (filter.may_normalize) {
+            parameters.max_distance = 0.5f + 0.5f * parameters.randomness;
+        }
+        result.color_distance.w =
+            fractal_distance_to_edge(parameters, coordinate);
+    };
+    const auto emit_radius = [&]() noexcept {
+        result.radius = n_sphere_radius(parameters, coordinate);
+    };
+    const auto emit_dist = [&]() noexcept {
+        if (filter.may_normalize) {
+            parameters.max_distance = maximum_distance(parameters);
+        }
+        const auto output =
+            fractal_distance_feature(parameters, coordinate);
+        result.color_distance =
+            make_float4(output.color, output.distance);
+        if (filter.may_need_position) {
+            result.position = output.position;
+        }
+    };
+
+    const unsigned active_groups =
+        (has_edge ? 1u : 0u) + (has_radius ? 1u : 0u) + (has_dist ? 1u : 0u);
+    if (active_groups == 0u) {
+        return result;
+    }
+    if (active_groups == 1u &&
+        (filter.feature_mask & bit_radius) == 0u) {
+        if (has_edge) {
+            emit_edge();
+        } else {
+            emit_dist();
+        }
+        return result;
+    }
+    if (active_groups == 1u && has_radius && !has_edge &&
+        (filter.feature_mask & mask_dist_features) == 0u) {
+        emit_radius();
+        return result;
+    }
+
+    $switch (feature) {
+        if (has_edge) {
+            $case(static_cast<std::uint32_t>(
+                compiler::VoronoiFeature::distance_to_edge)) {
+                emit_edge();
+            };
+        }
+        if ((filter.feature_mask & bit_radius) != 0u) {
+            $case(static_cast<std::uint32_t>(
+                compiler::VoronoiFeature::n_sphere_radius)) {
+                if (has_radius) {
+                    emit_radius();
+                }
+            };
+        }
+        $default {
+            if (has_dist) {
+                emit_dist();
             }
         };
     };
@@ -1139,6 +1522,92 @@ luisa::compute::Var<EvaluationCall> evaluate_runtime(
         $case(4u) {
             result = evaluate_dimension.template operator()<4u>();
         };
+        $default {
+            luisa::compute::dsl::unreachable(
+                "invalid Cycles Voronoi dimensions");
+        };
+    };
+    return result;
+}
+
+luisa::compute::Var<EvaluationCall> evaluate_runtime_filtered(
+    bool voronoi_extra_enabled,
+    RuntimeFilterOptions filter_options,
+    luisa::compute::Expr<std::uint32_t> dimensions_expression,
+    luisa::compute::Expr<std::uint32_t> feature_expression,
+    luisa::compute::Expr<std::uint32_t> metric_expression,
+    luisa::compute::Expr<bool> normalize_expression,
+    Float3 vector, Float w, Float scale, Float detail, Float roughness,
+    Float lacunarity, Float smoothness, Float exponent,
+    Float randomness) noexcept {
+    if (filter_options.is_unfiltered()) {
+        return evaluate_runtime(
+            voronoi_extra_enabled, dimensions_expression, feature_expression,
+            metric_expression, normalize_expression, vector, w, scale, detail,
+            roughness, lacunarity, smoothness, exponent, randomness);
+    }
+    const auto d_mask = filter_options.dimension_mask & 0b11110u;
+    if (d_mask == 0u) {
+        luisa::compute::Var<EvaluationCall> zero;
+        zero.color_distance = make_float4(0.0f);
+        zero.position = make_float4(0.0f);
+        zero.radius = 0.0f;
+        return zero;
+    }
+    const UInt dimension_count{dimensions_expression};
+    const UInt feature{feature_expression};
+    const UInt metric{metric_expression};
+    const Bool normalize{normalize_expression};
+    const auto evaluate_dim = [&]<std::uint32_t D>() noexcept {
+        if (voronoi_extra_enabled) {
+            return evaluate_runtime_dimension_filtered<D, true>(
+                filter_options, vector, w, scale, detail, roughness,
+                lacunarity, smoothness, exponent, randomness, feature, metric,
+                normalize);
+        }
+        return evaluate_runtime_dimension_filtered<D, false>(
+            filter_options, vector, w, scale, detail, roughness, lacunarity,
+            smoothness, exponent, randomness, feature, metric, normalize);
+    };
+    if (std::has_single_bit(d_mask)) {
+        switch (std::countr_zero(d_mask)) {
+            case 1u:
+                return evaluate_dim.template operator()<1u>();
+            case 2u:
+                return evaluate_dim.template operator()<2u>();
+            case 3u:
+                return evaluate_dim.template operator()<3u>();
+            case 4u:
+                return evaluate_dim.template operator()<4u>();
+            default:
+                break;
+        }
+    }
+    luisa::compute::Var<EvaluationCall> result;
+    result.color_distance = make_float4(0.0f);
+    result.position = make_float4(0.0f);
+    result.radius = 0.0f;
+    $switch (dimension_count) {
+        if ((d_mask & (1u << 1u)) != 0u) {
+            $case(1u) {
+                result = evaluate_dim.template operator()<1u>();
+            };
+        }
+        if ((d_mask & (1u << 2u)) != 0u) {
+            $case(2u) {
+                result = evaluate_dim.template operator()<2u>();
+            };
+        }
+        if ((d_mask & (1u << 3u)) != 0u) {
+            $case(3u) {
+                result = evaluate_dim.template operator()<3u>();
+            };
+        }
+        if ((d_mask & (1u << 4u)) != 0u) {
+            $case(4u) {
+                result = evaluate_dim.template operator()<4u>();
+            };
+        }
         $default {
             luisa::compute::dsl::unreachable(
                 "invalid Cycles Voronoi dimensions");

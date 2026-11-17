@@ -7,6 +7,7 @@
 #include <psycles/luisa/spherical_geometry.h>
 
 #include <array>
+#include <bit>
 
 #include <luisa/dsl/sugar.h>
 
@@ -83,8 +84,7 @@ sky_radiance_analytic(Cursor &cursor, const KernelGlobals &kg,
                       cos(spherical.x) * cos(suntheta);
   const auto gamma = acos(clamp(cospsi, -1.0f, 1.0f));
   const auto theta = min(spherical.x, half_pi - 0.001f);
-  Float3 rgb;
-  $if(type == static_cast<unsigned>(NODE_SKY_PREETHAM)) {
+  const auto emit_preetham = [&]() noexcept {
     const auto x = radiance_y * sky_perez(config_y, theta, gamma);
     const auto y = radiance_z * sky_perez(config_z, theta, gamma);
     const auto Y = radiance_x * sky_perez(config_x, theta, gamma);
@@ -92,14 +92,25 @@ sky_radiance_analytic(Cursor &cursor, const KernelGlobals &kg,
     Float Z = 0.0f;
     $if(y != 0.0f) { X = (x / y) * Y; };
     $if((y != 0.0f) & (Y != 0.0f)) { Z = (1.0f - x - y) / y * Y; };
-    rgb = max(xyz_to_rgb(kg, make_float3(X, Y, Z)), make_float3(0.0f));
-  }
-  $else {
+    return max(xyz_to_rgb(kg, make_float3(X, Y, Z)), make_float3(0.0f));
+  };
+  const auto emit_hosek = [&]() noexcept {
     const auto x = sky_radiance_internal(config_x, theta, gamma) * radiance_x;
     const auto y = sky_radiance_internal(config_y, theta, gamma) * radiance_y;
     const auto z = sky_radiance_internal(config_z, theta, gamma) * radiance_z;
-    rgb = max(xyz_to_rgb(kg, make_float3(x, y, z)), make_float3(0.0f)) *
-          (2.0f * pi / 683.0f);
+    return max(xyz_to_rgb(kg, make_float3(x, y, z)), make_float3(0.0f)) *
+           (2.0f * pi / 683.0f);
+  };
+  if (const auto ct = try_const_uint(type)) {
+    return *ct == static_cast<unsigned>(NODE_SKY_PREETHAM) ? emit_preetham()
+                                                           : emit_hosek();
+  }
+  Float3 rgb;
+  $if(type == static_cast<unsigned>(NODE_SKY_PREETHAM)) {
+    rgb = emit_preetham();
+  }
+  $else {
+    rgb = emit_hosek();
   };
   return rgb;
 }
@@ -123,7 +134,13 @@ sky_radiance_nishita(Cursor &cursor, const KernelGlobals &kernel_globals,
   const auto angular_diameter = cursor.floating();
   const auto sun_intensity = cursor.floating();
   const auto earth_intersection_angle = cursor.floating();
-  const auto texture_id = cursor.word().bitcast<std::int32_t>();
+  const auto tex_w = cursor.word();
+  const auto texture_id = [&]() noexcept -> Expr<std::int32_t> {
+    if (const auto cw = try_const_uint(tex_w)) {
+      return Expr<std::int32_t>{std::bit_cast<std::int32_t>(*cw)};
+    }
+    return tex_w.bitcast<std::int32_t>();
+  }();
 
   const auto spherical = direction_to_spherical(direction);
   const auto sun_direction =
@@ -174,6 +191,16 @@ void node_tex_sky(Cursor &cursor, Stack &stack,
   const auto direction_offset = cursor.byte(packed_offsets, 0u);
   const auto output_offset = cursor.byte(packed_offsets, 1u);
   const auto direction = stack_load_float3(stack, direction_offset);
+  if (const auto ct = try_const_uint(sky_type)) {
+    const Float3 rgb =
+        (*ct == static_cast<unsigned>(NODE_SKY_PREETHAM) ||
+         *ct == static_cast<unsigned>(NODE_SKY_HOSEK))
+            ? sky_radiance_analytic(cursor, kernel_globals, sky_type, direction)
+            : sky_radiance_nishita(cursor, kernel_globals, shader_data,
+                                   path_state, direction);
+    stack_store_float3(stack, output_offset, rgb);
+    return;
+  }
   Float3 rgb;
   $if((sky_type == static_cast<unsigned>(NODE_SKY_PREETHAM)) |
       (sky_type == static_cast<unsigned>(NODE_SKY_HOSEK))) {
