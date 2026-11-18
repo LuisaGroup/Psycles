@@ -1,6 +1,8 @@
 #include "cycles_shader_identity.h"
 #include "cycles_surface_sort.h"
+#include "path_kernel_surface_buckets.h"
 #include "path_kernel_surface_queue.h"
+#include "path_kernel_transitions.h"
 
 #include <luisa/coro/schedulers/wavefront.h>
 #include <luisa/luisa-compute.h>
@@ -223,6 +225,137 @@ bool check_joint_surface_queue(Device &device, Stream &stream, const Oracle &ora
   }
   return true;
 }
+bool check_multi_bucket_surface_routing(Device &device, Stream &stream) {
+  using namespace luisa::compute::coro;
+  constexpr unsigned shader_count = 78u;
+  auto scene = std::make_shared<LuisaSceneData>(device);
+  scene->native_cycles_svm_surface = true;
+  scene->cycles_svm = std::make_unique<CyclesSvmRuntime>();
+  auto &comp = scene->cycles_svm->compilation;
+  comp.table.valid = true;
+  comp.table.shader_count = shader_count;
+  comp.table.words.resize(shader_count * 4u, 0u);
+  comp.table.ir.valid = true;
+  comp.table.ir.shaders.resize(shader_count);
+  comp.shader_metadata.resize(shader_count);
+  comp.shader_surface_entry_usage.resize(shader_count);
+  comp.kernel_shaders.resize(shader_count);
+
+  for (unsigned i = 0u; i < shader_count; ++i) {
+    comp.table.words[i * 4u] = i + 1u;
+    abi::SvmOpIr op{};
+    op.instruction.opcode = abi::NODE_CLOSURE_BSDF;
+    op.instruction.payload_offset = i * 4u;
+    op.instruction.payload_word_count = 4u;
+    comp.table.ir.shaders[i].routines[0u].push_back(op);
+    comp.shader_metadata[i].surface_num_closures = (i < 38u) ? 1u : 4u;
+    comp.shader_metadata[i].has_surface_bssrdf = (i >= 70u);
+    if (i == 60u) {
+      comp.kernel_shaders[i].flags = static_cast<int>(abi::SD_HAS_EMISSION);
+      comp.shader_surface_entry_usage[i]
+          .node_types_used[abi::NODE_CLOSURE_EMISSION] = true;
+    }
+  }
+  scene->cycles_svm->kernel_features =
+      psycles::luisa_backend::cycles_svm::kernel_feature_subsurface;
+
+  const auto plan =
+      make_path_surface_bucket_plan(*scene, true, true, false, true);
+  if (plan.buckets.size() != 2u || plan.buckets[0u].max_surface_closures != 1u ||
+      plan.buckets[0u].may_have_emission || plan.buckets[0u].may_have_bssrdf ||
+      plan.buckets[1u].max_surface_closures != 4u ||
+      !plan.buckets[1u].may_have_emission || !plan.buckets[1u].may_have_bssrdf) {
+    std::cerr << "Unexpected 78-shader surface bucket specialization\n";
+    return false;
+  }
+
+  auto out_bucket = device.create_buffer<unsigned>(shader_count);
+  auto out_key = device.create_buffer<unsigned>(shader_count);
+  Kernel1D check_map = [&](BufferUInt buckets_out, BufferUInt keys_out) {
+    const auto sid = dispatch_x();
+    const auto b = plan.emit_bucket_index(sid);
+    UInt k = 0u;
+    $if(b == 0u) { k = plan.emit_dense_sort_key(0u, sid); }
+    $else { k = plan.emit_dense_sort_key(1u, sid); };
+    buckets_out.write(sid, b);
+    keys_out.write(sid, k);
+  };
+  auto map_shader = device.compile(check_map);
+  std::vector<unsigned> host_b(shader_count, ~0u), host_k(shader_count, ~0u);
+  stream << map_shader(out_bucket, out_key).dispatch(shader_count)
+         << out_bucket.copy_to(host_b.data()) << out_key.copy_to(host_k.data())
+         << synchronize();
+
+  std::array<std::vector<bool>, 2u> seen{
+      std::vector<bool>(plan.buckets[0u].key_count, false),
+      std::vector<bool>(plan.buckets[1u].key_count, false)};
+  for (unsigned i = 0u; i < shader_count; ++i) {
+    const unsigned expected_b = (i < 38u) ? 0u : 1u;
+    if (host_b[i] != expected_b || host_k[i] >= plan.buckets[expected_b].key_count ||
+        seen[expected_b][host_k[i]]) {
+      std::cerr << "Dense sort key bijection failed at shader " << i << '\n';
+      return false;
+    }
+    seen[expected_b][host_k[i]] = true;
+  }
+
+  // Also verify 4-bucket + background fused continuation count conservation.
+  constexpr unsigned n_threads = 256u;
+  auto visited = device.create_buffer<unsigned>(n_threads);
+  std::vector<unsigned> host_visited(n_threads, 0u);
+  stream << visited.copy_from(host_visited.data()) << synchronize();
+  Coroutine<void(Buffer<unsigned>)> coro4{[](BufferUInt out) {
+    const auto id = dispatch_x();
+    $suspend(path_transition::intersect_closest);
+    const auto mode = (id * 7u + (id >> 4u)) % 5u;
+    $if(mode == 4u) {
+      $suspend(path_transition::shade_background);
+      out.write(id, 100u);
+    }
+    $elif(mode == 0u) {
+      $suspend(path_transition::shade_surface,
+               make_surface_sort_annotation(id % 7u, 7u, true));
+      out.write(id, 1u);
+    }
+    $elif(mode == 1u) {
+      $suspend(path_transition::shade_surface_1,
+               make_surface_sort_annotation(id % 5u, 5u, true));
+      out.write(id, 2u);
+    }
+    $elif(mode == 2u) {
+      $suspend(path_transition::shade_surface_2,
+               make_surface_sort_annotation(id % 6u, 6u, true));
+      out.write(id, 3u);
+    }
+    $else {
+      $suspend(path_transition::shade_surface_3,
+               make_surface_sort_annotation(id % 4u, 4u, true));
+      out.write(id, 4u);
+    };
+  }};
+  WavefrontCoroSchedulerConfig cfg4;
+  cfg4.thread_count = n_threads;
+  cfg4.execution_block_size = 32u;
+  cfg4.largest_continuation_first = true;
+  cfg4.incremental_continuation_counts = true;
+  cfg4.fused_continuation_counts = true;
+  cfg4.frame_buffer_compaction = true;
+  WavefrontCoroScheduler<Buffer<unsigned>> sched4{device, coro4, cfg4};
+  sched4.register_extension_handler(stream, make_surface_sort_handler);
+  stream << synchronize() << sched4(visited).dispatch(n_threads)
+         << visited.copy_to(host_visited.data()) << synchronize();
+  for (unsigned i = 0u; i < n_threads; ++i) {
+    const unsigned m = (i * 7u + (i >> 4u)) % 5u;
+    const unsigned expected = (m == 4u) ? 100u : (m + 1u);
+    if (host_visited[i] != expected) {
+      std::cerr << "4-bucket fused continuation count mismatch at lane " << i
+                << ": got " << host_visited[i] << " expected " << expected << '\n';
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -343,6 +476,7 @@ int main(int argc, char **argv) {
     ok = check_scheduler(device, stream, oracle, capacity, true) && ok;
   }
   ok = check_joint_surface_queue(device, stream, oracle) && ok;
+  ok = check_multi_bucket_surface_routing(device, stream) && ok;
   if (ok) {
     std::cout << "Cycles surface queue shader identity passed\n";
   }

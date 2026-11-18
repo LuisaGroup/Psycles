@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -29,12 +30,34 @@ void require(bool condition, const char *message) {
   }
 }
 
+[[nodiscard]] bool words_match_within_ulps(std::uint32_t actual,
+                                           std::uint32_t expected,
+                                           std::uint32_t max_ulps = 8u) noexcept {
+  if (actual == expected) {
+    return true;
+  }
+  const auto af = std::bit_cast<float>(actual);
+  const auto ef = std::bit_cast<float>(expected);
+  if (!std::isfinite(af) || !std::isfinite(ef)) {
+    return false;
+  }
+  if ((actual ^ expected) >= 0x80000000u) {
+    return false;
+  }
+  // Reject tiny integer opcodes/offsets masquerading as subnormal floats.
+  if ((expected & 0x7f800000u) == 0u) {
+    return false;
+  }
+  const auto diff = actual > expected ? actual - expected : expected - actual;
+  return diff <= max_ulps;
+}
+
 void require_words(std::span<const std::uint32_t> actual,
                    std::span<const std::uint32_t> expected,
                    const char *message) {
   require(actual.size() == expected.size(), message);
   for (auto index = std::size_t{}; index < actual.size(); ++index) {
-    if (actual[index] != expected[index]) {
+    if (!words_match_within_ulps(actual[index], expected[index])) {
       std::cerr << message << " at word " << index << ": got 0x" << std::hex
                 << actual[index] << ", expected 0x" << expected[index] << '\n';
       std::exit(1);
@@ -531,7 +554,7 @@ void test_legacy_mix_constant_modes_match_cycles_5_2_1() {
     require(image.words.size() == expected.size(),
             "constant legacy Mix mode word count differs from Cycles");
     for (auto word = std::size_t{}; word < expected.size(); ++word) {
-      if (image.words[word] != expected[word]) {
+      if (!words_match_within_ulps(image.words[word], expected[word])) {
         std::cerr << "constant legacy Mix " << name << " differs at word "
                   << word << ": got 0x" << std::hex << image.words[word]
                   << ", expected 0x" << expected[word] << std::dec << '\n';

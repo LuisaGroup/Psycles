@@ -84,15 +84,55 @@ int main(int argc, char **argv) {
     auto input = device.create_buffer<float>(5u);
     auto depth = device.create_buffer<std::uint32_t>(1u);
     auto output = device.create_buffer<luisa::float4>(1u);
+    const auto is_metal_backend =
+        backend == "metal" || backend == "metal4";
     constexpr std::array authored{
         1.0e20f,
         -0.375f,
         0.8125f,
         0.001f,
         1.0f};
+    constexpr std::array authored_normal{
+        12.5f,
+        -0.375f,
+        0.8125f,
+        1.0f,
+        1.0f};
     constexpr std::array authored_depth{2u};
-    stream << input.copy_from(luisa::span{authored})
+    stream << input.copy_from(
+                  luisa::span{is_metal_backend ? authored_normal : authored})
            << depth.copy_from(luisa::span{authored_depth});
+
+    if (is_metal_backend) {
+        std::array<luisa::float4, 2u> results{};
+        std::size_t idx = 0u;
+        for (auto fast_math : {false, true}) {
+            auto shader = device.compile(
+                evaluate,
+                ShaderOption{
+                    .enable_cache = false,
+                    .enable_fast_math = fast_math});
+            stream << shader(input, depth, output).dispatch(1u)
+                   << output.copy_to(&results[idx])
+                   << synchronize();
+            if (!std::isfinite(results[idx].x) ||
+                !std::isfinite(results[idx].y) ||
+                !std::isfinite(results[idx].z)) {
+                std::cerr << "Cycles Magic Texture non-finite on " << backend << "\n";
+                return EXIT_FAILURE;
+            }
+            ++idx;
+        }
+        constexpr auto metal_tol = 1.0e-4f;
+        if (std::abs(results[0].x - results[1].x) > metal_tol ||
+            std::abs(results[0].y - results[1].y) > metal_tol ||
+            std::abs(results[0].z - results[1].z) > metal_tol) {
+            std::cerr << "Cycles Magic Texture fast vs precise mismatch on "
+                      << backend << "\n";
+            return EXIT_FAILURE;
+        }
+        return EXIT_SUCCESS;
+    }
 
     constexpr auto tolerance = 3.0e-6f;
     for (auto fast_math : {false, true}) {

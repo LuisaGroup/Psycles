@@ -2,6 +2,7 @@
 
 #include "path_kernel_builder.h"
 #include "path_kernel_direct_light_queue.h"
+#include "path_kernel_surface_buckets.h"
 #include "path_kernel_surface_queue.h"
 #include "path_kernel_transitions.h"
 #include "cycles_surface_sort.h"
@@ -110,6 +111,7 @@ template<typename SchedulerConfig>
 void validate_cycles_stage_partition_abi(
     const RenderCoroutine &coroutine,
     const PathKernelSceneStagePlan &plan,
+    const PathSurfaceBucketPlan &surface_buckets,
     bool has_volume,
     bool has_subsurface,
     bool has_split_shadow_path) noexcept {
@@ -129,13 +131,18 @@ void validate_cycles_stage_partition_abi(
             "{}'. Host-stage reachability and the coroutine graph disagree.",
             name);
     };
+    const bool has_surfaces = !plan.traversal.primitives.empty();
     require(path_transition::intersect_closest, true);
     require(path_transition::shade_volume, has_volume);
     require(path_transition::shade_light_forward,
             plan.analytic_light_endpoints);
     require(path_transition::shade_background, true);
-    require(path_transition::shade_surface,
-            !plan.traversal.primitives.empty());
+    for (unsigned b = 0u; b < 4u; ++b) {
+        require(path_transition::shade_surface_bucket_name(b),
+                has_surfaces && b < surface_buckets.buckets.size());
+    }
+    require(path_transition::shade_surface_post,
+            has_surfaces && surface_buckets.post_closure_substage);
     require(path_transition::shade_light_nee,
             has_split_shadow_path);
     require(path_transition::intersect_shadow,
@@ -143,7 +150,9 @@ void validate_cycles_stage_partition_abi(
     require(path_transition::shade_shadow,
             has_split_shadow_path);
     require(path_transition::intersect_subsurface,
-            has_subsurface && !plan.traversal.primitives.empty());
+            has_subsurface && has_surfaces &&
+                (!surface_buckets.native_specialized ||
+                 surface_buckets.any_may_have_bssrdf()));
     LUISA_ASSERT(
         coroutine.graph().node_by_name(path_transition::path_bounce) == nullptr &&
             coroutine.graph().node_by_name(
@@ -163,10 +172,11 @@ void validate_cycles_stage_partition_abi(
         path.scene->environment_in_light_distribution,
         path.scene->emissive_triangle_count, path.scene->light_count,
         path.scene->geometries.size(), path.scene->curve_geometries.size());
+    const auto surface_buckets = make_path_surface_bucket_plan(path);
     auto coroutine = build_path_coroutine(
         path, PathCoroutineCutPolicy::cycles_wavefront);
     validate_cycles_stage_partition_abi(
-        coroutine, stage_plan, path.volume_state != nullptr,
+        coroutine, stage_plan, surface_buckets, path.volume_state != nullptr,
         path.has_subsurface,
         !path.path_trace_enabled &&
             path.direct_light_task_sink == nullptr &&
@@ -438,13 +448,31 @@ build_path_kernel_executor(luisa::compute::Device &device,
         shade_surface_block_size = parsed;
       }
     }
+    auto bucket0_block_size = shade_surface_block_size;
+    if (const auto *override_b0 =
+            std::getenv("PSYCLES_SHADE_SURFACE_BUCKET0_BLOCK_SIZE")) {
+      const auto parsed =
+          static_cast<std::uint32_t>(std::strtoul(override_b0, nullptr, 10));
+      if (valid_luisa_execution_block_size(parsed)) {
+        bucket0_block_size = parsed;
+      }
+    }
+    const auto surface_buckets = make_path_surface_bucket_plan(staged_path);
     luisa::compute::coro::WavefrontCoroSchedulerConfig scheduler_config;
     scheduler_config.thread_count = config.wavefront_frame_capacity;
-            scheduler_config.execution_block_size =
-                config.wavefront_execution_block_size;
-            scheduler_config.continuation_block_sizes = {{
-                .continuation = path_transition::shade_surface,
-                .execution_block_size = shade_surface_block_size}};
+    scheduler_config.execution_block_size =
+        config.wavefront_execution_block_size;
+    for (std::size_t b = 0u; b < surface_buckets.buckets.size(); ++b) {
+      scheduler_config.continuation_block_sizes.push_back(
+          {.continuation = surface_buckets.buckets[b].continuation_name,
+           .execution_block_size =
+               b == 0u ? bucket0_block_size : shade_surface_block_size});
+    }
+    if (surface_buckets.post_closure_substage) {
+      scheduler_config.continuation_block_sizes.push_back(
+          {.continuation = path_transition::shade_surface_post,
+           .execution_block_size = config.wavefront_execution_block_size});
+    }
             scheduler_config.largest_continuation_first = true;
             scheduler_config.incremental_continuation_counts = true;
             scheduler_config.fused_continuation_counts = true;

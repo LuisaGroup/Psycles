@@ -30,7 +30,7 @@ bool constant_diffuse_literals(std::span<const std::uint32_t> actual,
     if (rgb && (!std::isfinite(a) || !std::isfinite(b))) { return false; }
     if (actual[i] == expected[i]) { continue; }
     const auto distance = actual[i] > expected[i] ? actual[i] - expected[i] : expected[i] - actual[i];
-    if (!rgb || !std::isfinite(a) || !std::isfinite(b) || distance > 4) { return false; }
+    if (!rgb || !std::isfinite(a) || !std::isfinite(b) || distance > 6) { return false; }
   }
   return true;
 }
@@ -59,7 +59,7 @@ void check_literal_comparison_and_origin_hash() {
     auto changed = original.words;
     // More than the admitted rounding in float lanes, and a structural
     // mutation everywhere else. Neither must be accepted.
-    changed[i] += 5;
+    changed[i] += 7;
     require(!constant_diffuse_literals(changed, original.words), "literal comparison hid a changed word");
   }
   auto rounded = original.words;

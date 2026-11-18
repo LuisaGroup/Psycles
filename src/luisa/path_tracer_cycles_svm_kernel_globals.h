@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -26,6 +27,10 @@ enum class PathCyclesSvmShaderDomain : std::uint8_t {
 [[nodiscard]] compiler::cycles_svm::ShaderEntryUsage
 cycles_svm_domain_entry_usage(const LuisaSceneData &scene,
                               PathCyclesSvmShaderDomain domain) noexcept;
+
+[[nodiscard]] compiler::cycles_svm::ShaderEntryUsage
+cycles_svm_masked_entry_usage(const LuisaSceneData &scene,
+                              std::span<const std::uint8_t> active_shader_mask) noexcept;
 
 [[nodiscard]] std::vector<std::uint8_t>
 cycles_svm_domain_shader_mask(const LuisaSceneData &scene,
@@ -81,10 +86,12 @@ class PathCyclesSvmKernelGlobals final
         Expr<bool> reflective_caustics,
         Expr<bool> refractive_caustics,
         PathCyclesSvmShaderDomain domain =
-            PathCyclesSvmShaderDomain::all_shaders) noexcept;
+            PathCyclesSvmShaderDomain::all_shaders,
+        std::span<const std::uint8_t> explicit_shader_mask = {}) noexcept;
     PathCyclesSvmKernelGlobals(
         std::shared_ptr<LuisaSceneData> scene,
-        const SurfacePopulationContext &context) noexcept;
+        const SurfacePopulationContext &context,
+        std::span<const std::uint8_t> explicit_shader_mask = {}) noexcept;
 
     [[nodiscard]] Bool caustics_reflective() const noexcept override;
     [[nodiscard]] Bool caustics_refractive() const noexcept override;

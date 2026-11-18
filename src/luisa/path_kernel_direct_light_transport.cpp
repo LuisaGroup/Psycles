@@ -76,6 +76,7 @@ DirectLightTransportState DirectLightTransportState::empty() noexcept {
             .light_primitive = surface_ray::invalid_primitive,
             .shader_flags = 0u,
             .average_roughness_squared = 0.0f,
+            .light_terminate_sample = 0.0f,
             .constant_light_shader = false,
             .distant = false,
             .valid = false};
@@ -136,12 +137,16 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
         auto &task = preparation.task;
 
         $if(transport.valid) {
+            const Float light_terminate_sample =
+                bounce.random_state != nullptr
+                    ? bounce.random().light_terminate_sample
+                    : transport.light_terminate_sample;
             const auto local_unshadowed =
                 transport.weighted_bsdf * transport.light_shader;
             const auto constant_contribution = finalize_direct_light_sample(
                 config.light_transport.light_sample_roulette_weight,
                 local_unshadowed, sample.throughput,
-                bounce.random().light_terminate_sample,
+                light_terminate_sample,
                 invocation.parameters.light_inv_rr_threshold);
             const auto initial_contribution = select(
                 transport.weighted_bsdf, constant_contribution,
@@ -187,8 +192,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 task.ray_dP = shadow_differential.position;
                 task.ray_dD = shadow_differential.direction;
                 task.ray_time = surface.point.time;
-                task.light_terminate_sample =
-                    bounce.random().light_terminate_sample;
+                task.light_terminate_sample = light_terminate_sample;
                 task.sample_index = sample.sample_index;
                 task.rng_hash = sample.rng_hash;
                 task.rng_offset = sample.cycles_rng_offset;

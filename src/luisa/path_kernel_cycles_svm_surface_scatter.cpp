@@ -15,6 +15,234 @@ namespace closure = cycles_closure;
 namespace abi = compiler::cycles_svm;
 namespace path = cycles_path_state;
 
+PreparedCyclesSvmSurfaceScatter
+PreparedCyclesSvmSurfaceScatter::empty() noexcept {
+  return {.wo = make_float3(0.0f, 0.0f, 1.0f),
+          .throughput_weight = make_float3(0.0f),
+          .diffuse_ratio = make_float3(0.0f),
+          .glossy_ratio = make_float3(0.0f),
+          .pdf = 0.0f,
+          .average_roughness_squared = 0.0f,
+          .shading_normal = make_float3(0.0f, 0.0f, 1.0f),
+          .dP = 0.0f,
+          .ray_length = 0.0f,
+          .label = closure::label_none,
+          .sd_flag = 0u,
+          .bssrdf_sample = SurfaceSample::zero(),
+          .subsurface = false,
+          .valid = false};
+}
+
+Bool PreparedCyclesSvmSurfaceScatter::needs_triangle_ray_origin()
+    const noexcept {
+  return valid & (!subsurface) &
+         ((label & closure::label_transparent) == 0u);
+}
+
+void PreparedCyclesSvmSurfaceScatter::accept(
+    const PreparedCyclesSvmSurfaceScatter &other,
+    bool include_bssrdf) noexcept {
+  wo = other.wo;
+  throughput_weight = other.throughput_weight;
+  diffuse_ratio = other.diffuse_ratio;
+  glossy_ratio = other.glossy_ratio;
+  pdf = other.pdf;
+  average_roughness_squared = other.average_roughness_squared;
+  shading_normal = other.shading_normal;
+  dP = other.dP;
+  ray_length = other.ray_length;
+  label = other.label;
+  sd_flag = other.sd_flag;
+  if (include_bssrdf) {
+    bssrdf_sample = other.bssrdf_sample;
+  }
+  subsurface = other.subsurface;
+  valid = other.valid;
+}
+
+PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
+    DirectLightingContext &context, const CyclesSvmSurfaceState &population,
+    bool may_have_bssrdf) noexcept {
+  auto &sample = context.bounce.sample;
+  const auto &config = sample.invocation.config;
+  auto &sd = population.shader_data;
+  const auto &kg = population.kernel_globals;
+  const auto &pool = *sd.closure;
+  const auto features = config.scene->cycles_svm->kernel_features;
+  const bool bssrdf_enabled =
+      may_have_bssrdf && ((features & svm::kernel_feature_subsurface) != 0u);
+
+  auto out = PreparedCyclesSvmSurfaceScatter::empty();
+  out.shading_normal = sd.N;
+  out.dP = sd.dP;
+  out.ray_length = sd.ray_length;
+  out.sd_flag = sd.flag;
+
+  const std::uint32_t scatter_mask =
+      bssrdf_enabled ? unsigned(abi::SD_BSDF | abi::SD_BSSRDF)
+                     : unsigned(abi::SD_BSDF);
+  $if((sd.flag & scatter_mask) != 0u) {
+    const auto random = sample.surface_bsdf_sample();
+    const auto pick = native::surface_shader_bsdf_bssrdf_pick(sd, random);
+    const auto sc = pool.common(pick.index);
+
+    const auto sample_ordinary_bsdf = [&] noexcept {
+      const auto bsdf = native::surface_shader_bsdf_sample_closure(
+          kg, sd, pick, population.closure_types);
+      $if((bsdf.evaluation.pdf != 0.0f) & any(bsdf.evaluation.sum != 0.0f) &
+          (bsdf.label != closure::label_none)) {
+        out.wo = bsdf.wo;
+        out.throughput_weight = bsdf.evaluation.sum / bsdf.evaluation.pdf;
+        out.pdf = bsdf.evaluation.pdf;
+        out.average_roughness_squared =
+            bsdf.evaluation.average_roughness_squared;
+        out.label = bsdf.label;
+        $if(sample.path_depth == 0u) {
+          out.diffuse_ratio = config.light_transport.light_component_ratio(
+              bsdf.evaluation.diffuse, bsdf.evaluation.sum);
+          out.glossy_ratio = config.light_transport.light_component_ratio(
+              bsdf.evaluation.glossy, bsdf.evaluation.sum);
+        };
+        out.valid = true;
+      };
+    };
+
+    if (bssrdf_enabled) {
+      $if(closure::is_bssrdf(sc.type)) {
+        const auto bssrdf = pool.bssrdf(pick.index);
+        out.bssrdf_sample.bssrdf_method =
+            static_cast<unsigned>(SurfaceBssrdfMethod::random_walk);
+        $switch(sc.type) {
+          $case(closure::type_bssrdf_burley) {
+            out.bssrdf_sample.bssrdf_method =
+                static_cast<unsigned>(SurfaceBssrdfMethod::burley);
+          };
+          $case(closure::type_bssrdf_random_walk_legacy) {
+            out.bssrdf_sample.bssrdf_method =
+                static_cast<unsigned>(SurfaceBssrdfMethod::random_walk_legacy);
+          };
+          $case(closure::type_bssrdf_random_walk_skin) {
+            out.bssrdf_sample.bssrdf_method =
+                static_cast<unsigned>(SurfaceBssrdfMethod::random_walk_skin);
+          };
+          $default {};
+        };
+        out.bssrdf_sample.bssrdf_radius = bssrdf.param.radius;
+        out.bssrdf_sample.bssrdf_albedo = bssrdf.param.albedo;
+        out.bssrdf_sample.bssrdf_normal = sc.N;
+        out.bssrdf_sample.bssrdf_ior = bssrdf.param.ior;
+        out.bssrdf_sample.bssrdf_roughness = bssrdf.param.alpha;
+        out.bssrdf_sample.bssrdf_anisotropy = bssrdf.param.anisotropy;
+        out.throughput_weight =
+            native::surface_shader_bssrdf_sample_weight(sd, pick.index);
+        out.subsurface = true;
+        out.valid = true;
+      }
+      $else { sample_ordinary_bsdf(); };
+    } else {
+      sample_ordinary_bsdf();
+    }
+  };
+  return out;
+}
+
+SurfaceScatterStage::Result commit_cycles_svm_surface_continuation(
+    DirectLightingContext &context,
+    const PreparedCyclesSvmSurfaceScatter &prepared,
+    bool may_have_bssrdf) noexcept {
+  auto &sample = context.bounce.sample;
+  const auto &config = sample.invocation.config;
+  const auto &parameters = sample.invocation.parameters;
+  const auto features = config.scene->cycles_svm->kernel_features;
+  const bool bssrdf_enabled =
+      may_have_bssrdf && ((features & svm::kernel_feature_subsurface) != 0u);
+  const path::Limits limits{
+      .maximum = parameters.max_bounces,
+      .maximum_diffuse = parameters.max_diffuse_bounces,
+      .maximum_glossy = parameters.max_glossy_bounces,
+      .maximum_transmission = parameters.max_transmission_bounces,
+      .maximum_transparent = parameters.transparent_max_bounces};
+  const auto path_state = [&] noexcept -> path::State {
+    return {.flag = sample.path_flags,
+            .visibility = sample.cycles_path_visibility,
+            .bounce = sample.path_depth,
+            .diffuse_bounce = sample.diffuse_depth,
+            .glossy_bounce = sample.glossy_depth,
+            .transmission_bounce = sample.transmission_depth,
+            .transparent_bounce = sample.transparent_depth,
+            .rng_offset = sample.cycles_rng_offset,
+            .portal_bounce = UInt{0u}};
+  };
+  const auto store_path = [&](const path::State &next) noexcept {
+    sample.path_flags = next.flag;
+    sample.cycles_path_visibility = next.visibility;
+    sample.path_depth = next.bounce;
+    sample.diffuse_depth = next.diffuse_bounce;
+    sample.glossy_depth = next.glossy_bounce;
+    sample.transmission_depth = next.transmission_bounce;
+    sample.transparent_depth = next.transparent_bounce;
+    sample.cycles_rng_offset = next.rng_offset;
+  };
+
+  const auto commit_bsdf = [&] noexcept {
+    const auto transparent = (prepared.label & closure::label_transparent) != 0u;
+    $if(transparent) {
+      sample.ray->set_t_min(
+          surface_ray::intersection_t_offset(prepared.ray_length));
+    }
+    $else {
+      const auto D = normalize(prepared.wo);
+      sample.ray = make_ray(context.surface.make_ray_origin(D), D, 0.0f,
+                            ray_maximum);
+      sample.ray_dP = prepared.dP;
+      sample.ray_dD = cycles_ray_differential::widen_direction(
+          sample.ray_dD, prepared.average_roughness_squared);
+    };
+    sample.throughput *= prepared.throughput_weight;
+    $if(sample.path_depth == 0u) {
+      sample.path_diffuse_weight = prepared.diffuse_ratio;
+      sample.path_glossy_weight = prepared.glossy_ratio;
+    };
+    $if(!transparent) {
+      sample.previous_bsdf_pdf = prepared.pdf;
+      if (config.has_filter_glossy) {
+        sample.minimum_bsdf_pdf = min(prepared.pdf, sample.minimum_bsdf_pdf);
+      }
+      sample.previous_mis_origin_normal = prepared.shading_normal;
+    };
+    store_path(path::next_surface(
+        path_state(), prepared.label,
+        (prepared.sd_flag & unsigned(abi::SD_BSDF_HAS_TRANSMISSION)) != 0u,
+        Bool{false}, limits));
+    sample.ray_source_object = context.surface.cycles_object_index;
+    sample.ray_source_primitive = context.surface.cycles_primitive_index;
+    if (config.volume_state) {
+      config.volume_state->cross_surface(
+          sample.volume, context.surface.volume_stack_entry,
+          (prepared.sd_flag & unsigned(abi::SD_BACKFACING)) != 0u,
+          context.surface.surface_has_volume, prepared.label);
+    }
+  };
+
+  $if(prepared.valid) {
+    if (bssrdf_enabled) {
+      $if(prepared.subsurface) {
+        sample.throughput *= prepared.throughput_weight;
+        sample.cycles_rng_offset += path::bounce_dimension_count;
+        sample.cycles_path_visibility &= ~path::visibility_camera;
+        sample.ray_dP = prepared.dP;
+      }
+      $else { commit_bsdf(); };
+    } else {
+      commit_bsdf();
+    }
+  };
+
+  return {.sample = prepared.bssrdf_sample,
+          .subsurface = bssrdf_enabled ? prepared.subsurface : Bool{false},
+          .valid = prepared.valid};
+}
+
 SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
     DirectLightingContext &context, const CyclesSvmSurfaceState &population) noexcept {
   auto &sample = context.bounce.sample;

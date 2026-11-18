@@ -217,13 +217,11 @@ compile_film_pass_accessor(luisa::compute::Device &device) {
       .verify_sample_count = device.compile(
           verify_kernel,
           luisa::compute::ShaderOption{
-              .enable_cache = enable_cache,
-              .enable_fast_math = false}),
+              .enable_cache = enable_cache}),
       .resolve_pass = device.compile(
           resolve_kernel,
           luisa::compute::ShaderOption{
-              .enable_cache = enable_cache,
-              .enable_fast_math = false})});
+              .enable_cache = enable_cache})});
 }
 
 std::mutex &film_pass_accessor_mutex() noexcept {

@@ -16,12 +16,16 @@ namespace {
 class SurfaceShadingStageImpl final : public SurfaceShadingStage {
 
   private:
+    SurfaceShadingStageOptions _options;
     std::shared_ptr<
         const EmissiveTriangleComponent>
         _emissive_triangle{
             make_emissive_triangle_component()};
 
   public:
+    explicit SurfaceShadingStageImpl(SurfaceShadingStageOptions options) noexcept
+        : _options{std::move(options)} {}
+
     SurfaceShadingState
     emit(SurfaceGeometryContext &surface) const noexcept override {
         auto &bounce = surface.bounce;
@@ -117,7 +121,10 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 surface.path_surface_query,
                 include_runtime_flags,
                 include_aov);
-        if (config.surfaces.population) {
+        const auto &population_component =
+            _options.population ? _options.population
+                                : config.surfaces.population;
+        if (population_component) {
             std::optional<PathSurfaceAmbientOcclusionContext>
                 ambient_occlusion;
             if (scene->has_ambient_occlusion) {
@@ -144,7 +151,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 .include_runtime_flags =
                     preparation_query.include_runtime_flags,
                 .include_aov = preparation_query.include_aov};
-            populated_surface = config.surfaces.population->populate(
+            populated_surface = population_component->populate(
                 {.surface_tag = surface_tag,
                  .point = point,
                  .query = population_query,
@@ -192,10 +199,11 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 scene->cycles_svm->objects != nullptr &&
                 scene->cycles_svm->objects->image.valid) {
                 const bool any_shader_holdout =
-                    !scene->cycles_svm->compilation.table.valid ||
-                    scene->cycles_svm->compilation.table
-                        .usage_for(abi::SHADER_TYPE_SURFACE)
-                        .node_types_used[abi::NODE_CLOSURE_HOLDOUT];
+                    _options.may_have_holdout &&
+                    (!scene->cycles_svm->compilation.table.valid ||
+                     scene->cycles_svm->compilation.table
+                         .usage_for(abi::SHADER_TYPE_SURFACE)
+                         .node_types_used[abi::NODE_CLOSURE_HOLDOUT]);
                 const bool any_object_holdout = std::any_of(
                     scene->cycles_svm->objects->image.object_flags.begin(),
                     scene->cycles_svm->objects->image.object_flags.end(),
@@ -253,7 +261,10 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         }
         surface.set_evaluated_shadow_shading_normal(
             preparation.shading_normal);
-        emit_surface_emission(surface, preparation, *_emissive_triangle);
+        if (_options.may_have_emission || path_trace_enabled ||
+            !scene->native_cycles_svm_surface) {
+            emit_surface_emission(surface, preparation, *_emissive_triangle);
+        }
 
         // PATH_RAY_TERMINATE_ON_NEXT_SURFACE still records
         // surface emission, then stops before data passes, direct
@@ -472,8 +483,9 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
 
 } // namespace
 
-std::unique_ptr<SurfaceShadingStage> make_surface_shading_stage() {
-    return std::make_unique<SurfaceShadingStageImpl>();
+std::unique_ptr<SurfaceShadingStage>
+make_surface_shading_stage(SurfaceShadingStageOptions options) {
+    return std::make_unique<SurfaceShadingStageImpl>(std::move(options));
 }
 
 } // namespace psycles::luisa_backend::detail

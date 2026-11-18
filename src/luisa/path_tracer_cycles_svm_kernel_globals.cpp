@@ -202,6 +202,37 @@ abi::ShaderEntryUsage cycles_svm_domain_entry_usage(
   return result;
 }
 
+abi::ShaderEntryUsage cycles_svm_masked_entry_usage(
+    const LuisaSceneData &scene,
+    std::span<const std::uint8_t> active_shader_mask) noexcept {
+  const auto &compilation = scene.cycles_svm->compilation;
+  const auto table_usage =
+      compilation.table.usage_for(abi::SHADER_TYPE_SURFACE);
+  const auto count = static_cast<std::size_t>(compilation.table.shader_count);
+  if (!cycles_svm_has_domain_metadata(scene) ||
+      active_shader_mask.size() != count) {
+    return table_usage;
+  }
+  abi::ShaderEntryUsage result{};
+  result.node_types_used[abi::NODE_SHADER_JUMP] = true;
+  result.node_types_used[abi::NODE_END] = true;
+  result.noise_usage = abi::NoiseUsage::none();
+  for (std::size_t i = 0u; i < count; ++i) {
+    if (active_shader_mask[i] == 0u) {
+      continue;
+    }
+    const auto &entry = compilation.shader_surface_entry_usage[i];
+    for (std::size_t op = 0u; op < entry.node_types_used.size(); ++op) {
+      result.node_types_used[op] =
+          result.node_types_used[op] || entry.node_types_used[op];
+    }
+    result.peak_stack_usage =
+        std::max(result.peak_stack_usage, entry.peak_stack_usage);
+    result.noise_usage.shape_mask |= entry.noise_usage.shape_mask;
+  }
+  return result;
+}
+
 std::vector<std::uint8_t> cycles_svm_domain_shader_mask(
     const LuisaSceneData &scene,
     PathCyclesSvmShaderDomain domain) noexcept {
@@ -219,19 +250,22 @@ std::vector<std::uint8_t> cycles_svm_domain_shader_mask(
 
 PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     std::shared_ptr<LuisaSceneData> scene,
-    const SurfacePopulationContext &context) noexcept
+    const SurfacePopulationContext &context,
+    std::span<const std::uint8_t> explicit_shader_mask) noexcept
     : PathCyclesSvmKernelGlobals(
           std::move(scene), context.parameters, context.camera_projection,
           context.query.reflective_caustics,
           context.query.refractive_caustics,
-          PathCyclesSvmShaderDomain::surface_only) {}
+          PathCyclesSvmShaderDomain::surface_only,
+          explicit_shader_mask) {}
 
 PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     std::shared_ptr<LuisaSceneData> scene,
     const Var<RenderKernelParameters> &parameters,
     CameraProjection camera_projection, Expr<bool> reflective_caustics,
     Expr<bool> refractive_caustics,
-    PathCyclesSvmShaderDomain domain) noexcept
+    PathCyclesSvmShaderDomain domain,
+    std::span<const std::uint8_t> explicit_shader_mask) noexcept
     : _scene{std::move(scene)},
       _parameters{parameters},
       _camera_projection{camera_projection},
@@ -249,9 +283,14 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
   const auto &compilation = _scene->cycles_svm->compilation;
   if (compilation.table.valid &&
       compilation.shader_metadata.size() == compilation.table.shader_count) {
-    const bool filter_domain =
+    const bool has_explicit_mask =
         cycles_svm_has_domain_metadata(*_scene) &&
-        domain != PathCyclesSvmShaderDomain::all_shaders;
+        explicit_shader_mask.size() ==
+            static_cast<std::size_t>(compilation.table.shader_count);
+    const bool filter_domain =
+        has_explicit_mask ||
+        (cycles_svm_has_domain_metadata(*_scene) &&
+         domain != PathCyclesSvmShaderDomain::all_shaders);
     bool thin_film = false;
     auto closure_u = abi::ClosureUsage::none();
     std::uint32_t mix_mask = 0u;
@@ -280,7 +319,11 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     bool wave_dist = false;
     const auto count = compilation.table.shader_count;
     for (std::uint32_t i = 0u; i < count; ++i) {
-      if (filter_domain && !shader_in_domain(*_scene, i, domain)) {
+      if (has_explicit_mask) {
+        if (explicit_shader_mask[i] == 0u) {
+          continue;
+        }
+      } else if (filter_domain && !shader_in_domain(*_scene, i, domain)) {
         continue;
       }
       const auto &meta = compilation.shader_metadata[i];

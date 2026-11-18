@@ -1,9 +1,12 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_coro_transitions.h"
+#include "path_kernel_cycles_svm_surface_scatter.h"
 #include "path_kernel_direct_light_task.h"
 #include "path_kernel_direct_light_trace.h"
+#include "path_kernel_surface_buckets.h"
 #include "path_kernel_surface_queue.h"
 #include "path_kernel_transitions.h"
+#include "path_tracer_cycles_svm_surface.h"
 
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_svm.h>
@@ -30,6 +33,9 @@ public:
   std::unique_ptr<SurfaceGeometryStage> surface_geometry;
   std::unique_ptr<SurfaceQueueKeyStage> surface_queue_key;
   std::unique_ptr<SurfaceShadingStage> surface_shading;
+  std::vector<std::unique_ptr<SurfaceShadingStage>> bucket_surface_shading;
+  PathSurfaceBucketPlan surface_buckets;
+  ScenePrimitiveStagePlan primitive_plan{};
   std::shared_ptr<const DirectLightTraceRecorder> direct_light_trace;
   std::vector<std::unique_ptr<DirectLightingComponent>> direct_lighting;
   std::unique_ptr<DirectLightTransportStage> direct_light_transport;
@@ -45,7 +51,8 @@ public:
         config.scene->emissive_triangle_count, config.scene->light_count,
         config.scene->geometries.size(), config.scene->curve_geometries.size());
     const auto traversal_plan = stage_plan.traversal;
-    const auto primitive_plan = traversal_plan.primitives;
+    primitive_plan = traversal_plan.primitives;
+    surface_buckets = make_path_surface_bucket_plan(config);
     bounce_setup =
         make_path_bounce_setup_stage(
             traversal_plan,
@@ -70,6 +77,24 @@ public:
         surface_queue_key = make_surface_queue_key_stage(primitive_plan);
       }
       surface_shading = make_surface_shading_stage();
+      bucket_surface_shading.reserve(surface_buckets.buckets.size());
+      for (const auto &spec : surface_buckets.buckets) {
+        if (surface_buckets.native_specialized && config.surfaces.population) {
+          auto pop = make_cycles_svm_surface_population_component(
+              config.scene,
+              CyclesSvmSurfaceBucketSpecialization{
+                  .active_shader_mask = spec.active_shader_mask,
+                  .entry_usage = spec.entry_usage,
+                  .max_surface_closures = spec.max_surface_closures});
+          bucket_surface_shading.push_back(make_surface_shading_stage(
+              SurfaceShadingStageOptions{
+                  .population = std::move(pop),
+                  .may_have_emission = spec.may_have_emission,
+                  .may_have_holdout = spec.may_have_holdout}));
+        } else {
+          bucket_surface_shading.push_back(make_surface_shading_stage());
+        }
+      }
       surface_scatter = make_surface_scatter_stage();
       const auto &direct_lighting_plan = stage_plan.direct_lighting;
       direct_lighting.reserve(direct_lighting_plan.size());
@@ -206,222 +231,528 @@ void PathKernelPipeline::emit(
     $if(volume_scattered) { $continue; };
 
     if (_impl->surface_geometry) {
-      // Traversal and volume resolution have selected an exact surface
-      // hit, but surface geometry and closure population have not begun.
-      // Suspending here keeps those large, short-lived values out of the
-      // coroutine frame while separating traversal from shading.
-      if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
-        // Resolve only the evaluator's shader identity here,
-        // after volume transport selected the surface path. Keeping
-        // this recomputation at the cut avoids carrying it through
-        // shade_volume while still giving the scheduler a coherence
-        // key before closure population begins.
-        if (_impl->surface_queue_key) {
-          const auto surface_queue_key = _impl->surface_queue_key->emit(
-              sample.invocation.config.scene, bounce.hit);
-          if (sample.invocation.config.staged_surface_sort_annotation) {
-            $suspend(path_transition::shade_surface,
-                     make_surface_sort_annotation(
-                         surface_queue_key,
-                         surface_queue_key_range(*sample.invocation.config.scene),
-                         sample.invocation.config.scene->native_cycles_svm_surface));
-          } else {
-            $suspend(path_transition::shade_surface,
-                     coro_frame_export(path_transition::scheduler_hint,
-                                       surface_queue_key));
-          }
-        } else {
-          $suspend(path_transition::shade_surface);
+      const auto &config = sample.invocation.config;
+      const auto &scene = config.scene;
+      const auto &bucket_plan = _impl->surface_buckets;
+      const bool has_portal =
+          scene->cycles_svm != nullptr &&
+          (scene->cycles_svm->kernel_features &
+           cycles_svm::kernel_feature_node_portal) != 0u;
+      const auto env_enabled = [](const char *name, bool def_val) noexcept {
+        const char *raw = std::getenv(name);
+        if (raw == nullptr || *raw == '\0') {
+          return def_val;
         }
-      }
-      auto surface = _impl->surface_geometry->emit(bounce);
-      if (sample.invocation.config.scene->native_cycles_svm_surface &&
-          sample.invocation.config.volume_state) {
-        namespace abi = compiler::cycles_svm;
-        const auto &scene = sample.invocation.config.scene;
-        const UInt shader_flags =
-            surface.cycles_shader_flags
-                ? *surface.cycles_shader_flags
-                : (*scene->cycles_svm->kernel_shader_buffer)
-                      ->read(surface.cycles_surface_shader &
-                             cycles_svm::shader_mask)
-                      .flags.cast<unsigned>();
-        $if((shader_flags & static_cast<unsigned>(abi::SD_HAS_ONLY_VOLUME)) != 0u) {
-          const auto next = cycles_volume_boundary::advance(
-              sample.throughput, sample.volume_bounds_bounce,
-              sample.cycles_rng_offset, sample.ray->t_min(),
-              bounce.hit->committed_ray_t, sample.continuation_probability,
-              sample.path_flags);
-          sample.throughput = next.throughput;
-          sample.volume_bounds_bounce = next.bounds_bounce;
-          sample.cycles_rng_offset = next.rng_offset;
-          $if(!next.valid) { $break; };
-          sample.ray = make_ray(sample.ray->origin(), sample.ray->direction(),
-                                next.ray_tmin, sample.ray->t_max());
-          sample.invocation.config.volume_state->cross_surface(
-              sample.volume, surface.volume_stack_entry, surface.point.back_facing,
-              surface.surface_has_volume,
-              cycles_closure::label_transmit | cycles_closure::label_transparent);
-          $continue;
-        };
-      }
-      auto shading = _impl->surface_shading->emit(surface);
-      DirectLightingContext lighting{
-          .bounce = bounce, .surface = surface, .shading = shading};
-      std::optional<DirectLightTransportPreparation> direct_light_preparation;
-      bool defer_direct_light = false;
-      if (_impl->direct_light_transport) {
-        direct_light_preparation.emplace();
-        defer_direct_light =
-            _impl->direct_light_transport->defer_until_after_surface_scatter(
-                cut_policy);
+        return std::string_view{raw} != "0" && std::string_view{raw} != "off";
+      };
+      const bool fast_post_closure =
+          env_enabled("PSYCLES_POST_CLOSURE_ORDER", true) &&
+          scene->native_cycles_svm_surface && !config.path_trace_enabled &&
+          !has_portal && config.surfaces.population != nullptr;
+      const bool force_post_closure_on_bssrdf =
+          std::getenv("PSYCLES_POST_CLOSURE_ORDER") != nullptr &&
+          env_enabled("PSYCLES_POST_CLOSURE_ORDER", false);
+      const bool use_multi_bucket =
+          cut_policy == PathCoroutineCutPolicy::cycles_wavefront &&
+          config.staged_surface_sort_annotation && _impl->surface_queue_key &&
+          bucket_plan.multi_bucket();
+      const bool use_post_substage =
+          cut_policy == PathCoroutineCutPolicy::cycles_wavefront &&
+          fast_post_closure && bucket_plan.post_closure_substage;
+
+      const auto emit_volume_only_skip =
+          [&](SurfaceGeometryContext &surface) noexcept {
+            if (scene->native_cycles_svm_surface && config.volume_state) {
+              namespace abi = compiler::cycles_svm;
+              const UInt shader_flags =
+                  surface.cycles_shader_flags
+                      ? *surface.cycles_shader_flags
+                      : (*scene->cycles_svm->kernel_shader_buffer)
+                            ->read(surface.cycles_surface_shader &
+                                   cycles_svm::shader_mask)
+                            .flags.cast<unsigned>();
+              $if((shader_flags &
+                   static_cast<unsigned>(abi::SD_HAS_ONLY_VOLUME)) != 0u) {
+                const auto next = cycles_volume_boundary::advance(
+                    sample.throughput, sample.volume_bounds_bounce,
+                    sample.cycles_rng_offset, sample.ray->t_min(),
+                    bounce.hit->committed_ray_t,
+                    sample.continuation_probability, sample.path_flags);
+                sample.throughput = next.throughput;
+                sample.volume_bounds_bounce = next.bounds_bounce;
+                sample.cycles_rng_offset = next.rng_offset;
+                $if(!next.valid) { $break; };
+                sample.ray =
+                    make_ray(sample.ray->origin(), sample.ray->direction(),
+                             next.ray_tmin, sample.ray->t_max());
+                config.volume_state->cross_surface(
+                    sample.volume, surface.volume_stack_entry,
+                    surface.point.back_facing, surface.surface_has_volume,
+                    cycles_closure::label_transmit |
+                        cycles_closure::label_transparent);
+                $continue;
+              };
+            }
+          };
+
+      const auto emit_nee_closure_eval =
+          [&](DirectLightingContext &lighting) noexcept
+          -> DirectLightTransportState {
+        auto transport = DirectLightTransportState::empty();
+        if (!_impl->direct_light_transport) {
+          return transport;
+        }
         const auto has_evaluable_bsdf =
-            (shading.cycles_surface_runtime_flags &
+            (lighting.shading.cycles_surface_runtime_flags &
              cycles_closure::runtime_bsdf_has_eval) != 0u;
-        // The host stage plan already proves use_direct_light. Cycles tests
-        // SD_BSDF_HAS_EVAL before PRNG_LIGHT and either emitter-selection
-        // algorithm; no random/CDF/tree work belongs to the rejected path.
         _impl->bounce_random->with_active_state(
             sample, has_evaluable_bsdf, [&](PathBounceRandomState &random) {
-          bounce.random_state = &random;
-          if (sample.invocation.config.use_light_tree) {
-            random.selected_light =
-                sample.invocation.config.light_tree.surface_sample(
-                    random.light_sample.z, surface.hit_position,
-                    shading.shading_normal, 0.0f,
-                    (shading.cycles_surface_runtime_flags &
+              bounce.random_state = &random;
+              if (config.use_light_tree) {
+                random.selected_light = config.light_tree.surface_sample(
+                    random.light_sample.z, lighting.surface.hit_position,
+                    lighting.shading.shading_normal, 0.0f,
+                    (lighting.shading.cycles_surface_runtime_flags &
                      cycles_closure::runtime_bsdf_has_transmission) != 0u);
-          }
-          auto direct_light = DirectLightSampleState::empty();
-          std::vector<std::unique_ptr<DirectLightProvider>> light_providers;
-          light_providers.reserve(_impl->direct_lighting.size());
-          for (const auto &component : _impl->direct_lighting) {
-            light_providers.emplace_back(
-                component->make_light_provider(lighting, direct_light));
-          }
-          for (const auto &provider : light_providers) {
-            provider->sample();
-          }
+              }
+              auto direct_light = DirectLightSampleState::empty();
+              std::vector<std::unique_ptr<DirectLightProvider>> light_providers;
+              light_providers.reserve(_impl->direct_lighting.size());
+              for (const auto &component : _impl->direct_lighting) {
+                light_providers.emplace_back(
+                    component->make_light_provider(lighting, direct_light));
+              }
+              for (const auto &provider : light_providers) {
+                provider->sample();
+              }
 
-          // Every proposal predicate refines a distinct emitter-kind value,
-          // so direct_light is a one-hot phi. Keeping this evaluator after the
-          // merge records the closure/SVM walk once instead of once per
-          // environment, emissive-mesh, and analytic-light branch.
-          auto evaluation = SurfaceEvaluation::zero();
-          $if(direct_light.valid) {
-            evaluation = shading.evaluate_light(
-                sample.invocation,
-                surface.surface_tag,
-                surface.point,
-                direct_light.direction,
-                surface.path_surface_query,
-                direct_light.shader_flags);
+              auto evaluation = SurfaceEvaluation::zero();
+              $if(direct_light.valid) {
+                evaluation = lighting.shading.evaluate_light(
+                    sample.invocation, lighting.surface.surface_tag,
+                    lighting.surface.point, direct_light.direction,
+                    lighting.surface.path_surface_query,
+                    direct_light.shader_flags);
+              };
+              const auto receiving_nonzero =
+                  direct_light.valid & any(evaluation.f != 0.0f);
+              if (!scene->native_cycles_svm_surface) {
+                for (const auto &provider : light_providers) {
+                  provider->evaluate_deferred_emission(receiving_nonzero);
+                }
+              }
+
+              $if(direct_light.valid) {
+                const auto cycles_mis_weight =
+                    config.light_transport.nee_light_weight(direct_light.pdf,
+                                                            evaluation.pdf);
+                _impl->direct_light_trace->record_evaluation(
+                    bounce,
+                    {.distance = direct_light.distance,
+                     .bsdf_pdf = evaluation.pdf,
+                     .mis_weight = cycles_mis_weight,
+                     .bsdf = evaluation.f,
+                     .diffuse = evaluation.diffuse_f,
+                     .glossy = evaluation.glossy_f});
+                const auto mis_weight = select(1.0f, cycles_mis_weight,
+                                               direct_light.apply_mis);
+                const auto constant_emission_factor =
+                    select(make_float3(1.0f), direct_light.light_shader,
+                           direct_light.constant_light_shader);
+                const auto weighted_bsdf =
+                    evaluation.f * direct_light.radiometric_weight *
+                    constant_emission_factor *
+                    (mis_weight / direct_light.normalization_pdf);
+                _impl->direct_light_trace->record_weighted_bsdf(bounce,
+                                                                weighted_bsdf);
+                $if(any(weighted_bsdf != 0.0f)) {
+                  const auto deferred_light_shader =
+                      select(direct_light.light_shader, make_float3(1.0f),
+                             direct_light.constant_light_shader);
+                  transport.accept(
+                      evaluation, weighted_bsdf, deferred_light_shader,
+                      direct_light.direction, direct_light.target_position,
+                      direct_light.distant, direct_light.light_object,
+                      direct_light.light_primitive, direct_light.shader_flags,
+                      direct_light.constant_light_shader);
+                  transport.light_terminate_sample =
+                      random.light_terminate_sample;
+                };
+              };
+              bounce.random_state = nullptr;
+            });
+        return transport;
+      };
+
+      const auto emit_post_closure_tail =
+          [&](DirectLightingContext &lighting,
+              const DirectLightTransportState &transport,
+              const PreparedCyclesSvmSurfaceScatter &prepared_scatter,
+              bool may_have_bssrdf) noexcept {
+
+            std::optional<DirectLightTransportPreparation>
+                direct_light_preparation;
+            bool defer_direct_light = false;
+            if (_impl->direct_light_transport) {
+              defer_direct_light =
+                  _impl->direct_light_transport
+                      ->defer_until_after_surface_scatter(cut_policy);
+              direct_light_preparation =
+                  _impl->direct_light_transport->prepare(lighting, transport);
+              if (!defer_direct_light) {
+                _impl->direct_light_transport->emit(
+                    bounce, std::move(*direct_light_preparation), cut_policy);
+              }
+            }
+
+            const auto scatter = commit_cycles_svm_surface_continuation(
+                lighting, prepared_scatter, may_have_bssrdf);
+
+            std::optional<SubsurfaceTransportPreparation>
+                subsurface_preparation;
+            const bool bucket_subsurface =
+                may_have_bssrdf && _impl->subsurface_transport != nullptr;
+            if (bucket_subsurface) {
+              subsurface_preparation.emplace();
+              $if(scatter.valid & scatter.subsurface) {
+                *subsurface_preparation = _impl->subsurface_transport->prepare(
+                    lighting, scatter.sample);
+              };
+            }
+
+            if (_impl->direct_light_transport && defer_direct_light) {
+              _impl->direct_light_transport->emit(
+                  bounce, std::move(*direct_light_preparation), cut_policy);
+            }
+
+            $if(!scatter.valid) { $break; };
+
+            if (bucket_subsurface) {
+              $if(scatter.subsurface) {
+                $if(!subsurface_preparation->valid) { $break; };
+                if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
+                  $suspend(path_transition::intersect_subsurface);
+                }
+                const auto transported = _impl->subsurface_transport->emit(
+                    sample, subsurface_preparation->state);
+                $if(transported) { $continue; }
+                $else { $break; };
+              };
+            }
           };
-          const auto receiving_nonzero =
-              direct_light.valid & any(evaluation.f != 0.0f);
-          if (!sample.invocation.config.scene->native_cycles_svm_surface) {
-            for (const auto &provider : light_providers) {
-              provider->evaluate_deferred_emission(receiving_nonzero);
+
+      if (use_post_substage) {
+        const bool any_bssrdf = bucket_plan.any_may_have_bssrdf();
+        Float3 merged_hit_position = make_float3(0.0f);
+        Float3 merged_geometric_normal = make_float3(0.0f, 0.0f, 1.0f);
+        Float3 merged_shadow_shading_normal = make_float3(0.0f, 0.0f, 1.0f);
+        Float3 merged_shading_normal = make_float3(0.0f, 0.0f, 1.0f);
+        Float merged_differential_radius = 0.0f;
+        Float merged_shadow_terminator_offset = 0.0f;
+        Float merged_point_time = 0.5f;
+        UInt merged_object_index = 0u;
+        UInt merged_primitive_index = 0u;
+        Bool merged_is_curve = false;
+        Bool merged_transform_applied = false;
+        Bool merged_triangle_smooth = false;
+        Bool merged_back_facing = false;
+        VolumeStackEntry merged_volume_entry{};
+        Bool merged_surface_has_volume = false;
+        auto merged_transport = DirectLightTransportState::empty();
+        auto merged_scatter = PreparedCyclesSvmSurfaceScatter::empty();
+
+        const auto run_bucket_phase_a = [&](std::size_t b) noexcept {
+          const auto &spec = bucket_plan.buckets[b];
+          auto surface = _impl->surface_geometry->emit(bounce);
+          emit_volume_only_skip(surface);
+          auto shading = _impl->bucket_surface_shading[b]->emit(surface);
+          DirectLightingContext lighting{
+              .bounce = bounce, .surface = surface, .shading = shading};
+          const auto local_transport = emit_nee_closure_eval(lighting);
+          const auto native_state =
+              shading.populated_surface->native_surface_state();
+          LUISA_ASSERT(native_state.has_value(),
+                       "Expected native Cycles SVM surface state.");
+          const auto local_scatter = sample_cycles_svm_surface_continuation(
+              lighting, *native_state, spec.may_have_bssrdf);
+          shading.populated_surface.reset();
+
+          merged_hit_position = surface.hit_position;
+          merged_geometric_normal = surface.geometric_normal;
+          merged_shadow_shading_normal = surface.shadow_shading_normal;
+          merged_shading_normal = shading.shading_normal;
+          merged_differential_radius = surface.differential_radius;
+          merged_shadow_terminator_offset =
+              surface.shadow_terminator_geometry_offset;
+          merged_point_time = surface.point.time;
+          merged_object_index = surface.cycles_object_index;
+          merged_primitive_index = surface.cycles_primitive_index;
+          merged_is_curve = surface.is_curve;
+          merged_transform_applied = surface.cycles_transform_applied;
+          merged_triangle_smooth = surface.triangle_smooth;
+          merged_back_facing = surface.point.back_facing;
+          if (config.volume_state) {
+            merged_volume_entry = surface.volume_stack_entry;
+            merged_surface_has_volume = surface.surface_has_volume;
+          }
+          merged_transport = local_transport;
+          merged_scatter.accept(local_scatter, any_bssrdf);
+        };
+
+        if (use_multi_bucket) {
+          const auto shader_id =
+              _impl->surface_queue_key->emit(scene, bounce.hit);
+          const auto bucket_idx = bucket_plan.emit_bucket_index(shader_id);
+          const auto suspend_bucket = [&](std::size_t b) noexcept {
+            const auto &spec = bucket_plan.buckets[b];
+            const auto dense_key =
+                bucket_plan.emit_dense_sort_key(b, shader_id);
+            $suspend(spec.continuation_name,
+                     make_surface_sort_annotation(dense_key, spec.key_count,
+                                                  true));
+            run_bucket_phase_a(b);
+          };
+          if (bucket_plan.buckets.size() == 2u) {
+            $if(bucket_idx == 0u) { suspend_bucket(0u); }
+            $else { suspend_bucket(1u); };
+          } else if (bucket_plan.buckets.size() == 3u) {
+            $if(bucket_idx == 0u) { suspend_bucket(0u); }
+            $elif(bucket_idx == 1u) { suspend_bucket(1u); }
+            $else { suspend_bucket(2u); };
+          } else {
+            $if(bucket_idx == 0u) { suspend_bucket(0u); }
+            $elif(bucket_idx == 1u) { suspend_bucket(1u); }
+            $elif(bucket_idx == 2u) { suspend_bucket(2u); }
+            $else { suspend_bucket(3u); };
+          }
+        } else {
+          if (_impl->surface_queue_key) {
+            const auto surface_queue_key =
+                _impl->surface_queue_key->emit(scene, bounce.hit);
+            if (config.staged_surface_sort_annotation) {
+              $suspend(path_transition::shade_surface,
+                       make_surface_sort_annotation(
+                           surface_queue_key, surface_queue_key_range(*scene),
+                           scene->native_cycles_svm_surface));
+            } else {
+              $suspend(path_transition::shade_surface,
+                       coro_frame_export(path_transition::scheduler_hint,
+                                         surface_queue_key));
+            }
+          } else {
+            $suspend(path_transition::shade_surface);
+          }
+          run_bucket_phase_a(0u);
+        }
+
+        $suspend(path_transition::shade_surface_post);
+
+        SurfacePoint post_point{};
+        post_point.position = merged_hit_position;
+        post_point.geometric_normal = merged_geometric_normal;
+        post_point.shading_normal = merged_shading_normal;
+        post_point.time = merged_point_time;
+        post_point.back_facing = merged_back_facing;
+        post_point.is_curve = merged_is_curve;
+        post_point.triangle_smooth = merged_triangle_smooth;
+
+        SurfaceGeometryContext post_surface{
+            .bounce = bounce,
+            .primitive_plan = _impl->primitive_plan,
+            .geometric_normal = merged_geometric_normal,
+            .hit_position = merged_hit_position,
+            .differential_radius = merged_differential_radius,
+            .is_curve = merged_is_curve,
+            .cycles_transform_applied = merged_transform_applied,
+            .triangle_smooth = merged_triangle_smooth,
+            .shadow_shading_normal = merged_shadow_shading_normal,
+            .cycles_object_index = merged_object_index,
+            .cycles_primitive_index = merged_primitive_index,
+            .volume_stack_entry = merged_volume_entry,
+            .surface_has_volume = merged_surface_has_volume,
+            .point = std::move(post_point),
+            .shadow_terminator_geometry_offset =
+                merged_shadow_terminator_offset,
+            .lazy_cycles_geometry = true};
+        SurfaceShadingState post_shading{
+            .cycles_surface_runtime_flags = 0u,
+            .bsdf_sample = make_float3(0.0f),
+            .shading_normal = merged_shading_normal,
+            .populated_surface = nullptr};
+        DirectLightingContext post_lighting{
+            .bounce = bounce, .surface = post_surface, .shading = post_shading};
+        emit_post_closure_tail(post_lighting, merged_transport, merged_scatter,
+                               any_bssrdf);
+      } else if (use_multi_bucket) {
+        const auto shader_id =
+            _impl->surface_queue_key->emit(scene, bounce.hit);
+        const auto bucket_idx = bucket_plan.emit_bucket_index(shader_id);
+        const auto run_complete_bucket = [&](std::size_t b) noexcept {
+          const auto &spec = bucket_plan.buckets[b];
+          const auto dense_key = bucket_plan.emit_dense_sort_key(b, shader_id);
+          $suspend(
+              spec.continuation_name,
+              make_surface_sort_annotation(dense_key, spec.key_count, true));
+          auto surface = _impl->surface_geometry->emit(bounce);
+          emit_volume_only_skip(surface);
+          auto shading = _impl->bucket_surface_shading[b]->emit(surface);
+          DirectLightingContext lighting{
+              .bounce = bounce, .surface = surface, .shading = shading};
+          if (fast_post_closure &&
+              (!spec.may_have_bssrdf || force_post_closure_on_bssrdf)) {
+            const auto transport = emit_nee_closure_eval(lighting);
+            const auto native_state =
+                shading.populated_surface->native_surface_state();
+            LUISA_ASSERT(native_state.has_value(),
+                         "Expected native Cycles SVM surface state.");
+            const auto prepared_scatter = sample_cycles_svm_surface_continuation(
+                lighting, *native_state, spec.may_have_bssrdf);
+            shading.populated_surface.reset();
+            emit_post_closure_tail(lighting, transport, prepared_scatter,
+                                   spec.may_have_bssrdf);
+          } else {
+            const auto transport = emit_nee_closure_eval(lighting);
+            std::optional<DirectLightTransportPreparation>
+                direct_light_preparation;
+            bool defer_direct_light = false;
+            if (_impl->direct_light_transport) {
+              defer_direct_light =
+                  _impl->direct_light_transport
+                      ->defer_until_after_surface_scatter(cut_policy);
+              direct_light_preparation =
+                  _impl->direct_light_transport->prepare(lighting, transport);
+              if (!defer_direct_light) {
+                _impl->direct_light_transport->emit(
+                    bounce, std::move(*direct_light_preparation), cut_policy);
+              }
+            }
+            const auto scatter = _impl->surface_scatter->emit(lighting);
+            std::optional<SubsurfaceTransportPreparation>
+                subsurface_preparation;
+            const bool bucket_subsurface =
+                spec.may_have_bssrdf && _impl->subsurface_transport != nullptr;
+            if (bucket_subsurface) {
+              subsurface_preparation.emplace();
+              $if(scatter.valid & scatter.subsurface) {
+                *subsurface_preparation = _impl->subsurface_transport->prepare(
+                    lighting, scatter.sample);
+              };
+            }
+            if (_impl->direct_light_transport && defer_direct_light) {
+              _impl->direct_light_transport->emit(
+                  bounce, std::move(*direct_light_preparation), cut_policy);
+            }
+            $if(!scatter.valid) { $break; };
+            if (bucket_subsurface) {
+              $if(scatter.subsurface) {
+                $if(!subsurface_preparation->valid) { $break; };
+                $suspend(path_transition::intersect_subsurface);
+                const auto transported = _impl->subsurface_transport->emit(
+                    sample, subsurface_preparation->state);
+                $if(transported) { $continue; }
+                $else { $break; };
+              };
             }
           }
-
-          auto transport = DirectLightTransportState::empty();
-          $if(direct_light.valid) {
-            const auto cycles_mis_weight =
-                sample.invocation.config.light_transport.nee_light_weight(
-                    direct_light.pdf, evaluation.pdf);
-            _impl->direct_light_trace->record_evaluation(
-                bounce,
-                {.distance = direct_light.distance,
-                 .bsdf_pdf = evaluation.pdf,
-                 .mis_weight = cycles_mis_weight,
-                 .bsdf = evaluation.f,
-                 .diffuse = evaluation.diffuse_f,
-                 .glossy = evaluation.glossy_f});
-            const auto mis_weight = select(
-                1.0f, cycles_mis_weight, direct_light.apply_mis);
-            const auto constant_emission_factor = select(
-                make_float3(1.0f),
-                direct_light.light_shader,
-                direct_light.constant_light_shader);
-            const auto weighted_bsdf =
-                evaluation.f * direct_light.radiometric_weight *
-                constant_emission_factor *
-                (mis_weight / direct_light.normalization_pdf);
-            _impl->direct_light_trace->record_weighted_bsdf(
-                bounce, weighted_bsdf);
-            $if(any(weighted_bsdf != 0.0f)) {
-              const auto deferred_light_shader = select(
-                  direct_light.light_shader,
-                  make_float3(1.0f),
-                  direct_light.constant_light_shader);
-              transport.accept(
-                  evaluation,
-                  weighted_bsdf,
-                  deferred_light_shader,
-                  direct_light.direction,
-                  direct_light.target_position,
-                  direct_light.distant,
-                  direct_light.light_object,
-                  direct_light.light_primitive,
-                  direct_light.shader_flags,
-                  direct_light.constant_light_shader);
-            };
-          };
-          *direct_light_preparation =
-              _impl->direct_light_transport->prepare(lighting, transport);
-          bounce.random_state = nullptr;
-        });
-        if (!defer_direct_light) {
-          _impl->direct_light_transport->emit(
-              bounce, std::move(*direct_light_preparation), cut_policy);
+        };
+        if (bucket_plan.buckets.size() == 2u) {
+          $if(bucket_idx == 0u) { run_complete_bucket(0u); }
+          $else { run_complete_bucket(1u); };
+        } else if (bucket_plan.buckets.size() == 3u) {
+          $if(bucket_idx == 0u) { run_complete_bucket(0u); }
+          $elif(bucket_idx == 1u) { run_complete_bucket(1u); }
+          $else { run_complete_bucket(2u); };
+        } else {
+          $if(bucket_idx == 0u) { run_complete_bucket(0u); }
+          $elif(bucket_idx == 1u) { run_complete_bucket(1u); }
+          $elif(bucket_idx == 2u) { run_complete_bucket(2u); }
+          $else { run_complete_bucket(3u); };
         }
-      }
-      const auto scatter = _impl->surface_scatter->emit(lighting);
-
-      // BSSRDF entry sampling is the final consumer of populated
-      // surface data. Reduce it before the shadow stages as well; only
-      // the compact transport state can then remain live at a shadow
-      // suspension.
-      std::optional<SubsurfaceTransportPreparation> subsurface_preparation;
-      if (_impl->subsurface_transport) {
-        subsurface_preparation.emplace();
-        $if(scatter.valid & scatter.subsurface) {
-          *subsurface_preparation =
-              _impl->subsurface_transport->prepare(lighting, scatter.sample);
-        };
-      }
-
-      // This is the sequential A/bypass -> C graph: surface and closure
-      // temporaries have no uses below this point. Only the prepared
-      // shadow task, canonical continuation state, and (when reachable)
-      // compact BSSRDF transport state cross these suspensions.
-      if (_impl->direct_light_transport && defer_direct_light) {
-        _impl->direct_light_transport->emit(
-            bounce, std::move(*direct_light_preparation), cut_policy);
-      }
-
-      // A failed continuation sample does not discard the direct-light
-      // contribution from the current vertex. Consume this predicate
-      // only after the deferred shadow state machine has completed.
-      $if(!scatter.valid) { $break; };
-
-      if (_impl->subsurface_transport) {
-        $if(scatter.subsurface) {
-          $if(!subsurface_preparation->valid) { $break; };
-          if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
-            // Cycles' INTERSECT_SUBSURFACE consumes canonical
-            // path ray/isect state plus the dedicated 40-byte
-            // BSSRDF payload. Surface geometry, closures, NEE
-            // reservoirs, and shader temporaries die before this
-            // scheduling boundary.
-            $suspend(path_transition::intersect_subsurface);
+      } else {
+        if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
+          if (_impl->surface_queue_key) {
+            const auto surface_queue_key =
+                _impl->surface_queue_key->emit(scene, bounce.hit);
+            if (config.staged_surface_sort_annotation) {
+              $suspend(path_transition::shade_surface,
+                       make_surface_sort_annotation(
+                           surface_queue_key, surface_queue_key_range(*scene),
+                           scene->native_cycles_svm_surface));
+            } else {
+              $suspend(path_transition::shade_surface,
+                       coro_frame_export(path_transition::scheduler_hint,
+                                         surface_queue_key));
+            }
+          } else {
+            $suspend(path_transition::shade_surface);
           }
-          const auto transported = _impl->subsurface_transport->emit(
-              sample, subsurface_preparation->state);
-          $if(transported) { $continue; }
-          $else { $break; };
-        };
+        }
+        auto surface = _impl->surface_geometry->emit(bounce);
+        emit_volume_only_skip(surface);
+        const auto &spec = bucket_plan.buckets.front();
+        auto shading = _impl->bucket_surface_shading.front()->emit(surface);
+        DirectLightingContext lighting{
+            .bounce = bounce, .surface = surface, .shading = shading};
+        if (fast_post_closure &&
+            (!spec.may_have_bssrdf || force_post_closure_on_bssrdf)) {
+          const auto transport = emit_nee_closure_eval(lighting);
+          const auto native_state =
+              shading.populated_surface->native_surface_state();
+          LUISA_ASSERT(native_state.has_value(),
+                       "Expected native Cycles SVM surface state.");
+          const auto prepared_scatter = sample_cycles_svm_surface_continuation(
+              lighting, *native_state, spec.may_have_bssrdf);
+          shading.populated_surface.reset();
+          emit_post_closure_tail(lighting, transport, prepared_scatter,
+                                 spec.may_have_bssrdf);
+        } else {
+          std::optional<DirectLightTransportPreparation>
+              direct_light_preparation;
+          bool defer_direct_light = false;
+          if (_impl->direct_light_transport) {
+            direct_light_preparation.emplace();
+            defer_direct_light =
+                _impl->direct_light_transport
+                    ->defer_until_after_surface_scatter(cut_policy);
+            const auto transport = emit_nee_closure_eval(lighting);
+            *direct_light_preparation =
+                _impl->direct_light_transport->prepare(lighting, transport);
+            if (!defer_direct_light) {
+              _impl->direct_light_transport->emit(
+                  bounce, std::move(*direct_light_preparation), cut_policy);
+            }
+          }
+          const auto scatter = _impl->surface_scatter->emit(lighting);
+
+          std::optional<SubsurfaceTransportPreparation> subsurface_preparation;
+          if (_impl->subsurface_transport) {
+            subsurface_preparation.emplace();
+            $if(scatter.valid & scatter.subsurface) {
+              *subsurface_preparation = _impl->subsurface_transport->prepare(
+                  lighting, scatter.sample);
+            };
+          }
+
+          if (_impl->direct_light_transport && defer_direct_light) {
+            _impl->direct_light_transport->emit(
+                bounce, std::move(*direct_light_preparation), cut_policy);
+          }
+
+          $if(!scatter.valid) { $break; };
+
+          if (_impl->subsurface_transport) {
+            $if(scatter.subsurface) {
+              $if(!subsurface_preparation->valid) { $break; };
+              if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
+                $suspend(path_transition::intersect_subsurface);
+              }
+              const auto transported = _impl->subsurface_transport->emit(
+                  sample, subsurface_preparation->state);
+              $if(transported) { $continue; }
+              $else { $break; };
+            };
+          }
+        }
       }
     }
   };

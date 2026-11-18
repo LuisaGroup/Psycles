@@ -3,11 +3,14 @@
 #include "cycles_wavefront_policy.h"
 #include "path_kernel_film.h"
 #include "path_kernel_shadow_storage.h"
+#include "path_kernel_surface_buckets.h"
 #include "path_kernel_transitions.h"
 
 #include <algorithm>
 #include <array>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include <luisa/core/logging.h>
 #include <luisa/coro/coro_scheduler.h>
@@ -41,7 +44,7 @@ private:
       _set_extent_and_clear_reloc;
   luisa::compute::Shader1D<luisa::uint, luisa::uint> _collect_relocations;
   luisa::compute::Shader1D<luisa::uint, luisa::uint> _compact;
-  std::array<luisa::compute::coro::WavefrontCoroAuxiliaryProducer, 1u> _producers;
+  luisa::vector<luisa::compute::coro::WavefrontCoroAuxiliaryProducer> _producers;
   std::uint32_t _capacity{};
   std::uint32_t _execution_block_size{};
   std::uint32_t _warp_size{};
@@ -104,7 +107,8 @@ public:
       bool fuse_unoccluded_shadow = false,
       std::shared_ptr<const ShadowIntersectionBatchStorage> shadow_storage = {},
       bool may_have_shade_shadow = true,
-      bool may_continue_shadow = true) noexcept
+      bool may_continue_shadow = true,
+      std::span<const std::string_view> producer_continuations = {}) noexcept
       : _task_buffer{device.create_byte_buffer(
             static_cast<std::size_t>(evaluator.light_emission == nullptr ? 176u
                                                                          : 160u) *
@@ -121,14 +125,25 @@ public:
         _scratch_count{device.create_buffer<luisa::uint>(4u)},
         _relocation_counts{device.create_buffer<luisa::uint>(2u)},
         _count{device.create_buffer<luisa::uint>(4u)},
-        _producers{{{.continuation = path_transition::shade_surface,
-                     .max_emitted_per_invocation = 1u}}},
+        _producers{},
         _capacity{capacity}, _execution_block_size{execution_block_size},
         _warp_size{static_cast<std::uint32_t>(device.compute_warp_size())},
         _fuse_unoccluded_shadow{fuse_unoccluded_shadow},
         _may_have_shade_shadow{may_have_shade_shadow},
         _may_continue_shadow{may_continue_shadow},
         _has_fallback_light_shader{evaluator.light_emission == nullptr} {
+    if (producer_continuations.empty()) {
+      _producers.push_back(
+          {.continuation = path_transition::shade_surface,
+           .max_emitted_per_invocation = 1u});
+    } else {
+      _producers.reserve(producer_continuations.size());
+      for (const auto name : producer_continuations) {
+        _producers.push_back(
+            {.continuation = luisa::string{name},
+             .max_emitted_per_invocation = 1u});
+      }
+    }
     LUISA_ASSERT(execution_block_size != 0u,
                  "Direct-light consumer block size must be positive.");
     luisa::compute::Kernel1D initialize = [this](UInt capacity) {
@@ -1154,12 +1169,13 @@ make_direct_light_task_queue_impl(
     bool fuse_unoccluded_shadow,
     std::shared_ptr<const ShadowIntersectionBatchStorage> shadow_storage = {},
     bool may_have_shade_shadow = true,
-    bool may_continue_shadow = true) noexcept {
+    bool may_continue_shadow = true,
+    std::span<const std::string_view> producer_continuations = {}) noexcept {
   LUISA_ASSERT(capacity != 0u, "Direct-light task queue capacity must be positive.");
   auto queue = std::make_shared<DirectLightTaskQueue>(
       device, std::move(evaluator), capacity, execution_block_size,
       shader_option, fuse_unoccluded_shadow, std::move(shadow_storage),
-      may_have_shade_shadow, may_continue_shadow);
+      may_have_shade_shadow, may_continue_shadow, producer_continuations);
   LUISA_INFO("Psycles direct-light shadow queue: capacity={} "
              "payload_fields={} payload_aos_bytes={} task_soa_bytes={} "
              "traversal_soa_bytes={} queue_bytes={} stages={} fused_unoccluded={}.",
@@ -1204,10 +1220,12 @@ make_direct_light_task_queue(luisa::compute::Device &device,
   auto evaluator = make_direct_light_task_evaluator(config);
   evaluator.intersect_shadow = make_shadow_intersection_component(
       config.scene, shadow_storage, config.transparent_max_bounces);
+  const auto bucket_plan = make_path_surface_bucket_plan(config);
+  const auto producers = bucket_plan.producer_continuations();
   return make_direct_light_task_queue_impl(
       device, std::move(evaluator), capacity, execution_block_size,
       shader_option, true, std::move(shadow_storage), may_have_shade_shadow,
-      may_continue_shadow);
+      may_continue_shadow, producers);
 }
 
 } // namespace psycles::luisa_backend::detail

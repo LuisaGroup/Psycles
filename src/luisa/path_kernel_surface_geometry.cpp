@@ -188,6 +188,25 @@ namespace svm_abi = compiler::cycles_svm;
           uv(verts->read(base + tri.z))};
 }
 
+[[nodiscard]] bool scene_has_shadow_terminator_geometry_offset(
+    const LuisaSceneData &scene) noexcept {
+  if (!scene.cycles_svm || !scene.cycles_svm->objects ||
+      !scene.cycles_svm->objects->image.valid) {
+    return true;
+  }
+  const auto &objects = scene.cycles_svm->objects->image.objects;
+  for (std::size_t i = 0u; i < objects.size(); ++i) {
+    if (i == static_cast<std::size_t>(scene.cycles_background_object_index)) {
+      continue;
+    }
+    const float offset = objects[i].shadow_terminator_geometry_offset;
+    if (!std::isfinite(offset) || offset > 0.0f) {
+      return true;
+    }
+  }
+  return false;
+}
+
 } // namespace
 
 void SurfaceGeometryContext::ensure_world_triangle_vertices() noexcept {
@@ -248,6 +267,11 @@ SurfaceGeometryContext::fetch_world_to_object() const noexcept {
 
 void SurfaceGeometryContext::set_evaluated_shadow_shading_normal(
     Float3 evaluated_normal) noexcept {
+  if (lazy_cycles_geometry &&
+      !scene_has_shadow_terminator_geometry_offset(
+          *bounce.sample.invocation.config.scene)) {
+    return;
+  }
   const Float geom_offset =
       lazy_cycles_geometry
           ? shadow_terminator_geometry_offset
@@ -349,6 +373,10 @@ SurfaceGeometryContext::make_shadow_terminator_origin(
   Bool skip_self = true;
   const auto resolve_triangle_origin = [&] {
     if (lazy_cycles_geometry) {
+      if (!scene_has_shadow_terminator_geometry_offset(
+              *bounce.sample.invocation.config.scene)) {
+        return;
+      }
       $if(triangle_smooth & (shadow_terminator_geometry_offset > 0.0f)) {
         auto normal_light = dot(shadow_shading_normal, direction);
         const auto transmit = normal_light < 0.0f;
