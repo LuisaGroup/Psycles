@@ -4,7 +4,9 @@
 #error "Include <psycles/luisa/cycles_fast_math.h> through the Psycles::luisa target."
 #endif
 
+#include <cstdlib>
 #include <limits>
+#include <string_view>
 
 #include <luisa/dsl/sugar.h>
 
@@ -15,6 +17,16 @@ inline constexpr float inverse_pi = 0.31830988618379067154f;
 inline constexpr float half_pi = 1.57079632679489661923f;
 inline constexpr float quarter_pi = 0.78539816339744830962f;
 inline constexpr float ln_two = 0.69314718055994530942f;
+inline constexpr float inverse_ln_two = 1.44269504088896340736f;
+
+[[nodiscard]] inline bool native_sfu_fast_math_enabled() noexcept {
+    const char *raw = std::getenv("PSYCLES_NATIVE_FAST_MATH");
+    if (raw == nullptr || *raw == '\0') {
+        return true;
+    }
+    const std::string_view v{raw};
+    return !(v == "0" || v == "off" || v == "false");
+}
 
 struct SineCosine {
     luisa::compute::Float sine;
@@ -37,6 +49,9 @@ round_to_int(luisa::compute::Float value) noexcept {
 [[nodiscard]] inline luisa::compute::Float
 sine(luisa::compute::Float value) noexcept {
     using namespace luisa::compute;
+    if (native_sfu_fast_math_enabled()) {
+        return clamp(sin(value), -1.0f, 1.0f);
+    }
     const auto quadrant =
         round_to_int(value * inverse_pi);
     const auto quadrant_float = cast<float>(quadrant);
@@ -77,6 +92,9 @@ sine(luisa::compute::Float value) noexcept {
 [[nodiscard]] inline luisa::compute::Float
 cosine(luisa::compute::Float value) noexcept {
     using namespace luisa::compute;
+    if (native_sfu_fast_math_enabled()) {
+        return clamp(cos(value), -1.0f, 1.0f);
+    }
     const auto quadrant =
         round_to_int(value * inverse_pi);
     const auto quadrant_float = cast<float>(quadrant);
@@ -116,6 +134,10 @@ cosine(luisa::compute::Float value) noexcept {
 [[nodiscard]] inline SineCosine
 sine_cosine(luisa::compute::Float value) noexcept {
     using namespace luisa::compute;
+    if (native_sfu_fast_math_enabled()) {
+        return {.sine = clamp(sin(value), -1.0f, 1.0f),
+                .cosine = clamp(cos(value), -1.0f, 1.0f)};
+    }
     const auto quadrant =
         round_to_int(value * inverse_pi);
     const auto quadrant_float = cast<float>(quadrant);
@@ -179,11 +201,15 @@ sine_cosine(luisa::compute::Float value) noexcept {
 [[nodiscard]] inline luisa::compute::Float
 arc_cosine(luisa::compute::Float value) noexcept {
     using namespace luisa::compute;
-    const auto magnitude = abs(value);
+    const auto bits = as<uint>(value);
+    const auto abs_bits = bits & 0x7fffffffu;
+    const auto in_unit = abs_bits < 0x3f800000u;
+    const auto magnitude =
+        as<float>(select(0x3f800000u, abs_bits, in_unit));
     const auto clamped = select(
         1.0f,
         1.0f - (1.0f - magnitude),
-        magnitude < 1.0f);
+        in_unit);
     const auto approximation =
         sqrt(1.0f - clamped) *
         (1.5707963267f +
@@ -195,7 +221,8 @@ arc_cosine(luisa::compute::Float value) noexcept {
     return select(
         approximation,
         pi - approximation,
-        value < 0.0f);
+        (bits & 0x80000000u) != 0u & abs_bits != 0u &
+            abs_bits <= 0x7f800000u);
 }
 
 [[nodiscard]] inline luisa::compute::Float
@@ -295,6 +322,9 @@ log2(luisa::compute::Float value) noexcept {
         value,
         std::numeric_limits<float>::min(),
         std::numeric_limits<float>::max());
+    if (native_sfu_fast_math_enabled()) {
+        return luisa::compute::log2(value);
+    }
     const auto bits = as<uint>(value);
     const auto exponent =
         cast<int>(bits >> 23u) - 127;
@@ -329,6 +359,9 @@ log(luisa::compute::Float value) noexcept {
 exp2(luisa::compute::Float value) noexcept {
     using namespace luisa::compute;
     value = clamp(value, -126.0f, 126.0f);
+    if (native_sfu_fast_math_enabled()) {
+        return luisa::compute::exp2(value);
+    }
     const auto exponent = cast<int>(value);
     value -= cast<float>(exponent);
     value = 1.0f - (1.0f - value);
@@ -354,7 +387,7 @@ exp2(luisa::compute::Float value) noexcept {
 
 [[nodiscard]] inline luisa::compute::Float
 exp(luisa::compute::Float value) noexcept {
-    return exp2(value / ln_two);
+    return exp2(value * inverse_ln_two);
 }
 
 [[nodiscard]] inline luisa::compute::Float

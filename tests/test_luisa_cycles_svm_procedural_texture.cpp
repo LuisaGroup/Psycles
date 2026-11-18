@@ -287,12 +287,8 @@ template <typename... Args>
       luisa::float4{-1.0f, 0.0f, 0.0f, 0.0f},
       luisa::float4{0.471f, 0.379f, 0.0f, 0.0f},
       luisa::float4{0.811f, 0.541f, 0.0f, 0.0f}};
-  // metal4 lowers XIR BINARY_MOD to LLVM frem (x - trunc(x / y) * y), which
-  // differs from libm/MSL Payne-Hanek fmod on 1.0e20f * 0.001f = 1.0e17f.
-  const auto expected_magic_color =
-      backend == "metal4"
-          ? luisa::float3{0.083986670f, 0.292937696f, 0.999991179f}
-          : luisa::float3{0.555838704f, 0.657886386f, 0.937048197f};
+  constexpr auto expected_magic_color =
+      luisa::float3{0.555838704f, 0.657886386f, 0.937048197f};
   const std::array expected_colors{
       luisa::float3{0.045264751f},
       luisa::float3{0.442690015f},
@@ -483,10 +479,8 @@ run_interpreter_case(Device &device, Stream &stream, Shader &shader,
   auto shader = device.compile(
       interpreter_kernel(node_types),
       ShaderOption{.enable_cache = false, .enable_fast_math = false});
-  const auto expected_magic_color =
-      backend == "metal4"
-          ? luisa::float3{0.083986670f, 0.292937696f, 0.999991179f}
-          : luisa::float3{0.555838704f, 0.657886386f, 0.937048197f};
+  constexpr auto expected_magic_color =
+      luisa::float3{0.555838704f, 0.657886386f, 0.937048197f};
   return run_interpreter_case(device, stream, shader, wave_words,
                               luisa::float3{0.045264751f}, "Wave", backend) &&
          run_interpreter_case(

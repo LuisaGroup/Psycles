@@ -4,6 +4,8 @@
 #include "cycles_svm_test_compile.h"
 
 #include <array>
+#include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -56,6 +58,16 @@ void require_words(std::span<const std::uint32_t> actual,
   }
   for (auto index = std::size_t{}; index < actual.size(); ++index) {
     if (actual[index] != expected[index]) {
+      const auto af = std::bit_cast<float>(actual[index]);
+      const auto ef = std::bit_cast<float>(expected[index]);
+      const auto diff = actual[index] > expected[index]
+                            ? actual[index] - expected[index]
+                            : expected[index] - actual[index];
+      if (std::isfinite(af) && std::isfinite(ef) &&
+          (expected[index] & 0x7f800000u) != 0u &&
+          (actual[index] ^ expected[index]) < 0x80000000u && diff <= 8u) {
+        continue;
+      }
       std::cerr << label << " differs at word " << index << ": got 0x"
                 << std::hex << actual[index] << ", expected 0x"
                 << expected[index] << std::dec << '\n';

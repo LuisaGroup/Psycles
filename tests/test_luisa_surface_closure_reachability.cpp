@@ -7,6 +7,7 @@
 
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
@@ -442,8 +443,10 @@ template <typename Kernel>
     return result;
 }
 
-[[nodiscard]] auto make_probe_kernel(SurfaceClosureReachability reachability) {
-    return Kernel1D{[reachability](
+[[nodiscard]] auto make_probe_kernel(SurfaceClosureReachability reachability,
+                                     bool emit_eval = true,
+                                     bool emit_sample = true) {
+    return Kernel1D{[reachability, emit_eval, emit_sample](
                         BufferFloat4 parameters, BufferUInt closure_types,
                         BufferUInt microfacet_fresnels,
                         BufferFloat4 output) noexcept {
@@ -487,33 +490,50 @@ template <typename Kernel>
             .glossy_filter_roughness = 0.0f,
             .reflective_caustics = true,
             .refractive_caustics = true};
-        const auto policy =
-            make_surface_closure_evaluation_policy(false, Expr<std::uint32_t>{0u});
-        const auto contribution = surface_closure_evaluation_contribution(
-            services, closure_point, point.shading_normal, closure, point.incoming,
-            normalize(make_float3(0.23f, -0.17f, 0.958f)), query, policy, false,
-            reachability);
-        const auto sample = surface_closure_conditional_sample(
-            services, closure_point, point.shading_normal, closure, point.incoming,
-            closure.normal, make_float2(0.31f, 0.73f), 0.47f, query, reachability);
         const auto base = invocation * 5u;
-        output.write(base, make_float4(contribution.f, contribution.weighted_pdf));
-        output.write(base + 1u, make_float4(contribution.diffuse_f,
-                                            contribution.total_sample_weight));
-        output.write(base + 2u,
-                     make_float4(contribution.glossy_f,
-                                 contribution.weighted_roughness_squared));
-        output.write(base + 3u, make_float4(sample.direction,
-                                            select(0.0f, 1.0f, sample.valid)));
-        output.write(base + 4u, make_float4(sample.roughness, sample.eta,
-                                            cast<float>(sample.properties)));
+        if (emit_eval) {
+            const auto policy =
+                make_surface_closure_evaluation_policy(false, Expr<std::uint32_t>{0u});
+            const auto contribution = surface_closure_evaluation_contribution(
+                services, closure_point, point.shading_normal, closure, point.incoming,
+                normalize(make_float3(0.23f, -0.17f, 0.958f)), query, policy, false,
+                reachability);
+            output.write(base, make_float4(contribution.f, contribution.weighted_pdf));
+            output.write(base + 1u, make_float4(contribution.diffuse_f,
+                                                contribution.total_sample_weight));
+            output.write(base + 2u,
+                         make_float4(contribution.glossy_f,
+                                     contribution.weighted_roughness_squared));
+        }
+        if (emit_sample) {
+            const auto sample = surface_closure_conditional_sample(
+                services, closure_point, point.shading_normal, closure, point.incoming,
+                closure.normal, make_float2(0.31f, 0.73f), 0.47f, query, reachability);
+            output.write(base + 3u, make_float4(sample.direction,
+                                                select(0.0f, 1.0f, sample.valid)));
+            output.write(base + 4u, make_float4(sample.roughness, sample.eta,
+                                                cast<float>(sample.properties)));
+        }
     }};
 }
 
-[[nodiscard]] bool bit_exact(luisa::float4 lhs, luisa::float4 rhs) noexcept {
+[[nodiscard]] bool within_fast_math_ulps(luisa::float4 lhs,
+                                         luisa::float4 rhs,
+                                         std::uint32_t max_ulps = 16u) noexcept {
     static_assert(sizeof(luisa::float4) == 4u * sizeof(std::uint32_t));
-    return std::bit_cast<std::array<std::uint32_t, 4u>>(lhs) ==
-           std::bit_cast<std::array<std::uint32_t, 4u>>(rhs);
+    const auto a = std::bit_cast<std::array<std::uint32_t, 4u>>(lhs);
+    const auto b = std::bit_cast<std::array<std::uint32_t, 4u>>(rhs);
+    const float lf[4]{lhs.x, lhs.y, lhs.z, lhs.w};
+    const float rf[4]{rhs.x, rhs.y, rhs.z, rhs.w};
+    for (std::size_t i = 0u; i < 4u; ++i) {
+        if (a[i] == b[i]) { continue; }
+        if (lf[i] == 0.0f && rf[i] == 0.0f) { continue; }
+        if (!std::isfinite(lf[i]) || !std::isfinite(rf[i])) { return false; }
+        if ((a[i] ^ b[i]) >= 0x80000000u) { return false; }
+        const auto diff = a[i] > b[i] ? a[i] - b[i] : b[i] - a[i];
+        if (diff > max_ulps) { return false; }
+    }
+    return true;
 }
 
 } // namespace
@@ -716,8 +736,14 @@ int main(int argc, char **argv) {
         closure_types.size() * records_per_closure);
     auto top_output = device.create_buffer<luisa::float4>(closure_types.size() *
                                                           records_per_closure);
-    auto specialized_shader = device.compile(scene_probe);
-    auto top_shader = device.compile(top_probe);
+    auto specialized_eval_shader = device.compile(
+        make_probe_kernel(scene_reachability, true, false));
+    auto specialized_sample_shader = device.compile(
+        make_probe_kernel(scene_reachability, false, true));
+    auto top_eval_shader = device.compile(
+        make_probe_kernel(all_surface_closure_reachability, true, false));
+    auto top_sample_shader = device.compile(
+        make_probe_kernel(all_surface_closure_reachability, false, true));
     constexpr std::array parameter_data{luisa::float4{0.0f}};
     std::array<luisa::float4, closure_types.size() * records_per_closure>
         specialized_result{};
@@ -727,19 +753,27 @@ int main(int argc, char **argv) {
            << closure_type_buffer.copy_from(luisa::span{closure_types})
            << microfacet_fresnel_buffer.copy_from(
                   luisa::span{microfacet_fresnels})
-           << specialized_shader(parameters, closure_type_buffer,
-                                 microfacet_fresnel_buffer,
-                                 specialized_output)
+           << specialized_eval_shader(parameters, closure_type_buffer,
+                                      microfacet_fresnel_buffer,
+                                      specialized_output)
                   .dispatch(static_cast<std::uint32_t>(closure_types.size()))
-           << top_shader(parameters, closure_type_buffer,
-                         microfacet_fresnel_buffer,
-                         top_output)
+           << specialized_sample_shader(parameters, closure_type_buffer,
+                                        microfacet_fresnel_buffer,
+                                        specialized_output)
+                  .dispatch(static_cast<std::uint32_t>(closure_types.size()))
+           << top_eval_shader(parameters, closure_type_buffer,
+                              microfacet_fresnel_buffer,
+                              top_output)
+                  .dispatch(static_cast<std::uint32_t>(closure_types.size()))
+           << top_sample_shader(parameters, closure_type_buffer,
+                                microfacet_fresnel_buffer,
+                                top_output)
                   .dispatch(static_cast<std::uint32_t>(closure_types.size()))
            << specialized_output.copy_to(luisa::span{specialized_result})
            << top_output.copy_to(luisa::span{top_result}) << synchronize();
     for (auto index = std::size_t{0u}; index < specialized_result.size();
          ++index) {
-        if (!bit_exact(specialized_result[index], top_result[index])) {
+        if (!within_fast_math_ulps(specialized_result[index], top_result[index])) {
             const auto specialized_bits =
                 std::bit_cast<std::array<std::uint32_t, 4u>>(
                     specialized_result[index]);

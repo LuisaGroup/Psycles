@@ -757,54 +757,74 @@ surface_closure_evaluation_contribution(
         common.closure_type);
     auto result = zero_surface_closure_evaluation_contribution();
     $if(is_dielectric) {
-        result = evaluate_dielectric_closure(
-            services,
-            point,
-            Float3{shading_normal_expression},
-            project_surface_closure_physical_dielectric(closure),
-            Float3{incoming_expression},
-            Float3{outgoing_expression},
-            query,
-            policy,
-            Bool{selected_sample_expression},
-            reachability & evaluation_dielectric_payload_reachability);
+        if ((reachability.kinds &
+             evaluation_dielectric_payload_reachability.kinds) != 0u) {
+            $outline_noinline {
+                result = evaluate_dielectric_closure(
+                    services,
+                    point,
+                    Float3{shading_normal_expression},
+                    project_surface_closure_physical_dielectric(closure),
+                    Float3{incoming_expression},
+                    Float3{outgoing_expression},
+                    query,
+                    policy,
+                    Bool{selected_sample_expression},
+                    reachability & evaluation_dielectric_payload_reachability);
+            };
+        }
     }
     $elif(is_hair) {
-        result = evaluate_hair_closure(
-            point,
-            Float3{shading_normal_expression},
-            project_surface_closure_physical_hair(closure),
-            Float3{incoming_expression},
-            Float3{outgoing_expression},
-            query,
-            policy,
-            Bool{selected_sample_expression},
-            reachability & evaluation_hair_payload_reachability);
+        if ((reachability.kinds &
+             evaluation_hair_payload_reachability.kinds) != 0u) {
+            $outline_noinline {
+                result = evaluate_hair_closure(
+                    point,
+                    Float3{shading_normal_expression},
+                    project_surface_closure_physical_hair(closure),
+                    Float3{incoming_expression},
+                    Float3{outgoing_expression},
+                    query,
+                    policy,
+                    Bool{selected_sample_expression},
+                    reachability & evaluation_hair_payload_reachability);
+            };
+        }
     }
     $elif(is_general) {
-        result = evaluate_general_closure(
-            services,
-            point,
-            Float3{shading_normal_expression},
-            project_surface_closure_physical_general(closure),
-            Float3{incoming_expression},
-            Float3{outgoing_expression},
-            query,
-            policy,
-            Bool{selected_sample_expression},
-            reachability & evaluation_general_payload_reachability);
+        if ((reachability.kinds &
+             evaluation_general_payload_reachability.kinds) != 0u) {
+            $outline_noinline {
+                result = evaluate_general_closure(
+                    services,
+                    point,
+                    Float3{shading_normal_expression},
+                    project_surface_closure_physical_general(closure),
+                    Float3{incoming_expression},
+                    Float3{outgoing_expression},
+                    query,
+                    policy,
+                    Bool{selected_sample_expression},
+                    reachability & evaluation_general_payload_reachability);
+            };
+        }
     }
     $else {
-        result = evaluate_common_closure(
-            point,
-            Float3{shading_normal_expression},
-            project_surface_closure_physical_common_only(closure),
-            Float3{incoming_expression},
-            Float3{outgoing_expression},
-            query,
-            policy,
-            Bool{selected_sample_expression},
-            reachability & evaluation_common_only_reachability);
+        if ((reachability.kinds &
+             evaluation_common_only_reachability.kinds) != 0u) {
+            $outline_noinline {
+                result = evaluate_common_closure(
+                    point,
+                    Float3{shading_normal_expression},
+                    project_surface_closure_physical_common_only(closure),
+                    Float3{incoming_expression},
+                    Float3{outgoing_expression},
+                    query,
+                    policy,
+                    Bool{selected_sample_expression},
+                    reachability & evaluation_common_only_reachability);
+            };
+        }
     };
     return result;
 }

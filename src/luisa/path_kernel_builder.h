@@ -661,6 +661,7 @@ struct DirectLightTransportState {
     UInt light_primitive;
     UInt shader_flags;
     Float average_roughness_squared;
+    Float light_terminate_sample;
     Bool constant_light_shader;
     Bool distant;
     Bool valid;
@@ -862,7 +863,14 @@ make_path_volume_segment_stage(const PathKernelConfig &config);
 make_background_event_stage(bool ambient_occlusion_bounce_approximation);
 [[nodiscard]] std::unique_ptr<SurfaceGeometryStage>
 make_surface_geometry_stage(ScenePrimitiveStagePlan plan);
-[[nodiscard]] std::unique_ptr<SurfaceShadingStage> make_surface_shading_stage();
+struct SurfaceShadingStageOptions {
+    std::shared_ptr<const SurfacePopulationComponent> population;
+    bool may_have_emission{true};
+    bool may_have_holdout{true};
+};
+
+[[nodiscard]] std::unique_ptr<SurfaceShadingStage>
+make_surface_shading_stage(SurfaceShadingStageOptions options = {});
 [[nodiscard]] std::unique_ptr<DirectLightingComponent>
 make_environment_lighting_component(
     std::shared_ptr<const DirectLightTraceRecorder> trace);

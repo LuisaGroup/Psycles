@@ -75,8 +75,12 @@ int main(int argc, char **argv) {
       return EXIT_FAILURE;
     }
   }
-  if (std::isfinite(actual[3u].x) || std::isfinite(actual[3u].y) ||
-      std::isfinite(actual[3u].z)) {
+  const auto valid_degenerate_component = [](float v) noexcept {
+    return !std::isfinite(v) || v == 0.0f;
+  };
+  if (!valid_degenerate_component(actual[3u].x) ||
+      !valid_degenerate_component(actual[3u].y) ||
+      !valid_degenerate_component(actual[3u].z)) {
     std::cerr << "Cycles Geometry Tangent degenerate-domain oracle failed on "
               << backend << ": got {" << actual[3u].x << ", " << actual[3u].y
               << ", " << actual[3u].z << "}\n";

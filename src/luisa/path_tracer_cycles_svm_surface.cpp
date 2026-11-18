@@ -381,15 +381,20 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
 
     CyclesSvmPopulatedSurface(
         std::shared_ptr<LuisaSceneData> scene,
-        const SurfacePopulationContext &context) noexcept
+        const SurfacePopulationContext &context,
+        const CyclesSvmSurfaceBucketSpecialization &bucket) noexcept
         : _scene{std::move(scene)},
           _point{context.point},
-          _kernel_globals{_scene, context},
+          _kernel_globals{
+              _scene, context,
+              std::span<const std::uint8_t>{bucket.active_shader_mask}},
           _closures{std::make_unique<svm::ClosurePool>(
               std::clamp<std::size_t>(
-                  _scene->cycles_svm
-                      ? _scene->cycles_svm->compilation.max_surface_closures
-                      : _scene->volume_metadata.closure_allocation_budget,
+                  bucket.max_surface_closures != 0u
+                      ? bucket.max_surface_closures
+                      : (_scene->cycles_svm
+                             ? _scene->cycles_svm->compilation.max_surface_closures
+                             : _scene->volume_metadata.closure_allocation_budget),
                   1u, svm::maximum_closure_capacity),
               svm::ClosurePool::Options{
                   .may_have_thin_film = _kernel_globals.may_have_thin_film(),
@@ -407,9 +412,14 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                           abi::ClosureUsage::fresnel_conductor |
                           abi::ClosureUsage::fresnel_f82_tint |
                           abi::ClosureUsage::fresnel_generalized_schlick)})},
-          _closure_types{svm_detail::closure_types_for_kernel_features(
-                             _scene->cycles_svm->kernel_features) &
-                         _kernel_globals.closure_usage().surface_closure_mask},
+          _closure_types{
+              svm_detail::closure_types_for_kernel_features(
+                  _scene->cycles_svm->kernel_features) &
+              (_kernel_globals.closure_usage().surface_closure_mask |
+               (((_scene->cycles_svm->kernel_features &
+                  svm::kernel_feature_subsurface) != 0u)
+                    ? abi::ClosureUsage::bit(closure::type_diffuse)
+                    : 0ull))},
           _preparation_query{context.query},
           _include_aov_roughness{false} {
       UInt flags;
@@ -519,10 +529,20 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
       const Expr<Buffer<luisa::uint>> words{
           *_scene->cycles_svm->word_buffer};
       const auto evaluate_material = [&] {
-        const auto usage = cycles_svm_domain_entry_usage(
-            *_scene, PathCyclesSvmShaderDomain::surface_only);
-        const auto active_mask = cycles_svm_domain_shader_mask(
-            *_scene, PathCyclesSvmShaderDomain::surface_only);
+        const auto usage =
+            bucket.entry_usage.has_value()
+                ? *bucket.entry_usage
+                : cycles_svm_domain_entry_usage(
+                      *_scene, PathCyclesSvmShaderDomain::surface_only);
+        const auto default_mask =
+            bucket.active_shader_mask.empty()
+                ? cycles_svm_domain_shader_mask(
+                      *_scene, PathCyclesSvmShaderDomain::surface_only)
+                : std::vector<std::uint8_t>{};
+        const auto active_mask =
+            bucket.active_shader_mask.empty()
+                ? std::span<const std::uint8_t>{default_mask}
+                : std::span<const std::uint8_t>{bucket.active_shader_mask};
         svm_detail::surface_shader_initialize_closures(
             *_closures, path_state.visibility, path_state.flag);
         svm::translate_svm_nodes_assume_valid(svm::SvmTranslationRequest{
@@ -659,15 +679,18 @@ class CyclesSvmSurfacePopulationComponent final
 
   private:
     std::shared_ptr<LuisaSceneData> _scene;
+    CyclesSvmSurfaceBucketSpecialization _bucket;
 
   public:
-    explicit CyclesSvmSurfacePopulationComponent(
-        std::shared_ptr<LuisaSceneData> scene) noexcept
-        : _scene{std::move(scene)} {}
+    CyclesSvmSurfacePopulationComponent(
+        std::shared_ptr<LuisaSceneData> scene,
+        CyclesSvmSurfaceBucketSpecialization bucket) noexcept
+        : _scene{std::move(scene)}, _bucket{std::move(bucket)} {}
 
     [[nodiscard]] std::shared_ptr<PopulatedSurfaceShader> populate(
         const SurfacePopulationContext &context) const noexcept override {
-      return std::make_shared<CyclesSvmPopulatedSurface>(_scene, context);
+      return std::make_shared<CyclesSvmPopulatedSurface>(
+          _scene, context, _bucket);
     }
 };
 
@@ -675,8 +698,10 @@ class CyclesSvmSurfacePopulationComponent final
 
 std::shared_ptr<const SurfacePopulationComponent>
 make_cycles_svm_surface_population_component(
-    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
-  return std::make_shared<CyclesSvmSurfacePopulationComponent>(scene);
+    const std::shared_ptr<LuisaSceneData> &scene,
+    CyclesSvmSurfaceBucketSpecialization bucket) noexcept {
+  return std::make_shared<CyclesSvmSurfacePopulationComponent>(
+      scene, std::move(bucket));
 }
 
 } // namespace psycles::luisa_backend::detail

@@ -664,47 +664,69 @@ surface_closure_conditional_sample(
         common.closure_type);
     auto result = zero_surface_closure_conditional_sample();
     $if(is_dielectric) {
-        result = sample_dielectric_closure(
-            services,
-            sampling_point,
-            project_surface_closure_physical_dielectric(closure),
-            Float3{incoming_expression},
-            Float3{glossy_normal_expression},
-            Float2{random_direction_expression},
-            Float{rescaled_lobe_expression},
-            query,
-            reachability & sampling_dielectric_payload_reachability);
+        if ((reachability.kinds &
+             sampling_dielectric_payload_reachability.kinds) != 0u) {
+            $outline_noinline {
+                result = sample_dielectric_closure(
+                    services,
+                    sampling_point,
+                    project_surface_closure_physical_dielectric(closure),
+                    Float3{incoming_expression},
+                    Float3{glossy_normal_expression},
+                    Float2{random_direction_expression},
+                    Float{rescaled_lobe_expression},
+                    query,
+                    reachability & sampling_dielectric_payload_reachability);
+            };
+        }
     }
     $elif(is_hair) {
-        result = sample_hair_closure(
-            project_surface_closure_physical_hair(closure),
-            Float3{incoming_expression},
-            Float2{random_direction_expression},
-            reachability & sampling_hair_payload_reachability);
+        if ((reachability.kinds &
+             sampling_hair_payload_reachability.kinds) != 0u) {
+            $outline_noinline {
+                result = sample_hair_closure(
+                    project_surface_closure_physical_hair(closure),
+                    Float3{incoming_expression},
+                    Float2{random_direction_expression},
+                    reachability & sampling_hair_payload_reachability);
+            };
+        }
     }
     $elif(is_bssrdf) {
-        result = sample_bssrdf_closure(
-            project_surface_closure_physical_bssrdf(closure));
+        if (reachability.contains(SurfaceClosureKind::bssrdf)) {
+            result = sample_bssrdf_closure(
+                project_surface_closure_physical_bssrdf(closure));
+        }
     }
     $elif(is_general) {
-        result = sample_general_closure(
-            services,
-            sampling_point,
-            Float3{shading_normal_expression},
-            project_surface_closure_physical_general(closure),
-            Float3{incoming_expression},
-            Float3{glossy_normal_expression},
-            Float2{random_direction_expression},
-            query,
-            reachability & sampling_general_payload_reachability);
+        if ((reachability.kinds &
+             sampling_general_payload_reachability.kinds) != 0u) {
+            $outline_noinline {
+                result = sample_general_closure(
+                    services,
+                    sampling_point,
+                    Float3{shading_normal_expression},
+                    project_surface_closure_physical_general(closure),
+                    Float3{incoming_expression},
+                    Float3{glossy_normal_expression},
+                    Float2{random_direction_expression},
+                    query,
+                    reachability & sampling_general_payload_reachability);
+            };
+        }
     }
     $else {
-        result = sample_common_closure(
-            sampling_point,
-            project_surface_closure_physical_common_only(closure),
-            Float3{glossy_normal_expression},
-            Float2{random_direction_expression},
-            reachability & sampling_common_only_reachability);
+        if ((reachability.kinds &
+             sampling_common_only_reachability.kinds) != 0u) {
+            $outline_noinline {
+                result = sample_common_closure(
+                    sampling_point,
+                    project_surface_closure_physical_common_only(closure),
+                    Float3{glossy_normal_expression},
+                    Float2{random_direction_expression},
+                    reachability & sampling_common_only_reachability);
+            };
+        }
     };
     return result;
 }
