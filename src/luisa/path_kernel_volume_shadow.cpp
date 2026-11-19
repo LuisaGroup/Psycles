@@ -44,6 +44,28 @@ class VolumeShadowComponentImpl final
             });
     }
 
+    [[nodiscard]] static bool _may_have_heterogeneous_volume(
+        const std::shared_ptr<LuisaSceneData> &scene,
+        const std::shared_ptr<const VolumeMajorantRuntime> &majorants) noexcept {
+        if (!majorants || majorants->node_count == 0u ||
+            majorants->root_count == 0u || majorants->range_count == 0u ||
+            majorants->world_range >= majorants->range_count) {
+            return false;
+        }
+        if (scene && scene->cycles_svm) {
+            constexpr auto het_mask = static_cast<unsigned>(
+                compiler::cycles_svm::SD_HETEROGENEOUS_VOLUME |
+                compiler::cycles_svm::SD_NEED_VOLUME_ATTRIBUTES);
+            for (const auto &ks : scene->cycles_svm->compilation.kernel_shaders) {
+                if ((static_cast<unsigned>(ks.flags) & het_mask) != 0u) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return true;
+    }
+
   public:
     explicit VolumeShadowComponentImpl(
         const PathKernelConfig &config)
@@ -56,7 +78,9 @@ class VolumeShadowComponentImpl final
           _boundary{
               make_triangle_volume_boundary_component()},
           _heterogeneous{
-              make_heterogeneous_volume_shadow_component()} {}
+              _may_have_heterogeneous_volume(config.scene, config.volume_majorants)
+                  ? make_heterogeneous_volume_shadow_component()
+                  : nullptr} {}
 
     Float3 emit(
         const PathSampleContext &sample,
@@ -85,12 +109,52 @@ class VolumeShadowComponentImpl final
             make_float3(1.0f);
         Bool active = true;
 
+        const bool use_volume_boundary_accel =
+            _scene->volume_boundary_accel.has_value() &&
+            _scene->primary_to_volume_local_buffer.has_value();
+        UInt local_light_inst = surface_ray::invalid_primitive;
+        if (use_volume_boundary_accel) {
+            const auto n_primary = static_cast<std::uint32_t>(
+                _scene->primary_to_volume_local_host.size());
+            $if(light_instance < n_primary) {
+                local_light_inst =
+                    Expr<Buffer<luisa::uint>>{
+                        *_scene->primary_to_volume_local_buffer}
+                        .read(light_instance);
+            };
+        }
+
         // Reduce to the nearest boundary on every iteration. Luisa ray-query
         // candidate order is unspecified; an any-hit stack update would
         // therefore be non-formal and backend-dependent.
         $while(active) {
-            const auto committed =
-                surface_ray::
+            const auto committed = [&]() noexcept {
+                if (use_volume_boundary_accel) {
+                    return (*_scene->volume_boundary_accel)
+                        ->traverse(
+                            shadow_ray,
+                            {.visibility_mask = shadow_visibility})
+                        .on_surface_candidate(
+                            [&](luisa::compute::SurfaceCandidate
+                                    &candidate) noexcept {
+                                const auto hit = candidate.hit();
+                                auto accept = !surface_ray::same_primitive(
+                                    hit->inst,
+                                    hit->prim,
+                                    local_light_inst,
+                                    light_primitive);
+                                if (!_scene->all_volume_boundary_primitives_have_volume) {
+                                    const auto p_inst =
+                                        (*_scene->volume_boundary_accel)
+                                            ->instance_user_id(hit->inst);
+                                    accept = accept & _boundary->has_volume(
+                                                          _scene, p_inst, hit->prim);
+                                }
+                                $if(accept) { candidate.commit(); };
+                            })
+                        .trace();
+                }
+                return surface_ray::
                     closest_shadow_intersection(
                         _scene->accel,
                         shadow_ray,
@@ -101,6 +165,7 @@ class VolumeShadowComponentImpl final
                         light_instance,
                         light_primitive,
                         shadow_visibility);
+            }();
             Float segment_end =
                 shadow_ray->t_max();
             $if(!committed->miss()) {
@@ -122,73 +187,83 @@ class VolumeShadowComponentImpl final
                 interval.minimum(), 0.5f, shadow_stack.entry(0u).object, shader_state,
                 cycles_noise::hash_uint3(sample.rng_hash ^ 0xd9111870u,
                                         shadow_rng_offset, sample.sample_index), true};
-            const auto heterogeneous =
-                _stack_is_heterogeneous(
-                    shadow_stack);
-            $if(heterogeneous) {
-                const auto tracking_rng_offset =
-                    cycles_sampler::
-                        scramble_path_offset(
-                            shadow_rng_offset,
-                            heterogeneous_shadow_scramble_seed);
-                PathVolumeTrackingRandomSource random{
-                    sample.invocation.sobol_table,
-                    sample.invocation.parameters
-                        .sobol_sequence_size,
-                    sample.sample_index,
-                    sample.rng_hash};
-                auto majorant_provider =
-                    make_scene_volume_majorant_entry_provider(
-                        volume_shader);
-                Expr<
-                    Buffer<
-                        VolumeMajorantNodeGpu>>
-                    nodes{
-                        _majorants->node_buffer};
-                Expr<
-                    Buffer<
-                        VolumeMajorantRootGpu>>
-                    roots{
-                        _majorants->root_buffer};
-                Expr<
-                    Buffer<
-                        VolumeMajorantRootRangeGpu>>
-                    ranges{
-                        _majorants->range_buffer};
-                VolumeMajorantOverlapTraversal
-                    traversal{
-                        std::move(nodes),
-                        std::move(roots),
-                        std::move(ranges),
-                        _majorants->node_count,
-                        _majorants->root_count,
-                        _majorants->range_count,
-                        _majorants->world_range,
-                        shadow_stack,
-                        *majorant_provider,
-                        ray_origin,
-                        ray_direction,
-                        interval.minimum(),
-                        segment_end,
-                        random.shade_offset(
-                            tracking_rng_offset)};
-                auto collisions =
-                    make_stacked_heterogeneous_volume_collision_provider(
-                        volume_shader,
-                        shadow_stack,
-                        ray_origin,
-                        ray_direction);
-                const auto estimate =
-                    _heterogeneous->emit(
-                        traversal,
-                        random,
-                        *collisions,
-                        transmittance,
-                        tracking_rng_offset);
-                transmittance =
-                    estimate.throughput;
-            }
-            $else {
+            if (_heterogeneous) {
+                const auto heterogeneous =
+                    _stack_is_heterogeneous(
+                        shadow_stack);
+                $if(heterogeneous) {
+                    const auto tracking_rng_offset =
+                        cycles_sampler::
+                            scramble_path_offset(
+                                shadow_rng_offset,
+                                heterogeneous_shadow_scramble_seed);
+                    PathVolumeTrackingRandomSource random{
+                        sample.invocation.sobol_table,
+                        sample.invocation.parameters
+                            .sobol_sequence_size,
+                        sample.sample_index,
+                        sample.rng_hash};
+                    auto majorant_provider =
+                        make_scene_volume_majorant_entry_provider(
+                            volume_shader);
+                    Expr<
+                        Buffer<
+                            VolumeMajorantNodeGpu>>
+                        nodes{
+                            _majorants->node_buffer};
+                    Expr<
+                        Buffer<
+                            VolumeMajorantRootGpu>>
+                        roots{
+                            _majorants->root_buffer};
+                    Expr<
+                        Buffer<
+                            VolumeMajorantRootRangeGpu>>
+                        ranges{
+                            _majorants->range_buffer};
+                    VolumeMajorantOverlapTraversal
+                        traversal{
+                            std::move(nodes),
+                            std::move(roots),
+                            std::move(ranges),
+                            _majorants->node_count,
+                            _majorants->root_count,
+                            _majorants->range_count,
+                            _majorants->world_range,
+                            shadow_stack,
+                            *majorant_provider,
+                            ray_origin,
+                            ray_direction,
+                            interval.minimum(),
+                            segment_end,
+                            random.shade_offset(
+                                tracking_rng_offset)};
+                    auto collisions =
+                        make_stacked_heterogeneous_volume_collision_provider(
+                            volume_shader,
+                            shadow_stack,
+                            ray_origin,
+                            ray_direction);
+                    const auto estimate =
+                        _heterogeneous->emit(
+                            traversal,
+                            random,
+                            *collisions,
+                            transmittance,
+                            tracking_rng_offset);
+                    transmittance =
+                        estimate.throughput;
+                }
+                $else {
+                    const auto coefficients =
+                        volume_shader.evaluate(
+                            shadow_stack, ray_origin + ray_direction * interval.minimum());
+                    transmittance *=
+                        exp(
+                            -coefficients.sigma_t *
+                            segment_length);
+                };
+            } else {
                 const auto coefficients =
                     volume_shader.evaluate(
                         shadow_stack, ray_origin + ray_direction * interval.minimum());
@@ -196,16 +271,21 @@ class VolumeShadowComponentImpl final
                     exp(
                         -coefficients.sigma_t *
                         segment_length);
-            };
+            }
 
             $if(committed->miss()) {
                 active = false;
             }
             $else {
+                const auto resolved_inst =
+                    use_volume_boundary_accel
+                        ? (*_scene->volume_boundary_accel)
+                              ->instance_user_id(committed->inst)
+                        : committed->inst;
                 const auto boundary =
                     _boundary->resolve(
                         _scene,
-                        committed->inst,
+                        resolved_inst,
                         committed->prim,
                         ray_direction);
                 shadow_stack.cross_boundary(

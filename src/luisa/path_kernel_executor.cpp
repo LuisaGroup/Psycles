@@ -137,7 +137,7 @@ void validate_cycles_stage_partition_abi(
     require(path_transition::shade_light_forward,
             plan.analytic_light_endpoints);
     require(path_transition::shade_background, true);
-    for (unsigned b = 0u; b < 4u; ++b) {
+    for (unsigned b = 0u; b < path_transition::max_surface_buckets; ++b) {
         require(path_transition::shade_surface_bucket_name(b),
                 has_surfaces && b < surface_buckets.buckets.size());
     }

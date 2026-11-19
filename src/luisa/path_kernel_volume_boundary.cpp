@@ -189,8 +189,34 @@ class CameraVolumeStackComponentImpl final
             active &
             initializer.can_continue(
                 intersection_count)) {
-            auto hit =
-                scene->accel
+            const auto hit = [&]() noexcept {
+                if (scene->volume_boundary_accel.has_value()) {
+                    return (*scene->volume_boundary_accel)
+                        ->traverse(
+                            probe,
+                            {.visibility_mask = visibility})
+                        .on_surface_candidate(
+                            [&](luisa::compute::SurfaceCandidate
+                                    &candidate) noexcept {
+                                const auto candidate_hit = candidate.hit();
+                                auto accept = !surface_ray::same_primitive(
+                                    candidate_hit->inst,
+                                    candidate_hit->prim,
+                                    source_instance,
+                                    source_primitive);
+                                if (!scene->all_volume_boundary_primitives_have_volume) {
+                                    const auto primary_inst =
+                                        (*scene->volume_boundary_accel)
+                                            ->instance_user_id(candidate_hit->inst);
+                                    accept = accept & _boundary->has_volume(
+                                                          scene, primary_inst,
+                                                          candidate_hit->prim);
+                                }
+                                $if(accept) { candidate.commit(); };
+                            })
+                        .trace();
+                }
+                return scene->accel
                     ->traverse(
                         probe,
                         {.visibility_mask =
@@ -229,14 +255,20 @@ class CameraVolumeStackComponentImpl final
                                ProceduralCandidate
                                    &) noexcept {})
                     .trace();
+            }();
             $if(hit->miss()) {
                 active = false;
             }
             $else {
+                const auto resolved_inst =
+                    scene->volume_boundary_accel.has_value()
+                        ? (*scene->volume_boundary_accel)
+                              ->instance_user_id(hit->inst)
+                        : hit->inst;
                 auto boundary =
                     _boundary->resolve(
                         scene,
-                        hit->inst,
+                        resolved_inst,
                         hit->prim,
                         probe->direction());
                 initializer.observe(

@@ -76,7 +76,7 @@ int main() {
   static_assert(options.wavefront_tail_megakernel_threshold ==
                 psycles::luisa_backend::luisa_wavefront_auto_tail_threshold);
   static_assert(options.staged_surface_sorting);
-  static_assert(!options.staged_direct_light_queue);
+  static_assert(options.staged_direct_light_queue);
   static_assert(!valid_luisa_wavefront_execution_block_size(0u));
   static_assert(!valid_luisa_wavefront_execution_block_size(16u));
   static_assert(valid_luisa_wavefront_execution_block_size(32u));

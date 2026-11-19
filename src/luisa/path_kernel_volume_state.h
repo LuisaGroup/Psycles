@@ -34,6 +34,13 @@ class PathVolumeStateComponent {
         std::size_t stack_size,
         bool probe_camera_enclosures) const noexcept = 0;
 
+    virtual void reset(
+        PathVolumeState &state,
+        const std::shared_ptr<LuisaSceneData> &scene,
+        Expr<luisa::float3> camera_origin,
+        Expr<std::uint32_t> visibility,
+        bool probe_camera_enclosures) const noexcept = 0;
+
     virtual void cross_surface(
         PathVolumeState &state,
         const VolumeStackEntry &entry,

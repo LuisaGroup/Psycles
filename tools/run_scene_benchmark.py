@@ -312,7 +312,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--staged-direct-light-queue",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help="enable the staged scheduler direct-light queue",
     )
     parser.add_argument(
@@ -493,7 +493,7 @@ def _psycles_command(
     persistent_block_size: int = 32,
     persistent_fetch_size: int = 1,
     staged_surface_sorting: bool = True,
-    staged_direct_light_queue: bool = False,
+    staged_direct_light_queue: bool = True,
     wavefront_counter_readback_batch_size: int = 4,
     wavefront_counter_readback_pipeline_depth: int = 2,
     wavefront_tail_megakernel_threshold: int | str = "auto",

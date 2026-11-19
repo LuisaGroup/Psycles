@@ -226,11 +226,10 @@ struct LuisaPathTracerOptions {
   // continuation cuts without recording a key resolver, frame export, or
   // sorting kernel, providing a matched scheduler-only baseline.
   bool staged_surface_sorting{true};
-  // Experimental host/JIT policy that splits reduced direct-light visibility
-  // work from shade_surface. Both modes use the same PathKernelPipeline and
-  // evaluator. It remains opt-in because the current HIP side-queue launch is
-  // slower than inline shadow evaluation on the measured production scene.
-  bool staged_direct_light_queue{false};
+  // Host/JIT policy that splits reduced direct-light visibility work from
+  // shade_surface into an independent compact side-queue. Both modes use the
+  // same PathKernelPipeline and evaluator.
+  bool staged_direct_light_queue{true};
   // Persistent workers are independent of the logical image size. The
   // scheduler rounds this count up to a complete block.
   // The paper's persistent configuration is 2^15 workers, 128 threads per
