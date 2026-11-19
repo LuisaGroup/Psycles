@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <string>

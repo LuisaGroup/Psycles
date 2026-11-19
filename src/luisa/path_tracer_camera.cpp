@@ -99,9 +99,9 @@ CameraRaySample construct_camera_ray(
             dD = 0.5f * (length(normalize(center + parameters.camera_dx) - normalized_center) +
                          length(normalize(center + parameters.camera_dy) - normalized_center));
             const auto z_inv = 1.0f / normalize(Pcamera).z;
-            const auto near = parameters.camera_near * z_inv;
-            origin += near * direction;
-            dP += near * dD;
+            const auto near_t = parameters.camera_near * z_inv;
+            origin += near_t * direction;
+            dP += near_t * dD;
             tmax *= z_inv;
         } else {
             if (depth_of_field) {
