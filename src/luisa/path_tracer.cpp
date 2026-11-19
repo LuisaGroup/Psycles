@@ -1,11 +1,30 @@
 #include "path_tracer_internal.h"
 #include "path_tracer_backend_policy.h"
 
+#include <charconv>
+#include <cstdlib>
+#include <string_view>
+
 namespace psycles::luisa_backend {
 
 using namespace detail;
 
 namespace {
+
+[[nodiscard]] std::optional<std::uint32_t>
+env_max_pixel_samples_per_dispatch() noexcept {
+    const auto *raw = std::getenv("PSYCLES_MAX_PIXEL_SAMPLES_PER_DISPATCH");
+    if (raw == nullptr || *raw == '\0') {
+        return std::nullopt;
+    }
+    const std::string_view sv{raw};
+    std::uint32_t val = 0u;
+    const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val);
+    if (ec != std::errc{} || ptr != sv.data() + sv.size() || val == 0u) {
+        return std::nullopt;
+    }
+    return val;
+}
 
 [[nodiscard]] bool valid_scheduler_options(
     const LuisaPathTracerOptions &options) noexcept {
@@ -46,6 +65,10 @@ LuisaPathTracerBackend::LuisaPathTracerBackend(
                 _options.max_pixel_samples_per_dispatch,
                 backend_max_pixel_samples_per_dispatch(
                     _device.backend_name()));
+    }
+    if (const auto env_limit = env_max_pixel_samples_per_dispatch()) {
+        _options.max_pixel_samples_per_dispatch =
+            std::min(_options.max_pixel_samples_per_dispatch, *env_limit);
     }
 }
 

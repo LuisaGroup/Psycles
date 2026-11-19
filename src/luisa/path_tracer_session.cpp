@@ -471,6 +471,9 @@ bool LuisaRenderSession::render_samples(const SampleRange &samples,
   if (!dispatches) {
     return false;
   }
+  std::uint32_t actual_path_dispatches = 0u;
+  std::uint32_t actual_vspg_dispatches = 0u;
+  std::vector<std::uint32_t> batch_counts_log;
   while (const auto batch = dispatches->next()) {
     if (_cancelled.load()) {
       return false;
@@ -518,6 +521,8 @@ bool LuisaRenderSession::render_samples(const SampleRange &samples,
               .height = rows->row_count,
               .pixel_count = rows->pixel_count});
       _stream << synchronize();
+      ++actual_path_dispatches;
+      batch_counts_log.push_back(batch->count);
     }
     _rendered_samples += batch->count;
     if (batch->filter_volume_guiding) {
@@ -526,9 +531,28 @@ bool LuisaRenderSession::render_samples(const SampleRange &samples,
           _volume_guiding_intermediate, _volume_guiding_denoised,
           std::max(_window.width, 1u), std::max(_window.height, 1u));
       _stream << synchronize();
+      ++actual_vspg_dispatches;
     }
   }
   const auto integration_end = std::chrono::steady_clock::now();
+  if (const auto *raw_util = std::getenv("PSYCLES_PRINT_RENDER_UTILIZATION");
+      raw_util != nullptr && std::string_view{raw_util} == "1") {
+    std::printf(
+        "PSYCLES_SESSION_DISPATCH_SUMMARY_JSON: "
+        "{\"total_samples\":%u,\"max_samples_per_dispatch\":%u,"
+        "\"max_pixel_samples_per_dispatch\":%u,\"volume_guided\":%s,"
+        "\"path_dispatches\":%u,\"vspg_filter_dispatches\":%u,"
+        "\"batch_sample_counts\":[",
+        samples.count, _options.max_samples_per_dispatch,
+        _options.max_pixel_samples_per_dispatch,
+        _volume_guiding_filter ? "true" : "false", actual_path_dispatches,
+        actual_vspg_dispatches);
+    for (std::size_t bi = 0u; bi < batch_counts_log.size(); ++bi) {
+      std::printf("%s%u", bi == 0u ? "" : ",", batch_counts_log[bi]);
+    }
+    std::printf("]}\n");
+    std::fflush(stdout);
+  }
   if (_cancelled.load()) {
     return false;
   }
