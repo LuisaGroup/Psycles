@@ -24,6 +24,13 @@
 #include <luisa/luisa-compute.h>
 #include <yyjson.h>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 namespace {
 
 template<typename T>
@@ -269,7 +276,10 @@ int main(int argc, char **argv) {
     auto width = imported.width;
     auto height = imported.height;
     auto samples = imported.samples;
-    auto max_samples_per_dispatch = std::uint32_t{64u};
+    auto max_samples_per_dispatch =
+        (backend_name == "fallback")
+            ? std::uint32_t{256u}
+            : std::uint32_t{64u};
     if (argc > 4) {
         auto value = parse_unsigned<std::uint32_t>(argv[4]);
         if (!value || *value == 0u) {
@@ -800,6 +810,24 @@ int main(int argc, char **argv) {
         return EXIT_SUCCESS;
     }
     psycles::io::MemoryOutputSink sink;
+#ifdef _WIN32
+    const bool print_render_utilization = [] {
+      const auto *raw = std::getenv("PSYCLES_PRINT_RENDER_UTILIZATION");
+      return raw != nullptr && std::string_view{raw} == "1";
+    }();
+    auto filetime_to_seconds = [](const FILETIME &ft) noexcept -> double {
+      ULARGE_INTEGER ui{};
+      ui.LowPart = ft.dwLowDateTime;
+      ui.HighPart = ft.dwHighDateTime;
+      return static_cast<double>(ui.QuadPart) * 1e-7;
+    };
+    FILETIME ft_create0{}, ft_exit0{}, ft_kernel0{}, ft_user0{};
+    FILETIME ft_create1{}, ft_exit1{}, ft_kernel1{}, ft_user1{};
+    if (print_render_utilization) {
+      GetProcessTimes(GetCurrentProcess(), &ft_create0, &ft_exit0, &ft_kernel0,
+                      &ft_user0);
+    }
+#endif
     const auto render_begin = std::chrono::steady_clock::now();
   if (!session->render_samples({.first = sample_first,
              .count = sample_count,
@@ -814,6 +842,35 @@ int main(int argc, char **argv) {
       std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                     render_begin)
             .count();
+#ifdef _WIN32
+    if (print_render_utilization) {
+      GetProcessTimes(GetCurrentProcess(), &ft_create1, &ft_exit1, &ft_kernel1,
+                      &ft_user1);
+      const double user_s =
+          filetime_to_seconds(ft_user1) - filetime_to_seconds(ft_user0);
+      const double kernel_s =
+          filetime_to_seconds(ft_kernel1) - filetime_to_seconds(ft_kernel0);
+      const double total_cpu_s = user_s + kernel_s;
+      DWORD_PTR proc_mask = 0, sys_mask = 0;
+      GetProcessAffinityMask(GetCurrentProcess(), &proc_mask, &sys_mask);
+      const auto session_t = session->last_render_timings();
+      const double integ_s =
+          session_t ? session_t->integration_seconds : render_call_seconds;
+      const double eff_threads =
+          render_call_seconds > 0.0 ? total_cpu_s / render_call_seconds : 0.0;
+      std::printf(
+          "PSYCLES_RENDER_UTILIZATION_JSON: "
+          "{\"wall_render_call_seconds\":%.9f,\"integration_seconds\":%.9f,"
+          "\"user_cpu_seconds\":%.9f,\"kernel_cpu_seconds\":%.9f,"
+          "\"total_cpu_seconds\":%.9f,\"effective_threads_wall\":%.4f,"
+          "\"process_affinity_mask\":\"0x%016llx\","
+          "\"system_affinity_mask\":\"0x%016llx\"}\n",
+          render_call_seconds, integ_s, user_s, kernel_s, total_cpu_s,
+          eff_threads, static_cast<unsigned long long>(proc_mask),
+          static_cast<unsigned long long>(sys_mask));
+      std::fflush(stdout);
+    }
+#endif
     if (path_trace_output) {
         if (!path_trace_sink->trace()) {
       std::cerr << "error: requested path trace was not produced\n";

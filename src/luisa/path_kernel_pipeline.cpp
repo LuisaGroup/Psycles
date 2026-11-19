@@ -12,7 +12,10 @@
 #include <psycles/luisa/cycles_svm.h>
 #include <psycles/luisa/cycles_volume_boundary.h>
 
+#include <charconv>
+#include <cstdlib>
 #include <optional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -249,9 +252,16 @@ void PathKernelPipeline::emit(
           env_enabled("PSYCLES_POST_CLOSURE_ORDER", true) &&
           scene->native_cycles_svm_surface && !config.path_trace_enabled &&
           !has_portal && config.surfaces.population != nullptr;
+      const auto pipeline_backend_name =
+          static_cast<bool>(scene->device)
+              ? std::string_view{scene->device.backend_name()}
+              : std::string_view{};
+      const bool cpu_post_closure_bssrdf =
+          pipeline_backend_name == "fallback";
       const bool force_post_closure_on_bssrdf =
-          std::getenv("PSYCLES_POST_CLOSURE_ORDER") != nullptr &&
-          env_enabled("PSYCLES_POST_CLOSURE_ORDER", false);
+          std::getenv("PSYCLES_POST_CLOSURE_ORDER") != nullptr
+              ? env_enabled("PSYCLES_POST_CLOSURE_ORDER", false)
+              : cpu_post_closure_bssrdf;
       const bool use_multi_bucket =
           cut_policy == PathCoroutineCutPolicy::cycles_wavefront &&
           config.staged_surface_sort_annotation && _impl->surface_queue_key &&
@@ -841,11 +851,45 @@ void emit_per_sample_path_program(
 
 } // namespace
 
+[[nodiscard]] static luisa::uint3 resolve_megakernel_block_size() noexcept {
+  const auto default_block = luisa::make_uint3(8u, 8u, 1u);
+  const auto *raw = std::getenv("PSYCLES_MEGAKERNEL_BLOCK_SIZE");
+  if (raw == nullptr || *raw == '\0') {
+    return default_block;
+  }
+  std::string_view sv{raw};
+  auto next_uint = [&sv]() -> std::optional<std::uint32_t> {
+    while (!sv.empty() &&
+           (sv.front() == ' ' || sv.front() == ',' || sv.front() == 'x' ||
+            sv.front() == 'X')) {
+      sv.remove_prefix(1u);
+    }
+    if (sv.empty()) {
+      return std::nullopt;
+    }
+    std::uint32_t v = 0u;
+    const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), v);
+    if (ec != std::errc{} || v == 0u) {
+      return std::nullopt;
+    }
+    sv.remove_prefix(static_cast<std::size_t>(ptr - sv.data()));
+    return v;
+  };
+  const auto bx = next_uint();
+  const auto by = next_uint();
+  if (!bx || !by) {
+    return default_block;
+  }
+  const auto bz = next_uint().value_or(1u);
+  return luisa::make_uint3(*bx, *by, bz);
+}
+
 RenderSerialKernel
 build_path_serial_kernel(const PathKernelConfig &config) noexcept {
   PathKernelPipeline pipeline{config};
+  const auto block_size = resolve_megakernel_block_size();
   RenderSerialKernel kernel =
-      [&config, &pipeline](
+      [&config, &pipeline, block_size](
           BufferFloat4 combined, BufferFloat4 normal, BufferFloat4 albedo,
           BufferFloat4 light_passes, BufferUInt sample_count,
           BufferFloat4 volume_guiding_raw, BufferUInt volume_guiding_denoised,
@@ -855,7 +899,7 @@ build_path_serial_kernel(const PathKernelConfig &config) noexcept {
         // Keep neighboring image rows in the same SIMD groups. This matches
         // the spatially coherent per-sample topology while preserving the
         // serial film path and its deterministic accumulation order.
-        set_block_size(8u, 8u, 1u);
+        set_block_size(block_size.x, block_size.y, block_size.z);
         emit_serial_path_program(config, pipeline, combined, normal, albedo,
                                  light_passes, sample_count, volume_guiding_raw,
                                  volume_guiding_denoised, path_trace,
@@ -868,8 +912,9 @@ build_path_serial_kernel(const PathKernelConfig &config) noexcept {
 RenderSampleKernel
 build_path_sample_kernel(const PathKernelConfig &config) noexcept {
   PathKernelPipeline pipeline{config};
+  const auto block_size = resolve_megakernel_block_size();
   RenderSampleKernel kernel =
-      [&config, &pipeline](
+      [&config, &pipeline, block_size](
           BufferFloat4 combined, BufferFloat4 normal, BufferFloat4 albedo,
           BufferFloat4 light_passes, BufferUInt sample_count,
           BufferFloat4 volume_guiding_raw, BufferUInt volume_guiding_denoised,
@@ -880,7 +925,7 @@ build_path_sample_kernel(const PathKernelConfig &config) noexcept {
         // writers for the same pixel in a block and is a clean topology
         // baseline for the coroutine schedulers, whose worker layout is
         // controlled by their own host configurations.
-        set_block_size(8u, 8u, 1u);
+        set_block_size(block_size.x, block_size.y, block_size.z);
         emit_per_sample_path_program(
             config, pipeline, PathCoroutineCutPolicy::none, combined, normal,
             albedo, light_passes, sample_count, volume_guiding_raw,
