@@ -183,33 +183,34 @@ void finalize_bucket_metadata(const LuisaSceneData &scene,
   populate_bucket_bitmasks(spec, count);
 }
 
+[[nodiscard]] UInt select_constant_word_range(
+    std::span<const std::uint32_t> words, std::size_t lo, std::size_t hi,
+    Expr<std::uint32_t> word_idx) noexcept {
+  using namespace luisa::compute;
+  const std::uint32_t first = words[lo];
+  bool all_equal = true;
+  for (std::size_t i = lo + 1u; i < hi; ++i) {
+    if (words[i] != first) {
+      all_equal = false;
+      break;
+    }
+  }
+  if (all_equal) {
+    return first;
+  }
+  const std::size_t mid = lo + (hi - lo) / 2u;
+  const UInt left = select_constant_word_range(words, lo, mid, word_idx);
+  const UInt right = select_constant_word_range(words, mid, hi, word_idx);
+  return select(left, right, word_idx >= static_cast<std::uint32_t>(mid));
+}
+
 [[nodiscard]] UInt select_constant_word(
     std::span<const std::uint32_t> words, Expr<std::uint32_t> word_idx) noexcept {
   using namespace luisa::compute;
   if (words.empty()) {
     return 0u;
   }
-  if (words.size() == 1u) {
-    return words[0u];
-  }
-  if (words.size() == 2u) {
-    return select(UInt{words[0u]}, UInt{words[1u]}, word_idx != 0u);
-  }
-  if (words.size() == 3u) {
-    return select(select(UInt{words[0u]}, UInt{words[1u]}, word_idx == 1u),
-                  UInt{words[2u]}, word_idx >= 2u);
-  }
-  if (words.size() == 4u) {
-    const auto lo = select(UInt{words[0u]}, UInt{words[1u]}, (word_idx & 1u) != 0u);
-    const auto hi = select(UInt{words[2u]}, UInt{words[3u]}, (word_idx & 1u) != 0u);
-    return select(lo, hi, word_idx >= 2u);
-  }
-  UInt result = words[0u];
-  for (std::size_t i = 1u; i < words.size(); ++i) {
-    result = select(result, UInt{words[i]},
-                    word_idx == static_cast<std::uint32_t>(i));
-  }
-  return result;
+  return select_constant_word_range(words, 0u, words.size(), word_idx);
 }
 
 } // namespace
@@ -407,8 +408,14 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
 
   std::size_t bucket_count = 1u;
   if (total_active_nonempty > max_per_bucket && groups.size() >= 2u) {
+    // Keep up to 4 buckets while each bucket stays within DirectJitTranslator's
+    // 80-shader budget to avoid extra per-bucket surface-sort wave launches;
+    // scale up to 8 buckets only for even larger shader tables (> 320 shaders).
+    const std::size_t auto_bucket_cap =
+        total_active_nonempty > 320u ? path_transition::max_surface_buckets : 4u;
     bucket_count = std::clamp<std::size_t>(
-        (total_active_nonempty + max_per_bucket - 1u) / max_per_bucket, 2u, 4u);
+        (total_active_nonempty + max_per_bucket - 1u) / max_per_bucket, 2u,
+        auto_bucket_cap);
     bucket_count = std::min(bucket_count, groups.size());
   } else if (effective_mode == SurfaceBucketMode::split_closures &&
              simple_single_closure_groups >= 3u &&

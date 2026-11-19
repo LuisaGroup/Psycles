@@ -634,6 +634,9 @@ struct LuisaSceneData {
     bool has_mixed_shadow_opacity_instances{true};
     std::vector<luisa::uint> primary_to_subsurface_local_host;
     std::optional<Buffer<luisa::uint>> primary_to_subsurface_local_buffer;
+    std::vector<luisa::uint> primary_to_volume_local_host;
+    std::optional<Buffer<luisa::uint>> primary_to_volume_local_buffer;
+    bool all_volume_boundary_primitives_have_volume{false};
     Buffer<AttributeBindingGpu> attribute_binding_buffer;
     Buffer<AttributeRangeGpu> attribute_range_buffer;
     std::uint32_t attribute_binding_slot{};
@@ -683,6 +686,7 @@ struct LuisaSceneData {
     // instance ids as user ids, while its all-visible masks make that semantic
     // distinction explicit. Curves are intentionally absent.
     std::optional<Accel> ambient_occlusion_local_accel;
+    std::optional<Accel> volume_boundary_accel;
     Accel accel;
     std::shared_ptr<const struct FilmPassAccessorGpu> film_pass_accessor;
     CameraDesc camera;

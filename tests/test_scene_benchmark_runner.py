@@ -193,7 +193,7 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                 "32",
                 "1",
                 "1",
-                "0",
+                "1",
                 "4",
                 "2",
                 "auto",

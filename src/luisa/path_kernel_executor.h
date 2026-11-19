@@ -29,7 +29,7 @@ struct PathKernelExecutorConfig {
     std::uint32_t wavefront_counter_readback_pipeline_depth{2u};
     std::uint32_t wavefront_tail_megakernel_threshold{
         luisa_wavefront_auto_tail_threshold};
-    bool staged_direct_light_queue{false};
+    bool staged_direct_light_queue{true};
     std::uint32_t persistent_worker_count{1u << 15u};
     std::uint32_t persistent_block_size{32u};
     std::uint32_t persistent_fetch_size{1u};

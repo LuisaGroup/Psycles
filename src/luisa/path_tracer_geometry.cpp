@@ -224,12 +224,10 @@ TraceShadowCallable make_fused_shadow_trace_callable(
       $else {
         Bool carries_light = true;
         Float last_distance = shadow_ray->t_min();
-        for (auto index = std::size_t{0u};
-             index < shadow_intersection_batch_capacity; ++index) {
-          const auto shade = static_cast<std::uint32_t>(index) < batch->count;
-          $if(shade & carries_light) {
-            const auto &intersection =
-                batch->hits[static_cast<luisa::uint>(index)];
+        $if(batch->count != 0u) {
+          $for(index, batch->count) {
+            $if(!carries_light) { $break; };
+            const auto intersection = batch->hits[index];
             const auto surface = evaluate_shadow_surface(
                 shadow_ray, intersection, ray_dP, ray_dD, context, parameters);
             $if(!first_hit) {
@@ -251,7 +249,7 @@ TraceShadowCallable make_fused_shadow_trace_callable(
               throughput = make_float3(0.0f);
             };
           };
-        }
+        };
         $if(context.volume_bounds_bounce > shadow_volume_bounds_max) {
           carries_light = false;
           transmittance = make_float3(0.0f);

@@ -512,19 +512,22 @@ void PathKernelPipeline::emit(
                                                   true));
             run_bucket_phase_a(b);
           };
-          if (bucket_plan.buckets.size() == 2u) {
-            $if(bucket_idx == 0u) { suspend_bucket(0u); }
-            $else { suspend_bucket(1u); };
-          } else if (bucket_plan.buckets.size() == 3u) {
-            $if(bucket_idx == 0u) { suspend_bucket(0u); }
-            $elif(bucket_idx == 1u) { suspend_bucket(1u); }
-            $else { suspend_bucket(2u); };
-          } else {
-            $if(bucket_idx == 0u) { suspend_bucket(0u); }
-            $elif(bucket_idx == 1u) { suspend_bucket(1u); }
-            $elif(bucket_idx == 2u) { suspend_bucket(2u); }
-            $else { suspend_bucket(3u); };
-          }
+          const auto dispatch_bucket_range =
+              [&](auto &&self, std::size_t lo, std::size_t hi) noexcept -> void {
+            if (hi - lo <= 1u) {
+              suspend_bucket(lo);
+              return;
+            }
+            const std::size_t mid = lo + (hi - lo) / 2u;
+            $if(bucket_idx < static_cast<std::uint32_t>(mid)) {
+              self(self, lo, mid);
+            }
+            $else {
+              self(self, mid, hi);
+            };
+          };
+          dispatch_bucket_range(dispatch_bucket_range, 0u,
+                                bucket_plan.buckets.size());
         } else {
           if (_impl->surface_queue_key) {
             const auto surface_queue_key =
@@ -655,19 +658,22 @@ void PathKernelPipeline::emit(
             }
           }
         };
-        if (bucket_plan.buckets.size() == 2u) {
-          $if(bucket_idx == 0u) { run_complete_bucket(0u); }
-          $else { run_complete_bucket(1u); };
-        } else if (bucket_plan.buckets.size() == 3u) {
-          $if(bucket_idx == 0u) { run_complete_bucket(0u); }
-          $elif(bucket_idx == 1u) { run_complete_bucket(1u); }
-          $else { run_complete_bucket(2u); };
-        } else {
-          $if(bucket_idx == 0u) { run_complete_bucket(0u); }
-          $elif(bucket_idx == 1u) { run_complete_bucket(1u); }
-          $elif(bucket_idx == 2u) { run_complete_bucket(2u); }
-          $else { run_complete_bucket(3u); };
-        }
+        const auto dispatch_bucket_range =
+            [&](auto &&self, std::size_t lo, std::size_t hi) noexcept -> void {
+          if (hi - lo <= 1u) {
+            run_complete_bucket(lo);
+            return;
+          }
+          const std::size_t mid = lo + (hi - lo) / 2u;
+          $if(bucket_idx < static_cast<std::uint32_t>(mid)) {
+            self(self, lo, mid);
+          }
+          $else {
+            self(self, mid, hi);
+          };
+        };
+        dispatch_bucket_range(dispatch_bucket_range, 0u,
+                              bucket_plan.buckets.size());
       } else {
         if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
           if (_impl->surface_queue_key) {

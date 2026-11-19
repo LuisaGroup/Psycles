@@ -29,6 +29,7 @@
 #include <psycles/contract/cycles_pointiness.h>
 #include <psycles/luisa/cycles_nishita.h>
 
+#include <cstdlib>
 #include <string_view>
 
 namespace psycles::luisa_backend {
@@ -206,6 +207,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         data->volume_metadata =
             VolumeSceneMetadataComponent{}.analyze(snapshot, volume_materials);
+    }
+    std::set<contract::InstanceId> volume_object_instances;
+    for (const auto &vobj : data->volume_metadata.objects) {
+        volume_object_instances.emplace(vobj.instance);
+    }
+    if (!volume_object_instances.empty()) {
+        data->volume_boundary_accel.emplace(data->device.create_accel());
+        data->primary_to_volume_local_host.assign(
+            snapshot.instances.size(), ~luisa::uint{0u});
     }
     data->volume_metadata
         .closure_allocation_budget =
@@ -936,6 +946,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     // sampler fallback. Keep unknown/imported upload routes conservative by
     // leaving LuisaSceneData::may_have_packed_textures at its true default.
     data->may_have_packed_textures = false;
+    const bool apply_static_mesh_bvh = []() noexcept {
+        if (const char *env = std::getenv("PSYCLES_APPLY_STATIC_MESH_BVH");
+            env != nullptr && env[0] != '\0') {
+            return env[0] != '0';
+        }
+        return true;
+    }();
 
     for (const auto &[geometry_id, geometry] :
          snapshot.geometries) {
@@ -1334,8 +1351,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 upload.triangle_smooth.size());
         resource.attributes.reserve(
             upload.attributes.size());
+        if (!upload.cycles_intersection_positions.empty()) {
+            resource.cycles_intersection_positions.emplace(
+                data->device.create_buffer<luisa::float3>(
+                    upload.cycles_intersection_positions.size()));
+        }
         resource.mesh = data->device.create_mesh(
-            resource.positions, resource.triangles);
+            (apply_static_mesh_bvh && resource.cycles_intersection_positions)
+                ? *resource.cycles_intersection_positions
+                : resource.positions,
+            resource.triangles);
         data->heap.emplace_on_update(
             bindless_base, resource.triangles);
         data->heap.emplace_on_update(
@@ -1359,10 +1384,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->heap.emplace_on_update(
             bindless_base + 8u,
             resource.triangle_smooth);
-        if (!upload.cycles_intersection_positions.empty()) {
-            resource.cycles_intersection_positions.emplace(
-                data->device.create_buffer<luisa::float3>(
-                    upload.cycles_intersection_positions.size()));
+        if (resource.cycles_intersection_positions) {
             data->heap.emplace_on_update(
                 bindless_base + 9u,
                 *resource.cycles_intersection_positions);
@@ -1734,9 +1756,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         const auto visibility =
             static_cast<std::uint8_t>(
                 normalized_visibility);
+        const auto accel_transform =
+            (apply_static_mesh_bvh && intersection_plan.transform_applied)
+                ? Mat4f{}
+                : instance.transform;
         data->accel.emplace_back(
             data->geometries[geometry_iter->second].mesh,
-            to_luisa(instance.transform),
+            to_luisa(accel_transform),
             visibility,
             false,
             instance_index);
@@ -1745,7 +1771,20 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             geometry_iter->second, instance.transform);
         ambient_occlusion_scene.append_triangle_instance(
             data, instance_index,
-            geometry_iter->second, instance.transform);
+            geometry_iter->second, accel_transform);
+        if (data->volume_boundary_accel &&
+            volume_object_instances.contains(instance_id)) {
+            const auto local_vol_inst = static_cast<luisa::uint>(
+                data->volume_boundary_accel->size());
+            if (instance_index >= data->primary_to_volume_local_host.size()) {
+                data->primary_to_volume_local_host.resize(
+                    static_cast<std::size_t>(instance_index) + 1u, ~luisa::uint{0u});
+            }
+            data->primary_to_volume_local_host[instance_index] = local_vol_inst;
+            data->volume_boundary_accel->emplace_back(
+                data->geometries[geometry_iter->second].mesh,
+                to_luisa(accel_transform), visibility, false, instance_index);
+        }
     }
     if (!result.diagnostics.empty()) {
         return result;

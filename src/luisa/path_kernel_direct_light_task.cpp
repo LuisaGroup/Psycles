@@ -114,22 +114,17 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
         task.ray_time, task.sample_index, task.rng_hash, task.rng_offset,
         task.volume_bounds_bounce);
     auto throughput = def(task.shadow_throughput);
-    for (auto index = std::size_t{0u};
-         index < shadow_intersection_batch_capacity; ++index) {
-      const auto shade =
-          static_cast<std::uint32_t>(index) < ordered_batch->count;
-      $if(shade & carries_light) {
-        const auto &hit =
-            ordered_batch->hits[static_cast<luisa::uint>(index)];
-        const auto surface = shade_shadow_surface(
-            ray, hit, task.ray_dP, task.ray_dD, context, parameters);
-        carries_light =
-            advance_shadow_surface_state(context, throughput, surface);
-        $if(carries_light) {
-          last_distance = hit->distance;
-        };
+    $for(index, ordered_batch->count) {
+      $if(!carries_light) { $break; };
+      const auto hit = ordered_batch->hits[index];
+      const auto surface = shade_shadow_surface(
+          ray, hit, task.ray_dP, task.ray_dD, context, parameters);
+      carries_light =
+          advance_shadow_surface_state(context, throughput, surface);
+      $if(carries_light) {
+        last_distance = hit.distance;
       };
-    }
+    };
     task.shadow_throughput = throughput;
     task.transparent_depth = context.path.transparent_depth.cast<std::uint16_t>();
     task.rng_offset = context.rng_offset;

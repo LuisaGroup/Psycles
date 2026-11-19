@@ -301,8 +301,11 @@ build_scene_traversal_tables(SceneTraversalTableBuildInput input) {
             result.shadow_opacity_words[i] = code;
             has_any_transparent |= (code != 0u);
         } else {
+            // Non-triangle instances (curves) are visited only through
+            // ProceduralCandidate, which resolves curve material flags directly.
+            // Keep triangle shadow-opacity words valid for all surface instances.
+            result.shadow_opacity_words[i] = ~luisa::uint{0u};
             has_any_transparent = true;
-            can_build_triangle_opacity = false;
         }
     }
     if (!can_build_triangle_opacity) {
@@ -382,6 +385,48 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
                 scene->primary_to_subsurface_local_host.size()));
     } else {
         scene->primary_to_subsurface_local_buffer.reset();
+    }
+    if (scene->volume_boundary_accel &&
+        scene->volume_boundary_accel->size() > 0u &&
+        !scene->primary_to_volume_local_host.empty()) {
+        if (scene->primary_to_volume_local_host.size() <
+            input.instances.size()) {
+            scene->primary_to_volume_local_host.resize(
+                input.instances.size(), ~luisa::uint{0u});
+        }
+        bool all_vol = true;
+        for (std::size_t i = 0u; i < traversal_tables.instances.size(); ++i) {
+            if (i >= scene->primary_to_volume_local_host.size() ||
+                scene->primary_to_volume_local_host[i] == ~luisa::uint{0u}) {
+                continue;
+            }
+            const auto &inst_rec = traversal_tables.instances[i];
+            const auto slot_count = std::max(
+                inst_rec.geometry_material_count,
+                inst_rec.override_material_count);
+            for (std::uint32_t s = 0u; s < slot_count; ++s) {
+                std::uint32_t eff_flags = traversal_tables.material_flags[
+                    inst_rec.geometry_material_offset +
+                    std::min(s, inst_rec.geometry_material_count - 1u)];
+                if (s < inst_rec.override_material_count) {
+                    eff_flags = traversal_tables.material_flags[
+                        inst_rec.override_material_offset + s];
+                }
+                if ((eff_flags & material_flag_has_volume) == 0u) {
+                    all_vol = false;
+                    break;
+                }
+            }
+            if (!all_vol) { break; }
+        }
+        scene->all_volume_boundary_primitives_have_volume = all_vol;
+        scene->primary_to_volume_local_buffer.emplace(
+            scene->device.create_buffer<luisa::uint>(
+                scene->primary_to_volume_local_host.size()));
+    } else {
+        scene->volume_boundary_accel.reset();
+        scene->primary_to_volume_local_buffer.reset();
+        scene->all_volume_boundary_primitives_have_volume = false;
     }
     scene->geometry_buffer =
         scene->device.create_buffer<GeometryGpu>(input.geometries.size());
@@ -488,6 +533,10 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
         stream << scene->primary_to_subsurface_local_buffer->copy_from(
             luisa::span{scene->primary_to_subsurface_local_host});
     }
+    if (scene->primary_to_volume_local_buffer) {
+        stream << scene->primary_to_volume_local_buffer->copy_from(
+            luisa::span{scene->primary_to_volume_local_host});
+    }
     stream << scene->texture_heap.update() << scene->heap.update()
            << scene->accel.build();
     if (scene->subsurface_accel) {
@@ -495,6 +544,9 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
     }
     if (scene->ambient_occlusion_local_accel) {
         stream << scene->ambient_occlusion_local_accel->build();
+    }
+    if (scene->volume_boundary_accel) {
+        stream << scene->volume_boundary_accel->build();
     }
     stream << synchronize();
     return {};

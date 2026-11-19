@@ -55,6 +55,32 @@ class PathVolumeStateComponentImpl final
                     camera_initialization)};
     }
 
+    void reset(
+        PathVolumeState &state,
+        const std::shared_ptr<LuisaSceneData> &scene,
+        Expr<luisa::float3> camera_origin,
+        Expr<std::uint32_t> visibility,
+        bool probe_camera_enclosures)
+        const noexcept override {
+        if (!state.enabled()) {
+            return;
+        }
+        state.stack->clear();
+        if (probe_camera_enclosures) {
+            state.camera_initialization =
+                _camera_stack->initialize(
+                    scene,
+                    camera_origin,
+                    visibility,
+                    *state.stack);
+        } else {
+            state.camera_initialization.intersection_count = 0u;
+            state.camera_initialization.enclosed_count = 0u;
+            _camera_stack->initialize_background(
+                scene, *state.stack);
+        }
+    }
+
     void cross_surface(
         PathVolumeState &state,
         const VolumeStackEntry &entry,

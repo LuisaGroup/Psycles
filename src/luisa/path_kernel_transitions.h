@@ -11,10 +11,15 @@ inline constexpr char shade_volume[] = "shade_volume";
 inline constexpr char shade_light_forward[] = "shade_light_forward";
 inline constexpr char shade_background[] = "shade_background";
 inline constexpr char surface_shading[] = "surface_shading";
+inline constexpr unsigned max_surface_buckets = 8u;
 inline constexpr char shade_surface[] = "shade_surface";
 inline constexpr char shade_surface_1[] = "shade_surface_1";
 inline constexpr char shade_surface_2[] = "shade_surface_2";
 inline constexpr char shade_surface_3[] = "shade_surface_3";
+inline constexpr char shade_surface_4[] = "shade_surface_4";
+inline constexpr char shade_surface_5[] = "shade_surface_5";
+inline constexpr char shade_surface_6[] = "shade_surface_6";
+inline constexpr char shade_surface_7[] = "shade_surface_7";
 inline constexpr char shade_surface_post[] = "shade_surface_post";
 
 [[nodiscard]] constexpr const char *shade_surface_bucket_name(
@@ -24,6 +29,10 @@ inline constexpr char shade_surface_post[] = "shade_surface_post";
         case 1u: return shade_surface_1;
         case 2u: return shade_surface_2;
         case 3u: return shade_surface_3;
+        case 4u: return shade_surface_4;
+        case 5u: return shade_surface_5;
+        case 6u: return shade_surface_6;
+        case 7u: return shade_surface_7;
         default: return shade_surface;
     }
 }

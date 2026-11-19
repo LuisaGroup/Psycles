@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
                    "[persistent-block-size=32] "
                    "[persistent-fetch-size=1] "
                    "[staged-surface-sorting=1] "
-                   "[staged-direct-light-queue=0] "
+                   "[staged-direct-light-queue=1] "
                    "[wavefront-counter-readback-batch-size=4] "
                    "[wavefront-counter-readback-pipeline-depth=2] "
                    "[wavefront-tail-megakernel-threshold=auto] "
@@ -445,7 +445,7 @@ int main(int argc, char **argv) {
         }
         staged_surface_sorting = *value != 0u;
     }
-    auto staged_direct_light_queue = false;
+    auto staged_direct_light_queue = true;
   if (argc > 23) {
     auto value = parse_unsigned<std::uint32_t>(argv[23]);
     if (!value || *value > 1u) {

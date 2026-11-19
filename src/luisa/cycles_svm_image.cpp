@@ -427,7 +427,8 @@ void node_tex_image_box(Cursor &cursor, Stack &stack,
                                   object_motion_enabled);
   const Float3 signed_normal = normal;
   normal = abs(normal);
-  normal /= normal.x + normal.y + normal.z;
+  const Float normal_sum = normal.x + normal.y + normal.z;
+  normal /= select(1.0f, normal_sum, normal_sum > 0.0f);
 
   Float3 weight = make_float3(0.0f);
   const Float limit = 0.5f * (1.0f + blend);
