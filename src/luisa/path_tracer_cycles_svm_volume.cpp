@@ -69,19 +69,25 @@ Bool evaluate_cycles_svm_volume_entry(
           object_to_world, world_to_object};
       const auto usage = scene->cycles_svm->compilation.table.usage_for(
           abi::SHADER_TYPE_VOLUME);
-      svm::translate_svm_nodes_assume_valid(svm::SvmTranslationRequest{
-          .kernel_globals = kg,
-          .table = scene->cycles_svm->compilation.table,
-          .words = *scene->cycles_svm->word_buffer,
-          .shader_type = abi::SHADER_TYPE_VOLUME,
-          .kernel_features = scene->cycles_svm->kernel_features,
-          .node_feature_mask = node_feature_mask,
-          .node_types_used = usage.node_types_used,
-          .transform_state = transforms,
-          .shader_data = sd,
-          .path_state = state,
-          .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
-          .noise_usage = usage.noise_usage});
+      const auto backend_name = scene->device.backend_name();
+      const bool cpu_backend = backend_name == "fallback";
+      svm::translate_svm_nodes_assume_valid(
+          svm::SvmTranslationRequest{
+              .kernel_globals = kg,
+              .table = scene->cycles_svm->compilation.table,
+              .words = *scene->cycles_svm->word_buffer,
+              .shader_type = abi::SHADER_TYPE_VOLUME,
+              .kernel_features = scene->cycles_svm->kernel_features,
+              .node_feature_mask = node_feature_mask,
+              .node_types_used = usage.node_types_used,
+              .transform_state = transforms,
+              .shader_data = sd,
+              .path_state = state,
+              .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+              .noise_usage = usage.noise_usage,
+              .max_groups_per_outlined_chunk = std::size_t{0u}},
+          cpu_backend ? svm::SvmBackendStrategy::direct_jit
+                      : svm::SvmBackendStrategy::auto_select);
     };
   };
   return valid;

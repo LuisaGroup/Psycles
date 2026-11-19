@@ -10,6 +10,8 @@
 
 #include <luisa/dsl/sugar.h>
 
+#include <cstdlib>
+#include <string_view>
 #include <vector>
 
 namespace psycles::luisa_backend {
@@ -662,11 +664,18 @@ surface_closure_conditional_sample(
         common.closure_type);
     const auto is_bssrdf = surface_closure_uses_bssrdf_payload(
         common.closure_type);
+    const bool outline_closures = []() noexcept {
+        if (const char *env = std::getenv("PSYCLES_CLOSURE_OUTLINE");
+            env != nullptr && *env != '\0') {
+            return std::string_view{env} != "0";
+        }
+        return true;
+    }();
     auto result = zero_surface_closure_conditional_sample();
     $if(is_dielectric) {
         if ((reachability.kinds &
              sampling_dielectric_payload_reachability.kinds) != 0u) {
-            $outline_noinline {
+            $outline_when_with_name(outline_closures, "sample_dielectric_closure") {
                 result = sample_dielectric_closure(
                     services,
                     sampling_point,
@@ -683,7 +692,7 @@ surface_closure_conditional_sample(
     $elif(is_hair) {
         if ((reachability.kinds &
              sampling_hair_payload_reachability.kinds) != 0u) {
-            $outline_noinline {
+            $outline_when_with_name(outline_closures, "sample_hair_closure") {
                 result = sample_hair_closure(
                     project_surface_closure_physical_hair(closure),
                     Float3{incoming_expression},
@@ -701,7 +710,7 @@ surface_closure_conditional_sample(
     $elif(is_general) {
         if ((reachability.kinds &
              sampling_general_payload_reachability.kinds) != 0u) {
-            $outline_noinline {
+            $outline_when_with_name(outline_closures, "sample_general_closure") {
                 result = sample_general_closure(
                     services,
                     sampling_point,
@@ -718,7 +727,7 @@ surface_closure_conditional_sample(
     $else {
         if ((reachability.kinds &
              sampling_common_only_reachability.kinds) != 0u) {
-            $outline_noinline {
+            $outline_when_with_name(outline_closures, "sample_common_closure") {
                 result = sample_common_closure(
                     sampling_point,
                     project_surface_closure_physical_common_only(closure),

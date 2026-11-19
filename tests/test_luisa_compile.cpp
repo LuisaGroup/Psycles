@@ -12,7 +12,9 @@
 
 #include <luisa/xir/instructions/if.h>
 #include <luisa/xir/instructions/loop.h>
+#include <luisa/xir/metadata/no_inline.h>
 #include <luisa/xir/translators/ast2xir.h>
+#include <luisa/xir/verifier.h>
 
 #include <compare>
 #include <cstddef>
@@ -1435,6 +1437,68 @@ int main() {
         std::cerr
             << "Surface topologies were not retained as typed callables\n";
         return 12;
+    }
+    {
+        static_assert(!luisa::compute::is_dsl_v<bool>);
+        static_assert(luisa::compute::is_dsl_v<luisa::compute::Bool>);
+        const auto build_probe = [](bool do_outline) {
+            return Kernel1D{[=](BufferUInt out) noexcept {
+                UInt tid = dispatch_x();
+                UInt accum = 0u;
+                $for(step, 0u, 4u) {
+                    $outline_when_with_name(do_outline, "probe_outline_when") {
+                        $if(step == 1u) {
+                            accum += 10u;
+                            $return();
+                        };
+                        $switch(step) {
+                            $case(2u) {
+                                accum += 20u;
+                                $return();
+                            };
+                            $default {
+                                accum += 1u;
+                            };
+                        };
+                        accum += tid;
+                    };
+                    accum += 100u;
+                };
+                out.write(tid, accum);
+            }};
+        };
+        const auto k_true = build_probe(true);
+        const auto k_false = build_probe(false);
+        const auto m_true = luisa::compute::xir::ast_to_xir_translate(
+            k_true.function()->function(), {});
+        const auto m_false = luisa::compute::xir::ast_to_xir_translate(
+            k_false.function()->function(), {});
+        if (!luisa::compute::xir::xir_verify_module(m_true.get()).succeeded() ||
+            !luisa::compute::xir::xir_verify_module(m_false.get()).succeeded()) {
+            std::cerr << "$outline_when XIR verification failed\n";
+            return 14;
+        }
+        std::size_t true_noinline = 0u;
+        for (const auto *f : m_true->function_list()) {
+            if (f->derived_function_tag() ==
+                    luisa::compute::xir::DerivedFunctionTag::CALLABLE &&
+                f->find_metadata<luisa::compute::xir::NoInlineMD>() != nullptr) {
+                ++true_noinline;
+            }
+        }
+        std::size_t false_callables = 0u;
+        for (const auto *f : m_false->function_list()) {
+            if (f->derived_function_tag() ==
+                luisa::compute::xir::DerivedFunctionTag::CALLABLE) {
+                ++false_callables;
+            }
+        }
+        if (true_noinline != 1u || false_callables != 0u) {
+            std::cerr << "$outline_when callable count mismatch: true_noinline="
+                      << true_noinline << ", false_callables=" << false_callables
+                      << '\n';
+            return 15;
+        }
     }
 
     Kernel1D sampler_kernel = [](

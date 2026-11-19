@@ -259,20 +259,26 @@ public:
         *_scene, PathCyclesSvmShaderDomain::light_emission);
     const auto active_mask = cycles_svm_domain_shader_mask(
         *_scene, PathCyclesSvmShaderDomain::light_emission);
-    svm::translate_svm_nodes_assume_valid(svm::SvmTranslationRequest{
-        .kernel_globals = kg,
-        .table = _scene->cycles_svm->compilation.table,
-        .words = *_scene->cycles_svm->word_buffer,
-        .shader_type = abi::SHADER_TYPE_SURFACE,
-        .kernel_features = _scene->cycles_svm->kernel_features,
-        .node_feature_mask = svm::kernel_feature_node_mask_surface_light,
-        .node_types_used = usage.node_types_used,
-        .transform_state = transforms,
-        .shader_data = sd,
-        .path_state = state,
-        .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
-        .noise_usage = usage.noise_usage,
-        .active_shader_mask = active_mask});
+    const bool cpu_backend = _scene->device.backend_name() == "fallback";
+    svm::translate_svm_nodes_assume_valid(
+        svm::SvmTranslationRequest{
+            .kernel_globals = kg,
+            .table = _scene->cycles_svm->compilation.table,
+            .words = *_scene->cycles_svm->word_buffer,
+            .shader_type = abi::SHADER_TYPE_SURFACE,
+            .kernel_features = _scene->cycles_svm->kernel_features,
+            .node_feature_mask = svm::kernel_feature_node_mask_surface_light,
+            .node_types_used = usage.node_types_used,
+            .transform_state = transforms,
+            .shader_data = sd,
+            .path_state = state,
+            .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+            .noise_usage = usage.noise_usage,
+            .active_shader_mask = active_mask,
+            .max_groups_per_outlined_chunk =
+                cpu_backend ? std::size_t{16u} : std::size_t{0u}},
+        cpu_backend ? svm::SvmBackendStrategy::direct_jit
+                    : svm::SvmBackendStrategy::auto_select);
     Float3 emission = make_float3(0.0f);
     $if((sd.flag & static_cast<unsigned>(abi::SD_EMISSION)) != 0u) {
       const auto evaluable = background | (abs(dot(sd.Ng, sd.wi)) > 0.0f);
