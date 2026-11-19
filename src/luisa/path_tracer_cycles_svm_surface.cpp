@@ -543,22 +543,33 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
             bucket.active_shader_mask.empty()
                 ? std::span<const std::uint8_t>{default_mask}
                 : std::span<const std::uint8_t>{bucket.active_shader_mask};
+        const auto backend_name = _scene->device.backend_name();
+        const bool cpu_backend = backend_name == "fallback";
+        const bool outline_svm_chunks = cpu_backend;
         svm_detail::surface_shader_initialize_closures(
             *_closures, path_state.visibility, path_state.flag);
-        svm::translate_svm_nodes_assume_valid(svm::SvmTranslationRequest{
-            .kernel_globals = _kernel_globals,
-            .table = _scene->cycles_svm->compilation.table,
-            .words = words,
-            .shader_type = abi::SHADER_TYPE_SURFACE,
-            .kernel_features = _scene->cycles_svm->kernel_features,
-            .node_feature_mask = svm::kernel_feature_node_mask_surface,
-            .node_types_used = usage.node_types_used,
-            .transform_state = transform_state,
-            .shader_data = *_shader_data,
-            .path_state = path_state,
-            .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
-            .noise_usage = usage.noise_usage,
-            .active_shader_mask = active_mask});
+        svm::translate_svm_nodes_assume_valid(
+            svm::SvmTranslationRequest{
+                .kernel_globals = _kernel_globals,
+                .table = _scene->cycles_svm->compilation.table,
+                .words = words,
+                .shader_type = abi::SHADER_TYPE_SURFACE,
+                .kernel_features = _scene->cycles_svm->kernel_features,
+                .node_feature_mask = svm::kernel_feature_node_mask_surface,
+                .node_types_used = usage.node_types_used,
+                .transform_state = transform_state,
+                .shader_data = *_shader_data,
+                .path_state = path_state,
+                .stack_size =
+                    std::max<std::size_t>(1u, usage.peak_stack_usage),
+                .noise_usage = usage.noise_usage,
+                .active_shader_mask = active_mask,
+                .max_groups_per_outlined_chunk =
+                    (cpu_backend && outline_svm_chunks)
+                        ? std::size_t{16u}
+                        : std::size_t{0u}},
+            cpu_backend ? svm::SvmBackendStrategy::direct_jit
+                        : svm::SvmBackendStrategy::auto_select);
       };
       const bool may_filter_glossy = context.may_filter_glossy;
       const auto prepare_closures = [&] {

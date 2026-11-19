@@ -116,20 +116,26 @@ Float3 evaluate_cycles_svm_background_emission(
         *scene, PathCyclesSvmShaderDomain::background);
     const auto active_mask = cycles_svm_domain_shader_mask(
         *scene, PathCyclesSvmShaderDomain::background);
-    svm::translate_svm_nodes_assume_valid(svm::SvmTranslationRequest{
-        .kernel_globals = kg,
-        .table = scene->cycles_svm->compilation.table,
-        .words = *scene->cycles_svm->word_buffer,
-        .shader_type = abi::SHADER_TYPE_SURFACE,
-        .kernel_features = scene->cycles_svm->kernel_features,
-        .node_feature_mask = cycles_svm_background_feature_mask(evaluation),
-        .node_types_used = usage.node_types_used,
-        .transform_state = transforms,
-        .shader_data = sd,
-        .path_state = state,
-        .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
-        .noise_usage = usage.noise_usage,
-        .active_shader_mask = active_mask});
+    const auto backend_name = scene->device.backend_name();
+    const bool cpu_backend = backend_name == "fallback";
+    svm::translate_svm_nodes_assume_valid(
+        svm::SvmTranslationRequest{
+            .kernel_globals = kg,
+            .table = scene->cycles_svm->compilation.table,
+            .words = *scene->cycles_svm->word_buffer,
+            .shader_type = abi::SHADER_TYPE_SURFACE,
+            .kernel_features = scene->cycles_svm->kernel_features,
+            .node_feature_mask = cycles_svm_background_feature_mask(evaluation),
+            .node_types_used = usage.node_types_used,
+            .transform_state = transforms,
+            .shader_data = sd,
+            .path_state = state,
+            .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+            .noise_usage = usage.noise_usage,
+            .active_shader_mask = active_mask,
+            .max_groups_per_outlined_chunk = std::size_t{0u}},
+        cpu_backend ? svm::SvmBackendStrategy::direct_jit
+                    : svm::SvmBackendStrategy::auto_select);
     $if((sd.flag & svm::shader_data_emission) != 0u) {
       emission = sd.closure_emission_background;
     };

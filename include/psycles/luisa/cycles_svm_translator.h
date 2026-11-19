@@ -42,6 +42,9 @@ struct SvmTranslationRequest {
   // Optional per-shader reachability filter in [0, table.shader_count). Empty
   // means all shaders in the table may reach this call site.
   std::span<const std::uint8_t> active_shader_mask{};
+  // Optional CPU outlining policy: max unique shader groups per $outline_when
+  // chunk. Zero disables sub-chunk outlining.
+  std::size_t max_groups_per_outlined_chunk{0u};
 };
 
 // Re-targetable SVM backend translator interface. Concrete translators lower

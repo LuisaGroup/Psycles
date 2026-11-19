@@ -13,6 +13,7 @@
 
 #include <luisa/core/logging.h>
 #include <luisa/dsl/sugar.h>
+#include <luisa/dsl/syntax.h>
 
 namespace psycles::luisa_backend::cycles_svm {
 
@@ -21,12 +22,11 @@ using namespace compiler::cycles_svm;
 
 namespace {
 
-// Empirical Apple M5 Pro L1 I-cache / VGPR crossover: DirectJitTranslator wins
-// decisively up through ~34-48 active non-empty shaders (Monster 19, Pabellon
-// 22, BMW27 23, Lone Monk 34, plus Classroom's background/light/shadow domains),
-// whereas 70+ material surface tables (Classroom surface_only = 76) stay more
-// compact and faster in BytecodeVmTranslator.
-inline constexpr std::size_t default_auto_direct_jit_max_shaders = 48u;
+// DirectJitTranslator crossover: direct structured dispatch wins decisively up
+// through ~80 active non-empty shaders per specialized bucket/domain (covering
+// Monster 19, BMW27 23, Lone Monk 34, Classroom 76, and 4-bucket Barbershop ~70),
+// while unpartitioned mega-tables (> 80 shaders) stay compact in BytecodeVmTranslator.
+inline constexpr std::size_t default_auto_direct_jit_max_shaders = 80u;
 
 [[nodiscard]] std::size_t configured_direct_jit_max_shaders() noexcept {
   const char *raw = std::getenv("PSYCLES_SVM_JIT_MAX_SHADERS");
@@ -658,6 +658,37 @@ void emit_jit_block(const SvmTranslationRequest &req, const SvmBlockIr &block,
   }
 }
 
+[[nodiscard]] std::size_t svm_block_jit_weight(const SvmBlockIr &block) noexcept {
+  std::size_t w = 0u;
+  for (const auto &op : block) {
+    if (op.is_conditional) {
+      w += 2u + svm_block_jit_weight(op.children);
+      continue;
+    }
+    switch (op.instruction.opcode) {
+      case NODE_TEX_VORONOI: w += 36u; break;
+      case NODE_TEX_GABOR: w += 32u; break;
+      case NODE_PRINCIPLED_VOLUME: w += 20u; break;
+      case NODE_TEX_SKY: w += 16u; break;
+      case NODE_CLOSURE_BSDF: w += 14u; break;
+      case NODE_TEX_NOISE: w += 12u; break;
+      case NODE_TEX_IMAGE_BOX:
+      case NODE_TEX_IMAGE_BOX_DERIVATIVE: w += 12u; break;
+      case NODE_TEX_BRICK:
+      case NODE_TEX_WAVE: w += 10u; break;
+      case NODE_TEX_IMAGE:
+      case NODE_TEX_IMAGE_DERIVATIVE:
+      case NODE_TEX_ENVIRONMENT:
+      case NODE_TEX_ENVIRONMENT_DERIVATIVE: w += 5u; break;
+      case NODE_NORMAL_MAP:
+      case NODE_VECTOR_MATH_DERIVATIVE:
+      case NODE_MAPPING_DERIVATIVE: w += 4u; break;
+      default: w += 1u; break;
+    }
+  }
+  return w;
+}
+
 } // namespace
 
 void BytecodeVmTranslator::translate(
@@ -718,6 +749,140 @@ void DirectJitTranslator::translate(
       g.shader_ids.emplace_back(static_cast<std::uint32_t>(i));
       g.routine = &routine;
       groups.emplace_back(std::move(g));
+    }
+  }
+
+  std::size_t total_jit_weight = 0u;
+  for (const auto &g : groups) {
+    total_jit_weight += svm_block_jit_weight(*g.routine);
+  }
+
+  const bool explicit_chunk_env = []() noexcept {
+    const char *raw = std::getenv("PSYCLES_SVM_OUTLINE_CHUNK_GROUPS");
+    return raw != nullptr && *raw != '\0';
+  }();
+  const auto configured_chunk_groups = [&]() noexcept -> std::size_t {
+    if (const char *raw = std::getenv("PSYCLES_SVM_OUTLINE_CHUNK_GROUPS");
+        raw != nullptr && *raw != '\0') {
+      char *end = nullptr;
+      const unsigned long parsed = std::strtoul(raw, &end, 10);
+      if (end != raw && *end == '\0') {
+        return static_cast<std::size_t>(parsed);
+      }
+    }
+    if (request.max_groups_per_outlined_chunk > 16u &&
+        (groups.size() > 16u || total_jit_weight > 600u)) {
+      return std::size_t{16u};
+    }
+    return request.max_groups_per_outlined_chunk;
+  }();
+  constexpr std::size_t target_chunk_weight_budget = 900u;
+  const bool should_outline_chunks =
+      configured_chunk_groups > 0u &&
+      (groups.size() > configured_chunk_groups ||
+       (!explicit_chunk_env && groups.size() > 8u &&
+        total_jit_weight > target_chunk_weight_budget));
+  if (should_outline_chunks) {
+    struct OutlinedChunk {
+      std::uint32_t max_shader_id{};
+      std::size_t weight{};
+      luisa::vector<ShaderGroup> groups;
+    };
+    luisa::vector<OutlinedChunk> chunks;
+    OutlinedChunk current;
+    for (std::size_t i = 0u; i < shader_count; ++i) {
+      if (has_mask && request.active_shader_mask[i] == 0u) {
+        continue;
+      }
+      const auto &routine =
+          request.table.ir.shaders[i].routine_for(request.shader_type);
+      if (routine.empty()) {
+        continue;
+      }
+      const auto sid = static_cast<std::uint32_t>(i);
+      bool merged_in_chunk = false;
+      for (auto &group : current.groups) {
+        if (same_linked_svm_block(host_words, *group.routine, routine)) {
+          group.shader_ids.emplace_back(sid);
+          current.max_shader_id = sid;
+          merged_in_chunk = true;
+          break;
+        }
+      }
+      if (merged_in_chunk) {
+        continue;
+      }
+      const std::size_t routine_weight = svm_block_jit_weight(routine);
+      const bool exceeds_weight =
+          !explicit_chunk_env && !current.groups.empty() &&
+          (current.weight + routine_weight > target_chunk_weight_budget);
+      if (current.groups.size() >= configured_chunk_groups || exceeds_weight) {
+        chunks.emplace_back(std::move(current));
+        current = OutlinedChunk{};
+      }
+      ShaderGroup g;
+      g.shader_ids.emplace_back(sid);
+      g.routine = &routine;
+      current.max_shader_id = sid;
+      current.weight += routine_weight;
+      current.groups.emplace_back(std::move(g));
+    }
+    if (!current.groups.empty()) {
+      chunks.emplace_back(std::move(current));
+    }
+    if (chunks.size() > 1u) {
+      const auto emit_dispatcher = [&]() noexcept {
+        const UInt shader_index = request.shader_data.shader & shader_mask;
+        const auto emit_range =
+            [&](auto &&self, std::size_t lo, std::size_t hi) noexcept -> void {
+          if (hi - lo == 1u) {
+            const auto &chunk = chunks[lo];
+            $outline_when_with_name(should_outline_chunks,
+                                    "svm_eval_nodes_chunk") {
+              if (chunk.groups.size() == 1u &&
+                  chunk.groups.front().shader_ids.size() == 1u) {
+                using ::operator==;
+                $if(shader_index ==
+                    def<luisa::uint>(chunk.groups.front().shader_ids.front())) {
+                  detail::Stack group_stack{request.stack_size};
+                  static_cast<void>(group_stack);
+                  Float3 closure_weight = make_float3(0.0f);
+                  emit_jit_block(request, *chunk.groups.front().routine,
+                                 group_stack, closure_weight);
+                };
+              } else {
+                $switch(shader_index) {
+                  for (const auto &group : chunk.groups) {
+                    luisa::compute::detail::SwitchCaseStmtBuilder{
+                        luisa::span<const std::uint32_t>{group.shader_ids}} %
+                        [&]() noexcept {
+                          detail::Stack group_stack{request.stack_size};
+                          static_cast<void>(group_stack);
+                          Float3 closure_weight = make_float3(0.0f);
+                          emit_jit_block(request, *group.routine, group_stack,
+                                         closure_weight);
+                        };
+                  }
+                  $default {};
+                };
+              }
+            };
+            return;
+          }
+          const std::size_t mid = lo + (hi - lo) / 2u;
+          $if(shader_index <= def<luisa::uint>(chunks[mid - 1u].max_shader_id)) {
+            self(self, lo, mid);
+          }
+          $else {
+            self(self, mid, hi);
+          };
+        };
+        emit_range(emit_range, 0u, chunks.size());
+      };
+      $outline_when_with_name(should_outline_chunks, "svm_eval_nodes") {
+        emit_dispatcher();
+      };
+      return;
     }
   }
 

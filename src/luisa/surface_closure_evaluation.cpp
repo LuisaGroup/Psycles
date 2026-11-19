@@ -7,6 +7,9 @@
 
 #include <psycles/luisa/cycles_closure.h>
 
+#include <cstdlib>
+#include <string_view>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend {
@@ -755,11 +758,18 @@ surface_closure_evaluation_contribution(
         common.closure_type);
     const auto is_hair = surface_closure_uses_hair_payload(
         common.closure_type);
+    const bool outline_closures = []() noexcept {
+        if (const char *env = std::getenv("PSYCLES_CLOSURE_OUTLINE");
+            env != nullptr && *env != '\0') {
+            return std::string_view{env} != "0";
+        }
+        return true;
+    }();
     auto result = zero_surface_closure_evaluation_contribution();
     $if(is_dielectric) {
         if ((reachability.kinds &
              evaluation_dielectric_payload_reachability.kinds) != 0u) {
-            $outline_noinline {
+            $outline_when_with_name(outline_closures, "eval_dielectric_closure") {
                 result = evaluate_dielectric_closure(
                     services,
                     point,
@@ -777,7 +787,7 @@ surface_closure_evaluation_contribution(
     $elif(is_hair) {
         if ((reachability.kinds &
              evaluation_hair_payload_reachability.kinds) != 0u) {
-            $outline_noinline {
+            $outline_when_with_name(outline_closures, "eval_hair_closure") {
                 result = evaluate_hair_closure(
                     point,
                     Float3{shading_normal_expression},
@@ -794,7 +804,7 @@ surface_closure_evaluation_contribution(
     $elif(is_general) {
         if ((reachability.kinds &
              evaluation_general_payload_reachability.kinds) != 0u) {
-            $outline_noinline {
+            $outline_when_with_name(outline_closures, "eval_general_closure") {
                 result = evaluate_general_closure(
                     services,
                     point,
@@ -812,7 +822,7 @@ surface_closure_evaluation_contribution(
     $else {
         if ((reachability.kinds &
              evaluation_common_only_reachability.kinds) != 0u) {
-            $outline_noinline {
+            $outline_when_with_name(outline_closures, "eval_common_closure") {
                 result = evaluate_common_closure(
                     point,
                     Float3{shading_normal_expression},
