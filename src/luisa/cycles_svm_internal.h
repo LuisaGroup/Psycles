@@ -555,6 +555,15 @@ public:
       luisa::compute::Expr<std::uint32_t> offset) const noexcept override {
     return _inner.attribute_map(offset);
   }
+  [[nodiscard]] std::optional<luisa::compute::UInt2>
+  find_attribute_map_offset(
+      luisa::compute::Expr<std::uint32_t> start_offset,
+      luisa::compute::Expr<luisa::ulong> id) const noexcept override {
+    return _inner.find_attribute_map_offset(start_offset, id);
+  }
+  [[nodiscard]] bool prefers_outlined_loops() const noexcept override {
+    return _inner.prefers_outlined_loops();
+  }
   [[nodiscard]] luisa::compute::Float attribute_float(
       luisa::compute::Expr<std::int32_t> offset) const noexcept override {
     return _inner.attribute_float(offset);

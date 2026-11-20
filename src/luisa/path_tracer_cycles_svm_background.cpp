@@ -117,7 +117,8 @@ Float3 evaluate_cycles_svm_background_emission(
     const auto active_mask = cycles_svm_domain_shader_mask(
         *scene, PathCyclesSvmShaderDomain::background);
     const auto backend_name = scene->device.backend_name();
-    const bool cpu_backend = backend_name == "fallback";
+    const bool cpu_backend =
+        backend_name == "fallback" || backend_name == "simd";
     svm::translate_svm_nodes_assume_valid(
         svm::SvmTranslationRequest{
             .kernel_globals = kg,

@@ -27,7 +27,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         : _options{std::move(options)} {}
 
     SurfaceShadingState
-    emit(SurfaceGeometryContext &surface) const noexcept override {
+    emit(SurfaceGeometryContext &surface,
+         Bool *sample_terminated_out = nullptr) const noexcept override {
         auto &bounce = surface.bounce;
         auto &sample = bounce.sample;
         auto &invocation = sample.invocation;
@@ -226,10 +227,20 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                     const auto weight = cycles_svm::detail::surface_shader_apply_holdout(sd);
                     const auto weighted = weight * throughput;
                     sample.accumulate_transparency((weighted.x + weighted.y + weighted.z) * (1.0f / 3.0f));
-                    $if(all(weight == make_float3(1.0f))) { $break; };
+                    if (sample_terminated_out == nullptr) {
+                        $if(all(weight == make_float3(1.0f))) { $break; };
+                    } else {
+                        $if(all(weight == make_float3(1.0f))) {
+                            *sample_terminated_out = true;
+                        };
+                    }
                 };
             }
         }
+        UInt cycles_surface_runtime_flags = 0u;
+        Float3 bsdf_sample = make_float3(0.0f);
+        Float3 final_shading_normal = point.shading_normal;
+        const auto emit_post_holdout = [&]() noexcept {
         const auto preparation = populated_surface
                                      ? populated_surface->preparation()
                                      : prepare_surface(
@@ -239,6 +250,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                                            surface.path_surface_query,
                                            include_runtime_flags,
                                            include_aov);
+        final_shading_normal = preparation.shading_normal;
         $if(bounce.subsurface_exit) {
           path_flags &= ~cycles_path_state::flag_subsurface;
         };
@@ -269,17 +281,21 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         // PATH_RAY_TERMINATE_ON_NEXT_SURFACE still records
         // surface emission, then stops before data passes, direct
         // lighting, or another closure sample.
-        $if(terminate_on_next_surface & !bounce.subsurface_exit) {
-            $break;
-        };
+        if (sample_terminated_out == nullptr) {
+            $if(terminate_on_next_surface & !bounce.subsurface_exit) {
+                $break;
+            };
+        } else {
+            $if(terminate_on_next_surface & !bounce.subsurface_exit) {
+                *sample_terminated_out = true;
+            };
+        }
 
+        const auto emit_post_roulette = [&]() noexcept {
         // INTERSECT_CLOSEST already made Cycles' continuation decision after
         // the endpoint became known. Surface emission above remains visible;
         // surviving paths are renormalized only now, before further shading.
         $if(!bounce.subsurface_exit) {
-            $if(continuation_probability == 0.0f) {
-                $break;
-            };
             $if(continuation_probability != 1.0f) {
                 throughput /= continuation_probability;
             };
@@ -320,7 +336,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             };
         };
 
-        UInt cycles_surface_runtime_flags = 0u;
         if (next_event_estimation || path_trace_enabled) {
             cycles_surface_runtime_flags = preparation.runtime_flags;
             if (!scene->native_cycles_svm_surface) {
@@ -333,7 +348,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         // Release native continuation requests this tuple only after the
         // SD_BSDF/SD_BSSRDF gate, following NEE. Diagnostics deliberately
         // observe the same pure counter-based tuple at this earlier boundary.
-        Float3 bsdf_sample = make_float3(0.0f);
         if (!scene->native_cycles_svm_surface || path_trace_enabled) {
             bsdf_sample = sample.surface_bsdf_sample();
         }
@@ -473,10 +487,32 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 };
             }
         }
+        };
+        if (sample_terminated_out == nullptr) {
+            $if(!bounce.subsurface_exit & (continuation_probability == 0.0f)) {
+                $break;
+            };
+            emit_post_roulette();
+        } else {
+            $if(!bounce.subsurface_exit & (continuation_probability == 0.0f)) {
+                *sample_terminated_out = true;
+            };
+            $if(!*sample_terminated_out) {
+                emit_post_roulette();
+            };
+        }
+        };
+        if (sample_terminated_out == nullptr) {
+            emit_post_holdout();
+        } else {
+            $if(!*sample_terminated_out) {
+                emit_post_holdout();
+            };
+        }
 
         return {std::move(cycles_surface_runtime_flags),
                 std::move(bsdf_sample),
-                preparation.shading_normal,
+                std::move(final_shading_normal),
                 std::move(populated_surface)};
     }
 };

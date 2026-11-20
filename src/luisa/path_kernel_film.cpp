@@ -333,6 +333,108 @@ void PathKernelInvocation::write_film() noexcept {
     if (film_accumulation == PathFilmAccumulation::atomic) {
         return;
     }
+    if (film_accumulation == PathFilmAccumulation::warp_reduce) {
+        const auto reduce_f4 = [](const Float4 &v) noexcept {
+            return luisa::compute::warp_active_sum(v);
+        };
+        const auto r_combined = reduce_f4(combined_sum);
+        const auto r_normal = reduce_f4(normal_sum);
+        const auto r_albedo = reduce_f4(albedo_sum);
+        const auto r_diffuse_direct = reduce_f4(diffuse_direct_sum);
+        const auto r_diffuse_indirect = reduce_f4(diffuse_indirect_sum);
+        const auto r_glossy_direct = reduce_f4(glossy_direct_sum);
+        const auto r_glossy_indirect = reduce_f4(glossy_indirect_sum);
+        const auto r_transmission_direct = reduce_f4(transmission_direct_sum);
+        const auto r_transmission_indirect = reduce_f4(transmission_indirect_sum);
+        const auto r_volume_direct = reduce_f4(volume_direct_sum);
+        const auto r_volume_indirect = reduce_f4(volume_indirect_sum);
+        const auto r_emission = reduce_f4(emission_sum);
+        const auto r_environment = reduce_f4(environment_sum);
+        const auto r_glossy_color = reduce_f4(glossy_color_sum);
+        const auto r_transmission_color = reduce_f4(transmission_color_sum);
+        const auto r_completed = luisa::compute::warp_active_sum(completed);
+        Float4 r_vg_scatter = make_float4(0.0f);
+        Float4 r_vg_transmit = make_float4(0.0f);
+        Float4 r_vg_optical = make_float4(0.0f);
+        if (config.volume_state) {
+            r_vg_scatter = reduce_f4(volume_guiding_scatter_sum);
+            r_vg_transmit = reduce_f4(volume_guiding_transmit_sum);
+            r_vg_optical = reduce_f4(volume_guiding_optical_depth_sum);
+        }
+        $if((luisa::compute::dispatch_x() & 7u) == 0u) {
+            const auto add_float4 = [](const BufferFloat4 &buffer,
+                                       const UInt &index,
+                                       const Float4 &value) noexcept {
+                buffer.write(index, buffer.read(index) + value);
+            };
+            add_float4(combined, pixel, r_combined);
+            add_float4(normal, pixel, r_normal);
+            add_float4(albedo, pixel, r_albedo);
+            add_float4(light_passes,
+                       light_pass_base +
+                           light_pass_index(LightPassBuffer::diffuse_direct),
+                       r_diffuse_direct);
+            add_float4(light_passes,
+                       light_pass_base +
+                           light_pass_index(LightPassBuffer::diffuse_indirect),
+                       r_diffuse_indirect);
+            add_float4(light_passes,
+                       light_pass_base +
+                           light_pass_index(LightPassBuffer::glossy_direct),
+                       r_glossy_direct);
+            add_float4(light_passes,
+                       light_pass_base +
+                           light_pass_index(LightPassBuffer::glossy_indirect),
+                       r_glossy_indirect);
+            add_float4(light_passes,
+                       light_pass_base +
+                           light_pass_index(LightPassBuffer::transmission_direct),
+                       r_transmission_direct);
+            add_float4(light_passes,
+                       light_pass_base +
+                           light_pass_index(LightPassBuffer::transmission_indirect),
+                       r_transmission_indirect);
+            add_float4(light_passes,
+                       light_pass_base +
+                           light_pass_index(LightPassBuffer::volume_direct),
+                       r_volume_direct);
+            add_float4(light_passes,
+                       light_pass_base +
+                           light_pass_index(LightPassBuffer::volume_indirect),
+                       r_volume_indirect);
+            add_float4(light_passes,
+                       light_pass_base + light_pass_index(LightPassBuffer::emission),
+                       r_emission);
+            add_float4(light_passes,
+                       light_pass_base +
+                           light_pass_index(LightPassBuffer::environment),
+                       r_environment);
+            add_float4(light_passes,
+                       light_pass_base +
+                           light_pass_index(LightPassBuffer::glossy_color),
+                       r_glossy_color);
+            add_float4(light_passes,
+                       light_pass_base +
+                           light_pass_index(LightPassBuffer::transmission_color),
+                       r_transmission_color);
+            if (config.volume_state) {
+                add_float4(volume_guiding_raw,
+                           volume_guiding_raw_base +
+                               volume_guiding::raw_scatter_slot,
+                           r_vg_scatter);
+                add_float4(volume_guiding_raw,
+                           volume_guiding_raw_base +
+                               volume_guiding::raw_transmit_slot,
+                           r_vg_transmit);
+                add_float4(volume_guiding_raw,
+                           volume_guiding_raw_base +
+                               volume_guiding::optical_depth_slot,
+                           r_vg_optical);
+            }
+            sample_count.write(pixel, sample_count.read(pixel) + r_completed);
+        };
+        return;
+    }
   const auto write_float4 = [](const BufferFloat4 &buffer, const UInt &index,
                                   const Float4 &value) noexcept {
         buffer.write(index, value);

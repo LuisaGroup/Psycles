@@ -146,17 +146,20 @@ void transparent_setup(ShaderData &shader_data, const PathState &path_state,
     $if((shader_data.flag & shader_data_transparent) != 0u) {
       if (shader_data.closure != nullptr) {
         auto &pool = *shader_data.closure;
-        UInt index = 0u;
-        Bool found = false;
-        $while((index < pool.count()) & !found) {
-          const auto closure = pool.common(index);
-          $if(closure.type ==
-              static_cast<std::uint32_t>(CLOSURE_BSDF_TRANSPARENT_ID)) {
-            pool.add_weight(index, weight);
-            pool.add_sample_weight(index, sample_weight);
-            found = true;
+        $outline_when_with_name(pool.options().outline_transparent_merge,
+                                "svm_transparent_merge") {
+          UInt index = 0u;
+          Bool found = false;
+          $while((index < pool.count()) & !found) {
+            const auto closure = pool.common(index);
+            $if(closure.type ==
+                static_cast<std::uint32_t>(CLOSURE_BSDF_TRANSPARENT_ID)) {
+              pool.add_weight(index, weight);
+              pool.add_sample_weight(index, sample_weight);
+              found = true;
+            };
+            index += 1u;
           };
-          index += 1u;
         };
       }
     }

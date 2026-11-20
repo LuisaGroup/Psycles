@@ -704,14 +704,19 @@ LightTreeCallables make_light_tree_callables(
         LightTreeImportanceComponent{scene, true};
     auto surface_sample = make_sample_callable(
         scene, surface_importance, false);
+    surface_sample.set_name("light_tree_surface_sample");
     auto volume_sample = make_sample_callable(
         scene, volume_importance, true);
+    volume_sample.set_name("light_tree_volume_sample");
     auto surface_pdf = make_pdf_callable(
         scene, surface_importance, false);
+    surface_pdf.set_name("light_tree_surface_pdf");
     auto volume_pdf = make_pdf_callable(
         scene, volume_importance, true);
+    volume_pdf.set_name("light_tree_volume_pdf");
     auto forward_pdf = make_forward_pdf_callable(
         surface_pdf, volume_pdf, allow_volume_origin);
+    forward_pdf.set_name("light_tree_forward_pdf");
     return {
         .surface_sample = std::move(surface_sample),
         .volume_sample = std::move(volume_sample),

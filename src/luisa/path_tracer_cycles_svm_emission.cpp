@@ -36,67 +36,74 @@ Float3 evaluate_cycles_svm_lamp_emission(
     Float distance, Float time, const svm::PathState &state) noexcept {
   Float3 emission = make_float3(0.0f);
   const auto constant = cycles_svm_constant_emission(*scene, shader, emission);
+  const auto backend_name = scene->device.backend_name();
+  const bool is_simd = backend_name == "simd";
+  const bool cpu_backend = backend_name == "fallback" || is_simd;
   $if(!constant) {
-    // light_sample_shader_eval_forward uses visibility NONE and EMISSION.
-    // Caustic suppression therefore cannot be active in this domain.
-    const PathCyclesSvmKernelGlobals kg{
-        scene, parameters, scene->camera.projection, true, true,
-        PathCyclesSvmShaderDomain::light_emission};
-    const auto identity = make_float4x4(1.0f);
-    svm::TransformState transforms{parameters.camera_transform,
-                                   parameters.camera_inverse_transform,
-                                   identity, identity};
-    svm::ShaderData sd{
-        position, normal, normal, incoming,
-        static_cast<unsigned>(abi::PRIMITIVE_LAMP), shader,
-        (*scene->cycles_svm->kernel_shader_buffer)
-            ->read(shader & svm::shader_mask).flags.cast<unsigned>(),
-        0u, primitive, uv.x, uv.y, object, time, distance,
-        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-        make_float3(0.0f), make_float3(0.0f), identity, identity};
-    $if(object != svm::object_none) {
-      const auto record = scene->cycles_svm->objects->object_buffer->read(object);
-      const auto unpack = [](Var<abi::PackedTransform> value) noexcept {
-        return svm::detail::transform_from_rows(
-            make_float4(value.x.x, value.x.y, value.x.z, value.x.w),
-            make_float4(value.y.x, value.y.y, value.y.z, value.y.w),
-            make_float4(value.z.x, value.z.y, value.z.z, value.z.w));
+    $outline_when_with_name(is_simd, "simd_eval_lamp_emission") {
+      // light_sample_shader_eval_forward uses visibility NONE and EMISSION.
+      // Caustic suppression therefore cannot be active in this domain.
+      const PathCyclesSvmKernelGlobals kg{
+          scene, parameters, scene->camera.projection, true, true,
+          PathCyclesSvmShaderDomain::light_emission};
+      const auto identity = make_float4x4(1.0f);
+      svm::TransformState transforms{parameters.camera_transform,
+                                     parameters.camera_inverse_transform,
+                                     identity, identity};
+      svm::ShaderData sd{
+          position, normal, normal, incoming,
+          static_cast<unsigned>(abi::PRIMITIVE_LAMP), shader,
+          (*scene->cycles_svm->kernel_shader_buffer)
+              ->read(shader & svm::shader_mask).flags.cast<unsigned>(),
+          0u, primitive, uv.x, uv.y, object, time, distance,
+          0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+          make_float3(0.0f), make_float3(0.0f), identity, identity};
+      $if(object != svm::object_none) {
+        const auto record = scene->cycles_svm->objects->object_buffer->read(object);
+        const auto unpack = [](Var<abi::PackedTransform> value) noexcept {
+          return svm::detail::transform_from_rows(
+              make_float4(value.x.x, value.x.y, value.x.z, value.x.w),
+              make_float4(value.y.x, value.y.y, value.y.z, value.y.w),
+              make_float4(value.z.x, value.z.y, value.z.z, value.z.w));
+        };
+        sd.object_flag = scene->cycles_svm->objects->object_flag_buffer->read(object);
+        transforms.object_to_world = unpack(record.tfm);
+        transforms.world_to_object = unpack(record.itfm);
       };
-      sd.object_flag = scene->cycles_svm->objects->object_flag_buffer->read(object);
-      transforms.object_to_world = unpack(record.tfm);
-      transforms.world_to_object = unpack(record.itfm);
-    };
-    $if(primitive != svm::primitive_none) {
-      cycles_svm_shader_setup_backfacing(sd);
-    };
-    const auto usage = cycles_svm_domain_entry_usage(
-        *scene, PathCyclesSvmShaderDomain::light_emission);
-    const auto active_mask = cycles_svm_domain_shader_mask(
-        *scene, PathCyclesSvmShaderDomain::light_emission);
-    const auto backend_name = scene->device.backend_name();
-    const bool cpu_backend = backend_name == "fallback";
-    svm::translate_svm_nodes_assume_valid(
-        svm::SvmTranslationRequest{
-            .kernel_globals = kg,
-            .table = scene->cycles_svm->compilation.table,
-            .words = *scene->cycles_svm->word_buffer,
-            .shader_type = abi::SHADER_TYPE_SURFACE,
-            .kernel_features = scene->cycles_svm->kernel_features,
-            .node_feature_mask = svm::kernel_feature_node_mask_surface_light,
-            .node_types_used = usage.node_types_used,
-            .transform_state = transforms,
-            .shader_data = sd,
-            .path_state = state,
-            .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
-            .noise_usage = usage.noise_usage,
-            .active_shader_mask = active_mask,
-            .max_groups_per_outlined_chunk =
-                cpu_backend ? std::size_t{16u} : std::size_t{0u}},
-        cpu_backend ? svm::SvmBackendStrategy::direct_jit
-                    : svm::SvmBackendStrategy::auto_select);
-    $if(((sd.flag & svm::shader_data_emission) != 0u) &
-        (abs(dot(sd.Ng, sd.wi)) > 0.0f)) {
-      emission = sd.closure_emission_background;
+      $if(primitive != svm::primitive_none) {
+        cycles_svm_shader_setup_backfacing(sd);
+      };
+      const auto usage = cycles_svm_domain_entry_usage(
+          *scene, PathCyclesSvmShaderDomain::light_emission);
+      const auto active_mask = cycles_svm_domain_shader_mask(
+          *scene, PathCyclesSvmShaderDomain::light_emission);
+      svm::translate_svm_nodes_assume_valid(
+          svm::SvmTranslationRequest{
+              .kernel_globals = kg,
+              .table = scene->cycles_svm->compilation.table,
+              .words = *scene->cycles_svm->word_buffer,
+              .shader_type = abi::SHADER_TYPE_SURFACE,
+              .kernel_features = scene->cycles_svm->kernel_features,
+              .node_feature_mask = svm::kernel_feature_node_mask_surface_light,
+              .node_types_used = usage.node_types_used,
+              .transform_state = transforms,
+              .shader_data = sd,
+              .path_state = state,
+              .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+              .noise_usage = usage.noise_usage,
+              .active_shader_mask = active_mask,
+              .max_groups_per_outlined_chunk =
+                  cpu_backend ? (is_simd ? std::size_t{2u} : std::size_t{16u})
+                              : std::size_t{0u},
+              .max_chunk_jit_weight =
+                  is_simd ? std::size_t{180u} : std::size_t{900u},
+              .outline_chunk_dispatcher = !is_simd},
+          cpu_backend ? svm::SvmBackendStrategy::direct_jit
+                      : svm::SvmBackendStrategy::auto_select);
+      $if(((sd.flag & svm::shader_data_emission) != 0u) &
+          (abs(dot(sd.Ng, sd.wi)) > 0.0f)) {
+        emission = sd.closure_emission_background;
+      };
     };
   };
   return emission;

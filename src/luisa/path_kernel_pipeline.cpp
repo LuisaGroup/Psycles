@@ -136,7 +136,14 @@ PathKernelPipeline::operator=(PathKernelPipeline &&) noexcept = default;
 
 void PathKernelPipeline::emit(
     PathSampleContext &sample,
-    PathCoroutineCutPolicy cut_policy) const noexcept {
+    PathCoroutineCutPolicy cut_policy,
+    const SampleCompleteHandler &on_sample_complete) const noexcept {
+  LUISA_ASSERT(
+      !on_sample_complete || cut_policy == PathCoroutineCutPolicy::none,
+      "Persistent sample completion handler requires megakernel mode.");
+  auto *const prof = cut_policy == PathCoroutineCutPolicy::none
+                         ? sample.invocation.stage_profile.get()
+                         : nullptr;
   // Cycles schedules until a native transition terminates the path. Regular,
   // transparent/portal and volume-boundary counters are independent; BSSRDF
   // entry and exit are separate scheduled events. An additional aggregate
@@ -144,6 +151,15 @@ void PathKernelPipeline::emit(
   // This index is diagnostic only; release recording has no consumers.
   UInt path_step = ~0u;
   $loop {
+    std::optional<Bool> sample_done;
+    std::optional<Bool> volume_only_skipped;
+    if (on_sample_complete) {
+      sample_done.emplace(false);
+      volume_only_skipped.emplace(false);
+    }
+    if (prof != nullptr) {
+      prof->enter(MegakernelStageProfileState::stage_setup_and_film);
+    }
     if (sample.invocation.config.path_trace_enabled) { path_step += 1u; }
     PathBounceContext bounce{.sample = sample,
                              .path_step = path_step,
@@ -161,6 +177,9 @@ void PathKernelPipeline::emit(
       suspend_before_closest_intersection(
           cut_policy, static_cast<bool>(_impl->subsurface_transport),
           sample.pending_subsurface_exit);
+      if (prof != nullptr) {
+        prof->enter(MegakernelStageProfileState::stage_closest_trace);
+      }
       const auto next = _impl->bounce_setup->emit(sample, path_step);
       bounce.hit = next.hit;
       bounce.subsurface_exit = next.subsurface_exit;
@@ -168,7 +187,13 @@ void PathKernelPipeline::emit(
       // hit. The cut policy and bounce setup both bypass traversal; shade
       // that stored hit directly without entering lamp/volume resolution.
       $if(bounce.subsurface_exit) { $break; };
+      if (prof != nullptr) {
+        prof->bump(MegakernelStageProfileState::count_closest_traces);
+      }
       auto event = _impl->closest_event->emit(bounce, previous_analytic_light);
+      if (prof != nullptr) {
+        prof->enter(MegakernelStageProfileState::stage_volume_and_background);
+      }
       path_terminated = path_terminated | event.terminated;
       if (_impl->volume_segment) {
         VolumeSegmentEvent volume{.scattered = false, .terminated = false};
@@ -230,8 +255,12 @@ void PathKernelPipeline::emit(
         }
       };
     };
-    $if(path_terminated) { $break; };
-    $if(volume_scattered) { $continue; };
+    if (!on_sample_complete) {
+      $if(path_terminated) { $break; };
+      $if(volume_scattered) { $continue; };
+    } else {
+      *sample_done = path_terminated;
+    }
 
     if (_impl->surface_geometry) {
       const auto &config = sample.invocation.config;
@@ -257,7 +286,8 @@ void PathKernelPipeline::emit(
               ? std::string_view{scene->device.backend_name()}
               : std::string_view{};
       const bool cpu_post_closure_bssrdf =
-          pipeline_backend_name == "fallback";
+          pipeline_backend_name == "fallback" ||
+          pipeline_backend_name == "simd";
       const bool force_post_closure_on_bssrdf =
           std::getenv("PSYCLES_POST_CLOSURE_ORDER") != nullptr
               ? env_enabled("PSYCLES_POST_CLOSURE_ORDER", false)
@@ -291,16 +321,33 @@ void PathKernelPipeline::emit(
                 sample.throughput = next.throughput;
                 sample.volume_bounds_bounce = next.bounds_bounce;
                 sample.cycles_rng_offset = next.rng_offset;
-                $if(!next.valid) { $break; };
-                sample.ray =
-                    make_ray(sample.ray->origin(), sample.ray->direction(),
-                             next.ray_tmin, sample.ray->t_max());
-                config.volume_state->cross_surface(
-                    sample.volume, surface.volume_stack_entry,
-                    surface.point.back_facing, surface.surface_has_volume,
-                    cycles_closure::label_transmit |
-                        cycles_closure::label_transparent);
-                $continue;
+                if (!on_sample_complete) {
+                  $if(!next.valid) { $break; };
+                  sample.ray =
+                      make_ray(sample.ray->origin(), sample.ray->direction(),
+                               next.ray_tmin, sample.ray->t_max());
+                  config.volume_state->cross_surface(
+                      sample.volume, surface.volume_stack_entry,
+                      surface.point.back_facing, surface.surface_has_volume,
+                      cycles_closure::label_transmit |
+                          cycles_closure::label_transparent);
+                  $continue;
+                } else {
+                  *volume_only_skipped = true;
+                  $if(!next.valid) {
+                    *sample_done = true;
+                  }
+                  $else {
+                    sample.ray =
+                        make_ray(sample.ray->origin(), sample.ray->direction(),
+                                 next.ray_tmin, sample.ray->t_max());
+                    config.volume_state->cross_surface(
+                        sample.volume, surface.volume_stack_entry,
+                        surface.point.back_facing, surface.surface_has_volume,
+                        cycles_closure::label_transmit |
+                            cycles_closure::label_transparent);
+                  };
+                }
               };
             }
           };
@@ -311,6 +358,9 @@ void PathKernelPipeline::emit(
         auto transport = DirectLightTransportState::empty();
         if (!_impl->direct_light_transport) {
           return transport;
+        }
+        if (prof != nullptr) {
+          prof->enter(MegakernelStageProfileState::stage_nee_light_and_bsdf_eval);
         }
         const auto has_evaluable_bsdf =
             (lighting.shading.cycles_surface_runtime_flags &
@@ -338,6 +388,9 @@ void PathKernelPipeline::emit(
 
               auto evaluation = SurfaceEvaluation::zero();
               $if(direct_light.valid) {
+                if (prof != nullptr) {
+                  prof->bump(MegakernelStageProfileState::count_nee_evals);
+                }
                 evaluation = lighting.shading.evaluate_light(
                     sample.invocation, lighting.surface.surface_tag,
                     lighting.surface.point, direct_light.direction,
@@ -376,6 +429,9 @@ void PathKernelPipeline::emit(
                 _impl->direct_light_trace->record_weighted_bsdf(bounce,
                                                                 weighted_bsdf);
                 $if(any(weighted_bsdf != 0.0f)) {
+                  if (prof != nullptr) {
+                    prof->bump(MegakernelStageProfileState::count_shadow_traces);
+                  }
                   const auto deferred_light_shader =
                       select(direct_light.light_shader, make_float3(1.0f),
                              direct_light.constant_light_shader);
@@ -404,6 +460,9 @@ void PathKernelPipeline::emit(
                 direct_light_preparation;
             bool defer_direct_light = false;
             if (_impl->direct_light_transport) {
+              if (prof != nullptr) {
+                prof->enter(MegakernelStageProfileState::stage_shadow_light_nee);
+              }
               defer_direct_light =
                   _impl->direct_light_transport
                       ->defer_until_after_surface_scatter(cut_policy);
@@ -415,6 +474,9 @@ void PathKernelPipeline::emit(
               }
             }
 
+            if (prof != nullptr) {
+              prof->enter(MegakernelStageProfileState::stage_bsdf_scatter);
+            }
             const auto scatter = commit_cycles_svm_surface_continuation(
                 lighting, prepared_scatter, may_have_bssrdf);
 
@@ -431,22 +493,56 @@ void PathKernelPipeline::emit(
             }
 
             if (_impl->direct_light_transport && defer_direct_light) {
+              if (prof != nullptr) {
+                prof->enter(MegakernelStageProfileState::stage_shadow_trace);
+              }
               _impl->direct_light_transport->emit(
                   bounce, std::move(*direct_light_preparation), cut_policy);
             }
 
-            $if(!scatter.valid) { $break; };
+            if (!on_sample_complete) {
+              $if(!scatter.valid) { $break; };
 
-            if (bucket_subsurface) {
-              $if(scatter.subsurface) {
-                $if(!subsurface_preparation->valid) { $break; };
-                if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
-                  $suspend(path_transition::intersect_subsurface);
+              if (bucket_subsurface) {
+                $if(scatter.subsurface) {
+                  $if(!subsurface_preparation->valid) { $break; };
+                  if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
+                    $suspend(path_transition::intersect_subsurface);
+                  }
+                  if (prof != nullptr) {
+                    prof->enter(MegakernelStageProfileState::stage_subsurface_trace);
+                    prof->bump(MegakernelStageProfileState::count_subsurface_traces);
+                  }
+                  const auto transported = _impl->subsurface_transport->emit(
+                      sample, subsurface_preparation->state);
+                  $if(transported) { $continue; }
+                  $else { $break; };
+                };
+              }
+            } else {
+              $if(!scatter.valid) {
+                *sample_done = true;
+              }
+              $else {
+                if (bucket_subsurface) {
+                  $if(scatter.subsurface) {
+                    $if(!subsurface_preparation->valid) {
+                      *sample_done = true;
+                    }
+                    $else {
+                      if (prof != nullptr) {
+                        prof->enter(
+                            MegakernelStageProfileState::stage_subsurface_trace);
+                        prof->bump(
+                            MegakernelStageProfileState::count_subsurface_traces);
+                      }
+                      const auto transported =
+                          _impl->subsurface_transport->emit(
+                              sample, subsurface_preparation->state);
+                      $if(!transported) { *sample_done = true; };
+                    };
+                  };
                 }
-                const auto transported = _impl->subsurface_transport->emit(
-                    sample, subsurface_preparation->state);
-                $if(transported) { $continue; }
-                $else { $break; };
               };
             }
           };
@@ -703,73 +799,170 @@ void PathKernelPipeline::emit(
             $suspend(path_transition::shade_surface);
           }
         }
-        auto surface = _impl->surface_geometry->emit(bounce);
-        emit_volume_only_skip(surface);
-        const auto &spec = bucket_plan.buckets.front();
-        auto shading = _impl->bucket_surface_shading.front()->emit(surface);
-        DirectLightingContext lighting{
-            .bounce = bounce, .surface = surface, .shading = shading};
-        if (fast_post_closure &&
-            (!spec.may_have_bssrdf || force_post_closure_on_bssrdf)) {
-          const auto transport = emit_nee_closure_eval(lighting);
-          const auto native_state =
-              shading.populated_surface->native_surface_state();
-          LUISA_ASSERT(native_state.has_value(),
-                       "Expected native Cycles SVM surface state.");
-          const auto prepared_scatter = sample_cycles_svm_surface_continuation(
-              lighting, *native_state, spec.may_have_bssrdf);
-          shading.populated_surface.reset();
-          emit_post_closure_tail(lighting, transport, prepared_scatter,
-                                 spec.may_have_bssrdf);
-        } else {
-          std::optional<DirectLightTransportPreparation>
-              direct_light_preparation;
-          bool defer_direct_light = false;
-          if (_impl->direct_light_transport) {
-            direct_light_preparation.emplace();
-            defer_direct_light =
-                _impl->direct_light_transport
-                    ->defer_until_after_surface_scatter(cut_policy);
-            const auto transport = emit_nee_closure_eval(lighting);
-            *direct_light_preparation =
-                _impl->direct_light_transport->prepare(lighting, transport);
-            if (!defer_direct_light) {
-              _impl->direct_light_transport->emit(
-                  bounce, std::move(*direct_light_preparation), cut_policy);
+        const auto emit_megakernel_surface = [&]() noexcept {
+          if (prof != nullptr) {
+            prof->enter(MegakernelStageProfileState::stage_surface_geometry);
+          }
+          auto surface = _impl->surface_geometry->emit(bounce);
+          emit_volume_only_skip(surface);
+          const auto emit_after_volume_skip = [&]() noexcept {
+            const auto &spec = bucket_plan.buckets.front();
+            if (prof != nullptr) {
+              prof->enter(
+                  MegakernelStageProfileState::stage_surface_svm_shading);
+              prof->bump(MegakernelStageProfileState::count_surface_shades);
             }
-          }
-          const auto scatter = _impl->surface_scatter->emit(lighting);
+            auto shading = _impl->bucket_surface_shading.front()->emit(
+                surface, on_sample_complete ? &(*sample_done) : nullptr);
+            const auto emit_post_surface_shading = [&]() noexcept {
+              DirectLightingContext lighting{
+                  .bounce = bounce, .surface = surface, .shading = shading};
+              if (fast_post_closure &&
+                  (!spec.may_have_bssrdf || force_post_closure_on_bssrdf)) {
+                const auto transport = emit_nee_closure_eval(lighting);
+                if (prof != nullptr) {
+                  prof->enter(MegakernelStageProfileState::stage_bsdf_scatter);
+                }
+                const auto native_state =
+                    shading.populated_surface->native_surface_state();
+                LUISA_ASSERT(native_state.has_value(),
+                             "Expected native Cycles SVM surface state.");
+                const auto prepared_scatter =
+                    sample_cycles_svm_surface_continuation(
+                        lighting, *native_state, spec.may_have_bssrdf);
+                shading.populated_surface.reset();
+                emit_post_closure_tail(lighting, transport, prepared_scatter,
+                                       spec.may_have_bssrdf);
+              } else {
+                std::optional<DirectLightTransportPreparation>
+                    direct_light_preparation;
+                bool defer_direct_light = false;
+                if (_impl->direct_light_transport) {
+                  direct_light_preparation.emplace();
+                  defer_direct_light =
+                      _impl->direct_light_transport
+                          ->defer_until_after_surface_scatter(cut_policy);
+                  const auto transport = emit_nee_closure_eval(lighting);
+                  if (prof != nullptr) {
+                    prof->enter(MegakernelStageProfileState::stage_shadow_trace);
+                  }
+                  *direct_light_preparation =
+                      _impl->direct_light_transport->prepare(lighting, transport);
+                  if (!defer_direct_light) {
+                    _impl->direct_light_transport->emit(
+                        bounce, std::move(*direct_light_preparation), cut_policy);
+                  }
+                }
+                if (prof != nullptr) {
+                  prof->enter(MegakernelStageProfileState::stage_bsdf_scatter);
+                }
+                const auto scatter = _impl->surface_scatter->emit(lighting);
 
-          std::optional<SubsurfaceTransportPreparation> subsurface_preparation;
-          if (_impl->subsurface_transport) {
-            subsurface_preparation.emplace();
-            $if(scatter.valid & scatter.subsurface) {
-              *subsurface_preparation = _impl->subsurface_transport->prepare(
-                  lighting, scatter.sample);
-            };
-          }
+                std::optional<SubsurfaceTransportPreparation>
+                    subsurface_preparation;
+                if (_impl->subsurface_transport) {
+                  subsurface_preparation.emplace();
+                  $if(scatter.valid & scatter.subsurface) {
+                    *subsurface_preparation =
+                        _impl->subsurface_transport->prepare(
+                            lighting, scatter.sample);
+                  };
+                }
 
-          if (_impl->direct_light_transport && defer_direct_light) {
-            _impl->direct_light_transport->emit(
-                bounce, std::move(*direct_light_preparation), cut_policy);
-          }
+                if (_impl->direct_light_transport && defer_direct_light) {
+                  if (prof != nullptr) {
+                    prof->enter(MegakernelStageProfileState::stage_shadow_trace);
+                  }
+                  _impl->direct_light_transport->emit(
+                      bounce, std::move(*direct_light_preparation), cut_policy);
+                }
 
-          $if(!scatter.valid) { $break; };
+                const bool outline_subsurface =
+                    scene != nullptr && static_cast<bool>(scene->device) &&
+                    scene->device.backend_name() == "simd";
+                if (!on_sample_complete) {
+                  $if(!scatter.valid) { $break; };
 
-          if (_impl->subsurface_transport) {
-            $if(scatter.subsurface) {
-              $if(!subsurface_preparation->valid) { $break; };
-              if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
-                $suspend(path_transition::intersect_subsurface);
+                  if (_impl->subsurface_transport) {
+                    $if(scatter.subsurface) {
+                      $if(!subsurface_preparation->valid) { $break; };
+                      if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
+                        $suspend(path_transition::intersect_subsurface);
+                      }
+                      if (prof != nullptr) {
+                        prof->enter(
+                            MegakernelStageProfileState::stage_subsurface_trace);
+                        prof->bump(
+                            MegakernelStageProfileState::count_subsurface_traces);
+                      }
+                      Bool transported = false;
+                      $outline_when_with_name(outline_subsurface,
+                                              "path_subsurface_transport") {
+                        transported = _impl->subsurface_transport->emit(
+                            sample, subsurface_preparation->state);
+                      };
+                      $if(transported) { $continue; }
+                      $else { $break; };
+                    };
+                  }
+                } else {
+                  $if(!scatter.valid) {
+                    *sample_done = true;
+                  }
+                  $else {
+                    if (_impl->subsurface_transport) {
+                      $if(scatter.subsurface) {
+                        $if(!subsurface_preparation->valid) {
+                          *sample_done = true;
+                        }
+                        $else {
+                          if (prof != nullptr) {
+                            prof->enter(MegakernelStageProfileState::
+                                            stage_subsurface_trace);
+                            prof->bump(MegakernelStageProfileState::
+                                           count_subsurface_traces);
+                          }
+                          Bool transported = false;
+                          $outline_when_with_name(outline_subsurface,
+                                                  "path_subsurface_transport") {
+                            transported = _impl->subsurface_transport->emit(
+                                sample, subsurface_preparation->state);
+                          };
+                          $if(!transported) { *sample_done = true; };
+                        };
+                      };
+                    }
+                  };
+                }
               }
-              const auto transported = _impl->subsurface_transport->emit(
-                  sample, subsurface_preparation->state);
-              $if(transported) { $continue; }
-              $else { $break; };
             };
+            if (!on_sample_complete) {
+              emit_post_surface_shading();
+            } else {
+              $if(!*sample_done) { emit_post_surface_shading(); };
+            }
+          };
+          if (!on_sample_complete) {
+            emit_after_volume_skip();
+          } else {
+            $if(!*volume_only_skipped) { emit_after_volume_skip(); };
           }
+        };
+        if (!on_sample_complete) {
+          emit_megakernel_surface();
+        } else {
+          $if(!*sample_done & !volume_scattered) {
+            emit_megakernel_surface();
+          };
         }
       }
+    }
+    if (on_sample_complete) {
+      Bool all_samples_done = false;
+      $if(*sample_done) {
+        all_samples_done = on_sample_complete(sample, path_step);
+      };
+      $if(all_samples_done) { $break; };
     }
   };
 }
@@ -800,6 +993,10 @@ void emit_path_sample(const PathKernelPipeline &pipeline,
                       PathCoroutineCutPolicy cut_policy) noexcept {
   auto sample = begin_path_sample(invocation, sub_spp_index);
   pipeline.emit(sample, cut_policy);
+  if (invocation.stage_profile != nullptr) {
+    invocation.stage_profile->enter(
+        MegakernelStageProfileState::stage_setup_and_film);
+  }
   accumulate_path_sample(sample);
 }
 
@@ -812,19 +1009,102 @@ void emit_serial_path_program(
     const UInt &sample_first, const UInt &samples,
     const BufferFloat4 &sobol_table, const BufferFloat &filter_table,
     const Var<RenderKernelParameters> &parameters) noexcept {
+  const auto initial_t0 = config.megakernel_stage_profile_buffer != nullptr
+                              ? luisa::compute::device_clock()
+                              : luisa::compute::ULong{};
+  const bool sample_parallel = simd_sample_parallel_enabled(config);
   const auto pixel =
-      luisa::compute::dispatch_y() * luisa::compute::dispatch_size().x +
-      dispatch_x();
+      sample_parallel
+          ? (luisa::compute::dispatch_y() *
+                 (luisa::compute::dispatch_size().x >> 3u) +
+             (luisa::compute::dispatch_x() >> 3u))
+          : (luisa::compute::dispatch_y() * luisa::compute::dispatch_size().x +
+             dispatch_x());
   auto invocation = make_path_invocation(
-      config, PathFilmAccumulation::serial, pixel, combined, normal,
-      albedo, light_passes, sample_count, volume_guiding_raw,
-      volume_guiding_denoised, path_trace, sample_first, sobol_table,
-      filter_table, parameters);
-  $for(sub_spp_index, samples) {
-    emit_path_sample(pipeline, invocation, sub_spp_index,
-                     PathCoroutineCutPolicy::none);
-  };
+      config,
+      sample_parallel ? PathFilmAccumulation::warp_reduce
+                      : PathFilmAccumulation::serial,
+      pixel, combined, normal, albedo, light_passes, sample_count,
+      volume_guiding_raw, volume_guiding_denoised, path_trace, sample_first,
+      sobol_table, filter_table, parameters);
+  if (config.megakernel_stage_profile_buffer != nullptr) {
+    auto state = std::make_shared<MegakernelStageProfileState>();
+    for (std::uint32_t i = 0u; i < MegakernelStageProfileState::stage_count; ++i) {
+      state->cycles[i] = 0ull;
+    }
+    for (std::uint32_t i = 0u; i < MegakernelStageProfileState::counter_count; ++i) {
+      state->counts[i] = 0ull;
+    }
+    state->t_last = initial_t0;
+    state->current_stage = MegakernelStageProfileState::stage_setup_and_film;
+    invocation.stage_profile = std::move(state);
+  }
+  const auto backend_name =
+      (config.scene && static_cast<bool>(config.scene->device))
+          ? std::string_view{config.scene->device.backend_name()}
+          : std::string_view{};
+  const auto *persistent_raw = std::getenv("PSYCLES_SIMD_PERSISTENT_SAMPLES");
+  const bool persistent_simd_samples =
+      !sample_parallel && backend_name == "simd" &&
+      persistent_raw != nullptr && *persistent_raw != '\0' &&
+      std::string_view{persistent_raw} != "0" &&
+      std::string_view{persistent_raw} != "off";
+  if (sample_parallel) {
+    UInt sub_spp_index = luisa::compute::dispatch_x() & 7u;
+    $while(sub_spp_index < samples) {
+      emit_path_sample(pipeline, invocation, sub_spp_index,
+                       PathCoroutineCutPolicy::none);
+      sub_spp_index += 8u;
+    };
+  } else if (persistent_simd_samples) {
+    $if(samples != 0u) {
+      UInt sub_spp_index = 0u;
+      auto sample = begin_path_sample(invocation, sub_spp_index);
+      pipeline.emit(
+          sample, PathCoroutineCutPolicy::none,
+          [&](PathSampleContext &active_sample,
+              UInt &path_step) noexcept -> Bool {
+            if (invocation.stage_profile != nullptr) {
+              invocation.stage_profile->enter(
+                  MegakernelStageProfileState::stage_setup_and_film);
+            }
+            accumulate_path_sample(active_sample);
+            sub_spp_index += 1u;
+            const Bool done = sub_spp_index >= samples;
+            $if(!done) {
+              reset_path_sample(active_sample, sub_spp_index);
+              path_step = ~0u;
+            };
+            return done;
+          });
+    };
+  } else {
+    $for(sub_spp_index, samples) {
+      emit_path_sample(pipeline, invocation, sub_spp_index,
+                       PathCoroutineCutPolicy::none);
+    };
+  }
   invocation.write_film();
+  if (config.megakernel_stage_profile_buffer != nullptr &&
+      invocation.stage_profile != nullptr) {
+    auto &prof = *invocation.stage_profile;
+    const auto now = luisa::compute::device_clock();
+    prof.cycles[prof.current_stage] += now - prof.t_last;
+    const auto stripe_base =
+        ((luisa::compute::block_x() + luisa::compute::block_y() * 257u) &
+         (MegakernelStageProfileState::stripe_count - 1u)) *
+        MegakernelStageProfileState::stripe_stride;
+    for (std::uint32_t i = 0u; i < MegakernelStageProfileState::stage_count; ++i) {
+      (*config.megakernel_stage_profile_buffer)
+          ->atomic(stripe_base + i)
+          .fetch_add(prof.cycles[i]);
+    }
+    for (std::uint32_t i = 0u; i < MegakernelStageProfileState::counter_count; ++i) {
+      (*config.megakernel_stage_profile_buffer)
+          ->atomic(stripe_base + MegakernelStageProfileState::stage_count + i)
+          .fetch_add(prof.counts[i]);
+    }
+  }
 }
 
 void emit_per_sample_path_program(
@@ -851,8 +1131,12 @@ void emit_per_sample_path_program(
 
 } // namespace
 
-[[nodiscard]] static luisa::uint3 resolve_megakernel_block_size() noexcept {
-  const auto default_block = luisa::make_uint3(8u, 8u, 1u);
+[[nodiscard]] static luisa::uint3 resolve_megakernel_block_size(
+    std::string_view backend_name = {}, bool has_volume_state = false) noexcept {
+  static_cast<void>(has_volume_state);
+  const auto default_block =
+      backend_name == "simd" ? luisa::make_uint3(4u, 8u, 1u)
+                             : luisa::make_uint3(8u, 8u, 1u);
   const auto *raw = std::getenv("PSYCLES_MEGAKERNEL_BLOCK_SIZE");
   if (raw == nullptr || *raw == '\0') {
     return default_block;
@@ -887,7 +1171,12 @@ void emit_per_sample_path_program(
 RenderSerialKernel
 build_path_serial_kernel(const PathKernelConfig &config) noexcept {
   PathKernelPipeline pipeline{config};
-  const auto block_size = resolve_megakernel_block_size();
+  const auto backend_name =
+      (config.scene && static_cast<bool>(config.scene->device))
+          ? std::string_view{config.scene->device.backend_name()}
+          : std::string_view{};
+  const auto block_size = resolve_megakernel_block_size(
+      backend_name, config.volume_state != nullptr);
   RenderSerialKernel kernel =
       [&config, &pipeline, block_size](
           BufferFloat4 combined, BufferFloat4 normal, BufferFloat4 albedo,

@@ -277,7 +277,7 @@ int main(int argc, char **argv) {
     auto height = imported.height;
     auto samples = imported.samples;
     auto max_samples_per_dispatch =
-        (backend_name == "fallback")
+        (backend_name == "fallback" || backend_name == "simd")
             ? std::uint32_t{256u}
             : std::uint32_t{64u};
     if (argc > 4) {

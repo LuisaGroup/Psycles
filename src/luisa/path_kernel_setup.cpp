@@ -26,12 +26,13 @@ begin_path_kernel(const PathKernelConfig &config,
                   const BufferFloat4 &sobol_table,
                   const BufferFloat &filter_table,
                   const Var<RenderKernelParameters> &parameters) noexcept {
-    const auto atomic_film =
-        film_accumulation == PathFilmAccumulation::atomic;
-    const auto film_value = [atomic_film](
+    const auto zero_init_film =
+        film_accumulation == PathFilmAccumulation::atomic ||
+        film_accumulation == PathFilmAccumulation::warp_reduce;
+    const auto film_value = [zero_init_film](
                                 const BufferFloat4 &buffer,
                                 const UInt &index) noexcept {
-        return atomic_film
+        return zero_init_film
                    ? make_float4(0.0f)
                    : buffer.read(index);
     };
@@ -74,7 +75,7 @@ begin_path_kernel(const PathKernelConfig &config,
     Float4 transmission_color_sum = film_value(light_passes,
         light_pass_base +
         light_pass_index(LightPassBuffer::transmission_color));
-    UInt completed = atomic_film
+    UInt completed = zero_init_film
                          ? 0u
                          : sample_count.read(pixel);
     UInt volume_guiding_raw_base = 0u;
@@ -849,6 +850,141 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(optical_depth),
             std::move(pending_subsurface_exit),
             std::move(pending_subsurface_hit)};
+}
+
+void reset_path_sample(PathSampleContext &sample,
+                       const UInt &sample_offset) noexcept {
+    auto &invocation = sample.invocation;
+    const auto &sample_first = invocation.sample_first;
+    const auto &sobol_table = invocation.sobol_table;
+    const auto &filter_table = invocation.filter_table;
+    const auto &kernel_parameters = invocation.parameters;
+    const auto &full_x = invocation.full_x;
+    const auto &full_y = invocation.full_y;
+    const auto &path_trace = invocation.path_trace;
+    const auto &config = invocation.config;
+    const auto camera_projection = config.camera_projection;
+    const auto camera_depth_of_field = config.camera_depth_of_field;
+    const auto camera_aperture_blades = config.camera_aperture_blades;
+    const auto camera_aperture_rotation = config.camera_aperture_rotation;
+    const auto path_trace_enabled = config.path_trace_enabled;
+    const auto &safe_normalize = config.light_transport.safe_normalize;
+
+    sample.sample_index = sample_first + sample_offset;
+    const auto camera_dimensions = sample_camera_dimensions(
+        sobol_table, kernel_parameters, full_x, full_y, sample.sample_index);
+    sample.cycles_y = camera_dimensions.cycles_y;
+    sample.rng_hash = camera_dimensions.rng_hash;
+    sample.filter_sample = camera_dimensions.filter_sample;
+    sample.lens_time_sample = camera_dimensions.lens_time_sample;
+    sample.path_trace_active = false;
+    if (path_trace_enabled) {
+        sample.path_trace_active =
+            (kernel_parameters.path_trace_enabled != 0u) &
+            (full_x == kernel_parameters.path_trace_pixel_x) &
+            (sample.cycles_y == kernel_parameters.path_trace_pixel_y) &
+            (sample.sample_index == kernel_parameters.path_trace_sample);
+    }
+    auto camera_ray = construct_camera_ray(filter_table,
+                                           kernel_parameters,
+                                           full_x,
+                                           full_y,
+                                           camera_dimensions,
+                                           camera_projection,
+                                           camera_depth_of_field,
+                                           camera_aperture_blades,
+                                           camera_aperture_rotation,
+                                           safe_normalize);
+    sample.ray = std::move(camera_ray.ray);
+    sample.ray_dP = camera_ray.differential_position;
+    sample.ray_dD = camera_ray.differential_direction;
+    if (path_trace_enabled) {
+        auto trace_write = [&](UInt slot, Float3 value) noexcept {
+            $if(sample.path_trace_active) {
+                path_trace.write(slot, make_float4(value, 1.0f));
+            };
+        };
+        auto trace_write_global = [&](path_trace_schema::GlobalSlot slot,
+                                      Float3 value) noexcept {
+            trace_write(UInt{path_trace_schema::index(slot)}, value);
+        };
+        trace_write_global(
+            path_trace_schema::GlobalSlot::header,
+            make_float3(static_cast<float>(path_trace_schema::version),
+                        cast<float>(full_x),
+                        cast<float>(sample.cycles_y)));
+        trace_write_global(path_trace_schema::GlobalSlot::rng,
+                           make_float3(cast<float>(sample.sample_index),
+                                       cast<float>(sample.rng_hash & 0xffffu),
+                                       cast<float>(sample.rng_hash >> 16u)));
+        trace_write_global(path_trace_schema::GlobalSlot::filter,
+                           make_float3(sample.filter_sample, 0.0f));
+        trace_write_global(path_trace_schema::GlobalSlot::lens_time,
+                           camera_depth_of_field ? sample.lens_time_sample
+                                                 : make_float3(0.0f));
+        trace_write_global(path_trace_schema::GlobalSlot::ray_p,
+                           sample.ray->origin());
+        trace_write_global(path_trace_schema::GlobalSlot::ray_d,
+                           sample.ray->direction());
+        trace_write_global(path_trace_schema::GlobalSlot::ray_range,
+                           make_float3(sample.ray->t_min(),
+                                       sample.ray->t_max(), 0.5f));
+    }
+    sample.ray_source_object = surface_ray::invalid_primitive;
+    sample.ray_source_primitive = surface_ray::invalid_primitive;
+    sample.radiance = make_float3(0.0f);
+    sample.throughput = make_float3(1.0f);
+    sample.sample_normal = make_float3(0.0f);
+    sample.sample_albedo = make_float3(0.0f);
+    sample.sample_glossy_color = make_float3(0.0f);
+    sample.sample_transmission_color = make_float3(0.0f);
+    sample.sample_diffuse_direct = make_float3(0.0f);
+    sample.sample_diffuse_indirect = make_float3(0.0f);
+    sample.sample_glossy_direct = make_float3(0.0f);
+    sample.sample_glossy_indirect = make_float3(0.0f);
+    sample.sample_transmission_direct = make_float3(0.0f);
+    sample.sample_transmission_indirect = make_float3(0.0f);
+    sample.sample_volume_direct = make_float3(0.0f);
+    sample.sample_volume_indirect = make_float3(0.0f);
+    sample.sample_emission = make_float3(0.0f);
+    sample.sample_environment = make_float3(0.0f);
+    sample.volume_guiding_scatter = make_float3(0.0f);
+    sample.volume_guiding_transmit = make_float3(0.0f);
+    sample.sample_transparency = 0.0f;
+    sample.previous_bsdf_pdf = 0.0f;
+    sample.previous_mis_origin_normal = make_float3(0.0f);
+    sample.previous_light_tree_dt = 0.0f;
+    sample.minimum_bsdf_pdf = std::numeric_limits<float>::max();
+    sample.continuation_probability = 1.0f;
+    sample.path_diffuse_weight = make_float3(0.0f);
+    sample.path_glossy_weight = make_float3(0.0f);
+    sample.ray_events = 0u;
+    sample.diffuse_depth = 0u;
+    sample.glossy_depth = 0u;
+    sample.transparent_depth = 0u;
+    sample.transmission_depth = 0u;
+    sample.portal_depth = 0u;
+    sample.path_depth = 0u;
+    const auto initial_cycles_path_state = cycles_path_state::initial_state();
+    sample.path_flags = initial_cycles_path_state.flag;
+    sample.cycles_path_visibility = initial_cycles_path_state.visibility;
+    sample.cycles_rng_offset = initial_cycles_path_state.rng_offset;
+    if (config.volume_state) {
+        config.volume_state->reset(
+            sample.volume,
+            config.scene,
+            sample.ray->origin(),
+            camera_visibility,
+            config.camera_may_be_inside_volume);
+    }
+    sample.volume_bounce = 0u;
+    sample.volume_bounds_bounce = 0u;
+    sample.optical_depth = 0.0f;
+    sample.pending_subsurface_exit = false;
+    sample.pending_subsurface_hit.instance = surface_ray::invalid_primitive;
+    sample.pending_subsurface_hit.primitive = surface_ray::invalid_primitive;
+    sample.pending_subsurface_hit.barycentric = make_float2(0.0f);
+    sample.pending_subsurface_hit.committed_ray_t = 0.0f;
 }
 
 Float3

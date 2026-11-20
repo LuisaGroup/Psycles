@@ -5,6 +5,11 @@
 #include "cycles_svm_surface_integrator.h"
 #include "cycles_svm_surface_shader.h"
 
+#include <cstdlib>
+#include <string_view>
+
+#include <luisa/dsl/sugar.h>
+
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_ray_differential.h>
 
@@ -86,24 +91,33 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
     const auto pick = native::surface_shader_bsdf_bssrdf_pick(sd, random);
     const auto sc = pool.common(pick.index);
 
+    const bool outline_bsdf =
+        config.scene && static_cast<bool>(config.scene->device) &&
+        config.scene->device.backend_name() == "simd" &&
+        ([]() noexcept {
+          const char *raw = std::getenv("PSYCLES_SIMD_OUTLINE_BSDF");
+          return raw == nullptr || std::string_view{raw} != "0";
+        })();
     const auto sample_ordinary_bsdf = [&] noexcept {
-      const auto bsdf = native::surface_shader_bsdf_sample_closure(
-          kg, sd, pick, population.closure_types);
-      $if((bsdf.evaluation.pdf != 0.0f) & any(bsdf.evaluation.sum != 0.0f) &
-          (bsdf.label != closure::label_none)) {
-        out.wo = bsdf.wo;
-        out.throughput_weight = bsdf.evaluation.sum / bsdf.evaluation.pdf;
-        out.pdf = bsdf.evaluation.pdf;
-        out.average_roughness_squared =
-            bsdf.evaluation.average_roughness_squared;
-        out.label = bsdf.label;
-        $if(sample.path_depth == 0u) {
-          out.diffuse_ratio = config.light_transport.light_component_ratio(
-              bsdf.evaluation.diffuse, bsdf.evaluation.sum);
-          out.glossy_ratio = config.light_transport.light_component_ratio(
-              bsdf.evaluation.glossy, bsdf.evaluation.sum);
+      $outline_when_with_name(outline_bsdf, "simd_svm_bsdf_sample") {
+        const auto bsdf = native::surface_shader_bsdf_sample_closure(
+            kg, sd, pick, population.closure_types);
+        $if((bsdf.evaluation.pdf != 0.0f) & any(bsdf.evaluation.sum != 0.0f) &
+            (bsdf.label != closure::label_none)) {
+          out.wo = bsdf.wo;
+          out.throughput_weight = bsdf.evaluation.sum / bsdf.evaluation.pdf;
+          out.pdf = bsdf.evaluation.pdf;
+          out.average_roughness_squared =
+              bsdf.evaluation.average_roughness_squared;
+          out.label = bsdf.label;
+          $if(sample.path_depth == 0u) {
+            out.diffuse_ratio = config.light_transport.light_component_ratio(
+                bsdf.evaluation.diffuse, bsdf.evaluation.sum);
+            out.glossy_ratio = config.light_transport.light_component_ratio(
+                bsdf.evaluation.glossy, bsdf.evaluation.sum);
+          };
+          out.valid = true;
         };
-        out.valid = true;
       };
     };
 

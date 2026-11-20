@@ -85,157 +85,138 @@ class ClosestEventStageImpl final
             0.0f;
 
         if (_analytic_light_endpoints) {
-            $for(light_index, scene->light_count) {
-                Var<LightGpu> light =
-                    scene->light_buffer->read(
-                        light_index);
-                const auto camera_path =
-                    (ray_visibility &
-                     camera_visibility) != 0u;
-                const auto use_mis =
-                    (light.flags &
-                     light_flag_use_mis) != 0u;
-                const auto visible =
-                    (light.visibility_mask &
-                     ray_visibility) != 0u;
-                const auto eligible =
-                    // Cycles lights_intersect_impl checks camera exclusion
-                    // here, but indirect shader visibility in shade_light.
-                    // Even an excluded diffuse/glossy lamp is an endpoint.
-                    select(use_mis, visible, camera_path) &
-                    (light_index !=
-                     excluded_analytic_light);
-                $if(eligible &
-                    (light.type ==
-                     static_cast<std::uint32_t>(
-                         LightType::area))) {
-                    const auto ellipse =
-                        (light.flags &
-                         light_flag_ellipse) != 0u;
-                    const auto normalize_power =
-                        (light.flags &
-                         light_flag_normalize) != 0u;
-                    const auto candidate =
-                        analytic_light_intersection::
-                            intersect_area(
-                                ray->origin(),
-                                ray->direction(),
-                                ray->t_min(),
-                                event_distance,
-                                light.position,
-                                light.axis_x,
-                                light.size_u,
-                                light.axis_y,
-                                light.size_v,
-                                light.axis_z,
-                                ellipse,
-                                light.area,
-                                normalize_power);
-                    $if(candidate.valid) {
-                        light_hit = true;
-                        event_distance =
-                            candidate.distance;
-                        light_hit_index =
-                            light_index;
-                        light_hit_position =
-                            candidate.position;
-                        light_hit_normal =
-                            candidate.normal;
-                        light_hit_uv =
-                            candidate.uv;
-                        light_hit_pdf =
-                            candidate.conditional_pdf;
-                        light_hit_evaluation_factor =
-                            candidate.evaluation_factor;
-                    };
-                };
-                const auto point_type =
-                    light.type ==
-                    static_cast<std::uint32_t>(
-                        LightType::point);
-                const auto spot_type =
-                    light.type ==
-                    static_cast<std::uint32_t>(
-                        LightType::spot);
-                $if(eligible &
-                    (point_type | spot_type)) {
-                    const auto sphere =
-                        (light.flags &
-                         light_flag_sphere) != 0u;
-                    const auto normalize_power =
-                        (light.flags &
-                         light_flag_normalize) != 0u;
-                    const auto had_transmission =
-                        (path_flags &
-                         cycles_path_state::
-                             flag_mis_had_transmission) !=
-                        0u;
-                    analytic_light_intersection::
-                        PointIntersection candidate{
-                            .valid = false,
-                            .distance = 0.0f,
-                            .position =
-                                make_float3(0.0f),
-                            .normal =
-                                make_float3(0.0f),
-                            .uv = make_float2(0.0f),
-                            .conditional_pdf = 0.0f,
-                            .evaluation_factor = 0.0f};
-                    $if(spot_type) {
-                        candidate =
-                            analytic_light_intersection::
-                                intersect_spot(
-                                    ray->origin(),
-                                    ray->direction(),
-                                    ray->t_min(),
+            const bool outline_lights =
+                scene != nullptr && static_cast<bool>(scene->device) &&
+                scene->device.backend_name() == "simd";
+            const Float3 ray_origin = ray->origin();
+            const Float3 ray_direction = ray->direction();
+            const Float ray_t_min = ray->t_min();
+            const Bool camera_path =
+                (ray_visibility & camera_visibility) != 0u;
+            const Bool had_transmission =
+                (path_flags &
+                 cycles_path_state::flag_mis_had_transmission) != 0u;
+            const UInt excluded_light = excluded_analytic_light;
+            $outline_when_with_name(outline_lights,
+                                    "simd_intersect_analytic_lights") {
+                $for(light_index, scene->light_count) {
+                    Var<LightGpu> light =
+                        scene->light_buffer->read(light_index);
+                    const auto use_mis =
+                        (light.flags & light_flag_use_mis) != 0u;
+                    const auto visible =
+                        (light.visibility_mask & ray_visibility) != 0u;
+                    const auto eligible =
+                        // Cycles lights_intersect_impl checks camera exclusion
+                        // here, but indirect shader visibility in shade_light.
+                        // Even an excluded diffuse/glossy lamp is an endpoint.
+                        select(use_mis, visible, camera_path) &
+                        (light_index != excluded_light);
+                    $if(light.type ==
+                        static_cast<std::uint32_t>(LightType::area)) {
+                        $if(eligible) {
+                            const auto ellipse =
+                                (light.flags & light_flag_ellipse) != 0u;
+                            const auto normalize_power =
+                                (light.flags & light_flag_normalize) != 0u;
+                            const auto candidate =
+                                analytic_light_intersection::intersect_area(
+                                    ray_origin,
+                                    ray_direction,
+                                    ray_t_min,
                                     event_distance,
                                     light.position,
-                                    light.radius,
-                                    sphere,
                                     light.axis_x,
+                                    light.size_u,
                                     light.axis_y,
+                                    light.size_v,
                                     light.axis_z,
-                                    light.axis_scale,
-                                    light.spot,
-                                    normalize_power,
-                                    previous_mis_origin_normal,
-                                    had_transmission);
+                                    ellipse,
+                                    light.area,
+                                    normalize_power);
+                            $if(candidate.valid) {
+                                light_hit = true;
+                                event_distance = candidate.distance;
+                                light_hit_index = light_index;
+                                light_hit_position = candidate.position;
+                                light_hit_normal = candidate.normal;
+                                light_hit_uv = candidate.uv;
+                                light_hit_pdf = candidate.conditional_pdf;
+                                light_hit_evaluation_factor =
+                                    candidate.evaluation_factor;
+                            };
+                        };
                     }
-                    $else {
-                        candidate =
-                            analytic_light_intersection::
-                                intersect_point(
-                                    ray->origin(),
-                                    ray->direction(),
-                                    ray->t_min(),
-                                    event_distance,
-                                    light.position,
-                                    light.radius,
-                                    sphere,
-                                    light.axis_x,
-                                    light.axis_y,
-                                    light.axis_z,
-                                    light.axis_scale,
-                                    normalize_power,
-                                    previous_mis_origin_normal,
-                                    had_transmission);
-                    };
-                    $if(candidate.valid) {
-                        light_hit = true;
-                        event_distance =
-                            candidate.distance;
-                        light_hit_index =
-                            light_index;
-                        light_hit_position =
-                            candidate.position;
-                        light_hit_normal =
-                            candidate.normal;
-                        light_hit_uv =
-                            candidate.uv;
-                        light_hit_pdf =
-                            candidate.conditional_pdf;
-                        light_hit_evaluation_factor =
-                            candidate.evaluation_factor;
+                    $elif((light.type ==
+                           static_cast<std::uint32_t>(LightType::point)) |
+                          (light.type ==
+                           static_cast<std::uint32_t>(LightType::spot))) {
+                        $if(eligible) {
+                            const auto spot_type =
+                                light.type ==
+                                static_cast<std::uint32_t>(LightType::spot);
+                            const auto sphere =
+                                (light.flags & light_flag_sphere) != 0u;
+                            const auto normalize_power =
+                                (light.flags & light_flag_normalize) != 0u;
+                            analytic_light_intersection::PointIntersection
+                                candidate{
+                                    .valid = false,
+                                    .distance = 0.0f,
+                                    .position = make_float3(0.0f),
+                                    .normal = make_float3(0.0f),
+                                    .uv = make_float2(0.0f),
+                                    .conditional_pdf = 0.0f,
+                                    .evaluation_factor = 0.0f};
+                            $if(spot_type) {
+                                candidate =
+                                    analytic_light_intersection::intersect_spot(
+                                        ray_origin,
+                                        ray_direction,
+                                        ray_t_min,
+                                        event_distance,
+                                        light.position,
+                                        light.radius,
+                                        sphere,
+                                        light.axis_x,
+                                        light.axis_y,
+                                        light.axis_z,
+                                        light.axis_scale,
+                                        light.spot,
+                                        normalize_power,
+                                        previous_mis_origin_normal,
+                                        had_transmission);
+                            }
+                            $else {
+                                candidate =
+                                    analytic_light_intersection::intersect_point(
+                                        ray_origin,
+                                        ray_direction,
+                                        ray_t_min,
+                                        event_distance,
+                                        light.position,
+                                        light.radius,
+                                        sphere,
+                                        light.axis_x,
+                                        light.axis_y,
+                                        light.axis_z,
+                                        light.axis_scale,
+                                        normalize_power,
+                                        previous_mis_origin_normal,
+                                        had_transmission);
+                            };
+                            $if(candidate.valid) {
+                                light_hit = true;
+                                event_distance = candidate.distance;
+                                light_hit_index = light_index;
+                                light_hit_position = candidate.position;
+                                light_hit_normal = candidate.normal;
+                                light_hit_uv = candidate.uv;
+                                light_hit_pdf = candidate.conditional_pdf;
+                                light_hit_evaluation_factor =
+                                    candidate.evaluation_factor;
+                            };
+                        };
                     };
                 };
             };

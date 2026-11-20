@@ -70,7 +70,8 @@ Bool evaluate_cycles_svm_volume_entry(
       const auto usage = scene->cycles_svm->compilation.table.usage_for(
           abi::SHADER_TYPE_VOLUME);
       const auto backend_name = scene->device.backend_name();
-      const bool cpu_backend = backend_name == "fallback";
+      const bool cpu_backend =
+          backend_name == "fallback" || backend_name == "simd";
       svm::translate_svm_nodes_assume_valid(
           svm::SvmTranslationRequest{
               .kernel_globals = kg,

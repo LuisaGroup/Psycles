@@ -148,69 +148,78 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
                  Var<ShadowIntersectionCall> intersection, Float ray_dP,
                  Float ray_dD, Var<ShadowShaderContextCall> context,
                  Var<RenderKernelParameters> parameters) noexcept {
-    // Caustic suppression is conditioned on diffuse visibility in Cycles.
-    // SURFACE_SHADOW has no diffuse visibility bit, so both configurations
-    // have the same effective behavior here.
-    const PathCyclesSvmKernelGlobals kg{
-        scene, parameters, scene->camera.projection, true, true,
-        PathCyclesSvmShaderDomain::shadow_surface};
-    auto setup = setup_cycles_svm_shadow_shader_data(
-        scene, kg, ray, intersection, ray_dP, ray_dD, context, parameters);
-    auto &sd = setup.shader_data;
+    const auto backend_name = scene->device.backend_name();
+    const bool is_simd = backend_name == "simd";
+    const bool cpu_backend = backend_name == "fallback" || is_simd;
     Var<ShadowSurfaceEvaluationCall> surface;
-    surface.object = sd.object;
-    surface.primitive = sd.prim;
-    surface.kind = select(geometry_kind_triangle, geometry_kind_curve,
-                          (sd.type & unsigned(abi::PRIMITIVE_CURVE)) != 0u);
-    const auto volume_only =
-        (sd.flag & static_cast<unsigned>(abi::SD_HAS_ONLY_VOLUME)) != 0u;
-    surface.volume_boundary = volume_only.cast<unsigned>();
-    const Bool eval_shadow_svm =
-        cycles_svm_has_domain_metadata(*scene)
-            ? (!volume_only &
-               ((sd.flag &
-                 static_cast<unsigned>(abi::SD_HAS_TRANSPARENT_SHADOW |
-                                       abi::SD_RAY_PORTAL)) != 0u))
-            : !volume_only;
-    $if(eval_shadow_svm) {
-      const svm::PathState state{
-          svm::path_ray_visibility_shadow, 0u,
-          context.path.ray_depth,          context.path.transparent_depth,
-          context.path.diffuse_depth,      context.path.glossy_depth,
-          context.path.transmission_depth,
-          (scene->cycles_svm->kernel_features & svm::kernel_feature_node_portal)
-              ? UInt{context.path.portal_depth} : UInt{0u}};
-      const auto usage = cycles_svm_domain_entry_usage(
-          *scene, PathCyclesSvmShaderDomain::shadow_surface);
-      const auto active_mask = cycles_svm_domain_shader_mask(
-          *scene, PathCyclesSvmShaderDomain::shadow_surface);
-      const bool cpu_backend = scene->device.backend_name() == "fallback";
-      svm::translate_svm_nodes_assume_valid(
-          svm::SvmTranslationRequest{
-              .kernel_globals = kg,
-              .table = scene->cycles_svm->compilation.table,
-              .words = *scene->cycles_svm->word_buffer,
-              .shader_type = abi::SHADER_TYPE_SURFACE,
-              .kernel_features = scene->cycles_svm->kernel_features,
-              .node_feature_mask = svm::kernel_feature_node_mask_surface_shadow,
-              .node_types_used = usage.node_types_used,
-              .transform_state = setup.transforms,
-              .shader_data = sd,
-              .path_state = state,
-              .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
-              .noise_usage = usage.noise_usage,
-              .active_shader_mask = active_mask,
-              .max_groups_per_outlined_chunk =
-                  cpu_backend ? std::size_t{16u} : std::size_t{0u}},
-          cpu_backend ? svm::SvmBackendStrategy::direct_jit
-                      : svm::SvmBackendStrategy::auto_select);
-    };
-    // surface_shader_transparency and the explicit ray-portal shadow veto.
-    // Transparency is a spectrum; Cycles does not clamp it to [0, 1].
-    $if((sd.flag & static_cast<unsigned>(abi::SD_RAY_PORTAL)) == 0u) {
-      $if(volume_only) { surface.transmittance = make_float3(1.0f); }
-      $elif((sd.flag & static_cast<unsigned>(abi::SD_TRANSPARENT)) != 0u) {
-        surface.transmittance = sd.closure_transparent_extinction;
+    $outline_when_with_name(is_simd, "simd_eval_shadow_surface") {
+      // Caustic suppression is conditioned on diffuse visibility in Cycles.
+      // SURFACE_SHADOW has no diffuse visibility bit, so both configurations
+      // have the same effective behavior here.
+      const PathCyclesSvmKernelGlobals kg{
+          scene, parameters, scene->camera.projection, true, true,
+          PathCyclesSvmShaderDomain::shadow_surface};
+      auto setup = setup_cycles_svm_shadow_shader_data(
+          scene, kg, ray, intersection, ray_dP, ray_dD, context, parameters);
+      auto &sd = setup.shader_data;
+      surface.object = sd.object;
+      surface.primitive = sd.prim;
+      surface.kind = select(geometry_kind_triangle, geometry_kind_curve,
+                            (sd.type & unsigned(abi::PRIMITIVE_CURVE)) != 0u);
+      const auto volume_only =
+          (sd.flag & static_cast<unsigned>(abi::SD_HAS_ONLY_VOLUME)) != 0u;
+      surface.volume_boundary = volume_only.cast<unsigned>();
+      const Bool eval_shadow_svm =
+          cycles_svm_has_domain_metadata(*scene)
+              ? (!volume_only &
+                 ((sd.flag &
+                   static_cast<unsigned>(abi::SD_HAS_TRANSPARENT_SHADOW |
+                                         abi::SD_RAY_PORTAL)) != 0u))
+              : !volume_only;
+      $if(eval_shadow_svm) {
+        const svm::PathState state{
+            svm::path_ray_visibility_shadow, 0u,
+            context.path.ray_depth,          context.path.transparent_depth,
+            context.path.diffuse_depth,      context.path.glossy_depth,
+            context.path.transmission_depth,
+            (scene->cycles_svm->kernel_features & svm::kernel_feature_node_portal)
+                ? UInt{context.path.portal_depth} : UInt{0u}};
+        const auto usage = cycles_svm_domain_entry_usage(
+            *scene, PathCyclesSvmShaderDomain::shadow_surface);
+        const auto active_mask = cycles_svm_domain_shader_mask(
+            *scene, PathCyclesSvmShaderDomain::shadow_surface);
+        svm::translate_svm_nodes_assume_valid(
+            svm::SvmTranslationRequest{
+                .kernel_globals = kg,
+                .table = scene->cycles_svm->compilation.table,
+                .words = *scene->cycles_svm->word_buffer,
+                .shader_type = abi::SHADER_TYPE_SURFACE,
+                .kernel_features = scene->cycles_svm->kernel_features,
+                .node_feature_mask = svm::kernel_feature_node_mask_surface_shadow,
+                .node_types_used = usage.node_types_used,
+                .transform_state = setup.transforms,
+                .shader_data = sd,
+                .path_state = state,
+                .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+                .noise_usage = usage.noise_usage,
+                .active_shader_mask = active_mask,
+                .max_groups_per_outlined_chunk =
+                    backend_name == "fallback"
+                        ? std::size_t{16u}
+                        : (is_simd ? std::size_t{2u} : std::size_t{0u}),
+                .max_chunk_jit_weight =
+                    is_simd ? std::size_t{180u} : std::size_t{900u},
+                .outline_chunk_dispatcher = !is_simd},
+            cpu_backend ? svm::SvmBackendStrategy::direct_jit
+                        : svm::SvmBackendStrategy::auto_select);
+      };
+      // surface_shader_transparency and the explicit ray-portal shadow veto.
+      // Transparency is a spectrum; Cycles does not clamp it to [0, 1].
+      $if((sd.flag & static_cast<unsigned>(abi::SD_RAY_PORTAL)) == 0u) {
+        $if(volume_only) { surface.transmittance = make_float3(1.0f); }
+        $elif((sd.flag & static_cast<unsigned>(abi::SD_TRANSPARENT)) != 0u) {
+          surface.transmittance = sd.closure_transparent_extinction;
+        };
       };
     };
     return surface;

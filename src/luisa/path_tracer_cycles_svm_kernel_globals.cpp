@@ -689,6 +689,42 @@ Var<abi::AttributeMap> PathCyclesSvmKernelGlobals::attribute_map(
   return _scene->cycles_svm->geometry->attribute_map_buffer->read(offset);
 }
 
+std::optional<luisa::compute::UInt2>
+PathCyclesSvmKernelGlobals::find_attribute_map_offset(
+    Expr<std::uint32_t> start_offset,
+    Expr<luisa::ulong> id) const noexcept {
+  if (_scene->device.backend_name() != "simd") {
+    return std::nullopt;
+  }
+  static const Callable<luisa::uint2(
+      Buffer<abi::AttributeMap>, luisa::uint, luisa::ulong)>
+      find_attr_callable = [](BufferVar<abi::AttributeMap> attr_maps,
+                              UInt attr_offset, ULong target_id) noexcept {
+        auto attr_map = attr_maps.read(attr_offset);
+        UInt found = 1u;
+        $while(attr_map.id != target_id) {
+          $if(attr_map.id == static_cast<luisa::ulong>(abi::ATTR_STD_NONE)) {
+            $if(attr_map.element.cast<std::uint32_t>() == 0u) {
+              found = 0u;
+              $break;
+            }
+            $else { attr_offset = attr_map.offset.cast<std::uint32_t>(); };
+          }
+          $else {
+            attr_offset += static_cast<std::uint32_t>(abi::ATTR_PRIM_TYPES);
+          };
+          attr_map = attr_maps.read(attr_offset);
+        };
+        return make_uint2(found, attr_offset);
+      };
+  return find_attr_callable(
+      _scene->cycles_svm->geometry->attribute_map_buffer, start_offset, id);
+}
+
+bool PathCyclesSvmKernelGlobals::prefers_outlined_loops() const noexcept {
+  return _scene->device.backend_name() == "simd";
+}
+
 Float PathCyclesSvmKernelGlobals::attribute_float(
     Expr<std::int32_t> offset) const noexcept {
   return _scene->cycles_svm->geometry->attribute_float_buffer->read(
