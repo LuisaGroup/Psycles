@@ -45,6 +45,11 @@ struct SvmTranslationRequest {
   // Optional CPU outlining policy: max unique shader groups per $outline_when
   // chunk. Zero disables sub-chunk outlining.
   std::size_t max_groups_per_outlined_chunk{0u};
+  // Optional weight budget per outlined chunk (default 900 matches scalar CPU).
+  std::size_t max_chunk_jit_weight{900u};
+  // When sub-chunk outlining is active, also outline the outer chunk binary
+  // tree dispatcher. Setting false avoids double io_frame marshalling on SIMD.
+  bool outline_chunk_dispatcher{true};
 };
 
 // Re-targetable SVM backend translator interface. Concrete translators lower

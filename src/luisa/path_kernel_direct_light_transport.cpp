@@ -290,6 +290,11 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                     bounce, {.light_shader = task.light_shader,
                              .unshadowed = task.unshadowed_contribution});
                 $if(active) {
+                    if (cut_policy == PathCoroutineCutPolicy::none &&
+                        invocation.stage_profile != nullptr) {
+                        invocation.stage_profile->enter(
+                            MegakernelStageProfileState::stage_shadow_trace);
+                    }
                     const auto shadow_result =
                         _evaluator.trace(task, invocation.parameters);
                     const auto transmittance = shadow_result->transmittance;

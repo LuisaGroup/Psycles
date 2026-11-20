@@ -18,7 +18,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <functional>
 #include <memory>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -109,6 +112,47 @@ struct PathKernelConfig {
     std::shared_ptr<const ShadowIntersectionComponent> intersect_shadow;
     EvaluateShadowSurfaceCallable shade_shadow_surface;
     TraceShadowCallable trace_shadow;
+    const luisa::compute::Buffer<luisa::ulong> *megakernel_stage_profile_buffer{
+        nullptr};
+};
+
+struct MegakernelStageProfileState {
+    static constexpr std::uint32_t stage_setup_and_film = 0u;
+    static constexpr std::uint32_t stage_closest_trace = 1u;
+    static constexpr std::uint32_t stage_volume_and_background = 2u;
+    static constexpr std::uint32_t stage_surface_geometry = 3u;
+    static constexpr std::uint32_t stage_surface_svm_shading = 4u;
+    static constexpr std::uint32_t stage_nee_light_and_bsdf_eval = 5u;
+    static constexpr std::uint32_t stage_bsdf_scatter = 6u;
+    static constexpr std::uint32_t stage_shadow_trace = 7u;
+    static constexpr std::uint32_t stage_subsurface_trace = 8u;
+    static constexpr std::uint32_t stage_shadow_light_nee = 9u;
+    static constexpr std::uint32_t stage_count = 10u;
+
+    static constexpr std::uint32_t count_closest_traces = 0u;
+    static constexpr std::uint32_t count_surface_shades = 1u;
+    static constexpr std::uint32_t count_nee_evals = 2u;
+    static constexpr std::uint32_t count_shadow_traces = 3u;
+    static constexpr std::uint32_t count_subsurface_traces = 4u;
+    static constexpr std::uint32_t counter_count = 5u;
+    static constexpr std::uint32_t stripe_stride = 16u;
+    static constexpr std::uint32_t stripe_count = 64u;
+
+    luisa::compute::ArrayVar<luisa::ulong, stage_count> cycles;
+    luisa::compute::ArrayVar<luisa::ulong, counter_count> counts;
+    luisa::compute::ULong t_last;
+    luisa::compute::UInt current_stage;
+
+    void enter(std::uint32_t next_stage) noexcept {
+        const auto now = luisa::compute::device_clock();
+        cycles[current_stage] += now - t_last;
+        t_last = now;
+        current_stage = next_stage;
+    }
+
+    void bump(std::uint32_t counter_index) noexcept {
+        counts[counter_index] += 1ull;
+    }
 };
 
 // A zero scene population is an exact proof that the corresponding emitter
@@ -191,7 +235,29 @@ can_stage_direct_light_queue(bool requested, bool path_trace_enabled,
 enum class PathFilmAccumulation : std::uint8_t {
     serial,
     atomic,
+    warp_reduce,
 };
+
+[[nodiscard]] inline bool simd_sample_parallel_enabled(
+    const PathKernelConfig &config) noexcept {
+    if (!config.scene || !static_cast<bool>(config.scene->device)) {
+        return false;
+    }
+    if (config.scene->device.backend_name() != "simd" ||
+        config.path_trace_enabled ||
+        config.direct_light_task_sink != nullptr) {
+        return false;
+    }
+    if (const char *ww = std::getenv("LUISA_SIMD_WARP_WIDTH");
+        ww != nullptr && *ww != '\0' && std::string_view{ww} != "8") {
+        return false;
+    }
+    if (const char *raw = std::getenv("PSYCLES_SIMD_SAMPLE_PARALLEL");
+        raw != nullptr && *raw != '\0') {
+        return std::string_view{raw} != "0" && std::string_view{raw} != "off";
+    }
+    return false;
+}
 
 struct PathKernelInvocation {
     const PathKernelConfig &config;
@@ -238,6 +304,7 @@ struct PathKernelInvocation {
     Float3 volume_guiding_scattered_radiance;
     Float3 volume_guiding_transmitted_radiance;
     SurfaceQuery surface_query;
+    std::shared_ptr<MegakernelStageProfileState> stage_profile{nullptr};
 
     [[nodiscard]] Float3 clamp_contribution(Float3 contribution,
                                             UInt depth) const noexcept;
@@ -454,6 +521,8 @@ struct PathSampleContext {
 [[nodiscard]] PathSampleContext
 begin_path_sample(PathKernelInvocation &invocation,
                   const UInt &sample_offset) noexcept;
+void reset_path_sample(PathSampleContext &sample,
+                       const UInt &sample_offset) noexcept;
 void accumulate_path_sample(PathSampleContext &sample) noexcept;
 
 struct PathBounceRandomState {
@@ -761,7 +830,8 @@ class SurfaceShadingStage {
   public:
     virtual ~SurfaceShadingStage() noexcept = default;
     [[nodiscard]] virtual SurfaceShadingState
-    emit(SurfaceGeometryContext &surface) const noexcept = 0;
+    emit(SurfaceGeometryContext &surface,
+         Bool *sample_terminated_out = nullptr) const noexcept = 0;
 };
 
 class DirectLightingComponent {
@@ -904,12 +974,16 @@ class PathKernelPipeline {
     PathKernelPipeline(const PathKernelPipeline &) = delete;
     PathKernelPipeline &operator=(const PathKernelPipeline &) = delete;
 
+    using SampleCompleteHandler =
+        std::function<Bool(PathSampleContext &, UInt &)>;
+
     // `cut_policy` is a host-side AST-construction choice. It must never be a
     // device value: the megakernel contains neither dynamic scheduler branches
     // nor coroutine instructions, while coroutine variants annotate the same
     // semantic path program at the Cycles scheduling boundaries.
     void emit(PathSampleContext &sample,
-              PathCoroutineCutPolicy cut_policy) const noexcept;
+              PathCoroutineCutPolicy cut_policy,
+              const SampleCompleteHandler &on_sample_complete = {}) const noexcept;
 };
 
 [[nodiscard]] RenderSerialKernel

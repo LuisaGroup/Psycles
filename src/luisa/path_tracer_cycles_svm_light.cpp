@@ -236,54 +236,63 @@ public:
   [[nodiscard]] Float3 evaluate(
       const Var<DirectLightTaskCall> &task,
       const Var<RenderKernelParameters> &parameters) const noexcept override {
-    const PathCyclesSvmKernelGlobals kg{
-        _scene, parameters, _camera_projection, Bool{_reflective_caustics},
-        Bool{_refractive_caustics}, PathCyclesSvmShaderDomain::light_emission};
-    auto setup =
-        setup_cycles_svm_light_shader_data(_scene, kg, task, parameters);
-    auto &sd = setup.shader_data;
-    const auto &transforms = setup.transforms;
-    const auto &background = setup.background;
-    // The shadow state's bounce counters are copied before surface scatter.
-    // NODE_LIGHT_PATH performs the emission-ray +1 itself, exactly once.
-    const svm::PathState state{0u,
-                               svm::path_ray_emission,
-                               task.path_depth,
-                               task.transparent_depth.cast<unsigned>(),
-                               task.diffuse_depth,
-                               task.glossy_depth,
-                               task.transmission_depth,
-                               (_scene->cycles_svm->kernel_features & svm::kernel_feature_node_portal)
-                                   ? task.portal_depth.cast<unsigned>() : UInt{0u}};
-    const auto usage = cycles_svm_domain_entry_usage(
-        *_scene, PathCyclesSvmShaderDomain::light_emission);
-    const auto active_mask = cycles_svm_domain_shader_mask(
-        *_scene, PathCyclesSvmShaderDomain::light_emission);
-    const bool cpu_backend = _scene->device.backend_name() == "fallback";
-    svm::translate_svm_nodes_assume_valid(
-        svm::SvmTranslationRequest{
-            .kernel_globals = kg,
-            .table = _scene->cycles_svm->compilation.table,
-            .words = *_scene->cycles_svm->word_buffer,
-            .shader_type = abi::SHADER_TYPE_SURFACE,
-            .kernel_features = _scene->cycles_svm->kernel_features,
-            .node_feature_mask = svm::kernel_feature_node_mask_surface_light,
-            .node_types_used = usage.node_types_used,
-            .transform_state = transforms,
-            .shader_data = sd,
-            .path_state = state,
-            .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
-            .noise_usage = usage.noise_usage,
-            .active_shader_mask = active_mask,
-            .max_groups_per_outlined_chunk =
-                cpu_backend ? std::size_t{16u} : std::size_t{0u}},
-        cpu_backend ? svm::SvmBackendStrategy::direct_jit
-                    : svm::SvmBackendStrategy::auto_select);
+    const auto backend_name = _scene->device.backend_name();
+    const bool is_simd = backend_name == "simd";
+    const bool cpu_backend = backend_name == "fallback" || is_simd;
     Float3 emission = make_float3(0.0f);
-    $if((sd.flag & static_cast<unsigned>(abi::SD_EMISSION)) != 0u) {
-      const auto evaluable = background | (abs(dot(sd.Ng, sd.wi)) > 0.0f);
-      emission =
-          select(make_float3(0.0f), sd.closure_emission_background, evaluable);
+    $outline_when_with_name(is_simd, "simd_eval_light_nee") {
+      const PathCyclesSvmKernelGlobals kg{
+          _scene, parameters, _camera_projection, Bool{_reflective_caustics},
+          Bool{_refractive_caustics}, PathCyclesSvmShaderDomain::light_emission};
+      auto setup =
+          setup_cycles_svm_light_shader_data(_scene, kg, task, parameters);
+      auto &sd = setup.shader_data;
+      const auto &transforms = setup.transforms;
+      const auto &background = setup.background;
+      // The shadow state's bounce counters are copied before surface scatter.
+      // NODE_LIGHT_PATH performs the emission-ray +1 itself, exactly once.
+      const svm::PathState state{0u,
+                                 svm::path_ray_emission,
+                                 task.path_depth,
+                                 task.transparent_depth.cast<unsigned>(),
+                                 task.diffuse_depth,
+                                 task.glossy_depth,
+                                 task.transmission_depth,
+                                 (_scene->cycles_svm->kernel_features & svm::kernel_feature_node_portal)
+                                     ? task.portal_depth.cast<unsigned>() : UInt{0u}};
+      const auto usage = cycles_svm_domain_entry_usage(
+          *_scene, PathCyclesSvmShaderDomain::light_emission);
+      const auto active_mask = cycles_svm_domain_shader_mask(
+          *_scene, PathCyclesSvmShaderDomain::light_emission);
+      svm::translate_svm_nodes_assume_valid(
+          svm::SvmTranslationRequest{
+              .kernel_globals = kg,
+              .table = _scene->cycles_svm->compilation.table,
+              .words = *_scene->cycles_svm->word_buffer,
+              .shader_type = abi::SHADER_TYPE_SURFACE,
+              .kernel_features = _scene->cycles_svm->kernel_features,
+              .node_feature_mask = svm::kernel_feature_node_mask_surface_light,
+              .node_types_used = usage.node_types_used,
+              .transform_state = transforms,
+              .shader_data = sd,
+              .path_state = state,
+              .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+              .noise_usage = usage.noise_usage,
+              .active_shader_mask = active_mask,
+              .max_groups_per_outlined_chunk =
+                  backend_name == "fallback"
+                      ? std::size_t{16u}
+                      : (is_simd ? std::size_t{2u} : std::size_t{0u}),
+              .max_chunk_jit_weight =
+                  is_simd ? std::size_t{180u} : std::size_t{900u},
+              .outline_chunk_dispatcher = !is_simd},
+          cpu_backend ? svm::SvmBackendStrategy::direct_jit
+                      : svm::SvmBackendStrategy::auto_select);
+      $if((sd.flag & static_cast<unsigned>(abi::SD_EMISSION)) != 0u) {
+        const auto evaluable = background | (abs(dot(sd.Ng, sd.wi)) > 0.0f);
+        emission =
+            select(make_float3(0.0f), sd.closure_emission_background, evaluable);
+      };
     };
     return emission;
   }

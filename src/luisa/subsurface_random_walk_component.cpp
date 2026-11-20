@@ -529,25 +529,38 @@ Bool SubsurfaceRandomWalkComponent::transport(
             if (can_use_local_subsurface_id) {
                 const UInt instance_mask = 1u << (entry_local_instance & 7u);
                 if (scene->subsurface_instance_count <= 8u) {
-                    const Bool bypass_entry_filter = !reject_entry_primitive;
-                    const auto handle_subsurface_hit =
-                        [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
-                            $if(bypass_entry_filter) {
-                                candidate.commit();
-                            }
-                            $else {
+                    $if(reject_entry_primitive) {
+                        const auto handle_subsurface_hit =
+                            [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
                                 const auto candidate_value = candidate.hit();
-                                $if(candidate_value->prim != entry_primitive) {
+                                $if((candidate_value->inst !=
+                                     entry_local_instance) |
+                                    (candidate_value->prim != entry_primitive)) {
                                     candidate.commit();
                                 };
                             };
-                        };
-                    candidate_hit =
-                        subsurface_accel
-                            ->traverse(query_ray,
-                                       {.visibility_mask = instance_mask})
-                            .on_surface_candidate(handle_subsurface_hit)
-                            .trace();
+                        candidate_hit =
+                            subsurface_accel
+                                ->traverse(query_ray,
+                                           {.visibility_mask = instance_mask})
+                                .on_surface_candidate(handle_subsurface_hit)
+                                .trace();
+                    }
+                    $else {
+                        const auto tri_hit = subsurface_accel->intersect(
+                            query_ray, {.visibility_mask = instance_mask});
+                        candidate_hit.inst = tri_hit.inst;
+                        candidate_hit.prim = tri_hit.prim;
+                        candidate_hit.bary = tri_hit.bary;
+                        candidate_hit.hit_type = select(
+                            static_cast<std::uint32_t>(
+                                luisa::compute::HitType::Miss),
+                            static_cast<std::uint32_t>(
+                                luisa::compute::HitType::Surface),
+                            !tri_hit->miss());
+                        candidate_hit.committed_ray_t =
+                            tri_hit.committed_ray_t;
+                    };
                 } else {
                     const auto handle_subsurface_hit =
                         [&](luisa::compute::SurfaceCandidate &candidate) noexcept {

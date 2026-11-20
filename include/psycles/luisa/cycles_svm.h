@@ -522,6 +522,14 @@ public:
       luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Var<compiler::cycles_svm::AttributeMap>
   attribute_map(luisa::compute::Expr<std::uint32_t> offset) const noexcept = 0;
+  [[nodiscard]] virtual std::optional<luisa::compute::UInt2>
+  find_attribute_map_offset(luisa::compute::Expr<std::uint32_t>,
+                            luisa::compute::Expr<luisa::ulong>) const noexcept {
+    return std::nullopt;
+  }
+  [[nodiscard]] virtual bool prefers_outlined_loops() const noexcept {
+    return false;
+  }
   [[nodiscard]] virtual luisa::compute::Float
   attribute_float(luisa::compute::Expr<std::int32_t> offset) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float2 attribute_float2(
@@ -853,6 +861,7 @@ public:
     bool may_have_custom_generalized_schlick{true};
     bool may_have_positive_exponent{true};
     bool may_have_extra_fresnel{true};
+    bool outline_transparent_merge{false};
   };
 
 private:
@@ -896,6 +905,7 @@ public:
   ClosurePool &operator=(ClosurePool &&) = delete;
 
   [[nodiscard]] std::size_t capacity() const noexcept;
+  [[nodiscard]] const Options &options() const noexcept { return _options; }
   [[nodiscard]] luisa::compute::UInt count() const noexcept;
   [[nodiscard]] luisa::compute::UInt left() const noexcept;
 

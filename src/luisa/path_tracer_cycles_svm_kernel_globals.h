@@ -142,6 +142,11 @@ class PathCyclesSvmKernelGlobals final
         Expr<std::uint32_t> object) const noexcept override;
     [[nodiscard]] Var<compiler::cycles_svm::AttributeMap> attribute_map(
         Expr<std::uint32_t> offset) const noexcept override;
+    [[nodiscard]] std::optional<luisa::compute::UInt2>
+    find_attribute_map_offset(
+        Expr<std::uint32_t> start_offset,
+        Expr<luisa::ulong> id) const noexcept override;
+    [[nodiscard]] bool prefers_outlined_loops() const noexcept override;
     [[nodiscard]] Float attribute_float(
         Expr<std::int32_t> offset) const noexcept override;
     [[nodiscard]] Float2 attribute_float2(

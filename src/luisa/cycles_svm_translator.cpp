@@ -776,11 +776,22 @@ void DirectJitTranslator::translate(
     }
     return request.max_groups_per_outlined_chunk;
   }();
-  constexpr std::size_t target_chunk_weight_budget = 900u;
+  const std::size_t target_chunk_weight_budget = [&]() noexcept -> std::size_t {
+    if (const char *raw = std::getenv("PSYCLES_SVM_OUTLINE_CHUNK_WEIGHT");
+        raw != nullptr && *raw != '\0') {
+      char *end = nullptr;
+      const unsigned long parsed = std::strtoul(raw, &end, 10);
+      if (end != raw && *end == '\0' && parsed > 0ul) {
+        return static_cast<std::size_t>(parsed);
+      }
+    }
+    return request.max_chunk_jit_weight > 0u ? request.max_chunk_jit_weight
+                                             : std::size_t{900u};
+  }();
   const bool should_outline_chunks =
       configured_chunk_groups > 0u &&
       (groups.size() > configured_chunk_groups ||
-       (!explicit_chunk_env && groups.size() > 8u &&
+       (!explicit_chunk_env && groups.size() > 1u &&
         total_jit_weight > target_chunk_weight_budget));
   if (should_outline_chunks) {
     struct OutlinedChunk {
@@ -851,15 +862,15 @@ void DirectJitTranslator::translate(
                                  group_stack, closure_weight);
                 };
               } else {
+                detail::Stack chunk_stack{request.stack_size};
+                static_cast<void>(chunk_stack);
                 $switch(shader_index) {
                   for (const auto &group : chunk.groups) {
                     luisa::compute::detail::SwitchCaseStmtBuilder{
                         luisa::span<const std::uint32_t>{group.shader_ids}} %
                         [&]() noexcept {
-                          detail::Stack group_stack{request.stack_size};
-                          static_cast<void>(group_stack);
                           Float3 closure_weight = make_float3(0.0f);
-                          emit_jit_block(request, *group.routine, group_stack,
+                          emit_jit_block(request, *group.routine, chunk_stack,
                                          closure_weight);
                         };
                   }
@@ -879,9 +890,13 @@ void DirectJitTranslator::translate(
         };
         emit_range(emit_range, 0u, chunks.size());
       };
-      $outline_when_with_name(should_outline_chunks, "svm_eval_nodes") {
+      if (request.outline_chunk_dispatcher) {
+        $outline_when_with_name(should_outline_chunks, "svm_eval_nodes") {
+          emit_dispatcher();
+        };
+      } else {
         emit_dispatcher();
-      };
+      }
       return;
     }
   }

@@ -1,5 +1,6 @@
 #include "graph_surface_internal.h"
 
+#include <luisa/dsl/func.h>
 #include <psycles/luisa/cycles_closure.h>
 
 namespace psycles::luisa_backend::detail {
@@ -66,25 +67,68 @@ namespace psycles::luisa_backend::detail {
     return max(value.x, max(value.y, value.z));
 }
 
+namespace {
+
+[[nodiscard]] const luisa::compute::Callable<float(float)> &
+srgb_to_linear_hdr_callable() noexcept {
+    static auto callable = []() noexcept {
+        luisa::compute::Callable result{
+            [](Float value) noexcept {
+                Float out = 0.0f;
+                $outline_with_name("cycles_srgb_to_linear_hdr") {
+                    out = pow((value + 0.055f) * (1.0f / 1.055f), 2.4f);
+                };
+                return out;
+            }};
+        result.set_name("cycles_srgb_to_linear_hdr");
+        return result;
+    }();
+    return callable;
+}
+
+template <typename T>
+[[nodiscard]] T srgb_to_linear_unit_poly(T value) noexcept {
+    // On [0.04045, 1.0], t = (x + 0.055) / 1.055 in [0.09047, 1.0] and
+    // q = sqrt(sqrt(t)) in [0.54844, 1.0]. With u = q - 1,
+    // t^2.4 = t^2 * (1 + u * P4(u)) matches pow(t, 2.4f) within 3.6e-7
+    // (<= 2 ULP) and evaluates exact 1.0 at x = 1.0 without invoking pow().
+    const auto t = (value + 0.055f) * (1.0f / 1.055f);
+    const auto q = sqrt(sqrt(max(t, 0.0f)));
+    const auto u = q - 1.0f;
+    const auto p =
+        ((((-0.0229220558f * u + 0.0167627893f) * u - 0.0649761409f) * u +
+          0.479943097f) *
+             u +
+         1.59999943f) *
+            u +
+        1.0f;
+    return select(
+        t * t * p,
+        max(value, 0.0f) * (1.0f / 12.92f),
+        value < 0.04045f);
+}
+
+}// namespace
+
 [[nodiscard]] Float srgb_to_linear(
     Float value) noexcept {
-    auto linear_segment =
-        max(value, 0.0f) * (1.0f / 12.92f);
-    auto power_segment = pow(
-        (value + 0.055f) * (1.0f / 1.055f),
-        2.4f);
-    return select(
-        power_segment,
-        linear_segment,
-        value < 0.04045f);
+    Float result = srgb_to_linear_unit_poly(value);
+    $if(value > 1.0f) {
+        result = srgb_to_linear_hdr_callable()(value);
+    };
+    return result;
 }
 
 [[nodiscard]] Float3 srgb_to_linear(
     Float3 value) noexcept {
-    return make_float3(
-        srgb_to_linear(value.x),
-        srgb_to_linear(value.y),
-        srgb_to_linear(value.z));
+    Float3 result = srgb_to_linear_unit_poly(value);
+    $if(any(value > 1.0f)) {
+        const auto &hdr = srgb_to_linear_hdr_callable();
+        $if(value.x > 1.0f) { result.x = hdr(value.x); };
+        $if(value.y > 1.0f) { result.y = hdr(value.y); };
+        $if(value.z > 1.0f) { result.z = hdr(value.z); };
+    };
+    return result;
 }
 
 }// namespace psycles::luisa_backend::detail

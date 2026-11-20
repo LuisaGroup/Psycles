@@ -12,8 +12,12 @@
 #include <psycles/luisa/cycles_svm_translator.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
+#include <string_view>
 #include <utility>
+
+#include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -411,7 +415,9 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                       _kernel_globals.closure_usage().has_fresnel(
                           abi::ClosureUsage::fresnel_conductor |
                           abi::ClosureUsage::fresnel_f82_tint |
-                          abi::ClosureUsage::fresnel_generalized_schlick)})},
+                          abi::ClosureUsage::fresnel_generalized_schlick),
+                  .outline_transparent_merge =
+                      _scene->device.backend_name() == "simd"})},
           _closure_types{
               svm_detail::closure_types_for_kernel_features(
                   _scene->cycles_svm->kernel_features) &
@@ -544,10 +550,31 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                 ? std::span<const std::uint8_t>{default_mask}
                 : std::span<const std::uint8_t>{bucket.active_shader_mask};
         const auto backend_name = _scene->device.backend_name();
-        const bool cpu_backend = backend_name == "fallback";
+        const bool is_simd = backend_name == "simd";
+        const bool cpu_backend = backend_name == "fallback" || is_simd;
         const bool outline_svm_chunks = cpu_backend;
         svm_detail::surface_shader_initialize_closures(
             *_closures, path_state.visibility, path_state.flag);
+        const auto simd_chunk_groups = []() noexcept -> std::size_t {
+          if (const char *raw = std::getenv("PSYCLES_SIMD_SVM_CHUNK_GROUPS");
+              raw != nullptr && *raw != '\0') {
+            if (const auto parsed = std::strtoull(raw, nullptr, 10);
+                parsed > 0ull) {
+              return static_cast<std::size_t>(parsed);
+            }
+          }
+          return std::size_t{2u};
+        }();
+        const auto simd_chunk_weight = []() noexcept -> std::size_t {
+          if (const char *raw = std::getenv("PSYCLES_SIMD_SVM_CHUNK_WEIGHT");
+              raw != nullptr && *raw != '\0') {
+            if (const auto parsed = std::strtoull(raw, nullptr, 10);
+                parsed > 0ull) {
+              return static_cast<std::size_t>(parsed);
+            }
+          }
+          return std::size_t{180u};
+        }();
         svm::translate_svm_nodes_assume_valid(
             svm::SvmTranslationRequest{
                 .kernel_globals = _kernel_globals,
@@ -566,8 +593,11 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                 .active_shader_mask = active_mask,
                 .max_groups_per_outlined_chunk =
                     (cpu_backend && outline_svm_chunks)
-                        ? std::size_t{16u}
-                        : std::size_t{0u}},
+                        ? (is_simd ? simd_chunk_groups : std::size_t{16u})
+                        : std::size_t{0u},
+                .max_chunk_jit_weight =
+                    is_simd ? simd_chunk_weight : std::size_t{900u},
+                .outline_chunk_dispatcher = true},
             cpu_backend ? svm::SvmBackendStrategy::direct_jit
                         : svm::SvmBackendStrategy::auto_select);
       };
@@ -619,19 +649,37 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
     [[nodiscard]] SurfaceEvaluation evaluate_light(
         Expr<luisa::float3> outgoing,
         const SurfaceLightQuery &query) const noexcept override {
-      const auto evaluation = svm_detail::surface_shader_bsdf_eval(
-          _kernel_globals, *_shader_data, outgoing, query.shader_flags,
-          _closure_types);
+      const bool outline_bsdf =
+          _scene->device.backend_name() == "simd" &&
+          ([]() noexcept {
+            const char *raw = std::getenv("PSYCLES_SIMD_OUTLINE_BSDF");
+            return raw == nullptr || std::string_view{raw} != "0";
+          })();
+      Float3 eval_sum = make_float3(0.0f);
+      Float3 eval_diffuse = make_float3(0.0f);
+      Float3 eval_glossy = make_float3(0.0f);
+      Float eval_pdf = 0.0f;
+      Float eval_avg_r2 = 0.0f;
+      UInt eval_events = 0u;
+      $outline_when_with_name(outline_bsdf, "simd_svm_bsdf_eval") {
+        const auto evaluation = svm_detail::surface_shader_bsdf_eval(
+            _kernel_globals, *_shader_data, outgoing, query.shader_flags,
+            _closure_types);
+        eval_sum = evaluation.sum;
+        eval_diffuse = evaluation.diffuse;
+        eval_glossy = evaluation.glossy;
+        eval_pdf = evaluation.pdf;
+        eval_avg_r2 = evaluation.average_roughness_squared;
+        eval_events = evaluation_events(evaluation, *_shader_data, outgoing);
+      };
       auto result = SurfaceEvaluation{
-          .f = evaluation.sum,
-          .pdf = evaluation.pdf,
-          .diffuse_f = evaluation.diffuse,
-          .glossy_f = evaluation.glossy,
-          .diffuse_pdf = select(0.0f, evaluation.pdf,
-                                nonzero(evaluation.diffuse)),
-          .average_roughness_squared =
-              evaluation.average_roughness_squared,
-          .events = evaluation_events(evaluation, *_shader_data, outgoing)};
+          .f = eval_sum,
+          .pdf = eval_pdf,
+          .diffuse_f = eval_diffuse,
+          .glossy_f = eval_glossy,
+          .diffuse_pdf = select(0.0f, eval_pdf, nonzero(eval_diffuse)),
+          .average_roughness_squared = eval_avg_r2,
+          .events = eval_events};
       return result;
     }
 

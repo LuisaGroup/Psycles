@@ -8,8 +8,23 @@
 #include "cycles_surface_sort.h"
 #include "sample_dispatch_partition.h"
 
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
+#include <optional>
+#include <string_view>
+#include <thread>
 #include <utility>
+#include <vector>
+#if defined(_M_X64) || defined(__x86_64__)
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
+#endif
 
 #include <luisa/core/logging.h>
 #include <luisa/coro/coro_scheduler.h>
@@ -197,14 +212,27 @@ public:
 
 namespace {
 
+[[nodiscard]] bool megakernel_stage_profile_enabled() noexcept {
+  const char *raw = std::getenv("PSYCLES_MEGAKERNEL_STAGE_PROFILE");
+  return raw != nullptr && std::string_view{raw} == "1";
+}
+
 class SerialMegakernelExecutor final : public PathKernelExecutorImpl {
 
 private:
     RenderSerialCompiledShader _shader;
+    std::optional<luisa::compute::Buffer<luisa::ulong>> _profile_buffer;
+    bool _simd_sample_parallel{false};
 
 public:
-  explicit SerialMegakernelExecutor(RenderSerialCompiledShader shader) noexcept
-        : _shader{std::move(shader)} {}
+  SerialMegakernelExecutor(
+      RenderSerialCompiledShader shader,
+      std::optional<luisa::compute::Buffer<luisa::ulong>> profile_buffer =
+          std::nullopt,
+      bool simd_sample_parallel = false) noexcept
+      : _shader{std::move(shader)},
+        _profile_buffer{std::move(profile_buffer)},
+        _simd_sample_parallel{simd_sample_parallel} {}
 
   [[nodiscard]] LuisaPathScheduler scheduler() const noexcept override {
         return LuisaPathScheduler::megakernel;
@@ -212,10 +240,106 @@ public:
 
   void dispatch(luisa::compute::Stream &stream,
         const PathKernelDispatch &dispatch) noexcept override {
-    stream
-        << bind_path_program(_shader, dispatch)
-               .dispatch(dispatch.width, dispatch.height);
+    const auto dispatch_w =
+        _simd_sample_parallel ? dispatch.width * 8u : dispatch.width;
+    if (!_profile_buffer.has_value()) {
+      stream
+          << bind_path_program(_shader, dispatch)
+                 .dispatch(dispatch_w, dispatch.height);
+      return;
     }
+    constexpr std::size_t total_words =
+        MegakernelStageProfileState::stripe_count *
+        MegakernelStageProfileState::stripe_stride;
+    std::vector<luisa::ulong> zeros(total_words, 0ull);
+    std::vector<luisa::ulong> host_words(total_words, 0ull);
+    stream << _profile_buffer->copy_from(zeros.data())
+           << luisa::compute::synchronize();
+    const auto wall_t0 = std::chrono::steady_clock::now();
+#if defined(_M_X64) || defined(__x86_64__)
+    const std::uint64_t tsc_t0 = __rdtsc();
+#else
+    const std::uint64_t tsc_t0 = 0ull;
+#endif
+    stream << bind_path_program(_shader, dispatch)
+                  .dispatch(dispatch_w, dispatch.height)
+           << luisa::compute::synchronize();
+#if defined(_M_X64) || defined(__x86_64__)
+    const std::uint64_t tsc_t1 = __rdtsc();
+#else
+    const std::uint64_t tsc_t1 = 0ull;
+#endif
+    const auto wall_t1 = std::chrono::steady_clock::now();
+    stream << _profile_buffer->copy_to(host_words.data())
+           << luisa::compute::synchronize();
+
+    std::array<std::uint64_t, MegakernelStageProfileState::stage_count>
+        stage_cycles{};
+    std::array<std::uint64_t, MegakernelStageProfileState::counter_count>
+        stage_counts{};
+    for (std::uint32_t s = 0u; s < MegakernelStageProfileState::stripe_count;
+         ++s) {
+      const std::size_t base =
+          static_cast<std::size_t>(s) *
+          MegakernelStageProfileState::stripe_stride;
+      for (std::uint32_t i = 0u; i < MegakernelStageProfileState::stage_count;
+           ++i) {
+        stage_cycles[i] += host_words[base + i];
+      }
+      for (std::uint32_t i = 0u; i < MegakernelStageProfileState::counter_count;
+           ++i) {
+        stage_counts[i] +=
+            host_words[base + MegakernelStageProfileState::stage_count + i];
+      }
+    }
+    const double wall_sec =
+        std::chrono::duration<double>(wall_t1 - wall_t0).count();
+    const std::uint64_t wall_tsc = tsc_t1 - tsc_t0;
+    const double tsc_hz = wall_sec > 0.0 ? static_cast<double>(wall_tsc) / wall_sec : 0.0;
+    std::uint64_t sum_cycles = 0ull;
+    for (const auto c : stage_cycles) { sum_cycles += c; }
+    std::printf(
+        "PSYCLES_MEGAKERNEL_STAGE_PROFILE_JSON: "
+        "{\"width\":%u,\"height\":%u,\"samples\":%u,"
+        "\"dispatch_wall_seconds\":%.9f,\"host_wall_tsc\":%llu,\"tsc_hz\":%.3f,"
+        "\"sum_thread_cycles\":%llu,"
+        "\"stages_cycles\":{"
+        "\"setup_and_film\":%llu,"
+        "\"closest_trace\":%llu,"
+        "\"volume_and_background\":%llu,"
+        "\"surface_geometry\":%llu,"
+        "\"surface_svm_shading\":%llu,"
+        "\"nee_light_and_bsdf_eval\":%llu,"
+        "\"bsdf_scatter\":%llu,"
+        "\"shadow_trace\":%llu,"
+        "\"subsurface_trace\":%llu,"
+        "\"shadow_light_nee\":%llu},"
+        "\"counts\":{"
+        "\"closest_traces\":%llu,"
+        "\"surface_shades\":%llu,"
+        "\"nee_evals\":%llu,"
+        "\"shadow_traces\":%llu,"
+        "\"subsurface_traces\":%llu}}\n",
+        dispatch.width, dispatch.height, dispatch.samples, wall_sec,
+        static_cast<unsigned long long>(wall_tsc), tsc_hz,
+        static_cast<unsigned long long>(sum_cycles),
+        static_cast<unsigned long long>(stage_cycles[0]),
+        static_cast<unsigned long long>(stage_cycles[1]),
+        static_cast<unsigned long long>(stage_cycles[2]),
+        static_cast<unsigned long long>(stage_cycles[3]),
+        static_cast<unsigned long long>(stage_cycles[4]),
+        static_cast<unsigned long long>(stage_cycles[5]),
+        static_cast<unsigned long long>(stage_cycles[6]),
+        static_cast<unsigned long long>(stage_cycles[7]),
+        static_cast<unsigned long long>(stage_cycles[8]),
+        static_cast<unsigned long long>(stage_cycles[9]),
+        static_cast<unsigned long long>(stage_counts[0]),
+        static_cast<unsigned long long>(stage_counts[1]),
+        static_cast<unsigned long long>(stage_counts[2]),
+        static_cast<unsigned long long>(stage_counts[3]),
+        static_cast<unsigned long long>(stage_counts[4]));
+    std::fflush(stdout);
+  }
 };
 
 class SampleMegakernelExecutor final : public PathKernelExecutorImpl {
@@ -311,13 +435,26 @@ build_path_kernel_executor(luisa::compute::Device &device,
     const PathKernelExecutorConfig &config) {
     switch (config.scheduler) {
         case LuisaPathScheduler::megakernel: {
-            auto kernel = build_path_serial_kernel(path);
+            std::optional<luisa::compute::Buffer<luisa::ulong>> profile_buffer;
+            auto profiled_path = path;
+            if (megakernel_stage_profile_enabled()) {
+              profile_buffer = device.create_buffer<luisa::ulong>(
+                  MegakernelStageProfileState::stripe_count *
+                  MegakernelStageProfileState::stripe_stride);
+              profiled_path.megakernel_stage_profile_buffer =
+                  &(*profile_buffer);
+            }
+            const bool sample_parallel =
+                simd_sample_parallel_enabled(profiled_path);
+            auto kernel = build_path_serial_kernel(profiled_path);
             auto shader = luisa::compute::coro::detail::
                 coro_scheduler_label_shader(
                     device.compile(kernel, config.shader_option),
                     "path_megakernel");
             return PathKernelExecutor{
-        std::make_unique<SerialMegakernelExecutor>(std::move(shader))};
+                std::make_unique<SerialMegakernelExecutor>(
+                    std::move(shader), std::move(profile_buffer),
+                    sample_parallel)};
         }
         case LuisaPathScheduler::megakernel_per_sample: {
             auto kernel = build_path_sample_kernel(path);
@@ -345,6 +482,16 @@ build_path_kernel_executor(luisa::compute::Device &device,
     scheduler_config.thread_count = config.wavefront_frame_capacity;
             scheduler_config.execution_block_size =
                 config.wavefront_execution_block_size;
+    scheduler_config.shader_compile_threads =
+        std::clamp<std::uint32_t>(std::thread::hardware_concurrency(), 1u, 8u);
+    if (const auto *override_threads =
+            std::getenv("PSYCLES_SHADER_COMPILE_THREADS")) {
+        const auto parsed = static_cast<std::uint32_t>(
+            std::strtoul(override_threads, nullptr, 10));
+        if (parsed != 0u) {
+            scheduler_config.shader_compile_threads = parsed;
+        }
+    }
     scheduler_config.shader_option = config.shader_option;
     auto scheduler = std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);
@@ -502,6 +649,16 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 scheduler_config.refill_threshold = static_cast<std::uint32_t>(
                     std::strtoul(override_refill, nullptr, 10));
             }
+    scheduler_config.shader_compile_threads =
+        std::clamp<std::uint32_t>(std::thread::hardware_concurrency(), 1u, 8u);
+    if (const auto *override_threads =
+            std::getenv("PSYCLES_SHADER_COMPILE_THREADS")) {
+        const auto parsed = static_cast<std::uint32_t>(
+            std::strtoul(override_threads, nullptr, 10));
+        if (parsed != 0u) {
+            scheduler_config.shader_compile_threads = parsed;
+        }
+    }
     scheduler_config.shader_option = config.shader_option;
     auto scheduler = std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);

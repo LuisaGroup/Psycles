@@ -50,6 +50,10 @@ template <typename T> [[nodiscard]] Var<T> zero_value() noexcept {
 [[nodiscard]] Bool find_attr_offset(const KernelGlobals &kernel_globals,
                                     UInt &attr_offset,
                                     Expr<luisa::ulong> id) noexcept {
+  if (auto fast = kernel_globals.find_attribute_map_offset(attr_offset, id)) {
+    attr_offset = fast->y;
+    return fast->x != 0u;
+  }
   auto attr_map = kernel_globals.attribute_map(attr_offset);
   Bool found = true;
 
@@ -74,10 +78,20 @@ packed_float3_value(Var<compiler::cycles_svm::packed_float3> value) noexcept {
 }
 
 [[nodiscard]] Float color_srgb_to_linear(Expr<float> value) noexcept {
-  Float result;
-  $if(value < 0.04045f) { result = max(value * (1.0f / 12.92f), 0.0f); }
-  $else { result = pow((value + 0.055f) * (1.0f / 1.055f), 2.4f); };
-  return result;
+  // Byte-encoded color attributes are normalized to [0, 1], so the 2-ULP
+  // t^2 * (1 + u * P4(u)) approximation covers the full domain without pow().
+  const auto t = (value + 0.055f) * (1.0f / 1.055f);
+  const auto q = sqrt(sqrt(max(t, 0.0f)));
+  const auto u = q - 1.0f;
+  const auto p =
+      ((((-0.0229220558f * u + 0.0167627893f) * u - 0.0649761409f) * u +
+        0.479943097f) *
+           u +
+       1.59999943f) *
+          u +
+      1.0f;
+  return select(t * t * p, max(value * (1.0f / 12.92f), 0.0f),
+                value < 0.04045f);
 }
 
 template <typename T>

@@ -494,27 +494,30 @@ void node_tex_image_box(Cursor &cursor, Stack &stack,
       select(0u, 1u, has_x) + select(0u, 1u, has_y) + select(0u, 1u, has_z);
 
   Float4 sampled = make_float4(0.0f);
-  $for(tap, tap_count) {
-    Dual2 tap_uv = uv_z;
-    Float tap_w = weight.z;
-    $if(tap == 0u) {
-      $if(has_x) {
-        tap_uv = uv_x;
-        tap_w = weight.x;
+  $outline_when_with_name(kernel_globals.prefers_outlined_loops(),
+                          "svm_tex_image_box_taps") {
+    $for(tap, tap_count) {
+      Dual2 tap_uv = uv_z;
+      Float tap_w = weight.z;
+      $if(tap == 0u) {
+        $if(has_x) {
+          tap_uv = uv_x;
+          tap_w = weight.x;
+        }
+        $elif(has_y) {
+          tap_uv = uv_y;
+          tap_w = weight.y;
+        };
       }
-      $elif(has_y) {
-        tap_uv = uv_y;
-        tap_w = weight.y;
+      $elif(tap == 1u) {
+        $if(has_x & has_y) {
+          tap_uv = uv_y;
+          tap_w = weight.y;
+        };
       };
-    }
-    $elif(tap == 1u) {
-      $if(has_x & has_y) {
-        tap_uv = uv_y;
-        tap_w = weight.y;
-      };
+      sampled += tap_w * sample_image(kernel_globals, shader_data, image_id,
+                                      tap_uv, flags);
     };
-    sampled += tap_w * sample_image(kernel_globals, shader_data, image_id,
-                                    tap_uv, flags);
   };
   store_image_sample(stack, color_offset, alpha_offset, sampled);
 }

@@ -682,7 +682,7 @@ private:
       return false;
     }
     const auto name = scene->device.backend_name();
-    return name == "fallback";
+    return name == "fallback" || name == "simd";
   }
 
   [[nodiscard]] static bool is_fallback_scene(
