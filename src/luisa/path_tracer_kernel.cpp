@@ -26,17 +26,24 @@ namespace {
 }
 
 [[nodiscard]] bool render_shader_driver_optimization_enabled(
-    const luisa::compute::Device &device) noexcept {
+    const luisa::compute::Device &device,
+    LuisaPathScheduler scheduler) noexcept {
     if (device.backend_name() != "vk") {
         return true;
     }
-    // The monolithic path kernel retains a runtime-indexed Cycles closure
-    // array. Full RADV optimization of that shape can consume unbounded host
-    // memory on a cold compile. Luisa's per-shader Vulkan policy keeps the
-    // compile bounded while leaving every other scene kernel optimized.
-  const auto *enabled =
-      std::getenv("PSYCLES_VULKAN_ENABLE_DRIVER_OPTIMIZATION");
-  return enabled != nullptr && std::string_view{enabled} == "1";
+    if (const auto *enabled =
+            std::getenv("PSYCLES_VULKAN_ENABLE_DRIVER_OPTIMIZATION");
+        enabled != nullptr && *enabled != '\0') {
+        const std::string_view value{enabled};
+        return value == "1" || value == "true" || value == "on";
+    }
+    // The monolithic megakernel retains a runtime-indexed Cycles closure array
+    // whose full RADV optimization can consume unbounded host memory on a cold
+    // compile. Wavefront schedulers decompose shading into bounded per-stage
+    // kernels and benefit directly from full Vulkan driver optimization.
+    return scheduler == LuisaPathScheduler::wavefront ||
+           scheduler == LuisaPathScheduler::wavefront_staged ||
+           scheduler == LuisaPathScheduler::wavefront_graph;
 }
 
 }// namespace
@@ -371,7 +378,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             .assume_no_packed_textures =
                   !scene->may_have_packed_textures,
             .enable_driver_optimization =
-                  render_shader_driver_optimization_enabled(_scene->device)}});
+                  render_shader_driver_optimization_enabled(
+                      _scene->device, _options.scheduler)}});
 }
 
 }// namespace psycles::luisa_backend::detail
