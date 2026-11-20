@@ -515,12 +515,16 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
         }
       }
     }
+    std::size_t bucket_ir_ops = 0u;
+    for (std::size_t gi = group_cuts[b]; gi < group_cuts[b + 1u]; ++gi) {
+      bucket_ir_ops += groups[gi].ir_ops;
+    }
     finalize_bucket_metadata(scene, spec);
     LUISA_INFO("Psycles surface bucket[{}] '{}': active_nonempty={} "
-               "unique_groups={} sort_keys={} max_closures={} emit={} "
-               "holdout={} bssrdf={}.",
+               "unique_groups={} ir_ops={} sort_keys={} max_closures={} "
+               "emit={} holdout={} bssrdf={}.",
                b, spec.continuation_name, spec.active_nonempty_shaders,
-               spec.unique_routine_groups, spec.key_count,
+               spec.unique_routine_groups, bucket_ir_ops, spec.key_count,
                spec.max_surface_closures, spec.may_have_emission,
                spec.may_have_holdout, spec.may_have_bssrdf);
   }
