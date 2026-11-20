@@ -309,8 +309,9 @@ inline void hash_mix(UInt &a, UInt &b, UInt &c) noexcept {
     auto alternate =
         select(z, x, (h == 12u) | (h == 14u));
     auto v = select(alternate, y, h < 4u);
-    return negate_if(u, (h & 1u) != 0u) +
-           negate_if(v, (h & 2u) != 0u);
+    auto signed_u = as<float>(as<luisa::uint>(u) ^ ((h & 1u) << 31u));
+    auto signed_v = as<float>(as<luisa::uint>(v) ^ ((h & 2u) << 30u));
+    return signed_u + signed_v;
 }
 
 [[nodiscard]] inline Float gradient4(
@@ -336,9 +337,12 @@ inline void hash_mix(UInt &a, UInt &b, UInt &c) noexcept {
     Float x,
     Float y) noexcept {
     auto one_minus_x = 1.0f - x;
-    return (1.0f - y) *
-               (v0 * one_minus_x + v1 * x) +
-           y * (v2 * one_minus_x + v3 * x);
+    auto one_minus_y = 1.0f - y;
+    auto w0 = one_minus_x * one_minus_y;
+    auto w1 = x * one_minus_y;
+    auto w2 = one_minus_x * y;
+    auto w3 = x * y;
+    return (v0 * w0 + v1 * w1) + (v2 * w2 + v3 * w3);
 }
 
 [[nodiscard]] inline Float trilinear(
@@ -356,14 +360,13 @@ inline void hash_mix(UInt &a, UInt &b, UInt &c) noexcept {
     auto one_minus_x = 1.0f - x;
     auto one_minus_y = 1.0f - y;
     auto one_minus_z = 1.0f - z;
-    return one_minus_z *
-               (one_minus_y *
-                    (v0 * one_minus_x + v1 * x) +
-                y * (v2 * one_minus_x + v3 * x)) +
-           z *
-               (one_minus_y *
-                    (v4 * one_minus_x + v5 * x) +
-                y * (v6 * one_minus_x + v7 * x));
+    auto w00 = one_minus_y * one_minus_z;
+    auto w10 = y * one_minus_z;
+    auto w01 = one_minus_y * z;
+    auto w11 = y * z;
+    auto lo = (v0 * w00 + v2 * w10) + (v4 * w01 + v6 * w11);
+    auto hi = (v1 * w00 + v3 * w10) + (v5 * w01 + v7 * w11);
+    return lo * one_minus_x + hi * x;
 }
 
 [[nodiscard]] inline Float perlin(Float p) noexcept {
