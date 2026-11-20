@@ -43,71 +43,90 @@ intersect_point_geometry(
     luisa::compute::Bool sphere,
     luisa::compute::Float3 previous_normal,
     luisa::compute::Bool had_transmission,
-    luisa::compute::Float outside_one_minus_cosine) noexcept {
+    bool has_spot_cap,
+    luisa::compute::Float spot_cap) noexcept {
     using namespace luisa::compute;
     namespace sampling =
         analytic_light_sampling;
 
-    const auto radius_squared =
-        radius * radius;
-    const auto center_offset =
-        ray_origin - center;
-    const auto center_distance_squared =
-        dot(center_offset, center_offset);
-    const auto light_normal =
-        sampling::safe_normalize(
-            center_offset,
-            -ray_direction);
     sampling::RayPrimitiveIntersection geometry{
         .valid = false,
         .distance = 0.0f,
         .position = ray_origin};
     Float3 normal = -ray_direction;
     Float conditional_pdf = 0.0f;
-    $if (sphere) {
-        geometry =
-            sampling::intersect_sphere(
-                ray_origin,
-                ray_direction,
-                ray_minimum,
-                ray_maximum,
-                center,
-                radius);
-        normal = sampling::safe_normalize(
-            geometry.position - center,
-            -ray_direction);
-        conditional_pdf =
-            sampling::sphere_light_pdf(
-                center_distance_squared,
-                radius_squared,
-                previous_normal,
-                ray_direction,
-                had_transmission,
-                outside_one_minus_cosine);
-    }
-    $else {
-        geometry =
-            sampling::intersect_disk(
-                ray_origin,
-                ray_direction,
-                ray_minimum,
-                ray_maximum,
-                center,
-                light_normal,
-                radius);
-        const auto light_cosine =
-            dot(light_normal, -ray_direction);
-        conditional_pdf =
-            sampling::point_disk_pdf(
-                geometry.distance *
-                    geometry.distance,
-                light_cosine,
-                radius);
+    Bool valid = false;
+    $if (radius > 0.0f) {
+        const auto center_offset =
+            ray_origin - center;
+        $if (sphere) {
+            geometry =
+                sampling::intersect_sphere(
+                    ray_origin,
+                    ray_direction,
+                    ray_minimum,
+                    ray_maximum,
+                    center,
+                    radius);
+            valid = geometry.valid;
+            $if (valid) {
+                const auto radius_squared =
+                    radius * radius;
+                const auto center_distance_squared =
+                    dot(center_offset, center_offset);
+                const auto sphere_cap =
+                    cycles_sample_mapping::
+                        sin_squared_to_one_minus_cosine(
+                            radius_squared /
+                            max(
+                                center_distance_squared,
+                                1.0e-30f));
+                const auto outside_one_minus_cosine =
+                    has_spot_cap
+                        ? luisa::compute::min(sphere_cap, spot_cap)
+                        : sphere_cap;
+                normal = sampling::safe_normalize(
+                    geometry.position - center,
+                    -ray_direction);
+                conditional_pdf =
+                    sampling::sphere_light_pdf(
+                        center_distance_squared,
+                        radius_squared,
+                        previous_normal,
+                        ray_direction,
+                        had_transmission,
+                        outside_one_minus_cosine);
+            };
+        }
+        $else {
+            const auto light_normal =
+                sampling::safe_normalize(
+                    center_offset,
+                    -ray_direction);
+            geometry =
+                sampling::intersect_disk(
+                    ray_origin,
+                    ray_direction,
+                    ray_minimum,
+                    ray_maximum,
+                    center,
+                    light_normal,
+                    radius);
+            valid = geometry.valid;
+            $if (valid) {
+                const auto light_cosine =
+                    dot(light_normal, -ray_direction);
+                conditional_pdf =
+                    sampling::point_disk_pdf(
+                        geometry.distance *
+                            geometry.distance,
+                        light_cosine,
+                        radius);
+            };
+        };
     };
     return {
-        .valid =
-            geometry.valid &
-            (radius > 0.0f),
+        .valid = valid,
         .distance = geometry.distance,
         .position = geometry.position,
         .normal = normal,
@@ -137,16 +156,6 @@ intersect_point(
     namespace sampling =
         analytic_light_sampling;
 
-    const auto center_distance_squared =
-        dot(ray_origin - center,
-            ray_origin - center);
-    const auto sphere_cap =
-        cycles_sample_mapping::
-            sin_squared_to_one_minus_cosine(
-                radius * radius /
-                max(
-                    center_distance_squared,
-                    1.0e-30f));
     auto result =
         intersect_point_geometry(
             ray_origin,
@@ -158,21 +167,24 @@ intersect_point(
             sphere,
             previous_normal,
             had_transmission,
-            sphere_cap);
-    const auto transform =
-        sampling::light_linear_transform(
-            axis_x,
-            axis_y,
-            axis_z,
-            axis_scale);
-    result.uv =
-        sampling::point_light_uv(
-            result.normal,
-            transform);
-    result.evaluation_factor =
-        sampling::point_eval_factor(
-            radius,
-            normalize_power);
+            false,
+            0.0f);
+    $if (result.valid) {
+        const auto transform =
+            sampling::light_linear_transform(
+                axis_x,
+                axis_y,
+                axis_z,
+                axis_scale);
+        result.uv =
+            sampling::point_light_uv(
+                result.normal,
+                transform);
+        result.evaluation_factor =
+            sampling::point_eval_factor(
+                radius,
+                normalize_power);
+    };
     return result;
 }
 
@@ -197,67 +209,67 @@ intersect_spot(
     namespace sampling =
         analytic_light_sampling;
 
-    const auto center_distance_squared =
-        dot(ray_origin - center,
-            ray_origin - center);
-    const auto radius_squared =
-        radius * radius;
-    const auto sphere_cap =
-        cycles_sample_mapping::
-            sin_squared_to_one_minus_cosine(
-                radius_squared /
-                max(
-                    center_distance_squared,
-                    1.0e-30f));
-    const auto spot_cap = 1.0f - spot.cos_half_larger_spread;
-    auto result =
-        intersect_point_geometry(
-            ray_origin,
-            ray_direction,
-            ray_minimum,
-            ray_maximum,
-            center,
-            radius,
-            sphere,
-            previous_normal,
-            had_transmission,
-            luisa::compute::min(
-                sphere_cap, spot_cap));
-    const auto transform =
-        sampling::light_linear_transform(
-            axis_x,
-            axis_y,
-            axis_z,
-            axis_scale);
-    const auto local_ray =
-        sampling::spot_light_to_local(
-            -ray_direction,
-            transform);
-    result.uv =
-        sampling::spot_light_uv(
-            local_ray,
-            spot.half_cot_half_spot_angle);
-    const auto use_attenuation =
-        !sphere |
-        (center_distance_squared >
-         radius_squared);
-    const auto attenuation =
-        sampling::spot_light_attenuation(
-            local_ray,
-            spot);
-    result.evaluation_factor =
-        sampling::point_eval_factor(
-            radius,
-            normalize_power) *
-        select(
-            1.0f,
-            attenuation,
-            use_attenuation);
-    result.valid &=
-        (dot(
-             ray_direction,
-             ray_origin - center) <
-         0.0f);
+    PointIntersection result{
+        .valid = false,
+        .distance = 0.0f,
+        .position = ray_origin,
+        .normal = -ray_direction,
+        .uv = make_float2(0.0f),
+        .conditional_pdf = 0.0f,
+        .evaluation_factor = 0.0f};
+    const auto center_offset = ray_origin - center;
+    $if (dot(ray_direction, center_offset) < 0.0f) {
+        const auto spot_cap = 1.0f - spot.cos_half_larger_spread;
+        result =
+            intersect_point_geometry(
+                ray_origin,
+                ray_direction,
+                ray_minimum,
+                ray_maximum,
+                center,
+                radius,
+                sphere,
+                previous_normal,
+                had_transmission,
+                true,
+                spot_cap);
+        $if (result.valid) {
+            const auto center_distance_squared =
+                dot(center_offset, center_offset);
+            const auto radius_squared =
+                radius * radius;
+            const auto transform =
+                sampling::light_linear_transform(
+                    axis_x,
+                    axis_y,
+                    axis_z,
+                    axis_scale);
+            const auto local_ray =
+                sampling::spot_light_to_local(
+                    -ray_direction,
+                    transform);
+            result.uv =
+                sampling::spot_light_uv(
+                    local_ray,
+                    spot.half_cot_half_spot_angle);
+            const auto use_attenuation =
+                !sphere |
+                (center_distance_squared >
+                 radius_squared);
+            const auto attenuation =
+                sampling::spot_light_attenuation(
+                    local_ray,
+                    spot);
+            result.evaluation_factor =
+                sampling::point_eval_factor(
+                    radius,
+                    normalize_power) *
+                select(
+                    1.0f,
+                    attenuation,
+                    use_attenuation);
+        };
+    };
     return result;
 }
 
@@ -304,32 +316,38 @@ intersect_area(
         inside_rectangle &
         (!ellipse |
          (u * u + v * v <= 0.25f));
-
-    const AreaLightSampling
-        area_sampling;
-    const auto evaluation =
-        area_sampling.from_intersection(
-            {.reference = ray_origin,
-             .center = center,
-             .axis_u = axis_u,
-             .axis_v = axis_v,
-             .axis_z = axis_z,
-             .length_u = length_u,
-             .length_v = length_v,
-             .spread = spread,
-             .ellipse = ellipse,
-             .random =
-                 make_float2(0.0f),
-             .normalize_power =
-                 normalize_power},
-            ray_direction,
-            distance);
     const auto valid =
         (direction_normal < 0.0f) &
         (distance > ray_minimum) &
         (distance < ray_maximum) &
         inside_shape &
         (length_u > 0.0f) & (length_v > 0.0f);
+
+    Float conditional_pdf = 0.0f;
+    Float evaluation_factor = 0.0f;
+    $if (valid) {
+        const AreaLightSampling
+            area_sampling;
+        const auto evaluation =
+            area_sampling.from_intersection(
+                {.reference = ray_origin,
+                 .center = center,
+                 .axis_u = axis_u,
+                 .axis_v = axis_v,
+                 .axis_z = axis_z,
+                 .length_u = length_u,
+                 .length_v = length_v,
+                 .spread = spread,
+                 .ellipse = ellipse,
+                 .random =
+                     make_float2(0.0f),
+                 .normalize_power =
+                     normalize_power},
+                ray_direction,
+                distance);
+        conditional_pdf = evaluation.conditional_pdf;
+        evaluation_factor = evaluation.evaluation_factor;
+    };
     return {
         .valid = valid,
         .distance = distance,
@@ -338,9 +356,9 @@ intersect_area(
         // Cycles exposes lamp UV in Embree/OptiX barycentric notation.
         .uv = make_float2(v + 0.5f, -u - v),
         .conditional_pdf =
-            evaluation.conditional_pdf,
+            conditional_pdf,
         .evaluation_factor =
-            evaluation.evaluation_factor};
+            evaluation_factor};
 }
 
 }// namespace psycles::luisa_backend::analytic_light_intersection
