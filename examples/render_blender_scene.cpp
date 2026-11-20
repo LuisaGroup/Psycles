@@ -10,8 +10,11 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -227,6 +230,41 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
 }// namespace
 
 int main(int argc, char **argv) {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
+    const auto program_begin = std::chrono::steady_clock::now();
+    auto emit_phase = [&](std::string_view phase,
+                          const std::string &detail = {}) {
+        luisa::log_flush();
+        const auto now_sys = std::chrono::system_clock::now();
+        const auto ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                now_sys.time_since_epoch()) %
+            1000;
+        const auto tt = std::chrono::system_clock::to_time_t(now_sys);
+        std::tm local_tm{};
+#ifdef _WIN32
+        localtime_s(&local_tm, &tt);
+#else
+        localtime_r(&tt, &local_tm);
+#endif
+        const auto elapsed =
+            std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - program_begin)
+                .count();
+        char ts[32];
+        std::snprintf(ts, sizeof(ts), "%04d-%02d-%02d %02d:%02d:%02d.%03d",
+                      local_tm.tm_year + 1900, local_tm.tm_mon + 1,
+                      local_tm.tm_mday, local_tm.tm_hour, local_tm.tm_min,
+                      local_tm.tm_sec, static_cast<int>(ms.count()));
+        std::cout << "[phase] " << ts << " (+" << std::fixed
+                  << std::setprecision(3) << elapsed << "s) " << phase;
+        if (!detail.empty()) {
+            std::cout << ' ' << detail;
+        }
+        std::cout << '\n' << std::flush;
+        std::fflush(stdout);
+    };
     if (argc < 3 || argc > 33) {
       std::cerr << "usage: psycles_render_blender_scene "
                    "<export-directory> <output.ppm> "
@@ -260,7 +298,14 @@ int main(int argc, char **argv) {
     const auto output = std::filesystem::path{argv[2]};
   const auto backend_name = std::string_view{argc > 3 ? argv[3] : "fallback"};
 
+    emit_phase("start", "backend=" + std::string{backend_name});
+    const auto load_begin = std::chrono::steady_clock::now();
   auto imported = psycles::adapter::load_blender_scene_bundle(bundle);
+    const auto load_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                      load_begin)
+            .count();
+    emit_phase("scene_loaded", "load_s=" + std::to_string(load_seconds));
     for (const auto &diagnostic : imported.diagnostics) {
         std::cerr
             << (diagnostic.severity ==
@@ -583,8 +628,16 @@ int main(int argc, char **argv) {
   }
 
     enforce_vulkan_native_xir_spirv(backend_name);
+    const auto device_begin = std::chrono::steady_clock::now();
     luisa::compute::Context context{argv[0]};
     auto device = context.create_device(backend_name);
+    const auto device_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                      device_begin)
+            .count();
+    emit_phase("device_created", "backend=" + std::string{backend_name} +
+                                     " device_s=" +
+                                     std::to_string(device_seconds));
     psycles::luisa_backend::LuisaPathTracerBackend renderer{
         std::move(device),
         {.next_event_estimation = true,
@@ -622,6 +675,8 @@ int main(int argc, char **argv) {
       std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                     compile_begin)
             .count();
+    emit_phase("scene_compiled",
+               "compile_scene_s=" + std::to_string(compile_seconds));
 
     const psycles::contract::RenderSettings settings{
         .full_extent = {.width = width, .height = height},
@@ -698,15 +753,19 @@ int main(int argc, char **argv) {
              .name = "VolumeInd",
              .light_group = {},
              .channels = 3u}}};
+  emit_phase("session_compile_pso_begin");
   const auto session_begin = std::chrono::steady_clock::now();
   auto session = renderer.create_session(*compilation.scene, settings);
     if (!session) {
+        emit_phase("session_compile_pso_failed");
         return EXIT_FAILURE;
     }
     const auto session_seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                     session_begin)
             .count();
+    emit_phase("session_compile_pso_done",
+               "session_compile_pso_s=" + std::to_string(session_seconds));
     const auto write_surface_closure_histogram_if_requested = [&]() {
         if (!surface_closure_count_histogram_output) {
             return true;
@@ -828,12 +887,20 @@ int main(int argc, char **argv) {
                       &ft_user0);
     }
 #endif
+    emit_phase("render_begin",
+               "width=" + std::to_string(width) +
+                   " height=" + std::to_string(height) +
+                   " samples=" + std::to_string(sample_count) +
+                   " scheduler=" +
+                   std::string{psycles::luisa_backend::luisa_path_scheduler_name(
+                       scheduler)});
     const auto render_begin = std::chrono::steady_clock::now();
   if (!session->render_samples({.first = sample_first,
              .count = sample_count,
              .offset = 0u,
              .total = samples},
             sink)) {
+    emit_phase("render_failed");
     std::cerr << "error: rendering failed or returned incomplete "
                "sample coverage\n";
         return EXIT_FAILURE;
@@ -842,6 +909,15 @@ int main(int argc, char **argv) {
       std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                     render_begin)
             .count();
+    {
+        const auto t = session->last_render_timings();
+        const double integ = t ? t->integration_seconds : render_call_seconds;
+        const double pass_out = t ? t->pass_output_seconds : 0.0;
+        emit_phase("render_done",
+                   "render_call_s=" + std::to_string(render_call_seconds) +
+                       " integration_s=" + std::to_string(integ) +
+                       " pass_output_s=" + std::to_string(pass_out));
+    }
 #ifdef _WIN32
     if (print_render_utilization) {
       GetProcessTimes(GetCurrentProcess(), &ft_create1, &ft_exit1, &ft_kernel1,
@@ -896,6 +972,7 @@ int main(int argc, char **argv) {
   if (combined == nullptr || normal == nullptr || albedo == nullptr) {
         return EXIT_FAILURE;
     }
+    const auto output_begin = std::chrono::steady_clock::now();
     if (!output.parent_path().empty()) {
         std::filesystem::create_directories(output.parent_path());
     }
@@ -959,6 +1036,11 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 #endif
+    const auto output_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                      output_begin)
+            .count();
+    emit_phase("output_written", "output_s=" + std::to_string(output_seconds));
 
     std::cout
         << "Luisa/" << backend_name << '/'

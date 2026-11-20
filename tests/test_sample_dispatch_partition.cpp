@@ -205,6 +205,18 @@ int main() {
                 std::numeric_limits<std::uint32_t>::max(),
         "a backend without the watchdog policy was unexpectedly bounded");
     require(
+        backend_max_pixel_samples_per_dispatch("vk", false) ==
+                watchdog_max_pixel_samples_per_dispatch &&
+            backend_max_pixel_samples_per_dispatch("vk", true) ==
+                std::numeric_limits<std::uint32_t>::max() &&
+            backend_max_pixel_samples_per_dispatch("metal", true) ==
+                watchdog_max_pixel_samples_per_dispatch &&
+            backend_max_pixel_samples_per_dispatch("dx", false) ==
+                std::numeric_limits<std::uint32_t>::max() &&
+            backend_max_pixel_samples_per_dispatch("hip", true) ==
+                std::numeric_limits<std::uint32_t>::max(),
+        "scheduler-aware watchdog dispatch policy regressed");
+    require(
         !PixelRowDispatchPartition::make(0u, 1u, 1u, 1u),
         "zero-width pixel partition was accepted");
     require(
