@@ -60,11 +60,15 @@ LuisaPathTracerBackend::LuisaPathTracerBackend(
     : _device{std::move(device)},
       _options{options} {
     if (_device) {
+        const bool is_wavefront =
+            _options.scheduler == LuisaPathScheduler::wavefront ||
+            _options.scheduler == LuisaPathScheduler::wavefront_staged ||
+            _options.scheduler == LuisaPathScheduler::wavefront_graph;
         _options.max_pixel_samples_per_dispatch =
             std::min(
                 _options.max_pixel_samples_per_dispatch,
                 backend_max_pixel_samples_per_dispatch(
-                    _device.backend_name()));
+                    _device.backend_name(), is_wavefront));
     }
     if (const auto env_limit = env_max_pixel_samples_per_dispatch()) {
         _options.max_pixel_samples_per_dispatch =
