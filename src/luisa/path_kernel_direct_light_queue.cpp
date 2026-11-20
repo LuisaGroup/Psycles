@@ -1080,6 +1080,14 @@ public:
                  count, _capacity);
     auto consumer_parameters = parameters;
     consumer_parameters.shadow_storage_block_size = _execution_block_size;
+    // The 32-lane _gather specialization uses a 256-thread workgroup with
+    // 8-warp LDS reduction and sync_block(). Dispatch whole 256-thread blocks
+    // so Luisa's entry bounds guard never exits trailing warps before they
+    // initialize warp_totals[warp_id] and reach the workgroup barriers.
+    const auto gather_threads =
+        _warp_size == 32u
+            ? ((std::max(_host_counts[3], 1u) + 255u) / 256u) * 256u
+            : std::max(_host_counts[3], 1u);
     if (stage == 0u && _fuse_unoccluded_shadow) {
       const auto prior_stage1 = _host_counts[1u];
       const auto scratch_slot = _scratch_slot;
@@ -1088,7 +1096,7 @@ public:
         const auto chain_mode = 1u + _chained_slot;
         _chained_slot ^= 1u;
         commands << _gather(1u, _host_counts[3], scratch_slot, 0u)
-                        .dispatch(_host_counts[3])
+                        .dispatch(gather_threads)
                  << _consumers[0u](combined, light_passes, volume_guiding_raw,
                                    consumer_parameters, count, chain_mode)
                         .dispatch(count)
@@ -1100,12 +1108,12 @@ public:
         _scratch_slot ^= 1u;
         const auto upper_bound = count + prior_stage1;
         commands << _gather(1u, _host_counts[3], scratch_slot, 0u)
-                        .dispatch(_host_counts[3])
+                        .dispatch(gather_threads)
                  << _consumers[0u](combined, light_passes, volume_guiding_raw,
                                    consumer_parameters, count, 0u)
                         .dispatch(count)
                  << _gather(2u, _host_counts[3], stage1_scratch, 1u)
-                        .dispatch(_host_counts[3])
+                        .dispatch(gather_threads)
                  << _consumers[1u](combined, light_passes, volume_guiding_raw,
                                    consumer_parameters, upper_bound,
                                    3u + stage1_scratch)
@@ -1116,7 +1124,7 @@ public:
     const auto scratch_slot = _scratch_slot;
     _scratch_slot ^= 1u;
     commands << _gather(stage + 1u, _host_counts[3], scratch_slot, 0u)
-                    .dispatch(_host_counts[3])
+                    .dispatch(gather_threads)
              << _consumers[stage](combined, light_passes, volume_guiding_raw,
                                   consumer_parameters, count, 0u)
                     .dispatch(count);
