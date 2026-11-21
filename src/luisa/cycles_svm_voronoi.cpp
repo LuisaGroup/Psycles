@@ -72,26 +72,16 @@ void node_tex_voronoi(Cursor &cursor, Stack &stack,
       voronoi_extra_enabled, filter, dimensions, feature, metric, normalize,
       vector, w, scale, detail, roughness, lacunarity, smoothness, exponent,
       randomness);
-  $if (distance_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, distance_offset, output.color_distance.w);
-  };
+  stack_store_float_if_valid(stack, distance_offset, output.color_distance.w);
   if (options.may_need_color) {
-    $if (color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_float3(stack, color_offset, output.color_distance.xyz());
-    };
+    stack_store_float3_if_valid(stack, color_offset, output.color_distance.xyz());
   }
   if (options.may_need_position) {
-    $if (position_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_float3(stack, position_offset, output.position.xyz());
-    };
-    $if (w_output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_float(stack, w_output_offset, output.position.w);
-    };
+    stack_store_float3_if_valid(stack, position_offset, output.position.xyz());
+    stack_store_float_if_valid(stack, w_output_offset, output.position.w);
   }
   if (options.may_need_radius) {
-    $if (radius_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_float(stack, radius_offset, output.radius);
-    };
+    stack_store_float_if_valid(stack, radius_offset, output.radius);
   }
 }
 

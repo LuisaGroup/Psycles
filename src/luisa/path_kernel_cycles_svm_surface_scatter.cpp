@@ -201,8 +201,8 @@ SurfaceScatterStage::Result commit_cycles_svm_surface_continuation(
   const auto commit_bsdf = [&] noexcept {
     const auto transparent = (prepared.label & closure::label_transparent) != 0u;
     $if(transparent) {
-      sample.ray->set_t_min(
-          surface_ray::intersection_t_offset(prepared.ray_length));
+      sample.ray->set_t_min(surface_ray::intersection_t_offset(
+          max(sample.ray->t_min(), prepared.ray_length)));
     }
     $else {
       const auto D = normalize(prepared.wo);
@@ -336,7 +336,8 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
         $if(transparent) {
           // No direction normalization, geometry fetch/offset or differential
           // widening occurs on this edge of the original integrator.
-          sample.ray->set_t_min(surface_ray::intersection_t_offset(sd.ray_length));
+          sample.ray->set_t_min(surface_ray::intersection_t_offset(
+              max(sample.ray->t_min(), sd.ray_length)));
         }
         $else {
           const auto D = normalize(bsdf.wo);

@@ -22,12 +22,12 @@ using namespace compiler::cycles_svm;
 }
 
 [[nodiscard]] Float3 safe_normalize_cycles(Expr<luisa::float3> value) noexcept {
-  const Float length_squared = dot(value, value);
-  Float3 result = value;
-  // The zero-vector guard is structural Cycles behavior; only the non-zero
-  // arithmetic is delegated to the backend-native NORMALIZE operation.
-  $if (length_squared != 0.0f) { result = normalize(value); };
-  return result;
+  const Float3 v = value;
+  const Float length_squared = dot(v, v);
+  // Branchless zero-vector guard: preserves zero vectors without NaN while
+  // avoiding per-call CFG diamonds inside mega-kernels.
+  const Float inv_len = rsqrt(max(length_squared, 1.0e-38f));
+  return select(v, v * inv_len, length_squared != 0.0f);
 }
 
 [[nodiscard]] Bool object_has_motion(const ShaderData &shader_data) noexcept {
@@ -137,6 +137,28 @@ void object_inverse_normal_transform(Float3 &value,
                                      const TransformState &transform_state,
                                      const ShaderData &shader_data,
                                      bool object_motion_enabled) noexcept {
+  if (!object_motion_enabled && transform_state.lazy_object_buffer &&
+      *transform_state.lazy_object_buffer) {
+    static auto callable = []() noexcept {
+      Callable result{[](BufferVar<KernelObject> objects, UInt object,
+                         Float3 n) noexcept {
+        Float3 out = n;
+        $if(object != object_none) {
+          const auto t = objects.read(object).tfm;
+          const Float3 r0 = make_float3(t.x.x, t.x.y, t.x.z);
+          const Float3 r1 = make_float3(t.y.x, t.y.y, t.y.z);
+          const Float3 r2 = make_float3(t.z.x, t.z.y, t.z.z);
+          out = safe_normalize_cycles(r0 * n.x + r1 * n.y + r2 * n.z);
+        };
+        return out;
+      }};
+      result.set_name("cycles_obj_inv_normal_if_obj");
+      return result;
+    }();
+    value = callable(*transform_state.lazy_object_buffer, shader_data.object,
+                     value);
+    return;
+  }
   const Bool is_object = shader_data.object != object_none;
   if (object_motion_enabled) {
     $if (object_has_motion(shader_data)) {
@@ -338,9 +360,7 @@ void node_vector_transform(Cursor &cursor, Stack &stack,
     };
   };
 
-  $if (vector_out_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, vector_out_offset, value);
-  };
+  stack_store_float3_if_valid(stack, vector_out_offset, value);
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

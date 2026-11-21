@@ -122,7 +122,7 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
       carries_light =
           advance_shadow_surface_state(context, throughput, surface);
       $if(carries_light) {
-        last_distance = hit.distance;
+        last_distance = max(last_distance, hit.distance);
       };
     };
     task.shadow_throughput = throughput;

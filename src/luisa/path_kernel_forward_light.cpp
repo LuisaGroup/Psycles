@@ -40,7 +40,8 @@ public:
     // edges in Cycles. Advance every geometric lamp hit, including empty
     // spread/spot evaluations and indirect visibility exclusions.
     ray = make_ray(ray->origin(), ray->direction(),
-                   surface_ray::intersection_t_offset(event.distance),
+                   surface_ray::intersection_t_offset(
+                       max(ray->t_min(), event.distance)),
                    ray->t_max());
     const auto visible = cycles_light_shader_visible(
         light.cycles_shader_flags, sample.cycles_path_visibility, path_flags);

@@ -209,12 +209,8 @@ void node_tex_wave(Cursor &cursor, Stack &stack,
     };
   }
   const auto factor = wave_profile(profile, coordinate, options.profile_mask);
-  $if(factor_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, factor_offset, factor);
-  };
-  $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, color_offset, make_float3(factor));
-  };
+  stack_store_float_if_valid(stack, factor_offset, factor);
+  stack_store_float3_if_valid(stack, color_offset, make_float3(factor));
 }
 
 void node_tex_magic(Cursor &cursor, Stack &stack) noexcept {
@@ -229,13 +225,9 @@ void node_tex_magic(Cursor &cursor, Stack &stack) noexcept {
       cycles_magic::evaluate(depth, stack_load_float3(stack, coordinate_offset),
                              stack_load_input_float(stack, scale_bits),
                              stack_load_input_float(stack, distortion_bits));
-  $if(factor_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, factor_offset,
-                      (color.x + color.y + color.z) * (1.0f / 3.0f));
-  };
-  $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, color_offset, color);
-  };
+  stack_store_float_if_valid(stack, factor_offset,
+                             (color.x + color.y + color.z) * (1.0f / 3.0f));
+  stack_store_float3_if_valid(stack, color_offset, color);
 }
 
 void node_tex_checker(Cursor &cursor, Stack &stack) noexcept {
@@ -255,16 +247,23 @@ void node_tex_checker(Cursor &cursor, Stack &stack) noexcept {
                      stack_load_input_float(stack, scale_bits);
   const auto factor = cycles_checker::evaluate(point);
   const auto first = factor == 1.0f;
-  $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+  const auto emit_checker_color = [&](Expr<std::uint32_t> co) noexcept {
     const auto color1 =
         stack_load_input_float3(stack, color1_x, color1_y, color1_z);
     const auto color2 =
         stack_load_input_float3(stack, color2_x, color2_y, color2_z);
-    stack_store_float3(stack, color_offset, select(color2, color1, first));
+    stack_store_float3(stack, co, select(color2, color1, first));
   };
-  $if(factor_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, factor_offset, factor);
-  };
+  if (const auto cco = try_const_uint(color_offset)) {
+    if (*cco != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_checker_color(*cco);
+    }
+  } else {
+    $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_checker_color(color_offset);
+    };
+  }
+  stack_store_float_if_valid(stack, factor_offset, factor);
 }
 
 void node_tex_brick(Cursor &cursor, Stack &stack) noexcept {
@@ -303,7 +302,7 @@ void node_tex_brick(Cursor &cursor, Stack &stack) noexcept {
       stack_load_input_float(stack, row_height_bits), offset_amount,
       offset_frequency, squash_amount, squash_frequency);
 
-  $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+  const auto emit_brick_color = [&](Expr<std::uint32_t> co) noexcept {
     auto color1 = stack_load_input_float3(stack, color1_x, color1_y, color1_z);
     const auto color2 =
         stack_load_input_float3(stack, color2_x, color2_y, color2_z);
@@ -312,13 +311,20 @@ void node_tex_brick(Cursor &cursor, Stack &stack) noexcept {
     $if(evaluated.mortar != 1.0f) {
       color1 = (1.0f - evaluated.tint) * color1 + evaluated.tint * color2;
     };
-    stack_store_float3(stack, color_offset,
+    stack_store_float3(stack, co,
                        color1 * (1.0f - evaluated.mortar) +
                            mortar * evaluated.mortar);
   };
-  $if(factor_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, factor_offset, evaluated.mortar);
-  };
+  if (const auto cco = try_const_uint(color_offset)) {
+    if (*cco != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_brick_color(*cco);
+    }
+  } else {
+    $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_brick_color(color_offset);
+    };
+  }
+  stack_store_float_if_valid(stack, factor_offset, evaluated.mortar);
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

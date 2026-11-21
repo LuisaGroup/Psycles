@@ -1988,3 +1988,13 @@ psycles_add_luisa_backend_test(
     SOURCE tests/test_luisa_light_tree.cpp
     TEST_STEM luisa_light_tree
     LIBRARIES Psycles::luisa_runtime)
+
+psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_direct_jit_stack_tests
+    SOURCE tests/test_luisa_cycles_svm_direct_jit_stack.cpp
+    TEST_STEM luisa_cycles_svm_direct_jit_stack
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_cycles_svm_direct_jit_stack_tests
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests")

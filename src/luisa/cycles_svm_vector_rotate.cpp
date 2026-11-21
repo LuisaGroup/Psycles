@@ -87,7 +87,7 @@ void node_vector_rotate(Cursor &cursor, Stack &stack) noexcept {
   const auto invert = cursor.byte(packed, 0u);
   const auto result_offset = cursor.byte(packed, 1u);
 
-  $if (result_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+  const auto emit_body = [&](Expr<std::uint32_t> out_off) noexcept {
     const Float3 vector =
         stack_load_input_float3(stack, vector_x, vector_y, vector_z);
     const Float3 center =
@@ -131,7 +131,16 @@ void node_vector_rotate(Cursor &cursor, Stack &stack) noexcept {
       $else { result = vector; };
     };
 
-    stack_store_float3(stack, result_offset, result);
+    stack_store_float3(stack, out_off, result);
+  };
+  if (const auto cr = try_const_uint(result_offset)) {
+    if (*cr != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_body(*cr);
+    }
+    return;
+  }
+  $if (result_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    emit_body(result_offset);
   };
 }
 

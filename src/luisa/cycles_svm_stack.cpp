@@ -7,23 +7,66 @@
 #include <bit>
 
 #include <luisa/ast/expression.h>
+#include <luisa/ast/function_builder.h>
 #include <luisa/core/logging.h>
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
 
+namespace {
+
+[[nodiscard]] std::optional<std::uint32_t>
+eval_const_uint_expr(const luisa::compute::Expression *raw) noexcept {
+  using namespace luisa::compute;
+  if (raw == nullptr) {
+    return std::nullopt;
+  }
+  switch (raw->tag()) {
+    case Expression::Tag::LITERAL: {
+      const auto &val = static_cast<const LiteralExpr *>(raw)->value();
+      if (const auto *u = luisa::get_if<luisa::uint>(&val)) {
+        return static_cast<std::uint32_t>(*u);
+      }
+      if (const auto *i = luisa::get_if<int>(&val)) {
+        return static_cast<std::uint32_t>(*i);
+      }
+      return std::nullopt;
+    }
+    case Expression::Tag::BINARY: {
+      const auto *bin = static_cast<const BinaryExpr *>(raw);
+      const auto lhs = eval_const_uint_expr(bin->lhs());
+      const auto rhs = eval_const_uint_expr(bin->rhs());
+      if (!lhs || !rhs) {
+        return std::nullopt;
+      }
+      switch (bin->op()) {
+        case BinaryOp::ADD: return *lhs + *rhs;
+        case BinaryOp::SUB: return *lhs - *rhs;
+        case BinaryOp::BIT_AND: return *lhs & *rhs;
+        case BinaryOp::BIT_OR: return *lhs | *rhs;
+        case BinaryOp::BIT_XOR: return *lhs ^ *rhs;
+        case BinaryOp::SHL: return (*rhs < 32u) ? (*lhs << *rhs) : 0u;
+        case BinaryOp::SHR: return (*rhs < 32u) ? (*lhs >> *rhs) : 0u;
+        default: return std::nullopt;
+      }
+    }
+    case Expression::Tag::CAST: {
+      const auto *cast = static_cast<const CastExpr *>(raw);
+      if (cast->op() == CastOp::STATIC) {
+        return eval_const_uint_expr(cast->expression());
+      }
+      return std::nullopt;
+    }
+    default:
+      return std::nullopt;
+  }
+}
+
+} // namespace
+
 std::optional<std::uint32_t>
 try_const_uint(luisa::compute::Expr<std::uint32_t> expr) noexcept {
-  const auto *raw = expr.expression();
-  if (raw != nullptr &&
-      raw->tag() == luisa::compute::Expression::Tag::LITERAL) {
-    const auto &val =
-        static_cast<const luisa::compute::LiteralExpr *>(raw)->value();
-    if (const auto *u = luisa::get_if<luisa::uint>(&val)) {
-      return static_cast<std::uint32_t>(*u);
-    }
-  }
-  return std::nullopt;
+  return eval_const_uint_expr(expr.expression());
 }
 
 std::optional<std::int32_t>
@@ -38,6 +81,214 @@ try_const_int(luisa::compute::Expr<std::int32_t> expr) noexcept {
     }
   }
   return std::nullopt;
+}
+
+std::optional<float>
+try_const_float(luisa::compute::Expr<float> expr) noexcept {
+  const auto *raw = expr.expression();
+  if (raw != nullptr &&
+      raw->tag() == luisa::compute::Expression::Tag::LITERAL) {
+    const auto &val =
+        static_cast<const luisa::compute::LiteralExpr *>(raw)->value();
+    if (const auto *f = luisa::get_if<float>(&val)) {
+      return *f;
+    }
+  }
+  return std::nullopt;
+}
+
+luisa::compute::Expr<std::uint32_t>
+stack_offset_add(luisa::compute::Expr<std::uint32_t> base,
+                 std::uint32_t delta) noexcept {
+  if (delta == 0u) {
+    return base;
+  }
+  if (const auto cb = try_const_uint(base)) {
+    return luisa::compute::Expr<std::uint32_t>{*cb + delta};
+  }
+  return base + delta;
+}
+
+luisa::compute::Expr<std::uint32_t>
+stack_offset_add(luisa::compute::Expr<std::uint32_t> base,
+                 luisa::compute::Expr<std::uint32_t> delta) noexcept {
+  const auto cb = try_const_uint(base);
+  const auto cd = try_const_uint(delta);
+  if (cb && cd) {
+    return luisa::compute::Expr<std::uint32_t>{*cb + *cd};
+  }
+  if (cd && *cd == 0u) {
+    return base;
+  }
+  if (cb && *cb == 0u) {
+    return delta;
+  }
+  return base + delta;
+}
+
+Stack::Stack(std::size_t size, bool direct_jit_mode) noexcept
+    : _size{size}, _direct_jit{direct_jit_mode} {
+  if (_direct_jit) {
+    auto *fb = luisa::compute::detail::FunctionBuilder::current();
+    _owner_fb = fb;
+    _root_scope = fb != nullptr ? fb->current_scope() : nullptr;
+    _slots.resize(_size);
+  } else {
+    _array.emplace(size);
+  }
+}
+
+Stack::Stack(std::size_t size) noexcept : Stack{size, false} {}
+
+Stack Stack::direct_jit(std::size_t size) noexcept {
+  return Stack{size, true};
+}
+
+bool Stack::at_root_scope() const noexcept {
+  const auto *fb = luisa::compute::detail::FunctionBuilder::current();
+  return fb != nullptr && fb == _owner_fb &&
+         fb->current_scope() == _root_scope;
+}
+
+std::optional<float>
+Stack::try_const_slot(std::uint32_t offset) const noexcept {
+  if (!_direct_jit || offset >= _size) {
+    return std::nullopt;
+  }
+  const auto &slot = _slots[offset];
+  if (!slot.use_var && slot.literal) {
+    return slot.literal;
+  }
+  return std::nullopt;
+}
+
+void Stack::materialize_all_to_vars() noexcept {
+  using namespace luisa::compute;
+  if (!_direct_jit) {
+    return;
+  }
+  for (auto &slot : _slots) {
+    if (slot.use_var) {
+      continue;
+    }
+    if (slot.literal) {
+      if (slot.var_expr == nullptr) {
+        Float v = *slot.literal;
+        slot.var_expr = v.expression();
+      } else {
+        dsl::assign(Float{slot.var_expr}, Expr<float>{*slot.literal});
+      }
+      slot.literal.reset();
+      slot.use_var = true;
+    } else if (slot.ssa_expr != nullptr) {
+      if (slot.var_expr == nullptr) {
+        Float v = Expr<float>{slot.ssa_expr};
+        slot.var_expr = v.expression();
+      } else {
+        dsl::assign(Float{slot.var_expr}, Expr<float>{slot.ssa_expr});
+      }
+      slot.ssa_expr = nullptr;
+      slot.use_var = true;
+    }
+  }
+}
+
+luisa::compute::Expr<float>
+Stack::load_const_expr(std::uint32_t offset) noexcept {
+  using namespace luisa::compute;
+  if (!_direct_jit) {
+    return Expr<float>{(*_array)[offset]};
+  }
+  if (offset >= _size) {
+    return Expr<float>{0.0f};
+  }
+  const auto &slot = _slots[offset];
+  if (slot.use_var && slot.var_expr != nullptr) {
+    return Expr<float>{slot.var_expr};
+  }
+  if (slot.literal) {
+    return Expr<float>{*slot.literal};
+  }
+  if (slot.ssa_expr != nullptr) {
+    return Expr<float>{slot.ssa_expr};
+  }
+  return Expr<float>{0.0f};
+}
+
+luisa::compute::Float Stack::load_const(std::uint32_t offset) noexcept {
+  if (!_direct_jit) {
+    return (*_array)[offset];
+  }
+  return luisa::compute::Float{load_const_expr(offset)};
+}
+
+luisa::compute::Float
+Stack::load_dynamic(luisa::compute::Expr<std::uint32_t> offset) noexcept {
+  LUISA_ASSERT(!_direct_jit,
+               "Dynamic SVM stack load is not supported in DirectJit mode.");
+  return (*_array)[offset];
+}
+
+void Stack::store_const(std::uint32_t offset,
+                        luisa::compute::Expr<float> value) noexcept {
+  using namespace luisa::compute;
+  if (!_direct_jit) {
+    (*_array)[offset] = value;
+    return;
+  }
+  if (offset >= _size) {
+    return;
+  }
+  auto &slot = _slots[offset];
+  if (at_root_scope()) {
+    if (const auto lit = try_const_float(value)) {
+      slot.literal = *lit;
+      slot.ssa_expr = nullptr;
+      slot.use_var = false;
+      return;
+    }
+    Float ssa = value;
+    slot.ssa_expr = ssa.expression();
+    slot.literal.reset();
+    slot.use_var = false;
+    return;
+  }
+  if (!slot.use_var) {
+    auto *fb = luisa::compute::detail::FunctionBuilder::current();
+    LUISA_ASSERT(fb != nullptr && fb == _owner_fb && _root_scope != nullptr &&
+                     !_root_scope->statements().empty(),
+                 "DirectJit Stack nested write requires a valid enclosing root scope.");
+    // Materialize the pre-branch slot value right before the enclosing
+    // statement in _root_scope so any non-taken sibling branch preserves the
+    // exact root-scope value (or 0.0f if previously unwritten) with zero
+    // uninitialized local reads across all backends.
+    const Expr<float> init_val =
+        slot.literal ? Expr<float>{*slot.literal}
+                     : (slot.ssa_expr != nullptr
+                            ? Expr<float>{slot.ssa_expr}
+                            : Expr<float>{0.0f});
+    const auto *enclosing = _root_scope->pop();
+    fb->with(_root_scope, [&]() noexcept {
+      if (slot.var_expr == nullptr) {
+        Float v = init_val;
+        slot.var_expr = v.expression();
+      } else {
+        dsl::assign(Float{slot.var_expr}, init_val);
+      }
+    });
+    _root_scope->append(enclosing);
+    slot.literal.reset();
+    slot.ssa_expr = nullptr;
+    slot.use_var = true;
+  }
+  dsl::assign(Float{slot.var_expr}, value);
+}
+
+void Stack::store_dynamic(luisa::compute::Expr<std::uint32_t> offset,
+                          luisa::compute::Expr<float> value) noexcept {
+  LUISA_ASSERT(!_direct_jit,
+               "Dynamic SVM stack store is not supported in DirectJit mode.");
+  (*_array)[offset] = value;
 }
 
 Cursor::Cursor(
@@ -148,9 +399,9 @@ luisa::compute::Expr<std::uint32_t> Cursor::byte(
 luisa::compute::Float stack_load_float(
     Stack &stack, luisa::compute::Expr<std::uint32_t> offset) noexcept {
   if (const auto c = try_const_uint(offset)) {
-    return stack[*c];
+    return stack.load_const(*c);
   }
-  return stack[offset];
+  return stack.load_dynamic(offset);
 }
 
 luisa::compute::Float stack_load_float_default(
@@ -163,7 +414,7 @@ luisa::compute::Float stack_load_float_default(
                   compiler::cycles_svm::SVM_STACK_INVALID)) {
       return value;
     }
-    return stack[*c];
+    return stack.load_const(*c);
   }
   Float result = value;
   $if (offset != static_cast<std::uint32_t>(
@@ -177,9 +428,13 @@ luisa::compute::Float3 stack_load_float3(
     Stack &stack, luisa::compute::Expr<std::uint32_t> offset) noexcept {
   using namespace luisa::compute;
   if (const auto c = try_const_uint(offset)) {
-    return make_float3(stack[*c], stack[*c + 1u], stack[*c + 2u]);
+    return make_float3(stack.load_const_expr(*c),
+                       stack.load_const_expr(*c + 1u),
+                       stack.load_const_expr(*c + 2u));
   }
-  return make_float3(stack[offset], stack[offset + 1u], stack[offset + 2u]);
+  return make_float3(stack.load_dynamic(offset),
+                     stack.load_dynamic(offset + 1u),
+                     stack.load_dynamic(offset + 2u));
 }
 
 luisa::compute::Float3 stack_load_float3_default(
@@ -192,7 +447,9 @@ luisa::compute::Float3 stack_load_float3_default(
                   compiler::cycles_svm::SVM_STACK_INVALID)) {
       return value;
     }
-    return make_float3(stack[*c], stack[*c + 1u], stack[*c + 2u]);
+    return make_float3(stack.load_const_expr(*c),
+                       stack.load_const_expr(*c + 1u),
+                       stack.load_const_expr(*c + 2u));
   }
   Float3 result = value;
   $if (offset != static_cast<std::uint32_t>(
@@ -205,9 +462,9 @@ luisa::compute::Float3 stack_load_float3_default(
 luisa::compute::Int stack_load_int(
     Stack &stack, luisa::compute::Expr<std::uint32_t> offset) noexcept {
   if (const auto c = try_const_uint(offset)) {
-    return stack[*c].bitcast<std::int32_t>();
+    return stack.load_const_expr(*c).bitcast<std::int32_t>();
   }
-  return stack[offset].bitcast<std::int32_t>();
+  return stack.load_dynamic(offset).bitcast<std::int32_t>();
 }
 
 luisa::compute::Float stack_load_input_float(
@@ -215,7 +472,7 @@ luisa::compute::Float stack_load_input_float(
   using namespace luisa::compute;
   if (const auto b = try_const_uint(bits)) {
     if ((*b >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
-      return stack[*b & 0xffu];
+      return stack.load_const(*b & 0xffu);
     }
     return std::bit_cast<float>(*b);
   }
@@ -239,7 +496,9 @@ luisa::compute::Float3 stack_load_input_float3(
   if (cx && cy && cz) {
     if ((*cx >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
       const auto off = *cx & 0xffu;
-      return make_float3(stack[off], stack[off + 1u], stack[off + 2u]);
+      return make_float3(stack.load_const_expr(off),
+                         stack.load_const_expr(off + 1u),
+                         stack.load_const_expr(off + 2u));
     }
     return make_float3(std::bit_cast<float>(*cx),
                        std::bit_cast<float>(*cy),
@@ -261,9 +520,9 @@ Dual1 stack_load_input_dual_float(
   if (const auto b = try_const_uint(bits)) {
     if ((*b >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
       const auto off = *b & 0xffu;
-      return {.val = stack[off],
-              .dx = stack[off + 1u],
-              .dy = stack[off + 2u]};
+      return {.val = stack.load_const(off),
+              .dx = stack.load_const(off + 1u),
+              .dy = stack.load_const(off + 2u)};
     }
     return {.val = std::bit_cast<float>(*b), .dx = 0.0f, .dy = 0.0f};
   }
@@ -288,11 +547,15 @@ Dual3 stack_load_input_dual_float3(
   if (cx && cy && cz) {
     if ((*cx >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
       const auto off = *cx & 0xffu;
-      return {.val = make_float3(stack[off], stack[off + 1u], stack[off + 2u]),
-              .dx = make_float3(stack[off + 3u], stack[off + 4u],
-                                stack[off + 5u]),
-              .dy = make_float3(stack[off + 6u], stack[off + 7u],
-                                stack[off + 8u])};
+      return {.val = make_float3(stack.load_const_expr(off),
+                                 stack.load_const_expr(off + 1u),
+                                 stack.load_const_expr(off + 2u)),
+              .dx = make_float3(stack.load_const_expr(off + 3u),
+                                stack.load_const_expr(off + 4u),
+                                stack.load_const_expr(off + 5u)),
+              .dy = make_float3(stack.load_const_expr(off + 6u),
+                                stack.load_const_expr(off + 7u),
+                                stack.load_const_expr(off + 8u))};
     }
     return {.val = make_float3(std::bit_cast<float>(*cx),
                                std::bit_cast<float>(*cy),
@@ -318,38 +581,108 @@ void stack_store_float(Stack &stack,
                        luisa::compute::Expr<std::uint32_t> offset,
                        luisa::compute::Expr<float> value) noexcept {
   if (const auto c = try_const_uint(offset)) {
-    stack[*c] = value;
+    stack.store_const(*c, value);
     return;
   }
-  stack[offset] = value;
+  stack.store_dynamic(offset, value);
+}
+
+void stack_store_float_if_valid(
+    Stack &stack, luisa::compute::Expr<std::uint32_t> offset,
+    luisa::compute::Expr<float> value) noexcept {
+  using namespace luisa::compute;
+  if (const auto c = try_const_uint(offset)) {
+    if (*c != static_cast<std::uint32_t>(
+                  compiler::cycles_svm::SVM_STACK_INVALID)) {
+      stack.store_const(*c, value);
+    }
+    return;
+  }
+  $if (offset != static_cast<std::uint32_t>(
+                     compiler::cycles_svm::SVM_STACK_INVALID)) {
+    stack_store_float(stack, offset, value);
+  };
 }
 
 void stack_store_float3(Stack &stack,
                         luisa::compute::Expr<std::uint32_t> offset,
                         luisa::compute::Expr<luisa::float3> value) noexcept {
+  using namespace luisa::compute;
+  const auto *raw = value.expression();
   if (const auto c = try_const_uint(offset)) {
-    stack[*c] = value.x;
-    stack[*c + 1u] = value.y;
-    stack[*c + 2u] = value.z;
+    if (raw != nullptr && raw->tag() == Expression::Tag::LITERAL) {
+      const auto &lv = static_cast<const LiteralExpr *>(raw)->value();
+      if (const auto *v3 = luisa::get_if<luisa::float3>(&lv)) {
+        stack.store_const(*c, Expr<float>{v3->x});
+        stack.store_const(*c + 1u, Expr<float>{v3->y});
+        stack.store_const(*c + 2u, Expr<float>{v3->z});
+        return;
+      }
+    }
+    if (raw != nullptr && raw->tag() == Expression::Tag::REF) {
+      stack.store_const(*c, value.x);
+      stack.store_const(*c + 1u, value.y);
+      stack.store_const(*c + 2u, value.z);
+      return;
+    }
+    const Float3 v = value;
+    stack.store_const(*c, v.x);
+    stack.store_const(*c + 1u, v.y);
+    stack.store_const(*c + 2u, v.z);
     return;
   }
-  stack[offset] = value.x;
-  stack[offset + 1u] = value.y;
-  stack[offset + 2u] = value.z;
+  const Float3 v = value;
+  stack.store_dynamic(offset, v.x);
+  stack.store_dynamic(offset + 1u, v.y);
+  stack.store_dynamic(offset + 2u, v.z);
+}
+
+void stack_store_float3_if_valid(
+    Stack &stack, luisa::compute::Expr<std::uint32_t> offset,
+    luisa::compute::Expr<luisa::float3> value) noexcept {
+  using namespace luisa::compute;
+  if (const auto c = try_const_uint(offset)) {
+    if (*c != static_cast<std::uint32_t>(
+                  compiler::cycles_svm::SVM_STACK_INVALID)) {
+      stack_store_float3(stack, *c, value);
+    }
+    return;
+  }
+  $if (offset != static_cast<std::uint32_t>(
+                     compiler::cycles_svm::SVM_STACK_INVALID)) {
+    stack_store_float3(stack, offset, value);
+  };
 }
 
 void stack_store_dual1(Stack &stack,
                        luisa::compute::Expr<std::uint32_t> offset,
                        const Dual1 &value) noexcept {
   if (const auto c = try_const_uint(offset)) {
-    stack[*c] = value.val;
-    stack[*c + 1u] = value.dx;
-    stack[*c + 2u] = value.dy;
+    stack.store_const(*c, value.val);
+    stack.store_const(*c + 1u, value.dx);
+    stack.store_const(*c + 2u, value.dy);
     return;
   }
   stack_store_float(stack, offset, value.val);
   stack_store_float(stack, offset + 1u, value.dx);
   stack_store_float(stack, offset + 2u, value.dy);
+}
+
+void stack_store_dual1_if_valid(Stack &stack,
+                                luisa::compute::Expr<std::uint32_t> offset,
+                                const Dual1 &value) noexcept {
+  using namespace luisa::compute;
+  if (const auto c = try_const_uint(offset)) {
+    if (*c != static_cast<std::uint32_t>(
+                  compiler::cycles_svm::SVM_STACK_INVALID)) {
+      stack_store_dual1(stack, *c, value);
+    }
+    return;
+  }
+  $if (offset != static_cast<std::uint32_t>(
+                     compiler::cycles_svm::SVM_STACK_INVALID)) {
+    stack_store_dual1(stack, offset, value);
+  };
 }
 
 void stack_store_dual3(Stack &stack,
@@ -366,14 +699,31 @@ void stack_store_dual3(Stack &stack,
   stack_store_float3(stack, offset + 6u, value.dy);
 }
 
+void stack_store_dual3_if_valid(Stack &stack,
+                                luisa::compute::Expr<std::uint32_t> offset,
+                                const Dual3 &value) noexcept {
+  using namespace luisa::compute;
+  if (const auto c = try_const_uint(offset)) {
+    if (*c != static_cast<std::uint32_t>(
+                  compiler::cycles_svm::SVM_STACK_INVALID)) {
+      stack_store_dual3(stack, *c, value);
+    }
+    return;
+  }
+  $if (offset != static_cast<std::uint32_t>(
+                     compiler::cycles_svm::SVM_STACK_INVALID)) {
+    stack_store_dual3(stack, offset, value);
+  };
+}
+
 void stack_store_int(Stack &stack,
                      luisa::compute::Expr<std::uint32_t> offset,
                      luisa::compute::Expr<std::int32_t> value) noexcept {
   if (const auto c = try_const_uint(offset)) {
-    stack[*c] = value.bitcast<float>();
+    stack.store_const(*c, value.bitcast<float>());
     return;
   }
-  stack[offset] = value.bitcast<float>();
+  stack.store_dynamic(offset, value.bitcast<float>());
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

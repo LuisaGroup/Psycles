@@ -195,6 +195,8 @@ struct TransformState {
   luisa::compute::Float4x4 world_to_object;
   std::function<luisa::compute::Float4x4()> lazy_object_to_world;
   std::function<luisa::compute::Float4x4()> lazy_world_to_object;
+  const luisa::compute::Buffer<compiler::cycles_svm::KernelObject>
+      *lazy_object_buffer{nullptr};
 
   TransformState(
       luisa::compute::Expr<luisa::float4x4> camera_to_world_transform,
@@ -320,6 +322,26 @@ struct SurfaceAttributeSummary {
   bool has_points{true};
   bool has_undisplaced_normal{true};
   bool has_undisplaced_position{true};
+};
+
+// Optional direct buffer handles exposed by scene-backed KernelGlobals so
+// repeated attribute lookup/interpolation nodes can share typed Luisa
+// Callables instead of cloning hundreds of inline copies per shader bucket.
+struct SurfaceAttributeBuffers {
+  const luisa::compute::Buffer<compiler::cycles_svm::KernelObject> *object_buffer{};
+  const luisa::compute::Buffer<compiler::cycles_svm::AttributeMap> *attribute_map_buffer{};
+  const luisa::compute::Buffer<compiler::cycles_svm::packed_uint3> *triangle_index_buffer{};
+  const luisa::compute::Buffer<compiler::cycles_svm::KernelCurve> *curve_buffer{};
+  const luisa::compute::Buffer<float> *attribute_float_buffer{};
+  const luisa::compute::Buffer<compiler::cycles_svm::packed_float2> *attribute_float2_buffer{};
+  const luisa::compute::Buffer<compiler::cycles_svm::packed_float3> *attribute_float3_buffer{};
+  const luisa::compute::Buffer<compiler::cycles_svm::packed_float4> *attribute_float4_buffer{};
+  const luisa::compute::Buffer<compiler::cycles_svm::uchar4> *attribute_uchar4_buffer{};
+  const luisa::compute::Buffer<compiler::cycles_svm::packed_normal> *attribute_normal_buffer{};
+  bool is_rec709{true};
+  luisa::float3 rec709_to_r{1.0f, 0.0f, 0.0f};
+  luisa::float3 rec709_to_g{0.0f, 1.0f, 0.0f};
+  luisa::float3 rec709_to_b{0.0f, 0.0f, 1.0f};
 };
 
 struct NormalMapUsage {
@@ -525,6 +547,10 @@ public:
   [[nodiscard]] virtual std::optional<luisa::compute::UInt2>
   find_attribute_map_offset(luisa::compute::Expr<std::uint32_t>,
                             luisa::compute::Expr<luisa::ulong>) const noexcept {
+    return std::nullopt;
+  }
+  [[nodiscard]] virtual std::optional<SurfaceAttributeBuffers>
+  surface_attribute_buffers() const noexcept {
     return std::nullopt;
   }
   [[nodiscard]] virtual bool prefers_outlined_loops() const noexcept {

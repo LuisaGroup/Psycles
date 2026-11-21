@@ -15,6 +15,15 @@ namespace {
 
 [[nodiscard]] Float vector_component(Expr<luisa::float3> value,
                                      Expr<std::uint32_t> index) noexcept {
+  if (const auto ci = try_const_uint(index)) {
+    if (*ci == 0u) {
+      return value.x;
+    }
+    if (*ci == 1u) {
+      return value.y;
+    }
+    return value.z;
+  }
   Float result = value.z;
   $if (index == 0u) {
     result = value.x;
@@ -36,22 +45,31 @@ void node_separate_vector(Cursor &cursor, Stack &stack,
   const auto vector_index = cursor.byte(packed, 0u);
   const auto output_offset = cursor.byte(packed, 1u);
 
-  $if (output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+  const auto emit_sep = [&](Expr<std::uint32_t> out_off) noexcept {
     if (use_derivatives) {
       const auto input =
           stack_load_input_dual_float3(stack, x_bits, y_bits, z_bits);
-      stack_store_float(stack, output_offset,
+      stack_store_float(stack, out_off,
                         vector_component(input.val, vector_index));
-      stack_store_float(stack, output_offset + 1u,
+      stack_store_float(stack, stack_offset_add(out_off, 1u),
                         vector_component(input.dx, vector_index));
-      stack_store_float(stack, output_offset + 2u,
+      stack_store_float(stack, stack_offset_add(out_off, 2u),
                         vector_component(input.dy, vector_index));
     } else {
       const Float3 value =
           stack_load_input_float3(stack, x_bits, y_bits, z_bits);
-      stack_store_float(stack, output_offset,
+      stack_store_float(stack, out_off,
                         vector_component(value, vector_index));
     }
+  };
+  if (const auto co = try_const_uint(output_offset)) {
+    if (*co != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_sep(*co);
+    }
+    return;
+  }
+  $if (output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    emit_sep(output_offset);
   };
 }
 
@@ -62,16 +80,26 @@ void node_combine_vector(Cursor &cursor, Stack &stack,
   const auto vector_index = cursor.byte(packed, 0u);
   const auto output_offset = cursor.byte(packed, 1u);
 
-  $if (output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+  const auto emit_comb = [&](Expr<std::uint32_t> out_off) noexcept {
+    const auto slot_off = stack_offset_add(out_off, vector_index);
     if (use_derivatives) {
       const auto input = stack_load_input_dual_float(stack, input_bits);
-      stack_store_float(stack, output_offset + vector_index, input.val);
-      stack_store_float(stack, output_offset + vector_index + 3u, input.dx);
-      stack_store_float(stack, output_offset + vector_index + 6u, input.dy);
+      stack_store_float(stack, slot_off, input.val);
+      stack_store_float(stack, stack_offset_add(slot_off, 3u), input.dx);
+      stack_store_float(stack, stack_offset_add(slot_off, 6u), input.dy);
     } else {
       const Float value = stack_load_input_float(stack, input_bits);
-      stack_store_float(stack, output_offset + vector_index, value);
+      stack_store_float(stack, slot_off, value);
     }
+  };
+  if (const auto co = try_const_uint(output_offset)) {
+    if (*co != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_comb(*co);
+    }
+    return;
+  }
+  $if (output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    emit_comb(output_offset);
   };
 }
 

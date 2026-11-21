@@ -645,8 +645,16 @@ void emit_jit_block(const SvmTranslationRequest &req, const SvmBlockIr &block,
       if (op.children.empty()) {
         continue;
       }
-      const auto cond_val = detail::stack_load_float(
-          stack, static_cast<std::uint32_t>(op.cond_stack_offset));
+      const auto cond_off = static_cast<std::uint32_t>(op.cond_stack_offset);
+      if (const auto c_cond = stack.try_const_slot(cond_off)) {
+        const bool take =
+            op.jump_if_one ? !(*c_cond >= 1.0f) : !(*c_cond <= 0.0f);
+        if (take) {
+          emit_jit_block(req, op.children, stack, closure_weight);
+        }
+        continue;
+      }
+      const auto cond_val = detail::stack_load_float(stack, cond_off);
       const Bool take_children =
           op.jump_if_one ? !(cond_val >= 1.0f) : !(cond_val <= 0.0f);
       $if(take_children) {
@@ -855,22 +863,24 @@ void DirectJitTranslator::translate(
                 using ::operator==;
                 $if(shader_index ==
                     def<luisa::uint>(chunk.groups.front().shader_ids.front())) {
-                  detail::Stack group_stack{request.stack_size};
-                  static_cast<void>(group_stack);
+                  detail::DirectJitCaseCacheGuard attr_cache_guard;
+                  auto group_stack =
+                      detail::Stack::direct_jit(request.stack_size);
                   Float3 closure_weight = make_float3(0.0f);
                   emit_jit_block(request, *chunk.groups.front().routine,
                                  group_stack, closure_weight);
                 };
               } else {
-                detail::Stack chunk_stack{request.stack_size};
-                static_cast<void>(chunk_stack);
                 $switch(shader_index) {
                   for (const auto &group : chunk.groups) {
                     luisa::compute::detail::SwitchCaseStmtBuilder{
                         luisa::span<const std::uint32_t>{group.shader_ids}} %
                         [&]() noexcept {
+                          detail::DirectJitCaseCacheGuard attr_cache_guard;
+                          auto case_stack =
+                              detail::Stack::direct_jit(request.stack_size);
                           Float3 closure_weight = make_float3(0.0f);
-                          emit_jit_block(request, *group.routine, chunk_stack,
+                          emit_jit_block(request, *group.routine, case_stack,
                                          closure_weight);
                         };
                   }
@@ -902,14 +912,15 @@ void DirectJitTranslator::translate(
   }
 
   $outline_with_name("svm_eval_nodes") {
-    detail::Stack stack{request.stack_size};
-    static_cast<void>(stack);
     if (groups.empty()) {
       return;
     }
     if (groups.size() == 1u && active_empty_count == 0u) {
+      detail::DirectJitCaseCacheGuard attr_cache_guard;
+      auto case_stack = detail::Stack::direct_jit(request.stack_size);
       Float3 closure_weight = make_float3(0.0f);
-      emit_jit_block(request, *groups.front().routine, stack, closure_weight);
+      emit_jit_block(request, *groups.front().routine, case_stack,
+                     closure_weight);
       return;
     }
     const UInt shader_index = request.shader_data.shader & shader_mask;
@@ -918,8 +929,11 @@ void DirectJitTranslator::translate(
         luisa::compute::detail::SwitchCaseStmtBuilder{
             luisa::span<const std::uint32_t>{group.shader_ids}} %
             [&]() noexcept {
+              detail::DirectJitCaseCacheGuard attr_cache_guard;
+              auto case_stack = detail::Stack::direct_jit(request.stack_size);
               Float3 closure_weight = make_float3(0.0f);
-              emit_jit_block(request, *group.routine, stack, closure_weight);
+              emit_jit_block(request, *group.routine, case_stack,
+                             closure_weight);
             };
       }
       $default {};

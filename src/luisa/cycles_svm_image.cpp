@@ -30,8 +30,8 @@ constexpr auto inverse_two_pi = 0.5f / pi;
                .dx = make_float3(0.0f),
                .dy = make_float3(0.0f)};
   if (use_derivatives) {
-    result.dx = stack_load_float3(stack, offset + 3u);
-    result.dy = stack_load_float3(stack, offset + 6u);
+    result.dx = stack_load_float3(stack, stack_offset_add(offset, 3u));
+    result.dy = stack_load_float3(stack, stack_offset_add(offset, 6u));
   }
   return result;
 }
@@ -347,6 +347,94 @@ constexpr auto inverse_two_pi = 0.5f / pi;
       (flags & static_cast<std::uint32_t>(NODE_IMAGE_COMPRESS_AS_SRGB)) != 0u);
 }
 
+[[nodiscard]] UInt
+box_projection_single_axis(Expr<luisa::float3> signed_normal,
+                           Expr<float> blend) noexcept {
+  static auto callable = []() noexcept {
+    Callable result{[](Float3 signed_n, Float b) noexcept {
+      Float3 normal = abs(signed_n);
+      const Float normal_sum = normal.x + normal.y + normal.z;
+      normal /= select(1.0f, normal_sum, normal_sum > 0.0f);
+      const Float limit = 0.5f * (1.0f + b);
+      UInt axis = 0u;
+      $if((normal.x > limit * (normal.x + normal.y)) &
+          (normal.x > limit * (normal.x + normal.z))) {
+        axis = 0u;
+      }
+      $elif((normal.y > limit * (normal.x + normal.y)) &
+            (normal.y > limit * (normal.y + normal.z))) {
+        axis = 1u;
+      }
+      $elif((normal.z > limit * (normal.x + normal.z)) &
+            (normal.z > limit * (normal.y + normal.z))) {
+        axis = 2u;
+      }
+      $else { axis = 0u; };
+      return axis;
+    }};
+    result.set_name("cycles_box_proj_single_axis");
+    return result;
+  }();
+  return callable(signed_normal, blend);
+}
+
+[[nodiscard]] Float3
+box_projection_weights(Expr<luisa::float3> signed_normal,
+                       Expr<float> blend) noexcept {
+  static auto callable = []() noexcept {
+    Callable result{[](Float3 signed_n, Float b) noexcept {
+      Float3 normal = abs(signed_n);
+      const Float normal_sum = normal.x + normal.y + normal.z;
+      normal /= select(1.0f, normal_sum, normal_sum > 0.0f);
+
+      Float3 weight = make_float3(0.0f);
+      const Float limit = 0.5f * (1.0f + b);
+      $if((normal.x > limit * (normal.x + normal.y)) &
+          (normal.x > limit * (normal.x + normal.z))) {
+        weight.x = 1.0f;
+      }
+      $elif((normal.y > limit * (normal.x + normal.y)) &
+            (normal.y > limit * (normal.y + normal.z))) {
+        weight.y = 1.0f;
+      }
+      $elif((normal.z > limit * (normal.x + normal.z)) &
+            (normal.z > limit * (normal.y + normal.z))) {
+        weight.z = 1.0f;
+      }
+      $elif(b > 0.0f) {
+        $if(normal.z < (1.0f - limit) * (normal.y + normal.x)) {
+          weight.x = normal.x / (normal.x + normal.y);
+          weight.x = clamp((weight.x - 0.5f * (1.0f - b)) / b, 0.0f, 1.0f);
+          weight.y = 1.0f - weight.x;
+        }
+        $elif(normal.x < (1.0f - limit) * (normal.y + normal.z)) {
+          weight.y = normal.y / (normal.y + normal.z);
+          weight.y = clamp((weight.y - 0.5f * (1.0f - b)) / b, 0.0f, 1.0f);
+          weight.z = 1.0f - weight.y;
+        }
+        $elif(normal.y < (1.0f - limit) * (normal.x + normal.z)) {
+          weight.x = normal.x / (normal.x + normal.z);
+          weight.x = clamp((weight.x - 0.5f * (1.0f - b)) / b, 0.0f, 1.0f);
+          weight.z = 1.0f - weight.x;
+        }
+        $else {
+          weight.x = ((2.0f - limit) * normal.x + (limit - 1.0f)) /
+                     (2.0f * limit - 1.0f);
+          weight.y = ((2.0f - limit) * normal.y + (limit - 1.0f)) /
+                     (2.0f * limit - 1.0f);
+          weight.z = ((2.0f - limit) * normal.z + (limit - 1.0f)) /
+                     (2.0f * limit - 1.0f);
+        };
+      }
+      $else { weight.x = 1.0f; };
+      return weight;
+    }};
+    result.set_name("cycles_box_proj_weights");
+    return result;
+  }();
+  return callable(signed_normal, blend);
+}
+
 void store_image_sample(Stack &stack, Expr<std::uint32_t> color_offset,
                         Expr<std::uint32_t> alpha_offset,
                         Expr<luisa::float4> value) noexcept {
@@ -415,7 +503,13 @@ void node_tex_image_box(Cursor &cursor, Stack &stack,
     }
     return image_w.bitcast<std::int32_t>();
   }();
-  const auto blend = cursor.floating();
+  const auto blend_w = cursor.word();
+  const auto const_blend = try_const_uint(blend_w);
+  const Float blend = const_blend
+                          ? Float{std::bit_cast<float>(*const_blend)}
+                          : blend_w.bitcast<float>();
+  const bool single_tap_box =
+      const_blend.has_value() && std::bit_cast<float>(*const_blend) <= 0.0f;
   const auto packed = cursor.word();
   const auto flags = cursor.byte(packed, 0u);
   const auto coordinate_offset = cursor.byte(packed, 1u);
@@ -426,67 +520,51 @@ void node_tex_image_box(Cursor &cursor, Stack &stack,
   object_inverse_normal_transform(normal, transform_state, shader_data,
                                   object_motion_enabled);
   const Float3 signed_normal = normal;
-  normal = abs(normal);
-  const Float normal_sum = normal.x + normal.y + normal.z;
-  normal /= select(1.0f, normal_sum, normal_sum > 0.0f);
 
-  Float3 weight = make_float3(0.0f);
-  const Float limit = 0.5f * (1.0f + blend);
-  $if((normal.x > limit * (normal.x + normal.y)) &
-      (normal.x > limit * (normal.x + normal.z))) {
-    weight.x = 1.0f;
-  }
-  $elif((normal.y > limit * (normal.x + normal.y)) &
-        (normal.y > limit * (normal.y + normal.z))) {
-    weight.y = 1.0f;
-  }
-  $elif((normal.z > limit * (normal.x + normal.z)) &
-        (normal.z > limit * (normal.y + normal.z))) {
-    weight.z = 1.0f;
-  }
-  $elif(blend > 0.0f) {
-    $if(normal.z < (1.0f - limit) * (normal.y + normal.x)) {
-      weight.x = normal.x / (normal.x + normal.y);
-      weight.x = clamp(
-          (weight.x - 0.5f * (1.0f - blend)) / blend, 0.0f, 1.0f);
-      weight.y = 1.0f - weight.x;
+  if (single_tap_box) {
+    const UInt axis = box_projection_single_axis(signed_normal, blend);
+    if (!use_derivatives) {
+      const Float3 p = stack_load_float3(stack, coordinate_offset);
+      const Float2 uv_x =
+          make_float2(select(p.y, 1.0f - p.y, signed_normal.x < 0.0f), p.z);
+      const Float2 uv_y =
+          make_float2(select(p.x, 1.0f - p.x, signed_normal.y > 0.0f), p.z);
+      const Float2 uv_z =
+          make_float2(select(p.y, 1.0f - p.y, signed_normal.z > 0.0f), p.x);
+      const Float2 tap_uv_val =
+          select(select(uv_x, uv_y, axis == 1u), uv_z, axis == 2u);
+      const Dual2 tap_uv{.val = tap_uv_val,
+                         .dx = make_float2(0.0f),
+                         .dy = make_float2(0.0f)};
+      store_image_sample(
+          stack, color_offset, alpha_offset,
+          sample_image(kernel_globals, shader_data, image_id, tap_uv, flags));
+      return;
     }
-    $elif(normal.x < (1.0f - limit) * (normal.y + normal.z)) {
-      weight.y = normal.y / (normal.y + normal.z);
-      weight.y = clamp(
-          (weight.y - 0.5f * (1.0f - blend)) / blend, 0.0f, 1.0f);
-      weight.z = 1.0f - weight.y;
-    }
-    $elif(normal.y < (1.0f - limit) * (normal.x + normal.z)) {
-      weight.x = normal.x / (normal.x + normal.z);
-      weight.x = clamp(
-          (weight.x - 0.5f * (1.0f - blend)) / blend, 0.0f, 1.0f);
-      weight.z = 1.0f - weight.x;
-    }
-    $else {
-      weight.x = ((2.0f - limit) * normal.x + (limit - 1.0f)) /
-                 (2.0f * limit - 1.0f);
-      weight.y = ((2.0f - limit) * normal.y + (limit - 1.0f)) /
-                 (2.0f * limit - 1.0f);
-      weight.z = ((2.0f - limit) * normal.z + (limit - 1.0f)) /
-                 (2.0f * limit - 1.0f);
-    };
+    const auto coordinate = load_coordinate(stack, coordinate_offset, true);
+    const auto x = component(coordinate, 0u);
+    const auto y = component(coordinate, 1u);
+    const auto z = component(coordinate, 2u);
+    const Dual1 one{.val = 1.0f, .dx = 0.0f, .dy = 0.0f};
+    const auto ux = select_dual(signed_normal.x < 0.0f, subtract(one, y), y);
+    const auto uy = select_dual(signed_normal.y > 0.0f, subtract(one, x), x);
+    const auto uz = select_dual(signed_normal.z > 0.0f, subtract(one, y), y);
+    const auto uv_x = make_dual2(ux, z);
+    const auto uv_y = make_dual2(uy, z);
+    const auto uv_z = make_dual2(uz, x);
+    const Bool is_y = axis == 1u;
+    const Bool is_z = axis == 2u;
+    const Dual2 tap_uv{
+        .val = select(select(uv_x.val, uv_y.val, is_y), uv_z.val, is_z),
+        .dx = select(select(uv_x.dx, uv_y.dx, is_y), uv_z.dx, is_z),
+        .dy = select(select(uv_x.dy, uv_y.dy, is_y), uv_z.dy, is_z)};
+    store_image_sample(
+        stack, color_offset, alpha_offset,
+        sample_image(kernel_globals, shader_data, image_id, tap_uv, flags));
+    return;
   }
-  $else { weight.x = 1.0f; };
 
-  const auto coordinate =
-      load_coordinate(stack, coordinate_offset, use_derivatives);
-  const auto x = component(coordinate, 0u);
-  const auto y = component(coordinate, 1u);
-  const auto z = component(coordinate, 2u);
-  const Dual1 one{.val = 1.0f, .dx = 0.0f, .dy = 0.0f};
-  const auto ux = select_dual(signed_normal.x < 0.0f, subtract(one, y), y);
-  const auto uy = select_dual(signed_normal.y > 0.0f, subtract(one, x), x);
-  const auto uz = select_dual(signed_normal.z > 0.0f, subtract(one, y), y);
-  const auto uv_x = make_dual2(ux, z);
-  const auto uv_y = make_dual2(uy, z);
-  const auto uv_z = make_dual2(uz, x);
-
+  const Float3 weight = box_projection_weights(signed_normal, blend);
   const auto has_x = weight.x > 0.0f;
   const auto has_y = weight.y > 0.0f;
   const auto has_z = weight.z > 0.0f;
@@ -494,31 +572,80 @@ void node_tex_image_box(Cursor &cursor, Stack &stack,
       select(0u, 1u, has_x) + select(0u, 1u, has_y) + select(0u, 1u, has_z);
 
   Float4 sampled = make_float4(0.0f);
-  $outline_when_with_name(kernel_globals.prefers_outlined_loops(),
-                          "svm_tex_image_box_taps") {
-    $for(tap, tap_count) {
-      Dual2 tap_uv = uv_z;
-      Float tap_w = weight.z;
-      $if(tap == 0u) {
-        $if(has_x) {
-          tap_uv = uv_x;
-          tap_w = weight.x;
+  if (!use_derivatives) {
+    const Float3 p = stack_load_float3(stack, coordinate_offset);
+    const Float2 uv_x =
+        make_float2(select(p.y, 1.0f - p.y, signed_normal.x < 0.0f), p.z);
+    const Float2 uv_y =
+        make_float2(select(p.x, 1.0f - p.x, signed_normal.y > 0.0f), p.z);
+    const Float2 uv_z =
+        make_float2(select(p.y, 1.0f - p.y, signed_normal.z > 0.0f), p.x);
+    $outline_when_with_name(kernel_globals.prefers_outlined_loops(),
+                            "svm_tex_image_box_taps") {
+      $for(tap, tap_count) {
+        Float2 tap_uv_val = uv_z;
+        Float tap_w = weight.z;
+        $if(tap == 0u) {
+          $if(has_x) {
+            tap_uv_val = uv_x;
+            tap_w = weight.x;
+          }
+          $elif(has_y) {
+            tap_uv_val = uv_y;
+            tap_w = weight.y;
+          };
         }
-        $elif(has_y) {
-          tap_uv = uv_y;
-          tap_w = weight.y;
+        $elif(tap == 1u) {
+          $if(has_x & has_y) {
+            tap_uv_val = uv_y;
+            tap_w = weight.y;
+          };
         };
-      }
-      $elif(tap == 1u) {
-        $if(has_x & has_y) {
-          tap_uv = uv_y;
-          tap_w = weight.y;
-        };
+        const Dual2 tap_uv{.val = tap_uv_val,
+                           .dx = make_float2(0.0f),
+                           .dy = make_float2(0.0f)};
+        sampled += tap_w * sample_image(kernel_globals, shader_data, image_id,
+                                        tap_uv, flags);
       };
-      sampled += tap_w * sample_image(kernel_globals, shader_data, image_id,
-                                      tap_uv, flags);
     };
-  };
+  } else {
+    const auto coordinate = load_coordinate(stack, coordinate_offset, true);
+    const auto x = component(coordinate, 0u);
+    const auto y = component(coordinate, 1u);
+    const auto z = component(coordinate, 2u);
+    const Dual1 one{.val = 1.0f, .dx = 0.0f, .dy = 0.0f};
+    const auto ux = select_dual(signed_normal.x < 0.0f, subtract(one, y), y);
+    const auto uy = select_dual(signed_normal.y > 0.0f, subtract(one, x), x);
+    const auto uz = select_dual(signed_normal.z > 0.0f, subtract(one, y), y);
+    const auto uv_x = make_dual2(ux, z);
+    const auto uv_y = make_dual2(uy, z);
+    const auto uv_z = make_dual2(uz, x);
+    $outline_when_with_name(kernel_globals.prefers_outlined_loops(),
+                            "svm_tex_image_box_taps") {
+      $for(tap, tap_count) {
+        Dual2 tap_uv = uv_z;
+        Float tap_w = weight.z;
+        $if(tap == 0u) {
+          $if(has_x) {
+            tap_uv = uv_x;
+            tap_w = weight.x;
+          }
+          $elif(has_y) {
+            tap_uv = uv_y;
+            tap_w = weight.y;
+          };
+        }
+        $elif(tap == 1u) {
+          $if(has_x & has_y) {
+            tap_uv = uv_y;
+            tap_w = weight.y;
+          };
+        };
+        sampled += tap_w * sample_image(kernel_globals, shader_data, image_id,
+                                        tap_uv, flags);
+      };
+    };
+  }
   store_image_sample(stack, color_offset, alpha_offset, sampled);
 }
 

@@ -28,8 +28,8 @@ void store_dual1(Stack &stack, Expr<std::uint32_t> offset, Expr<float> value,
                  bool use_derivatives) noexcept {
   stack_store_float(stack, offset, value);
   if (use_derivatives) {
-    stack_store_float(stack, offset + 1u, dx);
-    stack_store_float(stack, offset + 2u, dy);
+    stack_store_float(stack, stack_offset_add(offset, 1u), dx);
+    stack_store_float(stack, stack_offset_add(offset, 2u), dy);
   }
 }
 
@@ -38,8 +38,87 @@ void store_dual3(Stack &stack, Expr<std::uint32_t> offset,
                  Expr<luisa::float3> dy, bool use_derivatives) noexcept {
   stack_store_float3(stack, offset, value);
   if (use_derivatives) {
-    stack_store_float3(stack, offset + 3u, dx);
-    stack_store_float3(stack, offset + 6u, dy);
+    stack_store_float3(stack, stack_offset_add(offset, 3u), dx);
+    stack_store_float3(stack, stack_offset_add(offset, 6u), dy);
+  }
+}
+
+void emit_convert_case(std::uint32_t conv_type, Stack &stack,
+                       const KernelGlobals &kernel_globals,
+                       Expr<std::uint32_t> from_offset,
+                       Expr<std::uint32_t> to_offset,
+                       bool use_derivatives) noexcept {
+  switch (conv_type) {
+    case NODE_CONVERT_FI: {
+      const auto value = stack_load_float(stack, from_offset);
+      stack_store_int(stack, to_offset, value.cast<std::int32_t>());
+      break;
+    }
+    case NODE_CONVERT_FV: {
+      const auto value = stack_load_float(stack, from_offset);
+      Float dx = 0.0f;
+      Float dy = 0.0f;
+      if (use_derivatives) {
+        dx = stack_load_float(stack, stack_offset_add(from_offset, 1u));
+        dy = stack_load_float(stack, stack_offset_add(from_offset, 2u));
+      }
+      store_dual3(stack, to_offset, make_float3(value), make_float3(dx),
+                  make_float3(dy), use_derivatives);
+      break;
+    }
+    case NODE_CONVERT_CF: {
+      const auto value = stack_load_float3(stack, from_offset);
+      Float dx = 0.0f;
+      Float dy = 0.0f;
+      if (use_derivatives) {
+        dx = linear_rgb_to_gray(
+            kernel_globals,
+            stack_load_float3(stack, stack_offset_add(from_offset, 3u)));
+        dy = linear_rgb_to_gray(
+            kernel_globals,
+            stack_load_float3(stack, stack_offset_add(from_offset, 6u)));
+      }
+      store_dual1(stack, to_offset, linear_rgb_to_gray(kernel_globals, value),
+                  dx, dy, use_derivatives);
+      break;
+    }
+    case NODE_CONVERT_CI: {
+      const auto value = linear_rgb_to_gray(
+          kernel_globals, stack_load_float3(stack, from_offset));
+      stack_store_int(stack, to_offset, value.cast<std::int32_t>());
+      break;
+    }
+    case NODE_CONVERT_VF: {
+      const auto value = stack_load_float3(stack, from_offset);
+      Float dx = 0.0f;
+      Float dy = 0.0f;
+      if (use_derivatives) {
+        dx = average(
+            stack_load_float3(stack, stack_offset_add(from_offset, 3u)));
+        dy = average(
+            stack_load_float3(stack, stack_offset_add(from_offset, 6u)));
+      }
+      store_dual1(stack, to_offset, average(value), dx, dy, use_derivatives);
+      break;
+    }
+    case NODE_CONVERT_VI: {
+      const auto value = average(stack_load_float3(stack, from_offset));
+      stack_store_int(stack, to_offset, value.cast<std::int32_t>());
+      break;
+    }
+    case NODE_CONVERT_IF: {
+      const auto value = stack_load_int(stack, from_offset).cast<float>();
+      store_dual1(stack, to_offset, value, 0.0f, 0.0f, use_derivatives);
+      break;
+    }
+    case NODE_CONVERT_IV: {
+      const auto value = stack_load_int(stack, from_offset).cast<float>();
+      store_dual3(stack, to_offset, make_float3(value), make_float3(0.0f),
+                  make_float3(0.0f), use_derivatives);
+      break;
+    }
+    default:
+      break;
   }
 }
 
@@ -53,62 +132,44 @@ void node_convert(Cursor &cursor, Stack &stack,
   const auto from_offset = cursor.byte(packed_offsets, 0u);
   const auto to_offset = cursor.byte(packed_offsets, 1u);
 
+  if (const auto ct = try_const_uint(convert_type)) {
+    emit_convert_case(*ct, stack, kernel_globals, from_offset, to_offset,
+                      use_derivatives);
+    return;
+  }
+
   $switch(convert_type) {
     PSYCLES_SVM_CASE(NODE_CONVERT_FI) {
-      const auto value = stack_load_float(stack, from_offset);
-      stack_store_int(stack, to_offset, value.cast<std::int32_t>());
+      emit_convert_case(NODE_CONVERT_FI, stack, kernel_globals, from_offset,
+                        to_offset, use_derivatives);
     };
     PSYCLES_SVM_CASE(NODE_CONVERT_FV) {
-      const auto value = stack_load_float(stack, from_offset);
-      Float dx = 0.0f;
-      Float dy = 0.0f;
-      if (use_derivatives) {
-        dx = stack_load_float(stack, from_offset + 1u);
-        dy = stack_load_float(stack, from_offset + 2u);
-      }
-      store_dual3(stack, to_offset, make_float3(value), make_float3(dx),
-                  make_float3(dy), use_derivatives);
+      emit_convert_case(NODE_CONVERT_FV, stack, kernel_globals, from_offset,
+                        to_offset, use_derivatives);
     };
     PSYCLES_SVM_CASE(NODE_CONVERT_CF) {
-      const auto value = stack_load_float3(stack, from_offset);
-      Float dx = 0.0f;
-      Float dy = 0.0f;
-      if (use_derivatives) {
-        dx = linear_rgb_to_gray(kernel_globals,
-                                stack_load_float3(stack, from_offset + 3u));
-        dy = linear_rgb_to_gray(kernel_globals,
-                                stack_load_float3(stack, from_offset + 6u));
-      }
-      store_dual1(stack, to_offset, linear_rgb_to_gray(kernel_globals, value),
-                  dx, dy, use_derivatives);
+      emit_convert_case(NODE_CONVERT_CF, stack, kernel_globals, from_offset,
+                        to_offset, use_derivatives);
     };
     PSYCLES_SVM_CASE(NODE_CONVERT_CI) {
-      const auto value = linear_rgb_to_gray(
-          kernel_globals, stack_load_float3(stack, from_offset));
-      stack_store_int(stack, to_offset, value.cast<std::int32_t>());
+      emit_convert_case(NODE_CONVERT_CI, stack, kernel_globals, from_offset,
+                        to_offset, use_derivatives);
     };
     PSYCLES_SVM_CASE(NODE_CONVERT_VF) {
-      const auto value = stack_load_float3(stack, from_offset);
-      Float dx = 0.0f;
-      Float dy = 0.0f;
-      if (use_derivatives) {
-        dx = average(stack_load_float3(stack, from_offset + 3u));
-        dy = average(stack_load_float3(stack, from_offset + 6u));
-      }
-      store_dual1(stack, to_offset, average(value), dx, dy, use_derivatives);
+      emit_convert_case(NODE_CONVERT_VF, stack, kernel_globals, from_offset,
+                        to_offset, use_derivatives);
     };
     PSYCLES_SVM_CASE(NODE_CONVERT_VI) {
-      const auto value = average(stack_load_float3(stack, from_offset));
-      stack_store_int(stack, to_offset, value.cast<std::int32_t>());
+      emit_convert_case(NODE_CONVERT_VI, stack, kernel_globals, from_offset,
+                        to_offset, use_derivatives);
     };
     PSYCLES_SVM_CASE(NODE_CONVERT_IF) {
-      const auto value = stack_load_int(stack, from_offset).cast<float>();
-      store_dual1(stack, to_offset, value, 0.0f, 0.0f, use_derivatives);
+      emit_convert_case(NODE_CONVERT_IF, stack, kernel_globals, from_offset,
+                        to_offset, use_derivatives);
     };
     PSYCLES_SVM_CASE(NODE_CONVERT_IV) {
-      const auto value = stack_load_int(stack, from_offset).cast<float>();
-      store_dual3(stack, to_offset, make_float3(value), make_float3(0.0f),
-                  make_float3(0.0f), use_derivatives);
+      emit_convert_case(NODE_CONVERT_IV, stack, kernel_globals, from_offset,
+                        to_offset, use_derivatives);
     };
     $default{};
   };

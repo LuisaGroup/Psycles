@@ -242,7 +242,7 @@ TraceShadowCallable make_fused_shadow_trace_callable(
                 advance_shadow_surface_state(context, throughput, surface);
             $if(carries_light) {
               transmittance *= surface->transmittance;
-              last_distance = intersection->distance;
+              last_distance = max(last_distance, intersection->distance);
             }
             $else {
               transmittance = make_float3(0.0f);

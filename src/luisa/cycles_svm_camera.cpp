@@ -28,15 +28,9 @@ void node_camera(Cursor &cursor, Stack &stack,
   const Float zdepth = vector.z;
   const Float distance = length(vector);
 
-  $if(vector_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, vector_offset, normalize_cycles(vector));
-  };
-  $if(zdepth_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, zdepth_offset, zdepth);
-  };
-  $if(distance_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, distance_offset, distance);
-  };
+  stack_store_float3_if_valid(stack, vector_offset, normalize_cycles(vector));
+  stack_store_float_if_valid(stack, zdepth_offset, zdepth);
+  stack_store_float_if_valid(stack, distance_offset, distance);
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

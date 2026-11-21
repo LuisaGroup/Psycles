@@ -119,8 +119,10 @@ void node_set_bump(Cursor &cursor, Stack &stack,
           dP_dy = dP.dy;
         }
         $else {
-          dP_dx = stack_load_float3(stack, bump_state_offset + 4u);
-          dP_dy = stack_load_float3(stack, bump_state_offset + 7u);
+          dP_dx = stack_load_float3(stack,
+                                    stack_offset_add(bump_state_offset, 4u));
+          dP_dy = stack_load_float3(stack,
+                                    stack_offset_add(bump_state_offset, 7u));
         };
       }
     } else {
@@ -198,7 +200,7 @@ void node_enter_bump_eval(Cursor &cursor, Stack &stack,
   const auto state_offset = cursor.byte(cursor.word(), 0u);
 
   stack_store_float3(stack, state_offset, shader_data.P);
-  stack_store_float(stack, state_offset + 3u, shader_data.dP);
+  stack_store_float(stack, stack_offset_add(state_offset, 3u), shader_data.dP);
 
   if (!may_have_undisplaced_position) {
     return;
@@ -216,8 +218,8 @@ void node_enter_bump_eval(Cursor &cursor, Stack &stack,
     shader_data.P = position.val;
     shader_data.dP =
         0.5f * (length(position.dx) + length(position.dy));
-    stack_store_float3(stack, state_offset + 4u, position.dx);
-    stack_store_float3(stack, state_offset + 7u, position.dy);
+    stack_store_float3(stack, stack_offset_add(state_offset, 4u), position.dx);
+    stack_store_float3(stack, stack_offset_add(state_offset, 7u), position.dy);
 
     primitive_normal_set_undisplaced(
         kernel_globals, transform_state, shader_data, descriptor.offset,
@@ -229,7 +231,7 @@ void node_leave_bump_eval(Cursor &cursor, Stack &stack,
                           ShaderData &shader_data) noexcept {
   const auto state_offset = cursor.byte(cursor.word(), 0u);
   shader_data.P = stack_load_float3(stack, state_offset);
-  shader_data.dP = stack_load_float(stack, state_offset + 3u);
+  shader_data.dP = stack_load_float(stack, stack_offset_add(state_offset, 3u));
 }
 
 void node_set_displacement(Cursor &cursor, Stack &stack,

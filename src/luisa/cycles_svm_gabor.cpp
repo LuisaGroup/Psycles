@@ -38,15 +38,9 @@ void node_tex_gabor(Cursor &cursor, Stack &stack) noexcept {
       gabor_type, coordinates, orientation_3d, scale, frequency, anisotropy,
       orientation_2d);
 
-  $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, value_offset, output.x);
-  };
-  $if (phase_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, phase_offset, output.y);
-  };
-  $if (intensity_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, intensity_offset, output.z);
-  };
+  stack_store_float_if_valid(stack, value_offset, output.x);
+  stack_store_float_if_valid(stack, phase_offset, output.y);
+  stack_store_float_if_valid(stack, intensity_offset, output.z);
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail
