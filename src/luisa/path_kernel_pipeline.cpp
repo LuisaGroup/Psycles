@@ -316,7 +316,7 @@ void PathKernelPipeline::emit(
                 const auto next = cycles_volume_boundary::advance(
                     sample.throughput, sample.volume_bounds_bounce,
                     sample.cycles_rng_offset, sample.ray->t_min(),
-                    bounce.hit->committed_ray_t,
+                    max(sample.ray->t_min(), bounce.hit->committed_ray_t),
                     sample.continuation_probability, sample.path_flags);
                 sample.throughput = next.throughput;
                 sample.volume_bounds_bounce = next.bounds_bounce;
@@ -326,6 +326,13 @@ void PathKernelPipeline::emit(
                   sample.ray =
                       make_ray(sample.ray->origin(), sample.ray->direction(),
                                next.ray_tmin, sample.ray->t_max());
+                  // Traversal already replaced Cycles' isect with this volume
+                  // boundary hit, which becomes the next ray.self identity.
+                  // Explicit self-exclusion is required in addition to t_min
+                  // advancement because hardware RayQuery (DXR/Vulkan) may
+                  // re-accept the same triangle within 1 ULP of CommittedRayT.
+                  sample.ray_source_object = surface.cycles_object_index;
+                  sample.ray_source_primitive = surface.cycles_primitive_index;
                   config.volume_state->cross_surface(
                       sample.volume, surface.volume_stack_entry,
                       surface.point.back_facing, surface.surface_has_volume,
@@ -341,6 +348,9 @@ void PathKernelPipeline::emit(
                     sample.ray =
                         make_ray(sample.ray->origin(), sample.ray->direction(),
                                  next.ray_tmin, sample.ray->t_max());
+                    sample.ray_source_object = surface.cycles_object_index;
+                    sample.ray_source_primitive =
+                        surface.cycles_primitive_index;
                     config.volume_state->cross_surface(
                         sample.volume, surface.volume_stack_entry,
                         surface.point.back_facing, surface.surface_has_volume,

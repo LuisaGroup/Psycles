@@ -15,7 +15,8 @@ struct Continuation {
 
 // Cycles integrate_surface_terminate + integrate_surface_volume_only_bounce.
 // No surface/transparent bounce counters, visibility, MIS state, differential,
-// ray origin/direction, or self IDs change at a pure volume boundary.
+// or ray origin/direction change at a pure volume boundary; the caller commits
+// the boundary hit as the next ray.self identity (matching Cycles' isect).
 [[nodiscard]] inline Continuation advance(
     luisa::compute::Expr<luisa::float3> throughput,
     luisa::compute::Expr<std::uint32_t> bounds_bounce,

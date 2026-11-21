@@ -553,14 +553,10 @@ void node_vector_math(Cursor &cursor, Stack &stack, bool use_derivatives,
                                  : zero_dual1();
     const auto result = evaluate_dual(math_type, a, b, c, p1, type_mask);
     if (may_write_value) {
-      $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-        stack_store_dual1(stack, value_offset, result.value);
-      };
+      stack_store_dual1_if_valid(stack, value_offset, result.value);
     }
     if (may_write_vector) {
-      $if (vector_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-        stack_store_dual3(stack, vector_offset, result.vector);
-      };
+      stack_store_dual3_if_valid(stack, vector_offset, result.vector);
     }
   } else {
     const auto a = stack_load_input_float3(stack, a_x, a_y, a_z);
@@ -572,14 +568,10 @@ void node_vector_math(Cursor &cursor, Stack &stack, bool use_derivatives,
                                   : Float{0.0f};
     const auto result = evaluate_primal(math_type, a, b, c, p1, type_mask);
     if (may_write_value) {
-      $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-        stack_store_float(stack, value_offset, result.value);
-      };
+      stack_store_float_if_valid(stack, value_offset, result.value);
     }
     if (may_write_vector) {
-      $if (vector_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-        stack_store_float3(stack, vector_offset, result.vector);
-      };
+      stack_store_float3_if_valid(stack, vector_offset, result.vector);
     }
   }
 }

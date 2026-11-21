@@ -8,6 +8,7 @@
 
 #include <psycles/luisa/cycles_transform.h>
 
+#include <bit>
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
@@ -171,6 +172,9 @@ struct EulerTrig {
                           use_derivatives);
     }
   };
+  if (const auto ct = try_const_uint(mapping_type)) {
+    return eval_one(static_cast<NodeMappingType>(*ct));
+  }
   static constexpr NodeMappingType all_types[] = {
       NODE_MAPPING_TYPE_POINT, NODE_MAPPING_TYPE_TEXTURE,
       NODE_MAPPING_TYPE_VECTOR, NODE_MAPPING_TYPE_NORMAL};
@@ -221,12 +225,25 @@ void node_mapping(Cursor &cursor, Stack &stack, bool use_derivatives,
   const bool needs_location =
       (options.type_mask & ((1u << NODE_MAPPING_TYPE_POINT) |
                             (1u << NODE_MAPPING_TYPE_TEXTURE))) != 0u;
-  $if (result_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+  auto node_options = options;
+  if (node_options.may_rotate) {
+    const auto rx = try_const_uint(rotation_x);
+    const auto ry = try_const_uint(rotation_y);
+    const auto rz = try_const_uint(rotation_z);
+    if (rx && ry && rz &&
+        ((*rx >> 8u) != (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) &&
+        std::bit_cast<float>(*rx) == 0.0f &&
+        std::bit_cast<float>(*ry) == 0.0f &&
+        std::bit_cast<float>(*rz) == 0.0f) {
+      node_options.may_rotate = false;
+    }
+  }
+  const auto emit_body = [&](Expr<std::uint32_t> out_off) noexcept {
     const Float3 location = needs_location
                                 ? stack_load_input_float3(stack, location_x,
                                                           location_y, location_z)
                                 : Float3{make_float3(0.0f)};
-    const Float3 rotation = options.may_rotate
+    const Float3 rotation = node_options.may_rotate
                                 ? stack_load_input_float3(stack, rotation_x,
                                                           rotation_y, rotation_z)
                                 : Float3{make_float3(0.0f)};
@@ -236,9 +253,9 @@ void node_mapping(Cursor &cursor, Stack &stack, bool use_derivatives,
       const auto vector = stack_load_input_dual_float3(
           stack, vector_x, vector_y, vector_z);
       stack_store_dual3(
-          stack, result_offset,
+          stack, out_off,
           evaluate_mapping(mapping_type, vector, location, rotation, scale,
-                           options, true));
+                           node_options, true));
     } else {
       const auto vector = stack_load_input_float3(
           stack, vector_x, vector_y, vector_z);
@@ -246,11 +263,20 @@ void node_mapping(Cursor &cursor, Stack &stack, bool use_derivatives,
                        .dx = make_float3(0.0f),
                        .dy = make_float3(0.0f)};
       stack_store_float3(
-          stack, result_offset,
+          stack, out_off,
           evaluate_mapping(mapping_type, dual, location, rotation, scale,
-                           options, false)
+                           node_options, false)
               .val);
     }
+  };
+  if (const auto cr = try_const_uint(result_offset)) {
+    if (*cr != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_body(*cr);
+    }
+    return;
+  }
+  $if (result_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    emit_body(result_offset);
   };
 }
 
@@ -259,12 +285,80 @@ void node_texture_mapping(Cursor &cursor, Stack &stack,
   const auto packed = cursor.word();
   const auto vector_offset = cursor.byte(packed, 0u);
   const auto result_offset = cursor.byte(packed, 1u);
-  const auto transform = packed_transform(cursor);
+  const auto x0 = cursor.floating();
+  const auto x1 = cursor.floating();
+  const auto x2 = cursor.floating();
+  const auto x3 = cursor.floating();
+  const auto y0 = cursor.floating();
+  const auto y1 = cursor.floating();
+  const auto y2 = cursor.floating();
+  const auto y3 = cursor.floating();
+  const auto z0 = cursor.floating();
+  const auto z1 = cursor.floating();
+  const auto z2 = cursor.floating();
+  const auto z3 = cursor.floating();
+
+  const auto cx0 = try_const_float(x0);
+  const auto cx1 = try_const_float(x1);
+  const auto cx2 = try_const_float(x2);
+  const auto cx3 = try_const_float(x3);
+  const auto cy0 = try_const_float(y0);
+  const auto cy1 = try_const_float(y1);
+  const auto cy2 = try_const_float(y2);
+  const auto cy3 = try_const_float(y3);
+  const auto cz0 = try_const_float(z0);
+  const auto cz1 = try_const_float(z1);
+  const auto cz2 = try_const_float(z2);
+  const auto cz3 = try_const_float(z3);
+
+  if (cx0 && cx1 && cx2 && cx3 && cy0 && cy1 && cy2 && cy3 && cz0 && cz1 &&
+      cz2 && cz3) {
+    const bool is_diag = (*cx1 == 0.0f && *cx2 == 0.0f && *cy0 == 0.0f &&
+                          *cy2 == 0.0f && *cz0 == 0.0f && *cz1 == 0.0f);
+    const auto apply_dir = [&](Expr<luisa::float3> v) noexcept -> Float3 {
+      const Float3 p = v;
+      if (is_diag) {
+        if (*cx0 == 1.0f && *cy1 == 1.0f && *cz2 == 1.0f) {
+          return p;
+        }
+        return p * make_float3(*cx0, *cy1, *cz2);
+      }
+      return make_float3(dot(p, make_float3(*cx0, *cx1, *cx2)),
+                         dot(p, make_float3(*cy0, *cy1, *cy2)),
+                         dot(p, make_float3(*cz0, *cz1, *cz2)));
+    };
+    const auto apply_pt = [&](Expr<luisa::float3> v) noexcept -> Float3 {
+      Float3 res = apply_dir(v);
+      if (*cx3 != 0.0f || *cy3 != 0.0f || *cz3 != 0.0f) {
+        res += make_float3(*cx3, *cy3, *cz3);
+      }
+      return res;
+    };
+    if (use_derivatives) {
+      const Dual3 out{
+          .val = apply_pt(stack_load_float3(stack, vector_offset)),
+          .dx = apply_dir(
+              stack_load_float3(stack, stack_offset_add(vector_offset, 3u))),
+          .dy = apply_dir(
+              stack_load_float3(stack, stack_offset_add(vector_offset, 6u)))};
+      stack_store_dual3(stack, result_offset, out);
+    } else {
+      stack_store_float3(
+          stack, result_offset,
+          apply_pt(stack_load_float3(stack, vector_offset)));
+    }
+    return;
+  }
+
+  const auto transform = transform_from_rows(
+      make_float4(x0, x1, x2, x3),
+      make_float4(y0, y1, y2, y3),
+      make_float4(z0, z1, z2, z3));
   if (use_derivatives) {
     const Dual3 vector{
         .val = stack_load_float3(stack, vector_offset),
-        .dx = stack_load_float3(stack, vector_offset + 3u),
-        .dy = stack_load_float3(stack, vector_offset + 6u)};
+        .dx = stack_load_float3(stack, stack_offset_add(vector_offset, 3u)),
+        .dy = stack_load_float3(stack, stack_offset_add(vector_offset, 6u))};
     stack_store_dual3(stack, result_offset,
                       transform_point(transform, vector));
   } else {

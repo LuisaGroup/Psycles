@@ -9,6 +9,20 @@
 #include <cmath>
 #include <utility>
 
+#include <luisa/dsl/struct.h>
+
+namespace psycles::luisa_backend::detail {
+
+struct KernelObjDual3 {
+  luisa::float3 val;
+  luisa::float3 dx;
+  luisa::float3 dy;
+};
+
+} // namespace psycles::luisa_backend::detail
+
+LUISA_STRUCT(psycles::luisa_backend::detail::KernelObjDual3, val, dx, dy){};
+
 namespace psycles::luisa_backend::detail {
 namespace {
 
@@ -693,9 +707,6 @@ std::optional<luisa::compute::UInt2>
 PathCyclesSvmKernelGlobals::find_attribute_map_offset(
     Expr<std::uint32_t> start_offset,
     Expr<luisa::ulong> id) const noexcept {
-  if (_scene->device.backend_name() != "simd") {
-    return std::nullopt;
-  }
   static const Callable<luisa::uint2(
       Buffer<abi::AttributeMap>, luisa::uint, luisa::ulong)>
       find_attr_callable = [](BufferVar<abi::AttributeMap> attr_maps,
@@ -719,6 +730,32 @@ PathCyclesSvmKernelGlobals::find_attribute_map_offset(
       };
   return find_attr_callable(
       _scene->cycles_svm->geometry->attribute_map_buffer, start_offset, id);
+}
+
+std::optional<svm::SurfaceAttributeBuffers>
+PathCyclesSvmKernelGlobals::surface_attribute_buffers() const noexcept {
+  if (!_scene || !_scene->cycles_svm || !_scene->cycles_svm->geometry ||
+      !_scene->cycles_svm->objects) {
+    return std::nullopt;
+  }
+  const auto &geom = *_scene->cycles_svm->geometry;
+  const auto &cs = _scene->shader_color_space;
+  return svm::SurfaceAttributeBuffers{
+      .object_buffer = &_scene->cycles_svm->objects->object_buffer,
+      .attribute_map_buffer = &geom.attribute_map_buffer,
+      .triangle_index_buffer = &geom.triangle_index_buffer,
+      .curve_buffer = &geom.curve_buffer,
+      .attribute_float_buffer = &geom.attribute_float_buffer,
+      .attribute_float2_buffer = &geom.attribute_float2_buffer,
+      .attribute_float3_buffer = &geom.attribute_float3_buffer,
+      .attribute_float4_buffer = &geom.attribute_float4_buffer,
+      .attribute_uchar4_buffer = &geom.attribute_uchar4_buffer,
+      .attribute_normal_buffer = &geom.attribute_normal_buffer,
+      .is_rec709 = is_rec709(cs),
+      .rec709_to_r = luisa::make_float3(cs.rec709_to_r.x, cs.rec709_to_r.y, cs.rec709_to_r.z),
+      .rec709_to_g = luisa::make_float3(cs.rec709_to_g.x, cs.rec709_to_g.y, cs.rec709_to_g.z),
+      .rec709_to_b = luisa::make_float3(cs.rec709_to_b.x, cs.rec709_to_b.y, cs.rec709_to_b.z),
+  };
 }
 
 bool PathCyclesSvmKernelGlobals::prefers_outlined_loops() const noexcept {
@@ -895,33 +932,75 @@ Float3
 PathCyclesSvmKernelGlobals::object_inverse_position_transform_if_object(
     const svm::ShaderData &shader_data,
     Expr<luisa::float3> value) const noexcept {
-  Float3 result = value;
-  $if(shader_data.object != svm::object_none) {
-    result = object_inverse_position_transform(shader_data, value);
-  };
-  return result;
+  static auto callable = []() noexcept {
+    Callable result{[](BufferVar<abi::KernelObject> objects, UInt object,
+                       Float3 p) noexcept {
+      Float3 out = p;
+      $if(object != svm::object_none) {
+        const auto t = objects.read(object).itfm;
+        out = make_float3(
+            dot(make_float3(t.x.x, t.x.y, t.x.z), p) + t.x.w,
+            dot(make_float3(t.y.x, t.y.y, t.y.z), p) + t.y.w,
+            dot(make_float3(t.z.x, t.z.y, t.z.z), p) + t.z.w);
+      };
+      return out;
+    }};
+    result.set_name("cycles_obj_inv_pos_if_obj");
+    return result;
+  }();
+  return callable(_scene->cycles_svm->objects->object_buffer,
+                  shader_data.object, value);
 }
 
 svm::Dual3 PathCyclesSvmKernelGlobals::
     object_inverse_position_transform_if_object_derivative(
         const svm::ShaderData &shader_data,
         const svm::Dual3 &value) const noexcept {
-  auto result = value;
-  $if(shader_data.object != svm::object_none) {
-    const auto object = object_record(*_scene, shader_data.object);
-    const auto transform = unpack_transform(object.itfm);
-    result.val = cycles_transform::point(transform, value.val);
-    result.dx = cycles_transform::direction(transform, value.dx);
-    result.dy = cycles_transform::direction(transform, value.dy);
-  };
-  return result;
+  static auto callable = []() noexcept {
+    Callable result{[](BufferVar<abi::KernelObject> objects, UInt object,
+                       Float3 val, Float3 dx, Float3 dy) noexcept {
+      Var<KernelObjDual3> out;
+      out.val = val;
+      out.dx = dx;
+      out.dy = dy;
+      $if(object != svm::object_none) {
+        const auto t = objects.read(object).itfm;
+        const Float3 r0 = make_float3(t.x.x, t.x.y, t.x.z);
+        const Float3 r1 = make_float3(t.y.x, t.y.y, t.y.z);
+        const Float3 r2 = make_float3(t.z.x, t.z.y, t.z.z);
+        out.val = make_float3(dot(r0, val) + t.x.w, dot(r1, val) + t.y.w,
+                              dot(r2, val) + t.z.w);
+        out.dx = make_float3(dot(r0, dx), dot(r1, dx), dot(r2, dx));
+        out.dy = make_float3(dot(r0, dy), dot(r1, dy), dot(r2, dy));
+      };
+      return out;
+    }};
+    result.set_name("cycles_obj_inv_pos_deriv_if_obj");
+    return result;
+  }();
+  const auto res = callable(_scene->cycles_svm->objects->object_buffer,
+                            shader_data.object, value.val, value.dx, value.dy);
+  return {.val = res.val, .dx = res.dx, .dy = res.dy};
 }
 
 Float3 PathCyclesSvmKernelGlobals::object_inverse_position_transform(
     const svm::ShaderData &shader_data,
     Expr<luisa::float3> value) const noexcept {
-  const auto object = object_record(*_scene, shader_data.object);
-  return cycles_transform::point(unpack_transform(object.itfm), value);
+  static auto callable = []() noexcept {
+    Callable result{[](BufferVar<abi::KernelObject> objects, UInt object,
+                       Float3 p) noexcept {
+      const UInt index = select(0u, object, object != svm::object_none);
+      const auto t = objects.read(index).itfm;
+      return make_float3(
+          dot(make_float3(t.x.x, t.x.y, t.x.z), p) + t.x.w,
+          dot(make_float3(t.y.x, t.y.y, t.y.z), p) + t.y.w,
+          dot(make_float3(t.z.x, t.z.y, t.z.z), p) + t.z.w);
+    }};
+    result.set_name("cycles_obj_inv_pos");
+    return result;
+  }();
+  return callable(_scene->cycles_svm->objects->object_buffer,
+                  shader_data.object, value);
 }
 
 Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(

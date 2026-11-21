@@ -8,16 +8,14 @@
 namespace psycles::luisa_backend::detail {
 [[nodiscard]] Float fresnel_dielectric_cos(
     Float cosine, Float eta) noexcept {
-    auto c = abs(cosine);
-    auto g_squared = eta * eta - 1.0f + c * c;
-    Float result = 1.0f;
-    $if(g_squared > 0.0f) {
-        auto g = sqrt(g_squared);
-        auto a = (g - c) / (g + c);
-        auto b = (c * (g + c) - 1.0f) / (c * (g - c) + 1.0f);
-        result = 0.5f * a * a * (1.0f + b * b);
-    };
-    return result;
+    const auto c = abs(cosine);
+    const auto g_squared = eta * eta - 1.0f + c * c;
+    const auto g = sqrt(max(g_squared, 0.0f));
+    const auto denom_a = g + c;
+    const auto a = (g - c) / select(denom_a, 1.0f, denom_a == 0.0f);
+    const auto denom_b = c * (g - c) + 1.0f;
+    const auto b = (c * (g + c) - 1.0f) / select(denom_b, 1.0f, denom_b == 0.0f);
+    return select(1.0f, 0.5f * a * a * (1.0f + b * b), g_squared > 0.0f);
 }
 [[nodiscard]] Float f0_from_ior(Float ior) noexcept {
     auto ratio = (ior - 1.0f) / max(ior + 1.0f, 1.0e-20f);

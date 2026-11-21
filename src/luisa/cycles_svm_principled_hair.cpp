@@ -22,32 +22,32 @@ namespace sample_mapping =
 namespace {
 
 struct PrincipledHairNode {
-  UInt parametrization;
-  UInt color_x;
-  UInt color_y;
-  UInt color_z;
-  UInt tint_x;
-  UInt tint_y;
-  UInt tint_z;
-  UInt absorption_x;
-  UInt absorption_y;
-  UInt absorption_z;
-  UInt roughness;
-  UInt random_roughness;
-  UInt offset;
-  UInt ior;
-  UInt random;
-  UInt melanin;
-  UInt melanin_redness;
-  UInt coat;
-  UInt aspect_ratio;
-  UInt radial_roughness;
-  UInt random_color;
-  UInt R;
-  UInt TT;
-  UInt TRT;
-  UInt attr_random;
-  UInt attr_normal;
+  Expr<std::uint32_t> parametrization;
+  Expr<std::uint32_t> color_x;
+  Expr<std::uint32_t> color_y;
+  Expr<std::uint32_t> color_z;
+  Expr<std::uint32_t> tint_x;
+  Expr<std::uint32_t> tint_y;
+  Expr<std::uint32_t> tint_z;
+  Expr<std::uint32_t> absorption_x;
+  Expr<std::uint32_t> absorption_y;
+  Expr<std::uint32_t> absorption_z;
+  Expr<std::uint32_t> roughness;
+  Expr<std::uint32_t> random_roughness;
+  Expr<std::uint32_t> offset;
+  Expr<std::uint32_t> ior;
+  Expr<std::uint32_t> random;
+  Expr<std::uint32_t> melanin;
+  Expr<std::uint32_t> melanin_redness;
+  Expr<std::uint32_t> coat;
+  Expr<std::uint32_t> aspect_ratio;
+  Expr<std::uint32_t> radial_roughness;
+  Expr<std::uint32_t> random_color;
+  Expr<std::uint32_t> R;
+  Expr<std::uint32_t> TT;
+  Expr<std::uint32_t> TRT;
+  Expr<std::uint32_t> attr_random;
+  Expr<std::uint32_t> attr_normal;
 };
 
 [[nodiscard]] PrincipledHairNode

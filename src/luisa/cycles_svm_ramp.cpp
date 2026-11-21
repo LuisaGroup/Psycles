@@ -13,48 +13,105 @@ using namespace compiler::cycles_svm;
 
 namespace {
 
-[[nodiscard]] Float4 table_read(Cursor &cursor,
-                                Expr<std::uint32_t> element) noexcept {
-  const UInt base = element * 4u;
-  return make_float4(cursor.floating_at(base), cursor.floating_at(base + 1u),
-                     cursor.floating_at(base + 2u),
-                     cursor.floating_at(base + 3u));
-}
-
 [[nodiscard]] Float4 rgb_ramp_lookup_clamped(
-    Cursor &cursor, Expr<float> factor, Expr<bool> interpolate,
+    Cursor &cursor, Expr<float> factor, Expr<std::uint32_t> interpolate_word,
     Expr<std::uint32_t> table_size) noexcept {
-  const UInt last = table_size - 1u;
-  const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
-  // Keep the signed float_to_int followed by clamp from Cycles. In
-  // particular, changing the conversion to unsigned changes the defined
-  // finite-input range and backend handling of non-finite values before the
-  // explicit clamp.
-  const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
-  const UInt element = cast<uint>(index);
-  const Float t = scaled - cast<float>(index);
-  Float4 result = table_read(cursor, element);
-  $if(interpolate & (t > 0.0f)) {
-    const Float4 next = table_read(cursor, element + 1u);
-    result = (1.0f - t) * result + t * next;
-  };
-  return result;
+  if (const auto ci = try_const_uint(interpolate_word)) {
+    if (*ci == 0u) {
+      static auto nearest_callable = []() noexcept {
+        Callable result{[](BufferVar<luisa::uint> words, UInt base_offset,
+                           Float factor, UInt table_size) noexcept {
+          const UInt last = table_size - 1u;
+          const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
+          const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
+          const UInt idx = base_offset + cast<uint>(index) * 4u;
+          return make_float4(words.read(idx).bitcast<float>(),
+                             words.read(idx + 1u).bitcast<float>(),
+                             words.read(idx + 2u).bitcast<float>(),
+                             words.read(idx + 3u).bitcast<float>());
+        }};
+        result.set_name("cycles_svm_rgb_ramp_nearest");
+        return result;
+      }();
+      return nearest_callable(cursor.words_buffer(),
+                              cursor.current_word_offset(), factor, table_size);
+    }
+    static auto linear_callable = []() noexcept {
+      Callable result{[](BufferVar<luisa::uint> words, UInt base_offset,
+                         Float factor, UInt table_size) noexcept {
+        auto read_rgba = [&](Expr<std::uint32_t> element) noexcept {
+          const UInt idx = base_offset + element * 4u;
+          return make_float4(words.read(idx).bitcast<float>(),
+                             words.read(idx + 1u).bitcast<float>(),
+                             words.read(idx + 2u).bitcast<float>(),
+                             words.read(idx + 3u).bitcast<float>());
+        };
+        const UInt last = table_size - 1u;
+        const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
+        const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
+        const UInt element = cast<uint>(index);
+        const Float t = scaled - cast<float>(index);
+        const Float4 c0 = read_rgba(element);
+        const Float4 c1 = read_rgba(min(element + 1u, last));
+        return (1.0f - t) * c0 + t * c1;
+      }};
+      result.set_name("cycles_svm_rgb_ramp_linear");
+      return result;
+    }();
+    return linear_callable(cursor.words_buffer(), cursor.current_word_offset(),
+                           factor, table_size);
+  }
+  static auto callable = []() noexcept {
+    Callable result{
+        [](BufferVar<luisa::uint> words, UInt base_offset, Float factor,
+           Bool interpolate, UInt table_size) noexcept {
+          auto read_rgba = [&](Expr<std::uint32_t> element) noexcept {
+            const UInt idx = base_offset + element * 4u;
+            return make_float4(words.read(idx).bitcast<float>(),
+                               words.read(idx + 1u).bitcast<float>(),
+                               words.read(idx + 2u).bitcast<float>(),
+                               words.read(idx + 3u).bitcast<float>());
+          };
+          const UInt last = table_size - 1u;
+          const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
+          const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
+          const UInt element = cast<uint>(index);
+          const Float t = select(0.0f, scaled - cast<float>(index), interpolate);
+          const Float4 c0 = read_rgba(element);
+          const Float4 c1 = read_rgba(min(element + 1u, last));
+          return (1.0f - t) * c0 + t * c1;
+        }};
+    result.set_name("cycles_svm_rgb_ramp_lookup");
+    return result;
+  }();
+  return callable(cursor.words_buffer(), cursor.current_word_offset(), factor,
+                  interpolate_word != 0u, table_size);
 }
 
 [[nodiscard]] Float curve_channel_lookup_clamped(
     Cursor &cursor, Expr<float> factor, Expr<std::uint32_t> channel,
     Expr<std::uint32_t> table_size) noexcept {
-  const UInt last = table_size - 1u;
-  const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
-  const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
-  const UInt element = cast<uint>(index);
-  const Float t = scaled - cast<float>(index);
-  Float result = cursor.floating_at(element * 4u + channel);
-  $if(t > 0.0f) {
-    const Float next = cursor.floating_at((element + 1u) * 4u + channel);
-    result = (1.0f - t) * result + t * next;
-  };
-  return result;
+  static auto callable = []() noexcept {
+    Callable result{
+        [](BufferVar<luisa::uint> words, UInt base_offset, Float factor,
+           UInt channel, UInt table_size) noexcept {
+          const UInt last = table_size - 1u;
+          const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
+          const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
+          const UInt element = cast<uint>(index);
+          const Float t = scaled - cast<float>(index);
+          const Float c0 =
+              words.read(base_offset + element * 4u + channel).bitcast<float>();
+          const Float c1 =
+              words.read(base_offset + min(element + 1u, last) * 4u + channel)
+                  .bitcast<float>();
+          return (1.0f - t) * c0 + t * c1;
+        }};
+    result.set_name("cycles_svm_curve_channel_clamped");
+    return result;
+  }();
+  return callable(cursor.words_buffer(), cursor.current_word_offset(), factor,
+                  channel, table_size);
 }
 
 [[nodiscard]] Float curve_channel_lookup(
@@ -64,73 +121,106 @@ namespace {
   if (!may_extrapolate) {
     return curve_channel_lookup_clamped(cursor, factor, channel, table_size);
   }
-  const UInt last = table_size - 1u;
-  Float result = 0.0f;
-  $if(((factor < 0.0f) | (factor > 1.0f)) & extrapolate) {
-    Float value = 0.0f;
-    Float delta = 0.0f;
-    Float distance = factor;
-    $if(factor < 0.0f) {
-      value = cursor.floating_at(channel);
-      delta = value - cursor.floating_at(4u + channel);
-      distance = -factor;
-    }
-    $else {
-      value = cursor.floating_at(last * 4u + channel);
-      delta = value - cursor.floating_at((last - 1u) * 4u + channel);
-      distance = factor - 1.0f;
-    };
-    result = value + delta * distance * cast<float>(last);
-  }
-  $else {
-    result = curve_channel_lookup_clamped(cursor, factor, channel, table_size);
-  };
-  return result;
-}
-
-[[nodiscard]] Float
-float_ramp_lookup_clamped(Cursor &cursor, Expr<float> factor,
-                          Expr<bool> interpolate,
-                          Expr<std::uint32_t> table_size) noexcept {
-  const UInt last = table_size - 1u;
-  const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
-  const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
-  const UInt element = cast<uint>(index);
-  const Float t = scaled - cast<float>(index);
-  Float result = cursor.floating_at(element);
-  $if(interpolate & (t > 0.0f)) {
-    const Float next = cursor.floating_at(element + 1u);
-    result = (1.0f - t) * result + t * next;
-  };
-  return result;
+  static auto callable = []() noexcept {
+    Callable result{
+        [](BufferVar<luisa::uint> words, UInt base_offset, Float factor,
+           UInt channel, Bool extrapolate, UInt table_size) noexcept {
+          const UInt last = table_size - 1u;
+          Float out = 0.0f;
+          $if(((factor < 0.0f) | (factor > 1.0f)) & extrapolate) {
+            const Bool low = factor < 0.0f;
+            const UInt i0 = select(last, 0u, low);
+            const UInt i1 = select(last - 1u, 1u, low);
+            const Float value =
+                words.read(base_offset + i0 * 4u + channel).bitcast<float>();
+            const Float delta =
+                value -
+                words.read(base_offset + i1 * 4u + channel).bitcast<float>();
+            const Float distance = select(factor - 1.0f, -factor, low);
+            out = value + delta * distance * cast<float>(last);
+          }
+          $else {
+            const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
+            const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
+            const UInt element = cast<uint>(index);
+            const Float t = scaled - cast<float>(index);
+            const Float c0 = words.read(base_offset + element * 4u + channel)
+                                 .bitcast<float>();
+            const Float c1 =
+                words.read(base_offset + min(element + 1u, last) * 4u + channel)
+                    .bitcast<float>();
+            out = (1.0f - t) * c0 + t * c1;
+          };
+          return out;
+        }};
+    result.set_name("cycles_svm_curve_channel_extrap");
+    return result;
+  }();
+  return callable(cursor.words_buffer(), cursor.current_word_offset(), factor,
+                  channel, extrapolate, table_size);
 }
 
 [[nodiscard]] Float
 float_ramp_lookup_extrapolated(Cursor &cursor, Expr<float> factor,
                                Expr<bool> interpolate, Expr<bool> extrapolate,
+                               bool may_extrapolate,
                                Expr<std::uint32_t> table_size) noexcept {
-  const UInt last = table_size - 1u;
-  Float result = 0.0f;
-  $if(((factor < 0.0f) | (factor > 1.0f)) & extrapolate) {
-    Float value = 0.0f;
-    Float delta = 0.0f;
-    Float distance = factor;
-    $if(factor < 0.0f) {
-      value = cursor.floating_at(0u);
-      delta = value - cursor.floating_at(1u);
-      distance = -factor;
-    }
-    $else {
-      value = cursor.floating_at(last);
-      delta = value - cursor.floating_at(last - 1u);
-      distance = factor - 1.0f;
-    };
-    result = value + delta * distance * cast<float>(last);
+  if (!may_extrapolate) {
+    static auto clamped_callable = []() noexcept {
+      Callable result{[](BufferVar<luisa::uint> words, UInt base_offset,
+                         Float factor, Bool interpolate,
+                         UInt table_size) noexcept {
+        const UInt last = table_size - 1u;
+        const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
+        const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
+        const UInt element = cast<uint>(index);
+        const Float t = select(0.0f, scaled - cast<float>(index), interpolate);
+        const Float c0 = words.read(base_offset + element).bitcast<float>();
+        const Float c1 =
+            words.read(base_offset + min(element + 1u, last)).bitcast<float>();
+        return (1.0f - t) * c0 + t * c1;
+      }};
+      result.set_name("cycles_svm_float_ramp_clamped");
+      return result;
+    }();
+    return clamped_callable(cursor.words_buffer(), cursor.current_word_offset(),
+                            factor, interpolate, table_size);
   }
-  $else {
-    result = float_ramp_lookup_clamped(cursor, factor, interpolate, table_size);
-  };
-  return result;
+  static auto callable = []() noexcept {
+    Callable result{
+        [](BufferVar<luisa::uint> words, UInt base_offset, Float factor,
+           Bool interpolate, Bool extrapolate, UInt table_size) noexcept {
+          const UInt last = table_size - 1u;
+          Float out = 0.0f;
+          $if(((factor < 0.0f) | (factor > 1.0f)) & extrapolate) {
+            const Bool low = factor < 0.0f;
+            const UInt i0 = select(last, 0u, low);
+            const UInt i1 = select(last - 1u, 1u, low);
+            const Float value = words.read(base_offset + i0).bitcast<float>();
+            const Float delta =
+                value - words.read(base_offset + i1).bitcast<float>();
+            const Float distance = select(factor - 1.0f, -factor, low);
+            out = value + delta * distance * cast<float>(last);
+          }
+          $else {
+            const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
+            const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
+            const UInt element = cast<uint>(index);
+            const Float t =
+                select(0.0f, scaled - cast<float>(index), interpolate);
+            const Float c0 = words.read(base_offset + element).bitcast<float>();
+            const Float c1 =
+                words.read(base_offset + min(element + 1u, last))
+                    .bitcast<float>();
+            out = (1.0f - t) * c0 + t * c1;
+          };
+          return out;
+        }};
+    result.set_name("cycles_svm_float_ramp_extrap");
+    return result;
+  }();
+  return callable(cursor.words_buffer(), cursor.current_word_offset(), factor,
+                  interpolate, extrapolate, table_size);
 }
 
 } // namespace
@@ -144,26 +234,10 @@ void node_rgb_ramp(Cursor &cursor, Stack &stack) noexcept {
   const auto alpha_offset = cursor.byte(packed, 2u);
 
   const Float4 color = rgb_ramp_lookup_clamped(
-      cursor, factor, interpolate != 0u, table_size);
+      cursor, factor, interpolate, table_size);
 
-  if (const auto co = try_const_uint(color_offset)) {
-    if (*co != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_float3(stack, *co, color.xyz());
-    }
-  } else {
-    $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_float3(stack, color_offset, color.xyz());
-    };
-  }
-  if (const auto ao = try_const_uint(alpha_offset)) {
-    if (*ao != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_float(stack, *ao, color.w);
-    }
-  } else {
-    $if(alpha_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-      stack_store_float(stack, alpha_offset, color.w);
-    };
-  }
+  stack_store_float3_if_valid(stack, color_offset, color.xyz());
+  stack_store_float_if_valid(stack, alpha_offset, color.w);
   cursor.advance(table_size * 4u);
 }
 
@@ -178,18 +252,23 @@ void node_curves(Cursor &cursor, Stack &stack, bool may_extrapolate) noexcept {
   const auto max_x = cursor.floating();
   const auto table_size = cursor.word();
   const auto packed = cursor.word();
-  const auto extrapolate = cursor.byte(packed, 0u) != 0u;
+  const auto extrapolate_word = cursor.byte(packed, 0u);
   const auto output_offset = cursor.byte(packed, 1u);
+  bool effective_extrapolate = may_extrapolate;
+  if (const auto ce = try_const_uint(extrapolate_word)) {
+    effective_extrapolate = may_extrapolate && (*ce != 0u);
+  }
+  const auto extrapolate = extrapolate_word != 0u;
 
   const Float range_x = max_x - min_x;
   const Float3 relative = (color - min_x) / range_x;
   const Float3 mapped = make_float3(
       curve_channel_lookup(cursor, relative.x, 0u, extrapolate,
-                           may_extrapolate, table_size),
+                           effective_extrapolate, table_size),
       curve_channel_lookup(cursor, relative.y, 1u, extrapolate,
-                           may_extrapolate, table_size),
+                           effective_extrapolate, table_size),
       curve_channel_lookup(cursor, relative.z, 2u, extrapolate,
-                           may_extrapolate, table_size));
+                           effective_extrapolate, table_size));
   stack_store_float3(stack, output_offset,
                      (1.0f - factor) * color + factor * mapped);
   cursor.advance(table_size * 4u);
@@ -202,12 +281,17 @@ void node_float_curve(Cursor &cursor, Stack &stack) noexcept {
   const auto max_x = cursor.floating();
   const auto table_size = cursor.word();
   const auto packed = cursor.word();
-  const auto extrapolate = cursor.byte(packed, 0u) != 0u;
+  const auto extrapolate_word = cursor.byte(packed, 0u);
   const auto output_offset = cursor.byte(packed, 1u);
+  bool effective_extrapolate = true;
+  if (const auto ce = try_const_uint(extrapolate_word)) {
+    effective_extrapolate = (*ce != 0u);
+  }
+  const auto extrapolate = extrapolate_word != 0u;
 
   const Float relative = (input - min_x) / (max_x - min_x);
-  const Float value = float_ramp_lookup_extrapolated(cursor, relative, true,
-                                                     extrapolate, table_size);
+  const Float value = float_ramp_lookup_extrapolated(
+      cursor, relative, true, extrapolate, effective_extrapolate, table_size);
   stack_store_float(stack, output_offset,
                     (1.0f - factor) * input + factor * value);
   cursor.advance(table_size);

@@ -13,21 +13,26 @@ using namespace luisa::compute;
 using namespace compiler::cycles_svm;
 
 struct VertexColorNode {
-  UInt layer_id;
-  UInt color_offset;
-  UInt alpha_offset;
-  UInt bump_offset;
-  Float bump_filter_width;
+  Expr<std::uint32_t> layer_id;
+  Expr<std::uint32_t> color_offset;
+  Expr<std::uint32_t> alpha_offset;
+  Expr<std::uint32_t> bump_offset;
+  Expr<float> bump_filter_width;
 };
 
 [[nodiscard]] VertexColorNode
 read_vertex_color_node(Cursor &cursor) noexcept {
   const auto packed = cursor.word();
-  return {.layer_id = cursor.byte(packed, 0u),
-          .color_offset = cursor.byte(packed, 1u),
-          .alpha_offset = cursor.byte(packed, 2u),
-          .bump_offset = cursor.byte(packed, 3u),
-          .bump_filter_width = cursor.floating()};
+  const auto layer_id = cursor.byte(packed, 0u);
+  const auto color_offset = cursor.byte(packed, 1u);
+  const auto alpha_offset = cursor.byte(packed, 2u);
+  const auto bump_offset = cursor.byte(packed, 3u);
+  const auto bump_filter_width = cursor.floating();
+  return {.layer_id = layer_id,
+          .color_offset = color_offset,
+          .alpha_offset = alpha_offset,
+          .bump_offset = bump_offset,
+          .bump_filter_width = bump_filter_width};
 }
 
 [[nodiscard]] Bool
@@ -39,12 +44,8 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
 void store_vertex_color(Stack &stack, const VertexColorNode &node,
                         Expr<luisa::float3> color,
                         Expr<float> alpha) noexcept {
-  $if(node.color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, node.color_offset, color);
-  };
-  $if(node.alpha_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, node.alpha_offset, alpha);
-  };
+  stack_store_float3_if_valid(stack, node.color_offset, color);
+  stack_store_float_if_valid(stack, node.alpha_offset, alpha);
 }
 
 template<bool use_derivatives>

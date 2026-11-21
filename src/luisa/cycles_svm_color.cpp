@@ -17,82 +17,100 @@ using namespace compiler::cycles_svm;
 }
 
 [[nodiscard]] Float3 rgb_to_hsv(Expr<luisa::float3> rgb_value) noexcept {
-  const Float3 rgb = rgb_value;
-  const Float cmax = luisa::compute::max(
-      rgb.x, luisa::compute::max(rgb.y, rgb.z));
-  const Float cmin = luisa::compute::min(
-      rgb.x, luisa::compute::min(rgb.y, rgb.z));
-  const Float cdelta = cmax - cmin;
-  Float h = 0.0f;
-  Float s = 0.0f;
-  const Float v = cmax;
+  static auto callable = []() noexcept {
+    Callable result{[](Float3 rgb) noexcept {
+      const Float cmax =
+          luisa::compute::max(rgb.x, luisa::compute::max(rgb.y, rgb.z));
+      const Float cmin =
+          luisa::compute::min(rgb.x, luisa::compute::min(rgb.y, rgb.z));
+      const Float cdelta = cmax - cmin;
+      Float h = 0.0f;
+      Float s = 0.0f;
+      const Float v = cmax;
 
-  $if (cmax != 0.0f) { s = cdelta / cmax; };
+      $if(cmax != 0.0f) { s = cdelta / cmax; };
 
-  $if (s != 0.0f) {
-    const Float3 c = (make_float3(cmax) - rgb) / cdelta;
-    $if (rgb.x == cmax) {
-      h = c.z - c.y;
-    }
-    $elif (rgb.y == cmax) { h = 2.0f + c.x - c.z; }
-    $else { h = 4.0f + c.y - c.x; };
-    h /= 6.0f;
-    $if (h < 0.0f) { h += 1.0f; };
-  };
-  return make_float3(h, s, v);
+      $if(s != 0.0f) {
+        const Float3 c = (make_float3(cmax) - rgb) / cdelta;
+        $if(rgb.x == cmax) {
+          h = c.z - c.y;
+        }
+        $elif(rgb.y == cmax) { h = 2.0f + c.x - c.z; }
+        $else { h = 4.0f + c.y - c.x; };
+        h /= 6.0f;
+        $if(h < 0.0f) { h += 1.0f; };
+      };
+      return make_float3(h, s, v);
+    }};
+    result.set_name("cycles_svm_rgb_to_hsv");
+    return result;
+  }();
+  return callable(rgb_value);
 }
 
 [[nodiscard]] Float3 hsv_to_rgb(Expr<luisa::float3> hsv_value) noexcept {
-  const Float3 hsv = hsv_value;
-  Float h = hsv.x;
-  const Float s = hsv.y;
-  const Float v = hsv.z;
-  Float3 rgb = make_float3(v);
+  static auto callable = []() noexcept {
+    Callable result{[](Float3 hsv) noexcept {
+      Float h = hsv.x;
+      const Float s = hsv.y;
+      const Float v = hsv.z;
+      Float3 rgb = make_float3(v);
 
-  $if (s != 0.0f) {
-    $if (h == 1.0f) { h = 0.0f; };
-    h *= 6.0f;
-    const Float i = floor(h);
-    const Float f = h - i;
-    const Float p = v * (1.0f - s);
-    const Float q = v * (1.0f - s * f);
-    const Float t = v * (1.0f - s * (1.0f - f));
+      $if(s != 0.0f) {
+        $if(h == 1.0f) { h = 0.0f; };
+        h *= 6.0f;
+        const Float i = floor(h);
+        const Float f = h - i;
+        const Float p = v * (1.0f - s);
+        const Float q = v * (1.0f - s * f);
+        const Float t = v * (1.0f - s * (1.0f - f));
 
-    $if (i == 0.0f) {
-      rgb = make_float3(v, t, p);
-    }
-    $elif (i == 1.0f) { rgb = make_float3(q, v, p); }
-    $elif (i == 2.0f) { rgb = make_float3(p, v, t); }
-    $elif (i == 3.0f) { rgb = make_float3(p, q, v); }
-    $elif (i == 4.0f) { rgb = make_float3(t, p, v); }
-    $else { rgb = make_float3(v, p, q); };
-  };
-  return rgb;
+        $if(i == 0.0f) {
+          rgb = make_float3(v, t, p);
+        }
+        $elif(i == 1.0f) { rgb = make_float3(q, v, p); }
+        $elif(i == 2.0f) { rgb = make_float3(p, v, t); }
+        $elif(i == 3.0f) { rgb = make_float3(p, q, v); }
+        $elif(i == 4.0f) { rgb = make_float3(t, p, v); }
+        $else { rgb = make_float3(v, p, q); };
+      };
+      return rgb;
+    }};
+    result.set_name("cycles_svm_hsv_to_rgb");
+    return result;
+  }();
+  return callable(hsv_value);
 }
 
 [[nodiscard]] Float3 rgb_to_hsl(Expr<luisa::float3> rgb_value) noexcept {
-  const Float3 rgb = rgb_value;
-  const Float cmax =
-      luisa::compute::max(rgb.x, luisa::compute::max(rgb.y, rgb.z));
-  const Float cmin =
-      luisa::compute::min(rgb.x, luisa::compute::min(rgb.y, rgb.z));
-  Float h = 0.0f;
-  Float s = 0.0f;
-  const Float l = luisa::compute::min(1.0f, (cmax + cmin) / 2.0f);
+  static auto callable = []() noexcept {
+    Callable result{[](Float3 rgb) noexcept {
+      const Float cmax =
+          luisa::compute::max(rgb.x, luisa::compute::max(rgb.y, rgb.z));
+      const Float cmin =
+          luisa::compute::min(rgb.x, luisa::compute::min(rgb.y, rgb.z));
+      Float h = 0.0f;
+      Float s = 0.0f;
+      const Float l = luisa::compute::min(1.0f, (cmax + cmin) / 2.0f);
 
-  $if(cmax != cmin) {
-    const Float cdelta = cmax - cmin;
-    $if(l > 0.5f) { s = cdelta / (2.0f - cmax - cmin); }
-    $else { s = cdelta / (cmax + cmin); };
-    $if(cmax == rgb.x) {
-      h = (rgb.y - rgb.z) / cdelta;
-      $if(rgb.y < rgb.z) { h += 6.0f; };
-    }
-    $elif(cmax == rgb.y) { h = (rgb.z - rgb.x) / cdelta + 2.0f; }
-    $else { h = (rgb.x - rgb.y) / cdelta + 4.0f; };
-  };
-  h /= 6.0f;
-  return make_float3(h, s, l);
+      $if(cmax != cmin) {
+        const Float cdelta = cmax - cmin;
+        $if(l > 0.5f) { s = cdelta / (2.0f - cmax - cmin); }
+        $else { s = cdelta / (cmax + cmin); };
+        $if(cmax == rgb.x) {
+          h = (rgb.y - rgb.z) / cdelta;
+          $if(rgb.y < rgb.z) { h += 6.0f; };
+        }
+        $elif(cmax == rgb.y) { h = (rgb.z - rgb.x) / cdelta + 2.0f; }
+        $else { h = (rgb.x - rgb.y) / cdelta + 4.0f; };
+      };
+      h /= 6.0f;
+      return make_float3(h, s, l);
+    }};
+    result.set_name("cycles_svm_rgb_to_hsl");
+    return result;
+  }();
+  return callable(rgb_value);
 }
 
 [[nodiscard]] Float3 hsl_to_rgb(Expr<luisa::float3> hsl_value) noexcept {
@@ -108,8 +126,18 @@ using namespace compiler::cycles_svm;
                      (nb - 0.5f) * chroma + hsl.z);
 }
 
-[[nodiscard]] Float3 combine_color(UInt color_type,
+[[nodiscard]] Float3 combine_color(Expr<std::uint32_t> color_type,
                                    Expr<luisa::float3> color_value) noexcept {
+  if (const auto ct = try_const_uint(color_type)) {
+    switch (*ct) {
+      case NODE_COMBSEP_COLOR_HSV:
+        return hsv_to_rgb(color_value);
+      case NODE_COMBSEP_COLOR_HSL:
+        return hsl_to_rgb(color_value);
+      default:
+        return Float3{color_value};
+    }
+  }
   Float3 color = color_value;
   $switch(color_type) {
     $case(static_cast<std::uint32_t>(NODE_COMBSEP_COLOR_HSV)) {
@@ -123,8 +151,18 @@ using namespace compiler::cycles_svm;
   return color;
 }
 
-[[nodiscard]] Float3 separate_color(UInt color_type,
+[[nodiscard]] Float3 separate_color(Expr<std::uint32_t> color_type,
                                     Expr<luisa::float3> color_value) noexcept {
+  if (const auto ct = try_const_uint(color_type)) {
+    switch (*ct) {
+      case NODE_COMBSEP_COLOR_HSV:
+        return rgb_to_hsv(color_value);
+      case NODE_COMBSEP_COLOR_HSL:
+        return rgb_to_hsl(color_value);
+      default:
+        return Float3{color_value};
+    }
+  }
   Float3 color = color_value;
   $switch(color_type) {
     $case(static_cast<std::uint32_t>(NODE_COMBSEP_COLOR_HSV)) {
@@ -169,31 +207,12 @@ using namespace compiler::cycles_svm;
 
 [[nodiscard]] Float3 mix_overlay(Float t, Expr<luisa::float3> color1,
                                  Expr<luisa::float3> color2_value) noexcept {
-  const Float3 color2 = color2_value;
+  const Float3 c1 = color1;
+  const Float3 c2 = color2_value;
   const Float tm = 1.0f - t;
-  Float3 result = color1;
-  $if (result.x < 0.5f) {
-    result.x *= tm + 2.0f * t * color2.x;
-  }
-  $else {
-    result.x =
-        1.0f - (tm + 2.0f * t * (1.0f - color2.x)) * (1.0f - result.x);
-  };
-  $if (result.y < 0.5f) {
-    result.y *= tm + 2.0f * t * color2.y;
-  }
-  $else {
-    result.y =
-        1.0f - (tm + 2.0f * t * (1.0f - color2.y)) * (1.0f - result.y);
-  };
-  $if (result.z < 0.5f) {
-    result.z *= tm + 2.0f * t * color2.z;
-  }
-  $else {
-    result.z =
-        1.0f - (tm + 2.0f * t * (1.0f - color2.z)) * (1.0f - result.z);
-  };
-  return result;
+  const Float3 lo = c1 * (tm + 2.0f * t * c2);
+  const Float3 hi = 1.0f - (tm + 2.0f * t * (1.0f - c2)) * (1.0f - c1);
+  return select(hi, lo, c1 < 0.5f);
 }
 
 [[nodiscard]] Float3 mix_subtract(Float t, Expr<luisa::float3> color1,
@@ -203,19 +222,11 @@ using namespace compiler::cycles_svm;
 
 [[nodiscard]] Float3 mix_divide(Float t, Expr<luisa::float3> color1,
                                 Expr<luisa::float3> color2_value) noexcept {
-  const Float3 color2 = color2_value;
+  const Float3 c1 = color1;
+  const Float3 c2 = color2_value;
   const Float tm = 1.0f - t;
-  Float3 result = color1;
-  $if (color2.x != 0.0f) {
-    result.x = tm * result.x + t * result.x / color2.x;
-  };
-  $if (color2.y != 0.0f) {
-    result.y = tm * result.y + t * result.y / color2.y;
-  };
-  $if (color2.z != 0.0f) {
-    result.z = tm * result.z + t * result.z / color2.z;
-  };
-  return result;
+  const Float3 safe_c2 = select(make_float3(1.0f), c2, c2 != 0.0f);
+  return select(c1, tm * c1 + t * c1 / safe_c2, c2 != 0.0f);
 }
 
 [[nodiscard]] Float3 mix_difference(Float t, Expr<luisa::float3> color1,
@@ -240,51 +251,26 @@ using namespace compiler::cycles_svm;
   return mix_interp(color1, luisa::compute::max(color1, color2), t);
 }
 
-[[nodiscard]] Float mix_dodge_component(Float t, Float color1,
-                                        Float color2) noexcept {
-  Float result = color1;
-  $if (result != 0.0f) {
-    Float value = 1.0f - t * color2;
-    $if (value <= 0.0f) { result = 1.0f; }
-    $else {
-      value = result / value;
-      $if (value > 1.0f) { result = 1.0f; }
-      $else { result = value; };
-    };
-  };
-  return result;
-}
-
 [[nodiscard]] Float3 mix_dodge(Float t, Expr<luisa::float3> color1_value,
                                Expr<luisa::float3> color2_value) noexcept {
-  const Float3 color1 = color1_value;
-  const Float3 color2 = color2_value;
-  return make_float3(mix_dodge_component(t, color1.x, color2.x),
-                     mix_dodge_component(t, color1.y, color2.y),
-                     mix_dodge_component(t, color1.z, color2.z));
-}
-
-[[nodiscard]] Float mix_burn_component(Float t, Float color1,
-                                       Float color2) noexcept {
-  Float result = color1;
-  Float value = 1.0f - t + t * color2;
-  $if (value <= 0.0f) { result = 0.0f; }
-  $else {
-    value = 1.0f - (1.0f - result) / value;
-    $if (value < 0.0f) { result = 0.0f; }
-    $elif (value > 1.0f) { result = 1.0f; }
-    $else { result = value; };
-  };
-  return result;
+  const Float3 c1 = color1_value;
+  const Float3 c2 = color2_value;
+  const Float3 denom = 1.0f - t * c2;
+  const Float3 safe_denom = select(make_float3(1.0f), denom, denom > 0.0f);
+  const Float3 div_val = luisa::compute::min(c1 / safe_denom, make_float3(1.0f));
+  const Float3 non_zero = select(make_float3(1.0f), div_val, denom > 0.0f);
+  return select(c1, non_zero, c1 != 0.0f);
 }
 
 [[nodiscard]] Float3 mix_burn(Float t, Expr<luisa::float3> color1_value,
                               Expr<luisa::float3> color2_value) noexcept {
-  const Float3 color1 = color1_value;
-  const Float3 color2 = color2_value;
-  return make_float3(mix_burn_component(t, color1.x, color2.x),
-                     mix_burn_component(t, color1.y, color2.y),
-                     mix_burn_component(t, color1.z, color2.z));
+  const Float3 c1 = color1_value;
+  const Float3 c2 = color2_value;
+  const Float3 denom = 1.0f - t + t * c2;
+  const Float3 safe_denom = select(make_float3(1.0f), denom, denom > 0.0f);
+  const Float3 val =
+      luisa::compute::clamp(1.0f - (1.0f - c1) / safe_denom, 0.0f, 1.0f);
+  return select(make_float3(0.0f), val, denom > 0.0f);
 }
 
 [[nodiscard]] Float3 mix_hue(Float t, Expr<luisa::float3> color1,
@@ -352,10 +338,41 @@ using namespace compiler::cycles_svm;
   return color1 + t * (2.0f * color2 + make_float3(-1.0f));
 }
 
-[[nodiscard]] Float3 svm_mix(UInt type, Float t,
+[[nodiscard]] Float3 svm_mix_const(std::uint32_t type, Float t,
+                                   Expr<luisa::float3> color1,
+                                   Expr<luisa::float3> color2) noexcept {
+  switch (static_cast<NodeMix>(type)) {
+    case NODE_MIX_BLEND: return mix_blend(t, color1, color2);
+    case NODE_MIX_ADD: return mix_add(t, color1, color2);
+    case NODE_MIX_MUL: return mix_multiply(t, color1, color2);
+    case NODE_MIX_SCREEN: return mix_screen(t, color1, color2);
+    case NODE_MIX_OVERLAY: return mix_overlay(t, color1, color2);
+    case NODE_MIX_SUB: return mix_subtract(t, color1, color2);
+    case NODE_MIX_DIV: return mix_divide(t, color1, color2);
+    case NODE_MIX_DIFF: return mix_difference(t, color1, color2);
+    case NODE_MIX_EXCLUSION: return mix_exclusion(t, color1, color2);
+    case NODE_MIX_DARK: return mix_darken(t, color1, color2);
+    case NODE_MIX_LIGHT: return mix_lighten(t, color1, color2);
+    case NODE_MIX_DODGE: return mix_dodge(t, color1, color2);
+    case NODE_MIX_BURN: return mix_burn(t, color1, color2);
+    case NODE_MIX_HUE: return mix_hue(t, color1, color2);
+    case NODE_MIX_SAT: return mix_saturation(t, color1, color2);
+    case NODE_MIX_VAL: return mix_value(t, color1, color2);
+    case NODE_MIX_COL: return mix_color(t, color1, color2);
+    case NODE_MIX_SOFT: return mix_soft_light(t, color1, color2);
+    case NODE_MIX_LINEAR: return mix_linear_light(t, color1, color2);
+    case NODE_MIX_CLAMP: return luisa::compute::clamp(color1, 0.0f, 1.0f);
+    default: return make_float3(0.0f);
+  }
+}
+
+[[nodiscard]] Float3 svm_mix(Expr<std::uint32_t> type, Float t,
                              Expr<luisa::float3> color1,
                              Expr<luisa::float3> color2,
                              std::uint32_t blend_mask = ~0u) noexcept {
+  if (const auto ct = try_const_uint(type)) {
+    return svm_mix_const(*ct, t, color1, color2);
+  }
   Float3 result = make_float3(0.0f);
   const auto has = [blend_mask](NodeMix mode) noexcept {
     const auto bit = static_cast<std::uint32_t>(mode);
@@ -468,7 +485,7 @@ using namespace compiler::cycles_svm;
 }
 
 [[nodiscard]] Float3 svm_mix_clamped_factor(
-    UInt type, Float t, Expr<luisa::float3> color1,
+    Expr<std::uint32_t> type, Float t, Expr<luisa::float3> color1,
     Expr<luisa::float3> color2, std::uint32_t blend_mask = ~0u) noexcept {
   return svm_mix(type, luisa::compute::clamp(t, 0.0f, 1.0f), color1, color2,
                  blend_mask);
@@ -476,17 +493,12 @@ using namespace compiler::cycles_svm;
 
 [[nodiscard]] Float3 gamma_color(Expr<luisa::float3> color_value,
                                  Expr<float> gamma_value) noexcept {
-  Float3 color = color_value;
+  const Float3 color = color_value;
   const Float gamma = gamma_value;
-  $if (gamma == 0.0f) {
-    color = make_float3(1.0f);
-  }
-  $else {
-    $if (color.x > 0.0f) { color.x = pow(color.x, gamma); };
-    $if (color.y > 0.0f) { color.y = pow(color.y, gamma); };
-    $if (color.z > 0.0f) { color.z = pow(color.z, gamma); };
-  };
-  return color;
+  const Float3 powered =
+      pow(luisa::compute::max(color, make_float3(1.0e-38f)), make_float3(gamma));
+  const Float3 non_zero_gamma = select(color, powered, color > 0.0f);
+  return select(non_zero_gamma, make_float3(1.0f), gamma == 0.0f);
 }
 
 [[nodiscard]] Float3 brightness_contrast(
@@ -536,9 +548,7 @@ void node_hsv(Cursor &cursor, Stack &stack) noexcept {
   color = factor * color + (1.0f - factor) * input_color;
   color = luisa::compute::max(color, make_float3(0.0f));
 
-  $if (output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, output_offset, color);
-  };
+  stack_store_float3_if_valid(stack, output_offset, color);
 }
 
 void node_gamma(Cursor &cursor, Stack &stack) noexcept {
@@ -551,9 +561,7 @@ void node_gamma(Cursor &cursor, Stack &stack) noexcept {
   const auto color = gamma_color(
       stack_load_input_float3(stack, color_x, color_y, color_z),
       stack_load_input_float(stack, gamma_input));
-  $if (output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, output_offset, color);
-  };
+  stack_store_float3_if_valid(stack, output_offset, color);
 }
 
 void node_brightness(Cursor &cursor, Stack &stack) noexcept {
@@ -568,9 +576,7 @@ void node_brightness(Cursor &cursor, Stack &stack) noexcept {
       stack_load_input_float3(stack, color_x, color_y, color_z),
       stack_load_input_float(stack, brightness_input),
       stack_load_input_float(stack, contrast_input));
-  $if (output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, output_offset, color);
-  };
+  stack_store_float3_if_valid(stack, output_offset, color);
 }
 
 void node_invert(Cursor &cursor, Stack &stack) noexcept {
@@ -586,9 +592,7 @@ void node_invert(Cursor &cursor, Stack &stack) noexcept {
   const Float3 color =
       factor * (make_float3(1.0f) - input_color) +
       (1.0f - factor) * input_color;
-  $if (output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, output_offset, color);
-  };
+  stack_store_float3_if_valid(stack, output_offset, color);
 }
 
 void node_mix(Cursor &cursor, Stack &stack,
@@ -629,15 +633,25 @@ void node_mix_color(Cursor &cursor, Stack &stack,
   const auto result_offset = cursor.byte(packed, 2u);
 
   Float t = stack_load_input_float(stack, factor_input);
-  $if (use_clamp > 0u) {
-    t = luisa::compute::clamp(t, 0.0f, 1.0f);
-  };
+  if (const auto uc = try_const_uint(use_clamp)) {
+    if (*uc > 0u) {
+      t = luisa::compute::clamp(t, 0.0f, 1.0f);
+    }
+  } else {
+    $if (use_clamp > 0u) { t = luisa::compute::clamp(t, 0.0f, 1.0f); };
+  }
   const Float3 a = stack_load_input_float3(stack, a_x, a_y, a_z);
   const Float3 b = stack_load_input_float3(stack, b_x, b_y, b_z);
   Float3 result = svm_mix(blend_type, t, a, b, blend_mask);
-  $if (use_clamp_result != 0u) {
-    result = luisa::compute::clamp(result, 0.0f, 1.0f);
-  };
+  if (const auto ucr = try_const_uint(use_clamp_result)) {
+    if (*ucr != 0u) {
+      result = luisa::compute::clamp(result, 0.0f, 1.0f);
+    }
+  } else {
+    $if (use_clamp_result != 0u) {
+      result = luisa::compute::clamp(result, 0.0f, 1.0f);
+    };
+  }
   stack_store_float3(stack, result_offset, result);
 }
 
@@ -650,9 +664,13 @@ void node_mix_float(Cursor &cursor, Stack &stack) noexcept {
   const auto result_offset = cursor.byte(packed, 1u);
 
   Float t = stack_load_input_float(stack, factor_input);
-  $if (use_clamp > 0u) {
-    t = luisa::compute::clamp(t, 0.0f, 1.0f);
-  };
+  if (const auto uc = try_const_uint(use_clamp)) {
+    if (*uc > 0u) {
+      t = luisa::compute::clamp(t, 0.0f, 1.0f);
+    }
+  } else {
+    $if (use_clamp > 0u) { t = luisa::compute::clamp(t, 0.0f, 1.0f); };
+  }
   const Float a = stack_load_input_float(stack, a_input);
   const Float b = stack_load_input_float(stack, b_input);
   const Float result = a * (1.0f - t) + b * t;
@@ -672,9 +690,13 @@ void node_mix_vector(Cursor &cursor, Stack &stack) noexcept {
   const auto result_offset = cursor.byte(packed, 1u);
 
   Float t = stack_load_input_float(stack, factor_input);
-  $if (use_clamp > 0u) {
-    t = luisa::compute::clamp(t, 0.0f, 1.0f);
-  };
+  if (const auto uc = try_const_uint(use_clamp)) {
+    if (*uc > 0u) {
+      t = luisa::compute::clamp(t, 0.0f, 1.0f);
+    }
+  } else {
+    $if (use_clamp > 0u) { t = luisa::compute::clamp(t, 0.0f, 1.0f); };
+  }
   const Float3 a = stack_load_input_float3(stack, a_x, a_y, a_z);
   const Float3 b = stack_load_input_float3(stack, b_x, b_y, b_z);
   const Float3 result =
@@ -698,9 +720,13 @@ void node_mix_vector_non_uniform(Cursor &cursor, Stack &stack) noexcept {
 
   Float3 t = stack_load_input_float3(
       stack, factor_x, factor_y, factor_z);
-  $if (use_clamp > 0u) {
-    t = luisa::compute::clamp(t, 0.0f, 1.0f);
-  };
+  if (const auto uc = try_const_uint(use_clamp)) {
+    if (*uc > 0u) {
+      t = luisa::compute::clamp(t, 0.0f, 1.0f);
+    }
+  } else {
+    $if (use_clamp > 0u) { t = luisa::compute::clamp(t, 0.0f, 1.0f); };
+  }
   const Float3 a = stack_load_input_float3(stack, a_x, a_y, a_z);
   const Float3 b = stack_load_input_float3(stack, b_x, b_y, b_z);
   const Float3 result =
@@ -719,15 +745,9 @@ void node_separate_color(Cursor &cursor, Stack &stack) noexcept {
   const auto blue_offset = cursor.byte(packed_outputs, 2u);
   const auto color = separate_color(
       color_type, stack_load_input_float3(stack, color_x, color_y, color_z));
-  $if(red_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, red_offset, color.x);
-  };
-  $if(green_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, green_offset, color.y);
-  };
-  $if(blue_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, blue_offset, color.z);
-  };
+  stack_store_float_if_valid(stack, red_offset, color.x);
+  stack_store_float_if_valid(stack, green_offset, color.y);
+  stack_store_float_if_valid(stack, blue_offset, color.z);
 }
 
 void node_combine_color(Cursor &cursor, Stack &stack) noexcept {
@@ -741,9 +761,7 @@ void node_combine_color(Cursor &cursor, Stack &stack) noexcept {
       color_type, make_float3(stack_load_input_float(stack, red_input),
                               stack_load_input_float(stack, green_input),
                               stack_load_input_float(stack, blue_input)));
-  $if(output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, output_offset, color);
-  };
+  stack_store_float3_if_valid(stack, output_offset, color);
 }
 
 void node_clamp(Cursor &cursor, Stack &stack) noexcept {
@@ -756,12 +774,25 @@ void node_clamp(Cursor &cursor, Stack &stack) noexcept {
   const Float value = stack_load_input_float(stack, value_input);
   const Float minimum = stack_load_input_float(stack, minimum_input);
   const Float maximum = stack_load_input_float(stack, maximum_input);
-  Float result = clamp_value(value, minimum, maximum);
-  $if ((clamp_type == static_cast<std::uint32_t>(NODE_CLAMP_RANGE)) &
-       (minimum > maximum)) {
-    result = clamp_value(value, maximum, minimum);
-  };
-  stack_store_float(stack, output_offset, result);
+  if (const auto ct = try_const_uint(clamp_type)) {
+    if (*ct == static_cast<std::uint32_t>(NODE_CLAMP_RANGE)) {
+      stack_store_float(stack, output_offset,
+                        clamp_value(value,
+                                    luisa::compute::min(minimum, maximum),
+                                    luisa::compute::max(minimum, maximum)));
+    } else {
+      stack_store_float(stack, output_offset,
+                        clamp_value(value, minimum, maximum));
+    }
+    return;
+  }
+  const Bool is_range =
+      clamp_type == static_cast<std::uint32_t>(NODE_CLAMP_RANGE);
+  const Float lo =
+      select(minimum, luisa::compute::min(minimum, maximum), is_range);
+  const Float hi =
+      select(maximum, luisa::compute::max(minimum, maximum), is_range);
+  stack_store_float(stack, output_offset, clamp_value(value, lo, hi));
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

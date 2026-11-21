@@ -81,17 +81,9 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
     }
     return node.attr.cast<luisa::ulong>();
   }();
-  $if(shader_data.object != object_none) {
-    descriptor = find_attribute(kernel_globals, shader_data, attr_id);
-    $if(!is_attribute_found(descriptor)) {
-      descriptor = attribute_not_found();
-      descriptor.type = node.output_type;
-    };
-  }
-  $else {
-    descriptor = attribute_not_found();
-    descriptor.type = node.output_type;
-  };
+  descriptor = find_attribute(kernel_globals, shader_data, attr_id);
+  descriptor.type =
+      select(descriptor.type, node.output_type, !is_attribute_found(descriptor));
   return descriptor;
 }
 
@@ -434,19 +426,37 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
   };
 
   Float3 result = make_float3(0.0f);
-  if (!may_be_uv && !may_be_generated) {
-    $if(!is_attribute_found(descriptor)) {
-      if (const_out) {
-        if (*const_out ==
-            static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
-          result = make_float3(1.0f);
-        }
-      } else {
-        $if(node.output_type ==
-            static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
-          result = make_float3(1.0f);
-        };
+  const auto emit_missing_alpha = [&]() noexcept {
+    if (const_out) {
+      if (*const_out ==
+          static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
+        result = make_float3(1.0f);
       }
+    } else {
+      $if(node.output_type ==
+          static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
+        result = make_float3(1.0f);
+      };
+    }
+  };
+  if (!may_be_uv && !may_be_generated) {
+    $if(!is_attribute_found(descriptor)) { emit_missing_alpha(); }
+    $else { result = eval_found(); };
+    return result;
+  }
+  if (may_be_uv && !may_be_generated) {
+    $if(shader_data.type == primitive_lamp) {
+      result = make_float3(1.0f - shader_data.u - shader_data.v,
+                           shader_data.u, 0.0f);
+    }
+    $elif(!is_attribute_found(descriptor)) { emit_missing_alpha(); }
+    $else { result = eval_found(); };
+    return result;
+  }
+  if (!may_be_uv && may_be_generated) {
+    $if(!is_attribute_found(descriptor)) {
+      result = kernel_globals.object_inverse_position_transform_if_object(
+          shader_data, shader_data.P);
     }
     $else { result = eval_found(); };
     return result;
@@ -462,12 +472,7 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
     result = kernel_globals.object_inverse_position_transform_if_object(
         shader_data, shader_data.P);
   }
-  $elif(!is_attribute_found(descriptor)) {
-    $if(node.output_type ==
-        static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
-      result = make_float3(1.0f);
-    };
-  }
+  $elif(!is_attribute_found(descriptor)) { emit_missing_alpha(); }
   $else { result = eval_found(); };
   return result;
 }
@@ -601,19 +606,42 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
     return found_val;
   };
 
-  if (!may_be_uv && !may_be_generated) {
-    $if(!is_attribute_found(descriptor)) {
-      if (const_out) {
-        if (*const_out ==
-            static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
-          result = dual3_one();
-        }
-      } else {
-        $if(node.output_type ==
-            static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
-          result = dual3_one();
-        };
+  const auto emit_missing_alpha = [&]() noexcept {
+    if (const_out) {
+      if (*const_out ==
+          static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
+        result = dual3_one();
       }
+    } else {
+      $if(node.output_type ==
+          static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
+        result = dual3_one();
+      };
+    }
+  };
+  if (!may_be_uv && !may_be_generated) {
+    $if(!is_attribute_found(descriptor)) { emit_missing_alpha(); }
+    $else { result = eval_found(); };
+    return result;
+  }
+  if (may_be_uv && !may_be_generated) {
+    $if(shader_data.type == primitive_lamp) {
+      result.val = make_float3(1.0f - shader_data.u - shader_data.v,
+                               shader_data.u, 0.0f);
+      result.dx = make_float3(-shader_data.du.dx - shader_data.dv.dx,
+                              shader_data.du.dx, 0.0f);
+      result.dy = make_float3(-shader_data.du.dy - shader_data.dv.dy,
+                              shader_data.du.dy, 0.0f);
+    }
+    $elif(!is_attribute_found(descriptor)) { emit_missing_alpha(); }
+    $else { result = eval_found(); };
+    return result;
+  }
+  if (!may_be_uv && may_be_generated) {
+    $if(!is_attribute_found(descriptor)) {
+      result =
+          kernel_globals.object_inverse_position_transform_if_object_derivative(
+              shader_data, shading_position(shader_data));
     }
     $else { result = eval_found(); };
     return result;
@@ -634,12 +662,7 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
         kernel_globals.object_inverse_position_transform_if_object_derivative(
             shader_data, shading_position(shader_data));
   }
-  $elif(!is_attribute_found(descriptor)) {
-    $if(node.output_type ==
-        static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
-      result = dual3_one();
-    };
-  }
+  $elif(!is_attribute_found(descriptor)) { emit_missing_alpha(); }
   $else { result = eval_found(); };
   return result;
 }
@@ -684,7 +707,20 @@ void node_attr_surface(Cursor &cursor, Stack &stack,
                        const KernelGlobals &kernel_globals,
                        const ShaderData &shader_data) noexcept {
   const auto node = read_attribute_node(cursor);
-  if (const auto ca = try_const_int(node.attr); ca && *ca >= 0) {
+  const auto ca = try_const_int(node.attr);
+  const auto cot = try_const_uint(node.output_type);
+  const bool cacheable =
+      ca.has_value() && *ca >= 0 &&
+      *ca != static_cast<std::int32_t>(ATTR_STD_GENERATED) &&
+      cot.has_value();
+  if (cacheable) {
+    if (auto cached = lookup_cached_surface_attr(
+            shader_data, static_cast<std::uint64_t>(*ca), *cot)) {
+      node_attr_store(node.output_type, stack, node.out_offset, *cached);
+      return;
+    }
+  }
+  if (ca && *ca >= 0) {
     const auto scoped_summary = kernel_globals.attribute_summary_for_id(
         static_cast<std::uint64_t>(*ca));
     const AttributeScopedKernelGlobals scoped_kg{kernel_globals,
@@ -694,6 +730,10 @@ void node_attr_surface(Cursor &cursor, Stack &stack,
         node_attr_init(scoped_kg, shader_data, node, absent);
     const auto data =
         node_attr_surface_eval(scoped_kg, shader_data, node, descriptor, absent);
+    if (cacheable) {
+      store_cached_surface_attr(shader_data, static_cast<std::uint64_t>(*ca),
+                                *cot, data);
+    }
     node_attr_store(node.output_type, stack, node.out_offset, data);
     return;
   }
@@ -707,22 +747,74 @@ void node_attr_derivative(Cursor &cursor, Stack &stack,
                           const KernelGlobals &kernel_globals,
                           const ShaderData &shader_data) noexcept {
   const auto node = read_attribute_node(cursor);
+  const auto cbo = try_const_uint(node.bump_offset);
+  const auto csd = try_const_uint(node.store_derivatives);
+  const auto ca = try_const_int(node.attr);
+  const auto cot = try_const_uint(node.output_type);
+  const bool cacheable =
+      ca.has_value() && *ca >= 0 &&
+      *ca != static_cast<std::int32_t>(ATTR_STD_GENERATED) &&
+      cot.has_value();
+  if (cbo && *cbo == static_cast<std::uint32_t>(NODE_BUMP_OFFSET_CENTER) &&
+      csd && *csd == 0u) {
+    if (cacheable) {
+      if (auto cached = lookup_cached_surface_attr(
+              shader_data, static_cast<std::uint64_t>(*ca), *cot)) {
+        node_attr_store(node.output_type, stack, node.out_offset, *cached);
+        return;
+      }
+    }
+    if (ca && *ca >= 0) {
+      const auto scoped_summary = kernel_globals.attribute_summary_for_id(
+          static_cast<std::uint64_t>(*ca));
+      const AttributeScopedKernelGlobals scoped_kg{kernel_globals,
+                                                   scoped_summary};
+      const bool absent = scoped_summary.element_mask == 0u;
+      const auto descriptor =
+          node_attr_init(scoped_kg, shader_data, node, absent);
+      const auto data = node_attr_surface_eval(scoped_kg, shader_data, node,
+                                               descriptor, absent);
+      if (cacheable) {
+        store_cached_surface_attr(shader_data, static_cast<std::uint64_t>(*ca),
+                                  *cot, data);
+      }
+      node_attr_store(node.output_type, stack, node.out_offset, data);
+      return;
+    }
+    const auto descriptor = node_attr_init(kernel_globals, shader_data, node);
+    const auto data =
+        node_attr_surface_eval(kernel_globals, shader_data, node, descriptor);
+    node_attr_store(node.output_type, stack, node.out_offset, data);
+    return;
+  }
   const auto eval_with_kg = [&](const KernelGlobals &kg,
                                 bool absent) noexcept {
     const auto descriptor = node_attr_init(kg, shader_data, node, absent);
     return node_attr_derivative_eval(kg, shader_data, node, descriptor, absent);
   };
   Dual3 data = [&]() noexcept {
-    if (const auto ca = try_const_int(node.attr); ca && *ca >= 0) {
+    if (cacheable) {
+      if (auto cached = lookup_cached_deriv_attr(
+              shader_data, static_cast<std::uint64_t>(*ca), *cot)) {
+        return *cached;
+      }
+    }
+    if (ca && *ca >= 0) {
       const auto scoped_summary = kernel_globals.attribute_summary_for_id(
           static_cast<std::uint64_t>(*ca));
       const AttributeScopedKernelGlobals scoped_kg{kernel_globals,
                                                    scoped_summary};
-      return eval_with_kg(scoped_kg, scoped_summary.element_mask == 0u);
+      auto evaluated =
+          eval_with_kg(scoped_kg, scoped_summary.element_mask == 0u);
+      if (cacheable) {
+        store_cached_deriv_attr(shader_data, static_cast<std::uint64_t>(*ca),
+                                *cot, evaluated);
+      }
+      return evaluated;
     }
     return eval_with_kg(kernel_globals, false);
   }();
-  if (const auto cbo = try_const_uint(node.bump_offset)) {
+  if (cbo) {
     if (*cbo == static_cast<std::uint32_t>(NODE_BUMP_OFFSET_DX)) {
       data.val += data.dx * node.bump_filter_width;
     } else if (*cbo == static_cast<std::uint32_t>(NODE_BUMP_OFFSET_DY)) {
@@ -738,7 +830,7 @@ void node_attr_derivative(Cursor &cursor, Stack &stack,
       data.val += data.dy * node.bump_filter_width;
     };
   }
-  if (const auto csd = try_const_uint(node.store_derivatives)) {
+  if (csd) {
     if (*csd != 0u) {
       node_attr_store(node.output_type, stack, node.out_offset, data);
     } else {

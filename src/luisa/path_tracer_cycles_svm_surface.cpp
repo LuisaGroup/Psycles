@@ -500,7 +500,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
       };
       const auto scene_ref = _scene;
       const auto obj_idx = context.cycles_object_index;
-      const svm::TransformState transform_state =
+      svm::TransformState transform_state =
           context.lazy_cycles_transforms
               ? svm::TransformState{
                     context.parameters.camera_transform,
@@ -521,6 +521,11 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                                     context.parameters.camera_inverse_transform,
                                     context.object_to_world,
                                     context.world_to_object};
+      if (context.lazy_cycles_transforms && scene_ref &&
+          scene_ref->cycles_svm && scene_ref->cycles_svm->objects) {
+        transform_state.lazy_object_buffer =
+            &scene_ref->cycles_svm->objects->object_buffer;
+      }
       const svm::PathState path_state{
           cycles_path_state::from_contract_shader_visibility(
               context.point.ray_visibility),

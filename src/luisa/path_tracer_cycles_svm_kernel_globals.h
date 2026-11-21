@@ -146,6 +146,8 @@ class PathCyclesSvmKernelGlobals final
     find_attribute_map_offset(
         Expr<std::uint32_t> start_offset,
         Expr<luisa::ulong> id) const noexcept override;
+    [[nodiscard]] std::optional<cycles_svm::SurfaceAttributeBuffers>
+    surface_attribute_buffers() const noexcept override;
     [[nodiscard]] bool prefers_outlined_loops() const noexcept override;
     [[nodiscard]] Float attribute_float(
         Expr<std::int32_t> offset) const noexcept override;

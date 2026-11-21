@@ -163,12 +163,11 @@ struct ThinGlassFresnel {
 }
 
 [[nodiscard]] Float fresnel_dielectric_fss(Expr<float> ior) noexcept {
-    Float result;
-    $if (ior < 1.0f) {
-        result = 0.997118f + ior * (0.1014f - ior * (0.965241f + ior * 0.130607f));
-    }
-    $else { result = (ior - 1.0f) / (4.08567f + 1.00071f * ior); };
-    return result;
+    const Float eta = ior;
+    const Float lo =
+        0.997118f + eta * (0.1014f - eta * (0.965241f + eta * 0.130607f));
+    const Float hi = (eta - 1.0f) / (4.08567f + 1.00071f * eta);
+    return select(hi, lo, eta < 1.0f);
 }
 
 [[nodiscard]] Float3 fresnel_f82_tint_b(
@@ -205,26 +204,32 @@ struct ThinGlassFresnel {
 ensure_valid_specular_reflection(Expr<luisa::float3> geometric_normal,
                                  Expr<luisa::float3> incident,
                                  Expr<luisa::float3> normal) noexcept {
-    Float3 result = normal;
-    const auto reflection = 2.0f * dot(normal, incident) * normal - incident;
-    const auto incident_z = dot(incident, geometric_normal);
-    const auto threshold = min(0.9f * incident_z, 0.01f);
-    $if (dot(geometric_normal, reflection) < threshold) {
-        const auto x_axis = native_vector_math::safe_normalize_nonzero_or(
-            normal - dot(normal, geometric_normal) * geometric_normal, normal);
-        const auto incident_x = dot(incident, x_axis);
-        const auto a = square(incident_x) + square(incident_z);
-        const auto b = 2.0f * (a + incident_z * threshold);
-        const auto c = square(threshold + incident_z);
-        const auto root = safe_sqrt(square(b) - 4.0f * a * c);
-        Float normal_z_squared;
-        $if (incident_x < 0.0f) { normal_z_squared = 0.25f * (b + root) / a; }
-        $else { normal_z_squared = 0.25f * (b - root) / a; };
-        const auto normal_x = safe_sqrt(1.0f - normal_z_squared);
-        const auto normal_z = safe_sqrt(normal_z_squared);
-        result = normal_x * x_axis + normal_z * geometric_normal;
-    };
-    return result;
+    static auto callable = []() noexcept {
+        Callable fn{[](Float3 ng, Float3 wi, Float3 n) noexcept {
+            Float3 result = n;
+            const auto reflection = 2.0f * dot(n, wi) * n - wi;
+            const auto incident_z = dot(wi, ng);
+            const auto threshold = min(0.9f * incident_z, 0.01f);
+            $if (dot(ng, reflection) < threshold) {
+                const auto x_axis = native_vector_math::safe_normalize_nonzero_or(
+                    n - dot(n, ng) * ng, n);
+                const auto incident_x = dot(wi, x_axis);
+                const auto a = square(incident_x) + square(incident_z);
+                const auto b = 2.0f * (a + incident_z * threshold);
+                const auto c = square(threshold + incident_z);
+                const auto root = safe_sqrt(square(b) - 4.0f * a * c);
+                const auto normal_z_squared =
+                    0.25f * select(b - root, b + root, incident_x < 0.0f) / a;
+                const auto normal_x = safe_sqrt(1.0f - normal_z_squared);
+                const auto normal_z = safe_sqrt(normal_z_squared);
+                result = normal_x * x_axis + normal_z * ng;
+            };
+            return result;
+        }};
+        fn.set_name("cycles_ensure_valid_specular_reflection");
+        return fn;
+    }();
+    return callable(geometric_normal, incident, normal);
 }
 
 [[nodiscard]] Float3 generalized_schlick_albedo(

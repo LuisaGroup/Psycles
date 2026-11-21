@@ -298,12 +298,8 @@ void node_tex_noise(Cursor &cursor, Stack &stack, NoiseUsage usage,
   const auto result = evaluate_noise(
       dimensions, vector, w, detail, roughness, lacunarity, offset, gain,
       distortion, noise_type, normalize, color_needed, usage, options);
-  $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, value_offset, result.w);
-  };
-  $if (color_needed) {
-    stack_store_float3(stack, color_offset, result.xyz());
-  };
+  stack_store_float_if_valid(stack, value_offset, result.w);
+  stack_store_float3_if_valid(stack, color_offset, result.xyz());
 }
 
 void node_tex_white_noise(Cursor &cursor, Stack &stack) noexcept {
@@ -319,37 +315,75 @@ void node_tex_white_noise(Cursor &cursor, Stack &stack) noexcept {
       stack_load_input_float3(stack, vector_x, vector_y, vector_z);
   const auto w = stack_load_input_float(stack, w_bits);
 
-  $if (color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+  const auto emit_white_color = [&](Expr<std::uint32_t> co) noexcept {
     Float3 color = make_float3(1.0f, 0.0f, 1.0f);
-    $switch (dimensions) {
-      $case(1u) { color = cycles_noise::hash_float_to_color(w); };
-      $case(2u) {
-        color = cycles_noise::hash_float2_to_color(vector.xy());
+    if (const auto cd = try_const_uint(dimensions)) {
+      switch (*cd) {
+        case 1u: color = cycles_noise::hash_float_to_color(w); break;
+        case 2u: color = cycles_noise::hash_float2_to_color(vector.xy()); break;
+        case 3u: color = cycles_noise::hash_float3_to_color(vector); break;
+        case 4u: color = cycles_noise::hash_float4_to_color(make_float4(vector, w)); break;
+        default: break;
+      }
+    } else {
+      $switch (dimensions) {
+        $case(1u) { color = cycles_noise::hash_float_to_color(w); };
+        $case(2u) {
+          color = cycles_noise::hash_float2_to_color(vector.xy());
+        };
+        $case(3u) { color = cycles_noise::hash_float3_to_color(vector); };
+        $case(4u) {
+          color = cycles_noise::hash_float4_to_color(make_float4(vector, w));
+        };
+        // Cycles keeps the magenta initializer after its debug kernel_assert.
+        $default {};
       };
-      $case(3u) { color = cycles_noise::hash_float3_to_color(vector); };
-      $case(4u) {
-        color = cycles_noise::hash_float4_to_color(make_float4(vector, w));
-      };
-      // Cycles keeps the magenta initializer after its debug kernel_assert.
-      $default {};
-    };
-    stack_store_float3(stack, color_offset, color);
+    }
+    stack_store_float3(stack, co, color);
   };
+  if (const auto cco = try_const_uint(color_offset)) {
+    if (*cco != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_white_color(*cco);
+    }
+  } else {
+    $if (color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_white_color(color_offset);
+    };
+  }
 
-  $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+  const auto emit_white_value = [&](Expr<std::uint32_t> vo) noexcept {
     Float value = 0.0f;
-    $switch (dimensions) {
-      $case(1u) { value = cycles_noise::hash_float(w); };
-      $case(2u) { value = cycles_noise::hash_float2(vector.xy()); };
-      $case(3u) { value = cycles_noise::hash_float3(vector); };
-      $case(4u) {
-        value = cycles_noise::hash_float4(make_float4(vector, w));
+    if (const auto cd = try_const_uint(dimensions)) {
+      switch (*cd) {
+        case 1u: value = cycles_noise::hash_float(w); break;
+        case 2u: value = cycles_noise::hash_float2(vector.xy()); break;
+        case 3u: value = cycles_noise::hash_float3(vector); break;
+        case 4u: value = cycles_noise::hash_float4(make_float4(vector, w)); break;
+        default: break;
+      }
+    } else {
+      $switch (dimensions) {
+        $case(1u) { value = cycles_noise::hash_float(w); };
+        $case(2u) { value = cycles_noise::hash_float2(vector.xy()); };
+        $case(3u) { value = cycles_noise::hash_float3(vector); };
+        $case(4u) {
+          value = cycles_noise::hash_float4(make_float4(vector, w));
+        };
+        // Cycles keeps the zero initializer after its debug kernel_assert.
+        $default {};
       };
-      // Cycles keeps the zero initializer after its debug kernel_assert.
-      $default {};
-    };
-    stack_store_float(stack, value_offset, value);
+    }
+    stack_store_float(stack, vo, value);
   };
+  if (const auto cvo = try_const_uint(value_offset)) {
+    if (*cvo != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_white_value(*cvo);
+    }
+  } else {
+    $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      emit_white_value(value_offset);
+    };
+  }
 }
 
 void node_tex_gradient(Cursor &cursor, Stack &stack) noexcept {
@@ -361,47 +395,84 @@ void node_tex_gradient(Cursor &cursor, Stack &stack) noexcept {
   const auto point = stack_load_float3(stack, coordinate_offset);
 
   Float factor = 0.0f;
-  $if(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_LINEAR)) {
-    factor = point.x;
-  }
-  $elif(gradient_type ==
-        static_cast<std::uint32_t>(NODE_BLEND_QUADRATIC)) {
-    const auto r = max(point.x, 0.0f);
-    factor = r * r;
-  }
-  $elif(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_EASING)) {
-    const auto r = clamp(point.x, 0.0f, 1.0f);
-    const auto t = r * r;
-    factor = 3.0f * t - 2.0f * t * r;
-  }
-  $elif(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_DIAGONAL)) {
-    factor = (point.x + point.y) * 0.5f;
-  }
-  $elif(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_RADIAL)) {
-    factor = atan2(point.y, point.x) / 6.2831853071795864f + 0.5f;
-  }
-  $else {
-    const auto r = max(
-        0.999999f -
-            sqrt(point.x * point.x + point.y * point.y + point.z * point.z),
-        0.0f);
-    $if(gradient_type ==
-        static_cast<std::uint32_t>(NODE_BLEND_QUADRATIC_SPHERE)) {
-      factor = r * r;
+  if (const auto cg = try_const_uint(gradient_type)) {
+    switch (*cg) {
+      case NODE_BLEND_LINEAR:
+        factor = point.x;
+        break;
+      case NODE_BLEND_QUADRATIC: {
+        const auto r = max(point.x, 0.0f);
+        factor = r * r;
+        break;
+      }
+      case NODE_BLEND_EASING: {
+        const auto r = clamp(point.x, 0.0f, 1.0f);
+        const auto t = r * r;
+        factor = 3.0f * t - 2.0f * t * r;
+        break;
+      }
+      case NODE_BLEND_DIAGONAL:
+        factor = (point.x + point.y) * 0.5f;
+        break;
+      case NODE_BLEND_RADIAL:
+        factor = atan2(point.y, point.x) / 6.2831853071795864f + 0.5f;
+        break;
+      case NODE_BLEND_QUADRATIC_SPHERE: {
+        const auto r = max(
+            0.999999f -
+                sqrt(point.x * point.x + point.y * point.y + point.z * point.z),
+            0.0f);
+        factor = r * r;
+        break;
+      }
+      case NODE_BLEND_SPHERICAL:
+        factor = max(
+            0.999999f -
+                sqrt(point.x * point.x + point.y * point.y + point.z * point.z),
+            0.0f);
+        break;
+      default:
+        break;
+    }
+  } else {
+    $if(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_LINEAR)) {
+      factor = point.x;
     }
     $elif(gradient_type ==
-          static_cast<std::uint32_t>(NODE_BLEND_SPHERICAL)) {
-      factor = r;
+          static_cast<std::uint32_t>(NODE_BLEND_QUADRATIC)) {
+      const auto r = max(point.x, 0.0f);
+      factor = r * r;
+    }
+    $elif(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_EASING)) {
+      const auto r = clamp(point.x, 0.0f, 1.0f);
+      const auto t = r * r;
+      factor = 3.0f * t - 2.0f * t * r;
+    }
+    $elif(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_DIAGONAL)) {
+      factor = (point.x + point.y) * 0.5f;
+    }
+    $elif(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_RADIAL)) {
+      factor = atan2(point.y, point.x) / 6.2831853071795864f + 0.5f;
+    }
+    $else {
+      const auto r = max(
+          0.999999f -
+              sqrt(point.x * point.x + point.y * point.y + point.z * point.z),
+          0.0f);
+      $if(gradient_type ==
+          static_cast<std::uint32_t>(NODE_BLEND_QUADRATIC_SPHERE)) {
+        factor = r * r;
+      }
+      $elif(gradient_type ==
+            static_cast<std::uint32_t>(NODE_BLEND_SPHERICAL)) {
+        factor = r;
+      };
     };
-  };
+  }
   factor = clamp(factor, 0.0f, 1.0f);
 
-  $if(factor_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, factor_offset, factor);
-  };
-  $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, color_offset, make_float3(factor));
-  };
+  stack_store_float_if_valid(stack, factor_offset, factor);
+  stack_store_float3_if_valid(stack, color_offset, make_float3(factor));
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

@@ -286,8 +286,8 @@ class CameraVolumeStackComponentImpl final
                     probe->direction(),
                     surface_ray::
                         intersection_t_offset(
-                            hit
-                                ->committed_ray_t),
+                            max(probe->t_min(),
+                                hit->committed_ray_t)),
                     probe->t_max());
                 intersection_count += 1u;
             };

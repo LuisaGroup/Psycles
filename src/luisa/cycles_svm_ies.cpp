@@ -177,9 +177,7 @@ void node_ies(Cursor &cursor, Stack &stack,
   const auto factor =
       strength * kernel_ies_interp(kernel_globals, slot, horizontal_angle,
                                    vertical_angle);
-  $if(factor_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, factor_offset, factor);
-  };
+  stack_store_float_if_valid(stack, factor_offset, factor);
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

@@ -16,12 +16,49 @@ namespace psycles::luisa_backend::cycles_svm::detail {
 
 // Cycles stack addressing is unchanged; only the physical local extent is a
 // host/JIT input. The maximum-sized default keeps direct node fixtures and
-// callers without a compiled scene valid. Local storage is uninitialized,
-// matching Cycles' float stack[SVM_STACK_SIZE], not a new zero-fill policy.
-class Stack final : public luisa::compute::Local<float> {
+// callers without a compiled scene valid. Bytecode VM mode uses a Local<float>
+// array to support runtime-indexed stack slots; DirectJit mode uses per-case
+// virtual SSA slots + lazy mutable scalar fallback for conditional blocks,
+// eliminating the function-wide stack array alloca and cross-case PHIs.
+class Stack final {
+private:
+  struct SlotState {
+    std::optional<float> literal;
+    const luisa::compute::Expression *ssa_expr{nullptr};
+    const luisa::compute::Expression *var_expr{nullptr};
+    bool use_var{false};
+  };
+
+  luisa::optional<luisa::compute::Local<float>> _array;
+  luisa::compute::detail::FunctionBuilder *_owner_fb{nullptr};
+  luisa::compute::ScopeStmt *_root_scope{nullptr};
+  std::size_t _size{0u};
+  bool _direct_jit{false};
+  luisa::vector<SlotState> _slots;
+
+  Stack(std::size_t size, bool direct_jit_mode) noexcept;
+
 public:
-  explicit Stack(std::size_t size = SVM_STACK_SIZE) noexcept
-      : luisa::compute::Local<float>{size} {}
+  explicit Stack(std::size_t size = SVM_STACK_SIZE) noexcept;
+  [[nodiscard]] static Stack direct_jit(std::size_t size) noexcept;
+
+  [[nodiscard]] bool is_direct_jit() const noexcept { return _direct_jit; }
+  [[nodiscard]] std::size_t size() const noexcept { return _size; }
+  [[nodiscard]] bool at_root_scope() const noexcept;
+  [[nodiscard]] std::optional<float>
+  try_const_slot(std::uint32_t offset) const noexcept;
+  void materialize_all_to_vars() noexcept;
+
+  [[nodiscard]] luisa::compute::Expr<float>
+  load_const_expr(std::uint32_t offset) noexcept;
+  [[nodiscard]] luisa::compute::Float
+  load_const(std::uint32_t offset) noexcept;
+  [[nodiscard]] luisa::compute::Float
+  load_dynamic(luisa::compute::Expr<std::uint32_t> offset) noexcept;
+  void store_const(std::uint32_t offset,
+                   luisa::compute::Expr<float> value) noexcept;
+  void store_dynamic(luisa::compute::Expr<std::uint32_t> offset,
+                     luisa::compute::Expr<float> value) noexcept;
 };
 
 /* A diagnostic evaluator reports unsupported dynamic transitions through a
@@ -79,6 +116,18 @@ public:
   [[nodiscard]] bool is_static() const noexcept {
     return _static_words != nullptr;
   }
+  [[nodiscard]] luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>>
+  words_buffer() const noexcept {
+    return _words;
+  }
+  [[nodiscard]] luisa::compute::Expr<std::uint32_t>
+  current_word_offset() const noexcept {
+    if (_static_words != nullptr) {
+      return luisa::compute::Expr<std::uint32_t>{
+          _global_base_offset + static_cast<std::uint32_t>(_static_index)};
+    }
+    return *_offset;
+  }
 
   [[nodiscard]] luisa::compute::Expr<std::uint32_t> word() noexcept;
   [[nodiscard]] luisa::compute::Expr<std::uint32_t>
@@ -92,10 +141,47 @@ public:
        std::uint32_t byte_index) const noexcept;
 };
 
+class DirectJitCaseCacheGuard final {
+private:
+  void *_prev{nullptr};
+  void *_owned{nullptr};
+
+public:
+  DirectJitCaseCacheGuard() noexcept;
+  ~DirectJitCaseCacheGuard() noexcept;
+  DirectJitCaseCacheGuard(const DirectJitCaseCacheGuard &) = delete;
+  DirectJitCaseCacheGuard &operator=(const DirectJitCaseCacheGuard &) = delete;
+};
+
+[[nodiscard]] std::optional<luisa::compute::Float3>
+lookup_cached_surface_attr(const ShaderData &shader_data,
+                           std::uint64_t attr_id,
+                           std::uint32_t output_type) noexcept;
+void store_cached_surface_attr(const ShaderData &shader_data,
+                               std::uint64_t attr_id,
+                               std::uint32_t output_type,
+                               const luisa::compute::Float3 &value) noexcept;
+[[nodiscard]] std::optional<Dual3>
+lookup_cached_deriv_attr(const ShaderData &shader_data,
+                         std::uint64_t attr_id,
+                         std::uint32_t output_type) noexcept;
+void store_cached_deriv_attr(const ShaderData &shader_data,
+                             std::uint64_t attr_id,
+                             std::uint32_t output_type,
+                             const Dual3 &value) noexcept;
+
 [[nodiscard]] std::optional<std::uint32_t>
 try_const_uint(luisa::compute::Expr<std::uint32_t> expr) noexcept;
 [[nodiscard]] std::optional<std::int32_t>
 try_const_int(luisa::compute::Expr<std::int32_t> expr) noexcept;
+[[nodiscard]] std::optional<float>
+try_const_float(luisa::compute::Expr<float> expr) noexcept;
+[[nodiscard]] luisa::compute::Expr<std::uint32_t>
+stack_offset_add(luisa::compute::Expr<std::uint32_t> base,
+                 std::uint32_t delta) noexcept;
+[[nodiscard]] luisa::compute::Expr<std::uint32_t>
+stack_offset_add(luisa::compute::Expr<std::uint32_t> base,
+                 luisa::compute::Expr<std::uint32_t> delta) noexcept;
 
 [[nodiscard]] luisa::compute::Float4x4
 transform_from_rows(luisa::compute::Expr<luisa::float4> x,
@@ -142,13 +228,25 @@ stack_load_input_dual_float(Stack &stack,
 
 void stack_store_float(Stack &stack, luisa::compute::Expr<std::uint32_t> offset,
                        luisa::compute::Expr<float> value) noexcept;
+void stack_store_float_if_valid(Stack &stack,
+                                luisa::compute::Expr<std::uint32_t> offset,
+                                luisa::compute::Expr<float> value) noexcept;
 void stack_store_float3(Stack &stack,
                         luisa::compute::Expr<std::uint32_t> offset,
                         luisa::compute::Expr<luisa::float3> value) noexcept;
+void stack_store_float3_if_valid(
+    Stack &stack, luisa::compute::Expr<std::uint32_t> offset,
+    luisa::compute::Expr<luisa::float3> value) noexcept;
 void stack_store_dual1(Stack &stack, luisa::compute::Expr<std::uint32_t> offset,
                        const Dual1 &value) noexcept;
+void stack_store_dual1_if_valid(Stack &stack,
+                                luisa::compute::Expr<std::uint32_t> offset,
+                                const Dual1 &value) noexcept;
 void stack_store_dual3(Stack &stack, luisa::compute::Expr<std::uint32_t> offset,
                        const Dual3 &value) noexcept;
+void stack_store_dual3_if_valid(Stack &stack,
+                                luisa::compute::Expr<std::uint32_t> offset,
+                                const Dual3 &value) noexcept;
 void stack_store_int(Stack &stack, luisa::compute::Expr<std::uint32_t> offset,
                      luisa::compute::Expr<std::int32_t> value) noexcept;
 
@@ -560,6 +658,10 @@ public:
       luisa::compute::Expr<std::uint32_t> start_offset,
       luisa::compute::Expr<luisa::ulong> id) const noexcept override {
     return _inner.find_attribute_map_offset(start_offset, id);
+  }
+  [[nodiscard]] std::optional<SurfaceAttributeBuffers>
+  surface_attribute_buffers() const noexcept override {
+    return _inner.surface_attribute_buffers();
   }
   [[nodiscard]] bool prefers_outlined_loops() const noexcept override {
     return _inner.prefers_outlined_loops();

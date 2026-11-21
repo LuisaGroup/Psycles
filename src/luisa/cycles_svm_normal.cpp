@@ -216,13 +216,9 @@ void node_normal(Cursor &cursor, Stack &stack) noexcept {
   Float3 direction = make_float3(direction_x, direction_y, direction_z);
   direction = normalize_cycles(direction);
 
-  $if(normal_output != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float3(stack, normal_output, direction);
-  };
-  $if(dot_output != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, dot_output,
-                      dot(direction, normalize_cycles(normal)));
-  };
+  stack_store_float3_if_valid(stack, normal_output, direction);
+  stack_store_float_if_valid(stack, dot_output,
+                             dot(direction, normalize_cycles(normal)));
 }
 
 void node_normal_map(Cursor &cursor, Stack &stack,

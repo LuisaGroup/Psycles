@@ -3,6 +3,7 @@
 #include <psycles/luisa/cycles_noise.h>
 
 #include <bit>
+#include <cstdio>
 #include <cstdlib>
 #include <limits>
 #include <map>
@@ -1376,6 +1377,54 @@ runtime_callable() noexcept {
     return callable;
 }
 
+[[nodiscard]] std::uint64_t
+filtered_runtime_key(std::uint32_t dimension_count,
+                     bool voronoi_extra_enabled,
+                     const RuntimeFilterOptions &filter) noexcept {
+    return static_cast<std::uint64_t>(dimension_count & 0x7u) |
+           (static_cast<std::uint64_t>(voronoi_extra_enabled ? 1u : 0u) << 3u) |
+           (static_cast<std::uint64_t>(filter.feature_mask & 0xffu) << 8u) |
+           (static_cast<std::uint64_t>(filter.metric_mask & 0xffu) << 16u) |
+           (static_cast<std::uint64_t>(filter.may_have_detail ? 1u : 0u) << 24u) |
+           (static_cast<std::uint64_t>(filter.may_normalize ? 1u : 0u) << 25u) |
+           (static_cast<std::uint64_t>(filter.may_need_color ? 1u : 0u) << 26u) |
+           (static_cast<std::uint64_t>(filter.may_need_position ? 1u : 0u) << 27u) |
+           (static_cast<std::uint64_t>(filter.may_need_radius ? 1u : 0u) << 28u);
+}
+
+template<std::uint32_t DimensionCount, bool VoronoiExtraEnabled>
+[[nodiscard]] const RuntimeVoronoiCallable &
+runtime_filtered_callable(RuntimeFilterOptions filter) noexcept {
+    struct Registry {
+        std::mutex mutex;
+        std::map<std::uint64_t, std::unique_ptr<RuntimeVoronoiCallable>> entries;
+    };
+    static auto &registry = *new Registry{};
+    const auto key =
+        filtered_runtime_key(DimensionCount, VoronoiExtraEnabled, filter);
+    std::scoped_lock lock{registry.mutex};
+    auto [it, inserted] = registry.entries.try_emplace(key, nullptr);
+    if (inserted || !it->second) {
+        auto fn = std::make_unique<RuntimeVoronoiCallable>(
+            [filter](Float3 vector, Float w, Float scale, Float detail,
+                     Float roughness, Float lacunarity, Float smoothness,
+                     Float exponent, Float randomness, UInt feature,
+                     UInt metric, Bool normalize) noexcept {
+                return evaluate_runtime_dimension_filtered<
+                    DimensionCount, VoronoiExtraEnabled>(
+                    filter, vector, w, scale, detail, roughness, lacunarity,
+                    smoothness, exponent, randomness, feature, metric,
+                    normalize);
+            });
+        char name_buf[64];
+        std::snprintf(name_buf, sizeof(name_buf), "cycles_voronoi_d%u_k%08llx",
+                      DimensionCount, static_cast<unsigned long long>(key));
+        fn->set_name(name_buf);
+        it->second = std::move(fn);
+    }
+    return *it->second;
+}
+
 [[nodiscard]] std::unique_ptr<VoronoiCallable>
 make_callable(Configuration configuration) noexcept {
     return std::make_unique<VoronoiCallable>(
@@ -1560,14 +1609,13 @@ luisa::compute::Var<EvaluationCall> evaluate_runtime_filtered(
     const Bool normalize{normalize_expression};
     const auto evaluate_dim = [&]<std::uint32_t D>() noexcept {
         if (voronoi_extra_enabled) {
-            return evaluate_runtime_dimension_filtered<D, true>(
-                filter_options, vector, w, scale, detail, roughness,
-                lacunarity, smoothness, exponent, randomness, feature, metric,
-                normalize);
+            return runtime_filtered_callable<D, true>(filter_options)(
+                vector, w, scale, detail, roughness, lacunarity, smoothness,
+                exponent, randomness, feature, metric, normalize);
         }
-        return evaluate_runtime_dimension_filtered<D, false>(
-            filter_options, vector, w, scale, detail, roughness, lacunarity,
-            smoothness, exponent, randomness, feature, metric, normalize);
+        return runtime_filtered_callable<D, false>(filter_options)(
+            vector, w, scale, detail, roughness, lacunarity, smoothness,
+            exponent, randomness, feature, metric, normalize);
     };
     if (std::has_single_bit(d_mask)) {
         switch (std::countr_zero(d_mask)) {

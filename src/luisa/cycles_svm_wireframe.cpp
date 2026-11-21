@@ -128,9 +128,7 @@ void node_wireframe(Cursor &cursor, Stack &stack,
   const auto factor = wireframe(
       kernel_globals, transform_state, shader_data, dP, size, use_pixel_size,
       position, require_triangle_primitive, object_motion_enabled);
-  $if(output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
-    stack_store_float(stack, output_offset, factor);
-  };
+  stack_store_float_if_valid(stack, output_offset, factor);
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

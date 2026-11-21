@@ -281,7 +281,7 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
             Float3 next_origin = ray->origin();
             Float3 next_direction = ray->direction();
             Float next_minimum = surface_ray::intersection_t_offset(
-                hit->committed_ray_t);
+                max(ray->t_min(), hit->committed_ray_t));
             Float next_maximum = ray->t_max();
             $if(!transparent) {
                 const auto normalized_surface_direction =
