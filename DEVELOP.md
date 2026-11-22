@@ -10,14 +10,16 @@ This guide documents Psycles' repository structure, semantic and performance inv
 Psycles/
   include/psycles/
     adapter/       Blender scene importer public API
+    blender_bridge/ Native C ABI declarations for host application plugins
     compiler/      Core node registry, Cycles SVM IR & bytecode compiler, sky/camera helpers
     contract/      Immutable SceneDatabase, ShaderGraph, pass & transport contracts
     io/            Multilayer OpenEXR & PFM image I/O, progressive pixel probe
     luisa/         Luisa backend API, surface/volume/sampling headers, DirectJit translator
     sampling/      Tabulated Sobol, LightTree, background & pixel-filter builders
   src/             Implementations matching each include module above
+  blender_addon/   Official Blender 4.2+ / 5.x Render Engine extension (`psycles/`)
   examples/        CLI executables (render_demo, render_blender_scene, probe_nishita)
-  tools/           Cycles benchmark runner, path-trace schema/decoder/comparator, policy scripts
+  tools/           Blender packaging, Cycles benchmark runner, path-trace oracle, policy scripts
   tests/           C++ core/device tests, Cycles oracle fixtures, Python contract suites
   docs/            Design manuals, optimization reference, compatibility spec, Cycles probe JSONs
   third_party/     Pinned LuisaCompute submodule and sky lookup tables

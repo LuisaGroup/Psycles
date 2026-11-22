@@ -180,6 +180,13 @@ class RenderSession {
 public:
     virtual ~RenderSession() noexcept = default;
     virtual void reset(const RenderSettings &settings) = 0;
+    virtual bool update_camera(
+        const CameraDesc &camera,
+        const RenderSettings &settings) {
+        (void)camera;
+        (void)settings;
+        return false;
+    }
     virtual bool render_samples(const SampleRange &samples, OutputSink &output) = 0;
     virtual void cancel() noexcept = 0;
     [[nodiscard]] virtual std::optional<RenderSampleTimings>

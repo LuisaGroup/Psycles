@@ -1,0 +1,13 @@
+schema_version = "1.0.0"
+id = "psycles"
+version = "0.1.0"
+name = "Psycles"
+tagline = "Cycles-compatible LuisaCompute GPU and CPU path tracer"
+maintainer = "Psycles Contributors"
+type = "add-on"
+tags = ["Render"]
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Load external scene textures and store compiled shader cache"

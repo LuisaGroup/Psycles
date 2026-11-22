@@ -431,7 +431,7 @@ bool LuisaRenderSession::write_passes(contract::OutputSink &output) {
 LuisaRenderSession::LuisaRenderSession(std::shared_ptr<LuisaSceneData> scene,
                                        LuisaPathTracerOptions options,
                                        const RenderSettings &settings)
-    : _scene{std::move(scene)}, _options{options},
+    : _scene{std::move(scene)}, _options{options}, _camera{_scene->camera},
       _stream{_scene->device.create_stream()} {
   initialize(settings);
 }

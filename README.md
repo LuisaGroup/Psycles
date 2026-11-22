@@ -51,6 +51,17 @@ Normalized Blender scene package on any enabled backend (`hip`, `dx`, `vk`, `met
 
 To force the GPU `wavefront-staged` scheduler directly from the CLI, pass the trailing scheduler selection arguments documented in [BUILD.md](BUILD.md#render-clis). On multi-GPU AMD systems with an integrated GPU at index 0, set `HIP_VISIBLE_DEVICES=1` for `hip`.
 
+### Blender Extension (Blender 4.2+ / 5.x)
+
+Psycles ships as a first-class Blender Extension (`blender_addon/psycles/`) backed by an in-process shared C ABI library (`psycles_blender`) with zero-disk scene sync, Cycles Shader Editor & material/world/light/pass panel compatibility, progressive F12 + render-border execution, and fast camera-only (`update_camera`) 3D viewport navigation:
+
+```bash
+cmake --build build --target psycles_blender --parallel 32
+python tools/package_blender_addon.py --build-dir build --blender /path/to/blender --output psycles.zip --install
+```
+
+Once installed, select **Psycles** under **Render Properties → Render Engine** to render directly in Blender's viewport and F12 render window. See [BUILD.md](BUILD.md#building--packaging-the-blender-extension) for packaging, platform, and validation details.
+
 ## Showcase
 
 Tonemapped previews from verified 256 spp `wavefront-staged` renders (combined gallery size `440.5 KiB` JPEG):

@@ -1,9 +1,12 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <psycles/contract/render.h>
@@ -71,5 +74,10 @@ struct BlenderSceneImport {
 // value is evaluated on the host.
 [[nodiscard]] BlenderSceneImport load_blender_scene_bundle(
     const std::filesystem::path &directory);
+
+[[nodiscard]] BlenderSceneImport load_blender_scene_memory(
+    std::string_view scene_json,
+    std::span<const std::byte> geometry_bin,
+    const std::filesystem::path &asset_base_dir = {});
 
 }// namespace psycles::adapter

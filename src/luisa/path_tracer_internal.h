@@ -566,12 +566,35 @@ struct FilmPassAccessorGpu {
     FilmPassResolveShader resolve_pass;
 };
 
+struct SessionKernelSignature {
+    CameraProjection camera_projection{CameraProjection::perspective};
+    bool camera_depth_of_field{false};
+    std::uint32_t camera_aperture_blades{};
+    float camera_aperture_rotation{};
+    bool camera_may_be_inside_volume{false};
+    bool next_event_estimation{false};
+    bool use_light_tree{false};
+    contract::DirectLightSampling direct_light_sampling{
+        contract::DirectLightSampling::multiple_importance_sampling};
+    bool reflective_caustics{true};
+    bool refractive_caustics{true};
+    bool has_filter_glossy{false};
+    bool ambient_occlusion_bounce_approximation{false};
+    std::uint32_t transparent_max_bounces{8u};
+    std::uint32_t wavefront_frame_capacity{1u};
+    bool valid{false};
+
+    [[nodiscard]] bool operator==(
+        const SessionKernelSignature &) const noexcept = default;
+};
+
 class LuisaRenderSession final : public contract::RenderSession {
 
 private:
     std::shared_ptr<LuisaSceneData> _scene;
     LuisaPathTracerOptions _options;
     RenderSettings _settings;
+    CameraDesc _camera;
     PixelWindow _window;
     Stream _stream;
     Buffer<luisa::float4> _combined;
@@ -588,12 +611,17 @@ private:
     Buffer<luisa::uint> _sample_mismatch_flag;
     Buffer<float> _resolved_pass_staging;
     std::vector<float> _resolved_pass_host;
+    std::size_t _allocated_pixel_count{};
+    std::size_t _allocated_path_trace_slots{};
+    contract::PixelFilter _allocated_filter{contract::PixelFilter::box};
+    float _allocated_filter_width{-1.0f};
     std::shared_ptr<const BackgroundSamplingDistribution> _background_sampling;
     std::shared_ptr<const VolumeMajorantRuntime> _volume_majorants;
     std::uint32_t _sobol_sequence_size{};
     std::uint32_t _total_aa_samples{};
     std::uint32_t _rendered_samples{};
     RenderKernelParameters _kernel_parameters{};
+    SessionKernelSignature _kernel_signature{};
     PathKernelExecutor _render_executor;
     std::unique_ptr<VolumeGuidingFilter>
         _volume_guiding_filter;
@@ -605,6 +633,9 @@ private:
     [[nodiscard]] std::size_t pixel_count() const noexcept;
     void prepare_sobol_table(std::uint32_t total_samples);
     void prepare_film_pass_accessor();
+    void prepare_film_buffers(std::size_t count, const RenderSettings &settings);
+    [[nodiscard]] SessionKernelSignature update_kernel_parameters(
+        const RenderSettings &settings);
     void initialize(const RenderSettings &settings);
     [[nodiscard]] bool write_passes(contract::OutputSink &output);
     void deliver_path_trace();
@@ -617,6 +648,9 @@ private:
         const RenderSettings &settings);
 
     void reset(const RenderSettings &settings) override;
+    bool update_camera(
+        const CameraDesc &camera,
+        const RenderSettings &settings) override;
     bool render_samples(
         const SampleRange &samples,
         contract::OutputSink &output) override;

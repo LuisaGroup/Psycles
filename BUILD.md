@@ -71,6 +71,7 @@ git submodule update --init --recursive
 | `LUISA_COMPUTE_ENABLE_VK_XIR_SPIRV` | `ON` | Use LuisaCompute native XIR-to-SPIR-V instead of DXC for `vk` |
 | `PSYCLES_ENABLE_LUISA_METAL` | `ON` on Apple | Build Apple Metal backend |
 | `PSYCLES_ENABLE_LUISA_METAL4` | `OFF` | Build Apple Metal 4 AIR backend |
+| `PSYCLES_BUILD_BLENDER_PLUGIN` | `ON` | Build `psycles_blender` C ABI shared library for the Blender extension |
 | `PSYCLES_BUILD_TESTS` | `ON` | Build C++ test targets and register CTest gates |
 | `PSYCLES_BUILD_EXAMPLES` | `ON` | Build `psycles_luisa_render_demo`, `psycles_render_blender_scene`, `psycles_probe_nishita` |
 | `PSYCLES_FETCH_LUISA_NEXT` | `OFF` | Fetch Luisa `next` only when `third_party/LuisaCompute` is absent |
@@ -101,10 +102,41 @@ cmake -S . -B build -G Ninja \
 
 - `psycles_core` (`Psycles::core`): scene contract (`src/contract/`), Blender scene adapter (`src/adapter/`), core node schema & native Cycles SVM IR/bytecode compiler (`src/compiler/`), pass I/O & OpenEXR writer (`src/io/`), LightTree/Sobol/pixel filter sampling (`src/sampling/`), Nishita/Hosek sky tables (`third_party/`).
 - `psycles_luisa` & `psycles_luisa_runtime`: native Cycles SVM device handlers (`src/luisa/cycles_svm*.cpp`), `DirectJitTranslator` (`src/luisa/cycles_svm_translator.cpp`), path-kernel stages (`src/luisa/path_kernel_*.cpp`), and backend session/scene runtime (`src/luisa/path_tracer_*.cpp`).
+- `psycles_blender` (`src/blender_bridge/`) & `blender_addon/psycles/`: in-process C ABI bridge and official Blender 4.2+ / 5.x Render Engine extension (`SceneSync`, Cycles panel reuse, F12/border/multi-pass output, interactive 3D viewport display-space rendering).
 - Examples (`examples/`):
   - `psycles_luisa_render_demo`: self-contained demo scene renderer
   - `psycles_render_blender_scene`: exported Blender bundle renderer & diagnostic trace CLI
   - `psycles_probe_nishita`: Nishita sky probe utility
+
+---
+
+## Building & Packaging the Blender Extension
+
+1. Build `psycles_blender` and the runtime backends:
+
+   ```bash
+   cmake --build build --target psycles_blender --parallel 32
+   ```
+
+2. Validate and package `blender_addon/psycles/` + native runtime libraries into a `.zip` archive (pass `--install` to install into Blender's `user_default` extension repository and enable it automatically):
+
+   ```bash
+   python tools/package_blender_addon.py \
+     --build-dir build \
+     --blender /path/to/blender \
+     --output psycles.zip \
+     --install
+   ```
+
+   Or install an already-built archive manually via Blender CLI or **Preferences → Get Extensions → Install from Disk**:
+
+   ```bash
+   blender --command extension install-file -r user_default -e psycles.zip
+   ```
+
+- **Shader cache location:** Inside Blender, Psycles stores compiled Luisa caches in Blender's writable user config directory (`user_resource('CONFIG', 'psycles_cache')`), configurable in **Edit → Preferences → Add-ons → Psycles**.
+- **Runtime override / dev workflow:** Without bundling `bin/`, `PSYCLES_BLENDER_LIB_DIR` or the add-on's **Runtime Library Directory** preference can point directly to `build/bin`.
+- **Headless / E2E plugin test suite:** `blender --background --factory-startup --python-exit-code 1 --python tests/test_blender_plugin.py -- --suite all --out-dir /tmp/psycles_test --bmw27 /path/to/bmw27_gpu.blend` (plus C++ CTest target `psycles.blender_capi`).
 
 ---
 

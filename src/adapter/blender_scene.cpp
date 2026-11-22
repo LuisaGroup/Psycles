@@ -9,6 +9,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -113,20 +114,23 @@ using detail::unsigned_number;
 
 template<typename T>
 [[nodiscard]] std::vector<T> read_values(
-    std::ifstream &stream,
+    std::span<const std::byte> binary,
     std::uint64_t offset,
     std::size_t count) {
     if (count > std::numeric_limits<std::size_t>::max() / sizeof(T)) {
         throw std::runtime_error("binary scene section is too large");
     }
+    const auto byte_count = count * sizeof(T);
+    if (offset > binary.size() ||
+        byte_count > binary.size() - static_cast<std::size_t>(offset)) {
+        throw std::runtime_error("geometry binary section exceeds buffer");
+    }
     std::vector<T> result(count);
-    stream.clear();
-    stream.seekg(static_cast<std::streamoff>(offset));
-    stream.read(
-        reinterpret_cast<char *>(result.data()),
-        static_cast<std::streamsize>(count * sizeof(T)));
-    if (!stream) {
-        throw std::runtime_error("failed to read geometry.bin section");
+    if (byte_count > 0u) {
+        std::memcpy(
+            result.data(),
+            binary.data() + static_cast<std::size_t>(offset),
+            byte_count);
     }
     return result;
 }
@@ -297,9 +301,9 @@ template<typename T>
     return result;
 }
 
-}// namespace
-
-BlenderSceneImport load_blender_scene_bundle(
+[[nodiscard]] BlenderSceneImport load_blender_scene_from_document(
+    yyjson_val *root,
+    std::span<const std::byte> geometry_bin,
     const std::filesystem::path &directory) {
     BlenderSceneImport result;
     auto error = [&](std::string message) {
@@ -313,24 +317,6 @@ BlenderSceneImport load_blender_scene_bundle(
             .message = std::move(message)});
     };
 
-    const auto json_path = directory / "scene.json";
-    yyjson_read_err read_error{};
-    Document document{
-        yyjson_read_file(
-            json_path.string().c_str(),
-            0u,
-            nullptr,
-            &read_error)};
-    if (!document) {
-        error(
-            "failed to parse '" + json_path.string() +
-            "': " +
-            (read_error.msg == nullptr
-                 ? std::string{"unknown JSON error"}
-                 : std::string{read_error.msg}));
-        return result;
-    }
-    auto *root = yyjson_doc_get_root(document.get());
     const auto schema = text(member(root, "schema"));
     const auto compact_geometry =
         schema == "psycles.blender-scene.v2";
@@ -484,17 +470,34 @@ BlenderSceneImport load_blender_scene_bundle(
         while (auto *image =
                    yyjson_arr_iter_next(&image_iterator)) {
             const auto load_failed = boolean(member(image, "load_failed"));
-            const auto relative_path =
-                std::filesystem::path{
-                    text(member(image, "path"))};
-            const auto source_path =
-                directory / relative_path;
+            auto *binary_section = member(image, "binary");
+            const auto has_binary =
+                binary_section != nullptr && !yyjson_is_null(binary_section);
+            std::filesystem::path source_path;
+            std::string source_format;
+            std::vector<std::uint8_t> encoded_data;
+            if (!load_failed && has_binary) {
+                const auto byte_count = static_cast<std::size_t>(
+                    unsigned_number(member(binary_section, "bytes")));
+                encoded_data = read_values<std::uint8_t>(
+                    geometry_bin, section_offset(image, "binary"), byte_count);
+                source_format = text(member(image, "source_format"), ".png");
+            } else if (!load_failed) {
+                const auto relative_path =
+                    std::filesystem::path{text(member(image, "path"))};
+                source_path = relative_path.is_absolute()
+                                  ? relative_path
+                                  : (directory / relative_path);
+                source_format = source_path.extension().string();
+                encoded_data = read_file(source_path);
+            } else {
+                source_format = text(member(image, "source_format"));
+            }
             scene.images.emplace(
                 ImageId{image_index++},
                 ImageDesc{
                     .name = text(member(image, "name")),
-                    .source_format =
-                        source_path.extension().string(),
+                    .source_format = std::move(source_format),
                     .color_space = image_color_space(
                         text(member(image, "colorspace"))),
                     .alpha_type = image_alpha_type(
@@ -505,8 +508,7 @@ BlenderSceneImport load_blender_scene_bundle(
                     .height = static_cast<std::uint32_t>(
                         unsigned_number(
                             member(image, "height"))),
-                    .encoded_data = load_failed ? std::vector<std::uint8_t>{}
-                                                : read_file(source_path),
+                    .encoded_data = std::move(encoded_data),
                     .load_failed = load_failed});
         }
 
@@ -858,24 +860,17 @@ BlenderSceneImport load_blender_scene_bundle(
                     std::max(number(member(camera, "pixel_aspect_y"), 1.0f), 1.0e-5f)}});
         scene.active_camera = camera_id;
 
-        std::ifstream geometry_stream{
-            directory / "geometry.bin", std::ios::binary};
-        if (!geometry_stream) {
+        if (geometry_bin.size() < 8u) {
             throw std::runtime_error(
-                "failed to open geometry.bin");
+                "geometry binary buffer is too small");
         }
-        std::array<char, 8u> magic{};
-        geometry_stream.read(
-            magic.data(),
-            static_cast<std::streamsize>(magic.size()));
-        const auto geometry_magic =
-            std::string_view{magic.data(), magic.size()};
+        const auto geometry_magic = std::string_view{
+            reinterpret_cast<const char *>(geometry_bin.data()), 8u};
         const auto expected_magic =
             compact_geometry
                 ? std::string_view{"PSYGEO2\0", 8u}
                 : std::string_view{"PSYGEO1\0", 8u};
-        if (!geometry_stream ||
-            geometry_magic != expected_magic) {
+        if (geometry_magic != expected_magic) {
             throw std::runtime_error(
                 "geometry.bin has an invalid header");
         }
@@ -949,35 +944,35 @@ BlenderSceneImport load_blender_scene_bundle(
             const auto generated_count =
                 domain_count(generated_domain);
             auto position_values = read_values<float>(
-                geometry_stream,
+                geometry_bin,
                 section_offset(geometry, "positions"),
                 point_count * 3u);
             auto normal_values = read_values<float>(
-                geometry_stream,
+                geometry_bin,
                 section_offset(geometry, "normals"),
                 normal_count * 3u);
             auto uv_values = read_values<float>(
-                geometry_stream,
+                geometry_bin,
                 section_offset(geometry, "uv"),
                 uv_count * 2u);
             std::vector<float> uv_tangent_values;
             if (member(geometry, "uv_tangents") != nullptr) {
                 uv_tangent_values = read_values<float>(
-                    geometry_stream,
+                    geometry_bin,
                     section_offset(geometry, "uv_tangents"),
                     uv_tangent_count * 4u);
             }
             auto generated_values = read_values<float>(
-                geometry_stream,
+                geometry_bin,
                 section_offset(geometry, "generated"),
                 generated_count * 3u);
             auto index_values = read_values<std::uint32_t>(
-                geometry_stream,
+                geometry_bin,
                 section_offset(geometry, "indices"),
                 triangle_count * 3u);
             auto material_values =
                 read_values<std::uint32_t>(
-                    geometry_stream,
+                    geometry_bin,
                     section_offset(
                         geometry,
                         "triangle_material_slots"),
@@ -987,7 +982,7 @@ BlenderSceneImport load_blender_scene_bundle(
             if (member(geometry, "triangle_smooth") != nullptr) {
                 smooth_values =
                     read_values<std::uint32_t>(
-                        geometry_stream,
+                        geometry_bin,
                         section_offset(
                             geometry,
                             "triangle_smooth"),
@@ -995,7 +990,7 @@ BlenderSceneImport load_blender_scene_bundle(
             }
             auto random_per_island_values =
                 read_values<float>(
-                    geometry_stream,
+                    geometry_bin,
                     section_offset(
                         geometry,
                         "triangle_random_per_island"),
@@ -1012,13 +1007,13 @@ BlenderSceneImport load_blender_scene_bundle(
                     static_cast<std::size_t>(unsigned_number(
                         member(pointiness_source, "edge_count")));
                 pointiness_normal_values = read_values<float>(
-                    geometry_stream,
+                    geometry_bin,
                     section_offset(
                         pointiness_source, "point_normals"),
                     point_count * 3u);
                 pointiness_edge_values =
                     read_values<std::uint32_t>(
-                        geometry_stream,
+                        geometry_bin,
                         section_offset(pointiness_source, "edges"),
                         edge_count * 2u);
             }
@@ -1133,11 +1128,11 @@ BlenderSceneImport load_blender_scene_bundle(
                     const auto value_count =
                         domain_count(domain);
                     auto values = read_values<float>(
-                        geometry_stream,
+                        geometry_bin,
                         section_offset(uv_layer, "values"),
                         value_count * 2u);
                     auto tangents = read_values<float>(
-                        geometry_stream,
+                        geometry_bin,
                         section_offset(uv_layer, "tangents"),
                         value_count * 4u);
                     auto &uv_destination =
@@ -1188,7 +1183,7 @@ BlenderSceneImport load_blender_scene_bundle(
                     const auto value_count =
                         domain_count(domain);
                     auto values = read_values<float>(
-                        geometry_stream,
+                        geometry_bin,
                         section_offset(attribute, "values"),
                         value_count * 4u);
                     auto &destination =
@@ -1213,7 +1208,7 @@ BlenderSceneImport load_blender_scene_bundle(
                         if (byte_section != nullptr &&
                             !yyjson_is_null(byte_section)) {
                             auto bytes = read_values<std::uint8_t>(
-                                geometry_stream,
+                                geometry_bin,
                                 section_offset(
                                     attribute, "byte_values"),
                                 value_count * 4u);
@@ -1301,28 +1296,28 @@ BlenderSceneImport load_blender_scene_bundle(
                 const auto curve_count = static_cast<std::size_t>(
                     unsigned_number(member(geometry, "curve_count")));
                 auto key_values = read_values<float>(
-                    geometry_stream,
+                    geometry_bin,
                     section_offset(geometry, "keys"),
                     key_count * 4u);
                 auto first_key_values = read_values<std::uint32_t>(
-                    geometry_stream,
+                    geometry_bin,
                     section_offset(geometry, "curve_first_key"),
                     curve_count);
                 auto material_values = read_values<std::uint32_t>(
-                    geometry_stream,
+                    geometry_bin,
                     section_offset(
                         geometry, "curve_material_slots"),
                     curve_count);
                 auto intercept_values = read_values<float>(
-                    geometry_stream,
+                    geometry_bin,
                     section_offset(geometry, "intercept"),
                     key_count);
                 auto length_values = read_values<float>(
-                    geometry_stream,
+                    geometry_bin,
                     section_offset(geometry, "length"),
                     curve_count);
                 auto random_values = read_values<float>(
-                    geometry_stream,
+                    geometry_bin,
                     section_offset(geometry, "random"),
                     curve_count);
 
@@ -1358,7 +1353,7 @@ BlenderSceneImport load_blender_scene_bundle(
                                yyjson_arr_iter_next(&uv_iterator)) {
                         const auto name = text(member(layer, "name"));
                         auto packed = read_values<float>(
-                            geometry_stream,
+                            geometry_bin,
                             section_offset(layer, "values"),
                             curve_count * 2u);
                         auto &values = curves.uv_layers[name];
@@ -1380,7 +1375,7 @@ BlenderSceneImport load_blender_scene_bundle(
                         const auto name =
                             text(member(attribute, "name"));
                         auto packed = read_values<float>(
-                            geometry_stream,
+                            geometry_bin,
                             section_offset(attribute, "values"),
                             curve_count * 4u);
                         auto &values = curves.color_attributes[name];
@@ -1888,6 +1883,65 @@ BlenderSceneImport load_blender_scene_bundle(
         error(exception.what());
     }
     return result;
+}
+
+}// namespace
+
+BlenderSceneImport load_blender_scene_bundle(
+    const std::filesystem::path &directory) {
+    BlenderSceneImport result;
+    auto error = [&](std::string message) {
+        result.diagnostics.emplace_back(BlenderSceneDiagnostic{
+            .severity = BlenderSceneDiagnosticSeverity::error,
+            .message = std::move(message)});
+    };
+    const auto json_path = directory / "scene.json";
+    yyjson_read_err read_error{};
+    Document document{yyjson_read_file(
+        json_path.string().c_str(), 0u, nullptr, &read_error)};
+    if (!document) {
+        error("failed to parse '" + json_path.string() + "': " +
+              (read_error.msg == nullptr ? std::string{"unknown JSON error"}
+                                         : std::string{read_error.msg}));
+        return result;
+    }
+    try {
+        const auto geometry_bytes = read_file(directory / "geometry.bin");
+        return load_blender_scene_from_document(
+            yyjson_doc_get_root(document.get()),
+            std::as_bytes(std::span{geometry_bytes}),
+            directory);
+    } catch (const std::exception &exception) {
+        error(exception.what());
+        return result;
+    }
+}
+
+BlenderSceneImport load_blender_scene_memory(
+    std::string_view scene_json,
+    std::span<const std::byte> geometry_bin,
+    const std::filesystem::path &asset_base_dir) {
+    BlenderSceneImport result;
+    if (scene_json.empty()) {
+        result.diagnostics.emplace_back(BlenderSceneDiagnostic{
+            .severity = BlenderSceneDiagnosticSeverity::error,
+            .message = "scene_json buffer is empty"});
+        return result;
+    }
+    yyjson_read_err read_error{};
+    Document document{yyjson_read_opts(
+        const_cast<char *>(scene_json.data()),
+        scene_json.size(), 0u, nullptr, &read_error)};
+    if (!document) {
+        result.diagnostics.emplace_back(BlenderSceneDiagnostic{
+            .severity = BlenderSceneDiagnosticSeverity::error,
+            .message = std::string{"failed to parse in-memory scene JSON: "} +
+                       (read_error.msg == nullptr ? "unknown JSON error"
+                                                  : read_error.msg)});
+        return result;
+    }
+    return load_blender_scene_from_document(
+        yyjson_doc_get_root(document.get()), geometry_bin, asset_base_dir);
 }
 
 }// namespace psycles::adapter

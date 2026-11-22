@@ -6,6 +6,8 @@ project(Psycles
 
 option(PSYCLES_BUILD_TESTS "Build Psycles contract tests" ON)
 option(PSYCLES_BUILD_EXAMPLES "Build Psycles executable examples" ON)
+option(PSYCLES_BUILD_BLENDER_PLUGIN
+    "Build Psycles native Blender plugin bridge shared library" ON)
 option(PSYCLES_ENABLE_OPENIMAGEIO
     "Use OpenImageIO for Cycles-compatible multilayer OpenEXR output" ON)
 option(PSYCLES_ENABLE_LUISA "Build the LuisaCompute DSL interface when available" ON)
@@ -1796,6 +1798,64 @@ if(PSYCLES_ENABLE_LUISA)
                 PROPERTIES
                     RUNTIME_OUTPUT_DIRECTORY
                         "${CMAKE_BINARY_DIR}/bin")
+        endif()
+
+        if(PSYCLES_BUILD_BLENDER_PLUGIN)
+            add_library(psycles_blender SHARED
+                src/blender_bridge/psycles_blender_capi.cpp)
+            add_library(Psycles::blender ALIAS psycles_blender)
+            target_compile_definitions(psycles_blender
+                PRIVATE PSYCLES_BLENDER_BUILD=1)
+            target_include_directories(psycles_blender
+                PUBLIC
+                    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                    $<INSTALL_INTERFACE:include>)
+            target_link_libraries(psycles_blender
+                PRIVATE Psycles::luisa_runtime)
+            target_compile_features(psycles_blender
+                PUBLIC cxx_std_20)
+            set_target_properties(
+                psycles_blender
+                PROPERTIES
+                    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+                    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+            if(MSVC)
+                target_compile_options(psycles_blender PRIVATE /W4 /permissive-)
+            else()
+                target_compile_options(psycles_blender PRIVATE
+                    -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
+            endif()
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx)
+                if(TARGET luisa-compute-backend-${_backend})
+                    add_dependencies(
+                        psycles_blender
+                        luisa-compute-backend-${_backend})
+                endif()
+            endforeach()
+            if(WIN32)
+                add_custom_command(
+                    TARGET psycles_blender POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        $<TARGET_FILE:psycles_core>
+                        $<TARGET_FILE:psycles_luisa_runtime>
+                        "${CMAKE_BINARY_DIR}/bin")
+            endif()
+
+            if(PSYCLES_BUILD_TESTS)
+                add_executable(psycles_blender_capi_tests
+                    tests/test_blender_capi.cpp)
+                target_link_libraries(psycles_blender_capi_tests
+                    PRIVATE Psycles::blender)
+                target_compile_features(psycles_blender_capi_tests
+                    PRIVATE cxx_std_20)
+                set_target_properties(
+                    psycles_blender_capi_tests
+                    PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+                add_test(
+                    NAME psycles.blender_capi
+                    COMMAND psycles_blender_capi_tests)
+            endif()
         endif()
     else()
         message(STATUS
