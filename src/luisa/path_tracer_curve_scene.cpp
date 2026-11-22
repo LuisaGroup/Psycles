@@ -189,8 +189,6 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
     std::map<contract::GeometryId, std::uint32_t> &geometry_indices,
     luisa::vector<GeometryGpu> &geometry_gpu,
     luisa::vector<MaterialBindingGpu> &geometry_materials,
-    luisa::vector<AttributeBindingGpu> &attribute_bindings,
-    luisa::vector<AttributeRangeGpu> &attribute_ranges,
     const SceneAttributeResidencyPlan &attribute_residency,
     std::uint32_t &next_attribute_slot) const {
   CurveSceneUploadResult result;
@@ -275,8 +273,6 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
     data->heap.emplace_on_update(bindless_base + 4u, resource.material_slots);
     data->heap.emplace_on_update(bindless_base + 5u, resource.length);
     data->heap.emplace_on_update(bindless_base + 6u, resource.random);
-    const auto attribute_offset =
-        static_cast<std::uint32_t>(attribute_bindings.size());
     const auto &resident = attribute_residency.geometry(geometry_id);
     bool default_uv_available = false;
     for (const auto &[name, values] : upload.uv_layers) {
@@ -294,13 +290,6 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
       data->heap.emplace_on_update(slot, buffer);
       stream << buffer.copy_from(luisa::span{values});
       default_uv_available |= is_default;
-      if (retain_named) {
-        attribute_bindings.emplace_back(AttributeBindingGpu{
-            .id = id,
-            .value_slot = slot,
-            .domain = pack_attribute_layout(
-                attribute_domain_curve, attribute_format_float2)});
-      }
     }
     for (const auto &[name, values] : upload.color_attributes) {
       const auto id = contract::attribute_id(name);
@@ -312,11 +301,6 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
       const auto slot = next_attribute_slot++;
       data->heap.emplace_on_update(slot, buffer);
       stream << buffer.copy_from(luisa::span{values});
-      attribute_bindings.emplace_back(AttributeBindingGpu{
-          .id = id,
-          .value_slot = slot,
-          .domain = pack_attribute_layout(
-              attribute_domain_curve, attribute_format_float4)});
     }
     stream << resource.bounds.copy_from(luisa::span{upload.bounds})
            << resource.segments.copy_from(luisa::span{upload.segments})
@@ -333,12 +317,6 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
     result.cycles_curve_offsets.emplace(geometry_id, *curve_interval.offset);
     result.cycles_segment_offsets.emplace(geometry_id,
                                           *segment_interval.offset);
-    attribute_ranges.emplace_back(
-        AttributeRangeGpu{.offset = attribute_offset,
-                          .count = static_cast<std::uint32_t>(
-                              attribute_bindings.size() - attribute_offset),
-                          .primitive_slot = bindless_base,
-                          .padding = 0u});
     geometry_gpu.emplace_back(GeometryGpu{
         .bindless_base = bindless_base,
         .material_offset = material_offset,

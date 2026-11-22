@@ -116,10 +116,8 @@ template<typename SchedulerConfig>
     validate_surface_queue_hint_abi(coroutine);
     scheduler_config.hint_range = surface_count;
     scheduler_config.hint_fields = {path_transition::shade_surface};
-    if (path.scene->native_cycles_svm_surface) {
-        scheduler_config.hint_partition_size = cycles_surface_sort_partition_size(
-            scheduler_config.thread_count, surface_count);
-    }
+    scheduler_config.hint_partition_size = cycles_surface_sort_partition_size(
+        scheduler_config.thread_count, surface_count);
     return true;
 }
 

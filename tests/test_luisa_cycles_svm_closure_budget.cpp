@@ -76,8 +76,8 @@ int main(int argc, char **argv) {
       }
       require(result.ok(), "native closure-budget scene did not compile");
       const auto *scene = dynamic_cast<const LuisaCompiledScene *>(result.scene.get());
-      require(scene != nullptr && scene->data()->native_cycles_svm_surface,
-              "scene compilation did not use native SVM");
+      require(scene != nullptr && scene->data()->cycles_svm != nullptr,
+              "scene compilation did not activate native Cycles SVM");
       const auto &data = *scene->data();
       require(data.cycles_svm->compilation.shader_metadata[5u].num_closures == 1u,
               "finalized Diffuse plus Emission graph must allocate one closure");

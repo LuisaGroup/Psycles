@@ -184,18 +184,18 @@ template<typename... Args>
   return result;
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 2.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 template<bool blackbody, std::size_t N>
@@ -233,7 +233,7 @@ template<bool blackbody, std::size_t N>
          << cursor_buffer.copy_to(luisa::span{cursors}) << synchronize();
 
   for (auto index = std::size_t{}; index < cases.size(); ++index) {
-    if (!near(actual[index].xyz(), cases[index].expected) ||
+    if (!is_near(actual[index].xyz(), cases[index].expected) ||
         cursors[index] != spectral_word_count) {
       std::cerr << "Cycles "
                 << (blackbody ? "Blackbody" : "Wavelength")
@@ -301,9 +301,9 @@ template<bool blackbody, std::size_t N>
          << output_buffer.copy_to(actual.data())
          << cursor_buffer.copy_to(cursors.data()) << synchronize();
   const auto valid =
-      near(actual[0u].xyz(),
+      is_near(actual[0u].xyz(),
            luisa::float3{0.984052539f, 1.03527153f, 1.04255211f}) &&
-      near(actual[1u].xyz(),
+      is_near(actual[1u].xyz(),
            luisa::float3{0.00194444447f, 0.128174609f, 0.107936516f}) &&
       cursors == std::array<std::uint32_t, 2u>{2u, 2u};
   if (!valid) {
@@ -394,7 +394,7 @@ template<bool blackbody, std::size_t N>
          << synchronize();
   const auto expected =
       wavelength_cases[9u].expected * blackbody_cases[12u].expected.x;
-  const auto valid = near(actual.xyz(), expected) &&
+  const auto valid = is_near(actual.xyz(), expected) &&
                      actual.w == static_cast<float>(volume) &&
                      status == static_cast<std::uint32_t>(
                                    device_svm::EvaluationStatus::ended);

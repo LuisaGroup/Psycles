@@ -166,18 +166,18 @@ template<std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 5.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 5.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -282,57 +282,57 @@ template<std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
   auto valid = true;
   /* Common closure state is observed directly from unmodified Cycles. */
   valid &= type(0u, 0u) == random_type &&
-           near(common(0u, 0u).xyz(), random_color) &&
-           near(common(0u, 0u).w, 1.1299999952f) && near(normal(0u, 0u), up) &&
-           near(radius(0u).xyz(), random_radius) && near(radius(0u).w, 0.99f) &&
-           near(albedo(0u).xyz(), random_color) && near(albedo(0u).w, 1.55f) &&
-           near(alpha(0u), 0.28f) && state(0u, 0u) == 1u &&
+           is_near(common(0u, 0u).xyz(), random_color) &&
+           is_near(common(0u, 0u).w, 1.1299999952f) && is_near(normal(0u, 0u), up) &&
+           is_near(radius(0u).xyz(), random_radius) && is_near(radius(0u).w, 0.99f) &&
+           is_near(albedo(0u).xyz(), random_color) && is_near(albedo(0u).w, 1.55f) &&
+           is_near(alpha(0u), 0.28f) && state(0u, 0u) == 1u &&
            state(0u, 1u) == 7u &&
            state(0u, 2u) == device_svm::shader_data_bssrdf &&
            state(0u, 3u) == ended && state(0u, 4u) == 23u;
 
   valid &= type(1u, 0u) == burley_type &&
-           near(common(1u, 0u).xyz(), burley_color) &&
-           near(common(1u, 0u).w, 1.4299999475f) && near(normal(1u, 0u), up) &&
-           near(radius(1u).xyz(), burley_radius * (0.25f * inverse_pi)) &&
-           near(radius(1u).w, 0.0f) && near(albedo(1u).xyz(), burley_color) &&
-           near(albedo(1u).w, 1.4f) && near(alpha(1u), 1.0f) &&
+           is_near(common(1u, 0u).xyz(), burley_color) &&
+           is_near(common(1u, 0u).w, 1.4299999475f) && is_near(normal(1u, 0u), up) &&
+           is_near(radius(1u).xyz(), burley_radius * (0.25f * inverse_pi)) &&
+           is_near(radius(1u).w, 0.0f) && is_near(albedo(1u).xyz(), burley_color) &&
+           is_near(albedo(1u).w, 1.4f) && is_near(alpha(1u), 1.0f) &&
            state(1u, 0u) == 1u && state(1u, 1u) == 7u &&
            state(1u, 2u) == device_svm::shader_data_bssrdf &&
            state(1u, 3u) == ended && state(1u, 4u) == 23u;
 
   /* The same typed payload is partitioned only by Cycles' method state. */
-  valid &= type(2u, 0u) == skin_type && near(common(2u, 0u).w, 1.13f) &&
-           near(radius(2u).xyz(),
+  valid &= type(2u, 0u) == skin_type && is_near(common(2u, 0u).w, 1.13f) &&
+           is_near(radius(2u).xyz(),
                 {0.0125522302f, 0.0019617188f, 0.0026057979f}) &&
-           near(radius(2u).w, 0.9f) && near(alpha(2u), 1.0f) &&
+           is_near(radius(2u).w, 0.9f) && is_near(alpha(2u), 1.0f) &&
            state(2u, 2u) == device_svm::shader_data_bssrdf;
-  valid &= type(3u, 0u) == legacy_type && near(common(3u, 0u).w, 1.13f) &&
-           near(radius(3u).xyz(), random_radius * (0.25f * inverse_pi)) &&
-           near(radius(3u).w, 0.9f) && near(alpha(3u), 0.28f) &&
+  valid &= type(3u, 0u) == legacy_type && is_near(common(3u, 0u).w, 1.13f) &&
+           is_near(radius(3u).xyz(), random_radius * (0.25f * inverse_pi)) &&
+           is_near(radius(3u).w, 0.9f) && is_near(alpha(3u), 0.28f) &&
            state(3u, 2u) == device_svm::shader_data_bssrdf;
 
   /* Burley's diffuse-ancestor fallback and a non-positive radius are two
    * different source transitions, including the retained NONE-slot weight. */
   valid &= type(4u, 0u) == static_cast<std::uint32_t>(CLOSURE_NONE_ID) &&
            type(4u, 1u) == diffuse_type &&
-           near(common(4u, 0u).xyz(), burley_color) &&
-           near(common(4u, 0u).w, 0.0f) &&
-           near(common(4u, 1u).xyz(), burley_color) &&
-           near(radius(4u).xyz(), burley_radius) && state(4u, 0u) == 2u &&
+           is_near(common(4u, 0u).xyz(), burley_color) &&
+           is_near(common(4u, 0u).w, 0.0f) &&
+           is_near(common(4u, 1u).xyz(), burley_color) &&
+           is_near(radius(4u).xyz(), burley_radius) && state(4u, 0u) == 2u &&
            state(4u, 1u) == 6u && state(4u, 2u) == diffuse_flags;
   valid &= type(5u, 0u) == static_cast<std::uint32_t>(CLOSURE_NONE_ID) &&
            type(5u, 1u) == diffuse_type &&
-           near(common(5u, 0u).xyz(), {0.0f, 0.0f, 0.0f}) &&
-           near(common(5u, 1u).xyz(), random_color) &&
-           near(radius(5u).xyz(), {0.0f, 0.0f, 0.0f}) &&
+           is_near(common(5u, 0u).xyz(), {0.0f, 0.0f, 0.0f}) &&
+           is_near(common(5u, 1u).xyz(), random_color) &&
+           is_near(radius(5u).xyz(), {0.0f, 0.0f, 0.0f}) &&
            state(5u, 0u) == 2u && state(5u, 1u) == 6u &&
            state(5u, 2u) == diffuse_flags;
 
   /* Non-Burley methods ignore DIFFUSE_ANCESTOR, and the SVM normal payload is
    * normalized before the valid-reflection correction. */
-  valid &= type(6u, 0u) == random_type && near(normal(6u, 0u), tilted) &&
-           near(radius(6u).xyz(), random_radius) &&
+  valid &= type(6u, 0u) == random_type && is_near(normal(6u, 0u), tilted) &&
+           is_near(radius(6u).xyz(), random_radius) &&
            state(6u, 2u) == device_svm::shader_data_bssrdf;
 
   /* Allocation failure never changes cursor progression or invents flags. */
@@ -343,10 +343,10 @@ template<std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
   /* Cycles mixes the common closure weight but retains the unmixed shader
    * color as BSSRDF albedo. This stream prepends one legal NODE_VALUE_F. */
   valid &= type(8u, 0u) == random_type &&
-           near(common(8u, 0u).xyz(), random_color * 0.25f) &&
-           near(common(8u, 0u).w, 1.13f * 0.25f) &&
-           near(radius(8u).xyz(), random_radius) &&
-           near(albedo(8u).xyz(), random_color) &&
+           is_near(common(8u, 0u).xyz(), random_color * 0.25f) &&
+           is_near(common(8u, 0u).w, 1.13f * 0.25f) &&
+           is_near(radius(8u).xyz(), random_radius) &&
+           is_near(albedo(8u).xyz(), random_color) &&
            state(8u, 0u) == 1u && state(8u, 1u) == 7u &&
            state(8u, 2u) == device_svm::shader_data_bssrdf &&
            state(8u, 3u) == ended && state(8u, 4u) == 26u;

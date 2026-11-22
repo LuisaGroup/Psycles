@@ -223,7 +223,7 @@ template <typename... Args>
   return false;
 }
 
-[[nodiscard]] bool near(float actual, float expected_value,
+[[nodiscard]] bool is_near(float actual, float expected_value,
                         float tolerance = 2.0e-6f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected_value) <=
@@ -250,7 +250,7 @@ template <typename... Args>
 
   auto valid = true;
   for (auto index = std::size_t{}; index < actual.size(); ++index) {
-    valid &= near(actual[index], expected[index]) &&
+    valid &= is_near(actual[index], expected[index]) &&
              cursors[index] == payload_word_count;
   }
   if (!valid) {
@@ -359,10 +359,10 @@ template <typename... Args>
   const auto ended = static_cast<std::uint32_t>(
       device_svm::EvaluationStatus::ended);
   const auto valid =
-      near(actual[0u].x, 4.0f) && near(actual[0u].y, 2.0f) &&
-      near(actual[0u].z, 1.0f) && near(actual[0u].w, 4.0f) &&
-      near(actual[1u].x, 2.0f) && near(actual[1u].y, 1.0f) &&
-      near(actual[1u].z, 0.5f) && near(actual[1u].w, 2.0f) &&
+      is_near(actual[0u].x, 4.0f) && is_near(actual[0u].y, 2.0f) &&
+      is_near(actual[0u].z, 1.0f) && is_near(actual[0u].w, 4.0f) &&
+      is_near(actual[1u].x, 2.0f) && is_near(actual[1u].y, 1.0f) &&
+      is_near(actual[1u].z, 0.5f) && is_near(actual[1u].w, 2.0f) &&
       status[0u] == ended && status[1u] == ended;
   if (!valid) {
     std::cerr << "Cycles Light Falloff interpreter mismatch on " << backend

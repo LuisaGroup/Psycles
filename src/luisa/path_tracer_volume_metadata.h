@@ -1,6 +1,5 @@
 #pragma once
 
-#include <psycles/compiler/material_library.h>
 #include <psycles/contract/scene.h>
 #include <psycles/luisa/surface.h>
 #include <psycles/luisa/volume_stack.h>
@@ -46,14 +45,6 @@ inline constexpr std::uint32_t
 inline constexpr std::uint32_t
     cycles_volume_node_closure_allocations =
         maximum_volume_stack_size;
-
-[[nodiscard]] std::uint32_t
-cycles_program_closure_allocation_count(
-    const compiler::SurfaceProgram &program) noexcept;
-
-[[nodiscard]] std::uint32_t
-cycles_scene_closure_allocation_budget(
-    const compiler::MaterialLibrary &materials) noexcept;
 
 struct CameraVolumeBoundsQuery {
     contract::CameraProjection projection{

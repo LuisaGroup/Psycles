@@ -6,7 +6,6 @@
 #include "cycles_texture_sampling.h"
 #include "luisa_cycles_svm_test_kernel_globals.h"
 #include "luisa_shader_shape_test_support.h"
-#include "surface_image_box.h"
 #include "surface_image_sampling.h"
 
 #include <array>
@@ -195,8 +194,7 @@ public:
   }
 };
 
-class DirectBoxSampler final
-    : public surface_detail::SurfaceImageBoxTextureSampler {
+class DirectBoxSampler final {
 private:
   Expr<BindlessArray> _textures;
 
@@ -205,11 +203,91 @@ public:
       : _textures{std::move(textures)} {}
 
   [[nodiscard]] Float4 sample(Expr<std::uint32_t> texture_handle,
-                              Float2 uv) const noexcept override {
+                              Float2 uv) const noexcept {
     return surface_detail::sample_cycles_texture_2d(
         _textures, texture_handle, uv, 1u, 0u);
   }
 };
+
+[[nodiscard]] Float4 evaluate_reference_image_box(
+    Expr<luisa::float3> coordinate,
+    Expr<luisa::float3> signed_normal,
+    Expr<float> blend,
+    Expr<std::uint32_t> texture_handle,
+    Expr<bool> unassociate_alpha,
+    Expr<bool> encoded_as_srgb,
+    const DirectBoxSampler &sampler) noexcept {
+  auto normal = abs(signed_normal);
+  const auto normal_sum = normal.x + normal.y + normal.z;
+  normal /= select(1.0f, normal_sum, normal_sum != 0.0f);
+
+  Float3 weight = make_float3(0.0f);
+  const auto limit = 0.5f * (1.0f + blend);
+  $if((normal.x > limit * (normal.x + normal.y)) &
+      (normal.x > limit * (normal.x + normal.z))) {
+    weight.x = 1.0f;
+  }
+  $elif((normal.y > limit * (normal.x + normal.y)) &
+        (normal.y > limit * (normal.y + normal.z))) {
+    weight.y = 1.0f;
+  }
+  $elif((normal.z > limit * (normal.x + normal.z)) &
+        (normal.z > limit * (normal.y + normal.z))) {
+    weight.z = 1.0f;
+  }
+  $elif(blend > 0.0f) {
+    $if(normal.z < (1.0f - limit) * (normal.y + normal.x)) {
+      weight.x = normal.x / (normal.x + normal.y);
+      weight.x = luisa::compute::clamp(
+          (weight.x - 0.5f * (1.0f - blend)) / blend, 0.0f, 1.0f);
+      weight.y = 1.0f - weight.x;
+    }
+    $elif(normal.x < (1.0f - limit) * (normal.y + normal.z)) {
+      weight.y = normal.y / (normal.y + normal.z);
+      weight.y = luisa::compute::clamp(
+          (weight.y - 0.5f * (1.0f - blend)) / blend, 0.0f, 1.0f);
+      weight.z = 1.0f - weight.y;
+    }
+    $elif(normal.y < (1.0f - limit) * (normal.x + normal.z)) {
+      weight.x = normal.x / (normal.x + normal.z);
+      weight.x = luisa::compute::clamp(
+          (weight.x - 0.5f * (1.0f - blend)) / blend, 0.0f, 1.0f);
+      weight.z = 1.0f - weight.x;
+    }
+    $else {
+      weight.x = ((2.0f - limit) * normal.x + (limit - 1.0f)) /
+                 (2.0f * limit - 1.0f);
+      weight.y = ((2.0f - limit) * normal.y + (limit - 1.0f)) /
+                 (2.0f * limit - 1.0f);
+      weight.z = ((2.0f - limit) * normal.z + (limit - 1.0f)) /
+                 (2.0f * limit - 1.0f);
+    };
+  }
+  $else {
+    weight.x = 1.0f;
+  };
+
+  const auto sample_face = [&](Float2 uv) noexcept {
+    uv.y = 1.0f - uv.y;
+    return surface_detail::decode_surface_image_sample(
+        sampler.sample(texture_handle, uv), unassociate_alpha, encoded_as_srgb);
+  };
+  const auto uv_x = make_float2(
+      select(coordinate.y, 1.0f - coordinate.y, signed_normal.x < 0.0f),
+      coordinate.z);
+  const auto uv_y = make_float2(
+      select(coordinate.x, 1.0f - coordinate.x, signed_normal.y > 0.0f),
+      coordinate.z);
+  const auto uv_z = make_float2(
+      select(coordinate.y, 1.0f - coordinate.y, signed_normal.z > 0.0f),
+      coordinate.x);
+
+  Float4 sampled = make_float4(0.0f);
+  $if(weight.x > 0.0f) { sampled += weight.x * sample_face(uv_x); };
+  $if(weight.y > 0.0f) { sampled += weight.y * sample_face(uv_y); };
+  $if(weight.z > 0.0f) { sampled += weight.z * sample_face(uv_z); };
+  return sampled;
+}
 
 [[nodiscard]] device_svm::ShaderData make_shader_data(Float3 normal) noexcept {
   const auto identity = make_float4x4(1.0f);
@@ -428,18 +506,13 @@ make_projection_kernel() {
       Float4 expected = make_float4(0.0f);
       $if(handler == static_cast<std::uint32_t>(ProjectionHandler::box)) {
         const DirectBoxSampler sampler{textures};
-        const psycles::luisa_backend::SurfaceImageBoxInput input{
-            .coordinate = coordinate,
-            .signed_normal = normal,
-            .blend = blends.read(index),
-            .texture_handle = 0u,
-            .unassociate_alpha =
-                (image_flags & static_cast<std::uint32_t>(
-                                   NODE_IMAGE_ALPHA_UNASSOCIATE)) != 0u,
-            .encoded_as_srgb =
-                (image_flags & static_cast<std::uint32_t>(
-                                   NODE_IMAGE_COMPRESS_AS_SRGB)) != 0u};
-        expected = surface_detail::evaluate_surface_image_box(input, sampler);
+        expected = evaluate_reference_image_box(
+            coordinate, normal, blends.read(index), 0u,
+            (image_flags & static_cast<std::uint32_t>(
+                               NODE_IMAGE_ALPHA_UNASSOCIATE)) != 0u,
+            (image_flags & static_cast<std::uint32_t>(
+                               NODE_IMAGE_COMPRESS_AS_SRGB)) != 0u,
+            sampler);
       }
       $else {
         expected = surface_detail::sample_cycles_texture_2d(

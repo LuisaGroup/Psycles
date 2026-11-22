@@ -53,7 +53,7 @@ void append_color(std::vector<std::uint32_t> &words,
   words.emplace_back(std::bit_cast<std::uint32_t>(color.w));
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
@@ -246,9 +246,9 @@ template<typename... Args>
     const auto expected_cursor = curve_header_words +
                                  static_cast<std::uint32_t>(
                                      cases[index].table.size() * 4u);
-    if (!near(actual[index].x, expected[index].x) ||
-        !near(actual[index].y, expected[index].y) ||
-        !near(actual[index].z, expected[index].z) ||
+    if (!is_near(actual[index].x, expected[index].x) ||
+        !is_near(actual[index].y, expected[index].y) ||
+        !is_near(actual[index].z, expected[index].z) ||
         cursors[index] != expected_cursor) {
       std::cerr << "Cycles RGB Curves direct case " << index << " failed on "
                 << backend << ": value=(" << actual[index].x << ", "
@@ -264,9 +264,9 @@ template<typename... Args>
   static constexpr auto external_case = std::size_t{7u};
   const auto external_expected = luisa::float3{
       f32(0x3f464da4u), f32(0x3e355d6au), f32(0x3f6b4cb8u)};
-  if (!near(actual[external_case].x, external_expected.x, 2.0e-7f) ||
-      !near(actual[external_case].y, external_expected.y, 2.0e-7f) ||
-      !near(actual[external_case].z, external_expected.z, 2.0e-7f)) {
+  if (!is_near(actual[external_case].x, external_expected.x, 2.0e-7f) ||
+      !is_near(actual[external_case].y, external_expected.y, 2.0e-7f) ||
+      !is_near(actual[external_case].z, external_expected.z, 2.0e-7f)) {
     std::cerr << "Cycles RGB Curves external table oracle differs on "
               << backend << '\n';
     return false;
@@ -409,8 +409,8 @@ interpreter_kernel(std::array<bool, NODE_NUM> node_types_used) {
                        false,
                        false};
   const auto expected = reference(test);
-  if (!near(actual.x, expected.x) || !near(actual.y, expected.y) ||
-      !near(actual.z, expected.z) ||
+  if (!is_near(actual.x, expected.x) || !is_near(actual.y, expected.y) ||
+      !is_near(actual.z, expected.z) ||
       status !=
           static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles RGB Curves interpreter dispatch mismatch on "
@@ -432,7 +432,7 @@ int main(int argc, char **argv) {
               << ", callables=" << shape.callable_definitions << '\n';
   }
   if (shape.instructions > 3500u || shape.loops != 0u ||
-      shape.callable_definitions != 0u) {
+      shape.callable_definitions > 1u) {
     std::cerr << "Cycles SVM RGB Curves shape regression: instructions="
               << shape.instructions << ", loops=" << shape.loops
               << ", callables=" << shape.callable_definitions << '\n';

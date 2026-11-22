@@ -92,6 +92,9 @@ inline constexpr std::uint32_t kernel_feature_node_mask_volume =
     kernel_feature_node_emission | kernel_feature_node_volume |
     kernel_feature_node_voronoi_extra | kernel_feature_node_light_path |
     kernel_feature_node_portal;
+inline constexpr std::uint32_t kernel_feature_node_mask_displacement =
+    kernel_feature_node_voronoi_extra | kernel_feature_node_bump |
+    kernel_feature_node_bump_state | kernel_feature_node_portal;
 
 /* Path visibility and path flags copied from Cycles 5.2.1 kernel/types.h. */
 inline constexpr std::uint32_t path_ray_visibility_camera = 1u << 0u;

@@ -63,7 +63,7 @@ enum class SurfaceBucketMode : std::uint8_t {
 [[nodiscard]] bool configured_post_closure_substage(
     const LuisaSceneData &scene, bool staged_surface_sort_annotation,
     bool path_trace_enabled) noexcept {
-  if (!staged_surface_sort_annotation || !scene.native_cycles_svm_surface ||
+  if (!staged_surface_sort_annotation ||
       path_trace_enabled || scene.cycles_svm == nullptr) {
     return false;
   }
@@ -277,7 +277,7 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       scene, staged_surface_sort_annotation, path_trace_enabled);
 
   const bool can_specialize_native =
-      scene.native_cycles_svm_surface && !path_trace_enabled &&
+      !path_trace_enabled &&
       cycles_svm_has_domain_metadata(scene) &&
       scene.cycles_svm->compilation.table.ir.valid &&
       scene.cycles_svm->compilation.table.ir.shaders.size() ==

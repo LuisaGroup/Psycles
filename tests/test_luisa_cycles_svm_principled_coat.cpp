@@ -209,18 +209,18 @@ inline constexpr std::uint32_t meta_stride = 9u;
   }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 5.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 5.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -266,23 +266,23 @@ inline constexpr std::uint32_t meta_stride = 9u;
   const auto reflective_meta = 0u;
   const auto disabled_meta = meta_stride;
   auto valid =
-      near(actual[reflective_base + 0u].xyz(), luisa::float3{0.1999999881f}) &&
-      near(actual[reflective_base + 0u].w, 0.1999999881f) &&
-      near(actual[reflective_base + 1u].xyz(), luisa::float3{0.5166048408f}) &&
-      near(actual[reflective_base + 1u].w, 0.0174650792f) &&
-      near(actual[reflective_base + 2u].xyz(),
+      is_near(actual[reflective_base + 0u].xyz(), luisa::float3{0.1999999881f}) &&
+      is_near(actual[reflective_base + 0u].w, 0.1999999881f) &&
+      is_near(actual[reflective_base + 1u].xyz(), luisa::float3{0.5166048408f}) &&
+      is_near(actual[reflective_base + 1u].w, 0.0174650792f) &&
+      is_near(actual[reflective_base + 2u].xyz(),
            luisa::float3{0.1952815950f, 0.4025555849f, 0.4595240653f}) &&
-      near(actual[reflective_base + 2u].w, 0.3524537683f) &&
-      near(actual[reflective_base + 3u].xyz(), up) &&
-      near(actual[reflective_base + 4u].x, 0.0784f) &&
-      near(actual[reflective_base + 4u].y, 0.0784f) &&
-      near(actual[reflective_base + 4u].z, 1.45f) &&
+      is_near(actual[reflective_base + 2u].w, 0.3524537683f) &&
+      is_near(actual[reflective_base + 3u].xyz(), up) &&
+      is_near(actual[reflective_base + 4u].x, 0.0784f) &&
+      is_near(actual[reflective_base + 4u].y, 0.0784f) &&
+      is_near(actual[reflective_base + 4u].z, 1.45f) &&
       std::isfinite(actual[reflective_base + 4u].w) &&
       actual[reflective_base + 4u].w >= 1.0f &&
-      near(actual[reflective_base + 5u].xyz(), zero) &&
-      near(actual[reflective_base + 6u].xyz(),
+      is_near(actual[reflective_base + 5u].xyz(), zero) &&
+      is_near(actual[reflective_base + 6u].xyz(),
            luisa::float3{0.1637845635f, 0.0918109193f, 0.4318419099f}) &&
-      near(actual[reflective_base + 6u].w, 0.1999999881f) &&
+      is_near(actual[reflective_base + 6u].w, 0.1999999881f) &&
       actual_meta[reflective_meta + 0u] == 3u &&
       actual_meta[reflective_meta + 1u] == 5u &&
       actual_meta[reflective_meta + 2u] == expected_flags &&
@@ -301,11 +301,11 @@ inline constexpr std::uint32_t meta_stride = 9u;
   /* Cycles' coat tint is outside the reflective-caustics branch. Disabling
    * the GGX closure must therefore leave the Beer attenuation of emission
    * and diffuse active, while consuming no coat slot. */
-  valid &= near(actual[disabled_base + 1u].xyz(), zero) &&
-           near(actual[disabled_base + 2u].xyz(),
+  valid &= is_near(actual[disabled_base + 1u].xyz(), zero) &&
+           is_near(actual[disabled_base + 2u].xyz(),
                 luisa::float3{0.19964f, 0.41154f, 0.46978f}) &&
-           near(actual[disabled_base + 2u].w, 0.36032f) &&
-           near(actual[disabled_base + 6u].xyz(),
+           is_near(actual[disabled_base + 2u].w, 0.36032f) &&
+           is_near(actual[disabled_base + 6u].xyz(),
                 luisa::float3{0.16744f, 0.09386f, 0.44148f}) &&
            actual_meta[disabled_meta + 0u] == 2u &&
            actual_meta[disabled_meta + 1u] == 6u &&
@@ -320,11 +320,11 @@ inline constexpr std::uint32_t meta_stride = 9u;
    * emission and flags without consuming a closure slot; transparency keeps
    * its ordinary slot and lower BSDF layers are not evaluated. */
   valid &=
-      near(actual_emission[0u].xyz(),
+      is_near(actual_emission[0u].xyz(),
            luisa::float3{0.1637845635f, 0.0918109193f, 0.4318419099f}) &&
-      near(actual_emission[0u].w, 0.1999999881f) &&
-      near(actual_emission[1u].xyz(), luisa::float3{0.1999999881f}) &&
-      near(actual_emission[1u].w, 0.1999999881f) &&
+      is_near(actual_emission[0u].w, 0.1999999881f) &&
+      is_near(actual_emission[1u].xyz(), luisa::float3{0.1999999881f}) &&
+      is_near(actual_emission[1u].w, 0.1999999881f) &&
       actual_emission_meta[0u] == 1u && actual_emission_meta[1u] == 7u &&
       actual_emission_meta[2u] == expected_flags &&
       actual_emission_meta[3u] ==

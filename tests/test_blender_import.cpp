@@ -1,9 +1,6 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
-#include <psycles/compiler/surface_program.h>
-
-#include "blender_texture_coordinate_import_expectations.h"
 
 #include <array>
 #include <chrono>
@@ -31,6 +28,55 @@ void expect(bool condition, const std::string &message) {
   if (!condition) {
     throw std::runtime_error{message};
   }
+}
+
+[[nodiscard]] bool transform_near(const psycles::Mat4f &actual,
+                                  const std::array<float, 16u> &expected,
+                                  float tolerance) noexcept {
+  for (auto index = std::size_t{}; index < expected.size(); ++index) {
+    if (std::abs(actual.elements[index] - expected[index]) > tolerance) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void expect_texture_coordinate_import(
+    const psycles::contract::MaterialDesc &material) {
+  bool has_raw_reflection_coordinates = false;
+  bool has_raw_projector_coordinates = false;
+  bool rewrote_reflection_coordinates = false;
+  static constexpr std::array raw_projector_transform{
+      0.46153846f, 0.15384615f, -0.02884615f, 0.0f,
+      -0.07692308f, 0.30769231f, 0.00480769f, 0.0f,
+      0.0f, 0.0f, 0.25f, 0.0f,
+      -0.61538462f, 0.46153846f, -0.08653846f, 1.0f};
+  for (const auto &node : material.shader.nodes()) {
+    if (node.type == psycles::compiler::node_type::texture_coordinate &&
+        node.label == "Texture Coordinate") {
+      const auto from_dupli = node.properties.find("FromDupli");
+      has_raw_reflection_coordinates =
+          from_dupli != node.properties.end() &&
+          std::get<bool>(from_dupli->second.value);
+    }
+    if (node.type == psycles::compiler::node_type::texture_coordinate &&
+        node.label == "Projector Coordinates") {
+      const auto use_transform = node.properties.find("UseTransform");
+      const auto object_transform = node.properties.find("ObjectTransform");
+      has_raw_projector_coordinates =
+          use_transform != node.properties.end() &&
+          std::get<bool>(use_transform->second.value) &&
+          object_transform != node.properties.end() &&
+          transform_near(std::get<psycles::Mat4f>(object_transform->second.value),
+                         raw_projector_transform, 1.0e-7f);
+    }
+    rewrote_reflection_coordinates |=
+        node.type == psycles::compiler::node_type::vector_math &&
+        node.label.find("/ Reflection") != std::string::npos;
+  }
+  expect(has_raw_reflection_coordinates && has_raw_projector_coordinates &&
+             !rewrote_reflection_coordinates,
+         "Texture Coordinate import did not preserve raw Cycles properties");
 }
 
 void expect_near(float actual, float expected, const std::string &message) {
@@ -1226,31 +1272,7 @@ void test_integrator_settings_round_trip() {
   const auto bump_shader = bump_compiler.compile(bump_material->second.shader);
   expect(bump_shader.ok(),
          "automatic displacement bump graph did not validate");
-  const auto bump_surface =
-      psycles::compiler::compile_surface_program(*bump_shader.program);
-  expect(bump_surface.ok(),
-         "automatic displacement bump did not lower to a surface program");
-  bool has_bump_instruction = false;
-  bool bump_uses_object_space = false;
-  bool has_texture_mapping = false;
-  for (const auto &instruction : bump_surface.program->value_instructions()) {
-    has_bump_instruction |=
-        instruction.operation == psycles::compiler::ValueOperation::bump;
-    bump_uses_object_space |=
-        instruction.operation == psycles::compiler::ValueOperation::bump &&
-        (instruction.static_u0 & 4u) != 0u;
-    has_texture_mapping |=
-        instruction.operation == psycles::compiler::ValueOperation::mapping &&
-        instruction.static_u0 == 1u && instruction.static_u1 == 19u;
-  }
-  expect(has_bump_instruction,
-         "automatic displacement bump emitted no value instruction");
-  expect(!bump_uses_object_space,
-         "BUMP-only displacement incorrectly selected object-space bump");
-  psycles::tests::expect_texture_coordinate_import(
-      bump_material->second, *bump_surface.program);
-  expect(has_texture_mapping,
-         "legacy TextureNode mapping type or axis map was not lowered");
+  expect_texture_coordinate_import(bump_material->second);
 
   auto normal_map_scene = bump_scene;
   replace_once(
@@ -1309,12 +1331,8 @@ void test_integrator_settings_round_trip() {
           },
           {
             "name": "Diffuse",)JSON");
-  struct LoweredNormalMap {
-    psycles::compiler::ValueInstruction instruction;
-    std::uint64_t uv_map_id{};
-  };
-  const auto lower_imported_normal_map =
-      [&](const std::string &scene_text) {
+  const auto verify_imported_normal_map =
+      [&](const std::string &scene_text, std::string_view expected_base) {
         {
           std::ofstream scene{temporary.path() / "scene.json"};
           scene << scene_text;
@@ -1327,71 +1345,37 @@ void test_integrator_settings_round_trip() {
                "Normal Map semantic material is missing");
         const auto shader = bump_compiler.compile(material->second.shader);
         expect(shader.ok(), "Normal Map semantic graph did not validate");
-        const auto surface =
-            psycles::compiler::compile_surface_program(*shader.program);
-        expect(surface.ok(), "Normal Map semantic graph did not lower");
-        const auto &values = surface.program->value_instructions();
-        const auto &parameters = surface.program->parameters();
-        for (const auto &instruction : values) {
-          if (instruction.operation ==
-              psycles::compiler::ValueOperation::normal_map) {
-            const auto uv_map = instruction.operand(
-                psycles::compiler::value_operand::normal_map::uv_map);
-            expect(uv_map.valid() && uv_map.value < values.size(),
-                   "Normal Map UV operand is invalid");
-            const auto &parameter_value = values[uv_map.value];
-            expect(parameter_value.operation ==
-                           psycles::compiler::ValueOperation::parameter &&
-                       parameter_value.parameter.valid() &&
-                       parameter_value.parameter.value < parameters.size(),
-                   "Normal Map UV identity is not a typed parameter");
-            const auto &parameter =
-                parameters[parameter_value.parameter.value];
-            expect(parameter.source ==
-                           psycles::compiler::ParameterSource::property &&
-                       parameter.socket == "UvMapId" &&
-                       parameter.type ==
-                           psycles::contract::SocketType::unsigned_integer,
-                   "Normal Map UV identity lost its property contract");
-            return LoweredNormalMap{
-                .instruction = instruction,
-                .uv_map_id = std::get<std::uint64_t>(
-                    parameter.default_value.value)};
+        for (const auto &node : material->second.shader.nodes()) {
+          if (node.type != psycles::compiler::node_type::normal_map) {
+            continue;
           }
+          expect(
+              std::get<std::string>(node.properties.at("Space").value) ==
+                      "TANGENT" &&
+                  std::get<std::string>(
+                      node.properties.at("Convention").value) == "DIRECTX" &&
+                  std::get<std::string>(node.properties.at("Base").value) ==
+                      expected_base &&
+                  std::get<std::uint64_t>(
+                      node.properties.at("UvMapId").value) ==
+                      (expected_base == "ORIGINAL"
+                           ? psycles::contract::
+                                 uv_undisplaced_tangent_attribute_id("MappedUV")
+                           : psycles::contract::uv_tangent_attribute_id(
+                                 "MappedUV")),
+              "Normal Map semantic node lost its Cycles properties or UV map");
+          return;
         }
         throw std::runtime_error{
-            "Normal Map semantic graph emitted no instruction"};
+            "Normal Map semantic graph contained no normal_map node"};
       };
-  const auto original_normal_map =
-      lower_imported_normal_map(normal_map_scene);
-  expect(
-      original_normal_map.instruction.static_u0 ==
-              psycles::compiler::encode_normal_map_configuration(
-                  psycles::compiler::NormalMapSpace::tangent,
-                  true,
-                  psycles::compiler::NormalMapBase::original,
-                  psycles::compiler::NormalMapConvention::direct_x) &&
-          original_normal_map.uv_map_id ==
-              psycles::contract::uv_undisplaced_tangent_attribute_id(
-                  "MappedUV"),
-      "Blender ORIGINAL/DirectX Normal Map lost its Cycles attributes");
+  verify_imported_normal_map(normal_map_scene, "ORIGINAL");
 
   auto displaced_normal_map_scene = normal_map_scene;
   replace_once(displaced_normal_map_scene,
                "\"base\": \"ORIGINAL\"",
                "\"base\": \"DISPLACED\"");
-  const auto displaced_normal_map =
-      lower_imported_normal_map(displaced_normal_map_scene);
-  expect(
-      displaced_normal_map.instruction.static_u0 ==
-              psycles::compiler::encode_normal_map_configuration(
-                  psycles::compiler::NormalMapSpace::tangent,
-                  true,
-                  psycles::compiler::NormalMapBase::displaced,
-                  psycles::compiler::NormalMapConvention::direct_x) &&
-          displaced_normal_map.uv_map_id ==
-              psycles::contract::uv_tangent_attribute_id("MappedUV"),
-      "Blender DISPLACED Normal Map did not select the current Mikk frame");
+  verify_imported_normal_map(displaced_normal_map_scene, "DISPLACED");
 
   auto combined_displacement_scene = bump_scene;
   replace_once(combined_displacement_scene, "\"displacement_method\": \"BUMP\"",
@@ -1421,20 +1405,6 @@ void test_integrator_settings_round_trip() {
       bump_compiler.compile(combined_material.shader);
   expect(combined_shader.ok(),
          "combined displacement graph did not validate");
-  const auto combined_surface =
-      psycles::compiler::compile_surface_program(
-          *combined_shader.program);
-  expect(combined_surface.ok(),
-         "combined displacement graph did not lower");
-  bool combined_bump_uses_object_space = false;
-  for (const auto &instruction :
-       combined_surface.program->value_instructions()) {
-    combined_bump_uses_object_space |=
-        instruction.operation == psycles::compiler::ValueOperation::bump &&
-        (instruction.static_u0 & 4u) != 0u;
-  }
-  expect(combined_bump_uses_object_space,
-         "BOTH automatic bump lost Cycles object-space semantics");
 
   auto true_displacement_scene = bump_scene;
   replace_once(true_displacement_scene, "\"displacement_method\": \"BUMP\"",
@@ -1549,18 +1519,6 @@ void test_integrator_settings_round_trip() {
     }
   }
   expect(hosek_shader.ok(), "legacy Hosek-Wilkie graph did not validate");
-  const auto hosek_surface =
-      psycles::compiler::compile_surface_program(*hosek_shader.program);
-  expect(hosek_surface.ok(), "legacy Hosek-Wilkie graph did not lower");
-  bool has_hosek_instruction = false;
-  for (const auto &instruction : hosek_surface.program->value_instructions()) {
-    has_hosek_instruction |=
-        instruction.operation ==
-            psycles::compiler::ValueOperation::hosek_wilkie_sky &&
-        instruction.static_table.size() == 33u;
-  }
-  expect(has_hosek_instruction,
-         "legacy Hosek-Wilkie sky emitted no cooked model");
 
   const auto setting = light_tree_scene.find("\"use_light_tree\": false");
   expect(setting != std::string::npos, "test scene has no light-tree setting");
@@ -1667,17 +1625,6 @@ void test_cycles_float_to_boolean_conversion() {
       psycles::compiler::make_core_node_registry()};
   const auto shader = compiler.compile(material->shader);
   expect(shader.ok(), "linked float Thin Wall graph did not validate");
-  const auto surface =
-      psycles::compiler::compile_surface_program(*shader.program);
-  expect(surface.ok(), "linked float Thin Wall graph did not lower");
-  bool has_float_to_boolean_instruction = false;
-  for (const auto &instruction : surface.program->value_instructions()) {
-    has_float_to_boolean_instruction |=
-        instruction.operation ==
-        psycles::compiler::ValueOperation::scalar_to_boolean;
-  }
-  expect(has_float_to_boolean_instruction,
-         "linked float Thin Wall emitted no conversion instruction");
 }
 
 void test_cycles_default_microfacet_tangent_import() {
@@ -1938,38 +1885,6 @@ void test_cycles_default_microfacet_tangent_import() {
     const auto shader = compiler.compile(material->shader);
     expect(shader.ok(),
            std::string{material_name} + " graph did not validate");
-    const auto surface =
-        psycles::compiler::compile_surface_program(*shader.program);
-    expect(surface.ok() &&
-               surface.program->closure_instructions().size() == 1u,
-           std::string{material_name} + " graph did not lower");
-    const auto &closure = surface.program->closure_instructions().front();
-    if (expected_type != psycles::compiler::node_type::sheen_bsdf) {
-      expect(closure.microfacet_anisotropy.valid() &&
-                 closure.microfacet_rotation.valid() &&
-                 closure.tangent.valid(),
-             std::string{material_name} +
-                 " lost anisotropy, rotation, or tangent during lowering");
-    }
-    if (expected_type == psycles::compiler::node_type::metallic_bsdf) {
-      expect(
-          closure.operation ==
-                  psycles::compiler::ClosureOperation::metallic_conductor &&
-              closure.metallic_base_ior.valid() &&
-              closure.metallic_edge_tint_k.valid() &&
-              !closure.color.valid() && closure.beckmann &&
-              !closure.preserve_ggx_energy,
-          "Blender Metallic physical-conductor tag was not lowered "
-          "without pre-baking");
-    }
-    if (expected_type == psycles::compiler::node_type::sheen_bsdf) {
-      expect(
-          closure.operation ==
-                  psycles::compiler::ClosureOperation::sheen_ashikhmin &&
-              closure.color.valid() && closure.normal.valid() &&
-              closure.roughness.valid(),
-          "Blender Ashikhmin Sheen did not lower as a raw closure");
-    }
   }
 }
 

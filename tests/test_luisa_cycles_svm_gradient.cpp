@@ -85,7 +85,7 @@ void append_payload(std::vector<std::uint32_t> &words, const T &payload) {
           ._pad = {0u}};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-7f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
@@ -181,7 +181,7 @@ template <typename... Args>
          << cursor_buffer.copy_to(luisa::span{cursors}) << synchronize();
 
   for (auto index = std::size_t{}; index < oracle_cases.size(); ++index) {
-    if (!near(actual[index].w, oracle_cases[index].result) ||
+    if (!is_near(actual[index].w, oracle_cases[index].result) ||
         actual[index].x != -92.0f || actual[index].y != -93.0f ||
         actual[index].z != -94.0f || cursors[index] != gradient_word_count) {
       std::cerr << "Cycles Gradient Factor oracle mismatch on " << backend
@@ -192,9 +192,9 @@ template <typename... Args>
   for (auto index = std::size_t{}; index < oracle_cases.size(); ++index) {
     const auto output_index = index + oracle_cases.size();
     const auto value = oracle_cases[index].result;
-    if (!near(actual[output_index].x, value) ||
-        !near(actual[output_index].y, value) ||
-        !near(actual[output_index].z, value) ||
+    if (!is_near(actual[output_index].x, value) ||
+        !is_near(actual[output_index].y, value) ||
+        !is_near(actual[output_index].z, value) ||
         actual[output_index].w != -91.0f ||
         cursors[output_index] != gradient_word_count) {
       std::cerr << "Cycles Gradient Color oracle mismatch on " << backend
@@ -319,8 +319,8 @@ interpreter_kernel(std::array<bool, NODE_NUM> node_types_used) {
          << output_buffer.copy_to(&actual) << status_buffer.copy_to(&status)
          << synchronize();
   const auto expected = f32(0x3f7fffefu);
-  if (!near(actual.x, expected) || !near(actual.y, expected) ||
-      !near(actual.z, expected) ||
+  if (!is_near(actual.x, expected) || !is_near(actual.y, expected) ||
+      !is_near(actual.z, expected) ||
       status !=
           static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles Gradient interpreter dispatch mismatch on " << backend

@@ -48,8 +48,6 @@ build_scene_traversal_tables(SceneTraversalTableBuildInput input);
 
 struct SceneTableUploadInput {
     luisa::vector<GeometryGpu> &geometries;
-    luisa::vector<AttributeBindingGpu> &attribute_bindings;
-    luisa::vector<AttributeRangeGpu> &attribute_ranges;
     luisa::vector<InstanceGpu> &instances;
     luisa::vector<float> &ambient_occlusion_object_distances;
     luisa::vector<MaterialBindingGpu> &geometry_materials;

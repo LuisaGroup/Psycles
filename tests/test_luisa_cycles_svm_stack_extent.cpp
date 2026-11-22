@@ -102,7 +102,8 @@ std::size_t verify(LuisaPathTracerBackend &renderer, bool second_shader) {
   // read back stack usage. Record the real auxiliary entrypoints straight
   // from the freshly compiled scene and inspect their pre-optimization AST.
   const auto shadow = make_cycles_svm_shadow_surface_callable(scene);
-  psycles::test_support::require_svm_stack_extent(shadow.function(), extent);
+  psycles::test_support::require_svm_stack_extent(shadow.function(), extent,
+                                                  true);
   const auto light = make_cycles_svm_light_emission_component(
       scene, scene->camera.projection, true, true);
   const Kernel1D<Buffer<luisa::float3>> light_kernel =
@@ -112,7 +113,7 @@ std::size_t verify(LuisaPathTracerBackend &renderer, bool second_shader) {
         output.write(dispatch_x(), light->evaluate(task, parameters));
       };
   psycles::test_support::require_svm_stack_extent(
-      light_kernel.function()->function(), extent);
+      light_kernel.function()->function(), extent, true);
   std::cout << "Compiled scene static stack extent: " << extent << '\n';
   return extent;
 }

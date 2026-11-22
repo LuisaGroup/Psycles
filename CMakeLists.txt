@@ -88,26 +88,7 @@ add_library(psycles_core
     src/compiler/cycles_camera.cpp
     src/compiler/cycles_emission_sampling.cpp
     src/compiler/hosek_sky.cpp
-    src/compiler/material_library.cpp
     src/compiler/shader_program.cpp
-    src/compiler/surface_bump_expansion.cpp
-    src/compiler/surface_closure_execution_plan.cpp
-    src/compiler/surface_svm_schedule.cpp
-    src/compiler/surface_svm_evaluator.cpp
-    src/compiler/surface_svm_lowering.cpp
-    src/compiler/surface_svm_scene.cpp
-    src/compiler/surface_svm_storage.cpp
-    src/compiler/surface_execution_plan.cpp
-    src/compiler/surface_value_variant_interner.cpp
-    src/compiler/surface_program.cpp
-    src/compiler/surface_program_builder.cpp
-    src/compiler/surface_program_compaction.cpp
-    src/compiler/surface_program_lower_closures.cpp
-    src/compiler/surface_program_lower_context.cpp
-    src/compiler/surface_program_lower_textures.cpp
-    src/compiler/surface_program_lower_values.cpp
-    src/compiler/surface_value_definition_liveness.cpp
-    src/compiler/surface_value_dependencies.cpp
     src/contract/cycles_pointiness.cpp
     src/contract/scene.cpp
     src/contract/shader_graph.cpp
@@ -361,19 +342,6 @@ if(PSYCLES_ENABLE_LUISA)
 
         if(PSYCLES_BUILD_TESTS)
             add_executable(
-                psycles_luisa_compile_tests
-                tests/test_luisa_compile.cpp)
-            target_link_libraries(
-                psycles_luisa_compile_tests
-                PRIVATE Psycles::luisa_runtime)
-            target_compile_features(
-                psycles_luisa_compile_tests
-                PRIVATE cxx_std_20)
-            add_test(
-                NAME psycles.luisa_ast
-                COMMAND psycles_luisa_compile_tests)
-
-            add_executable(
                 psycles_luisa_path_scheduler_tests
                 tests/test_luisa_path_scheduler.cpp)
             target_link_libraries(
@@ -412,96 +380,6 @@ if(PSYCLES_ENABLE_LUISA)
                     COMMAND
                         psycles_luisa_sample_dispatch_film_tests
                         fallback)
-            endif()
-
-            add_executable(
-                psycles_luisa_volume_coefficients_tests
-                tests/test_luisa_volume_coefficients.cpp)
-            target_link_libraries(
-                psycles_luisa_volume_coefficients_tests
-                PRIVATE Psycles::luisa)
-            target_compile_features(
-                psycles_luisa_volume_coefficients_tests
-                PRIVATE cxx_std_20)
-            set_target_properties(
-                psycles_luisa_volume_coefficients_tests
-                PROPERTIES
-                    RUNTIME_OUTPUT_DIRECTORY
-                        "${CMAKE_BINARY_DIR}/bin")
-            if(TARGET luisa-compute-backend-fallback)
-                add_dependencies(
-                    psycles_luisa_volume_coefficients_tests
-                    luisa-compute-backend-fallback)
-                add_test(
-                    NAME psycles.luisa_volume_coefficients_fallback
-                    COMMAND
-                        psycles_luisa_volume_coefficients_tests
-                        fallback)
-            endif()
-            if(TARGET luisa-compute-backend-hip)
-                add_dependencies(
-                    psycles_luisa_volume_coefficients_tests
-                    luisa-compute-backend-hip)
-                add_test(
-                    NAME psycles.luisa_volume_coefficients_hip
-                    COMMAND
-                        psycles_luisa_volume_coefficients_tests
-                        hip)
-            endif()
-            if(TARGET luisa-compute-backend-vk)
-                add_dependencies(
-                    psycles_luisa_volume_coefficients_tests
-                    luisa-compute-backend-vk)
-                add_test(
-                    NAME psycles.luisa_volume_coefficients_vk
-                    COMMAND
-                        psycles_luisa_volume_coefficients_tests
-                        vk)
-            endif()
-
-            add_executable(
-                psycles_luisa_stacked_volume_tests
-                tests/test_luisa_stacked_volume.cpp)
-            target_link_libraries(
-                psycles_luisa_stacked_volume_tests
-                PRIVATE Psycles::luisa)
-            target_compile_features(
-                psycles_luisa_stacked_volume_tests
-                PRIVATE cxx_std_20)
-            set_target_properties(
-                psycles_luisa_stacked_volume_tests
-                PROPERTIES
-                    RUNTIME_OUTPUT_DIRECTORY
-                        "${CMAKE_BINARY_DIR}/bin")
-            if(TARGET luisa-compute-backend-fallback)
-                add_dependencies(
-                    psycles_luisa_stacked_volume_tests
-                    luisa-compute-backend-fallback)
-                add_test(
-                    NAME psycles.luisa_stacked_volume_fallback
-                    COMMAND
-                        psycles_luisa_stacked_volume_tests
-                        fallback)
-            endif()
-            if(TARGET luisa-compute-backend-hip)
-                add_dependencies(
-                    psycles_luisa_stacked_volume_tests
-                    luisa-compute-backend-hip)
-                add_test(
-                    NAME psycles.luisa_stacked_volume_hip
-                    COMMAND
-                        psycles_luisa_stacked_volume_tests
-                        hip)
-            endif()
-            if(TARGET luisa-compute-backend-vk)
-                add_dependencies(
-                    psycles_luisa_stacked_volume_tests
-                    luisa-compute-backend-vk)
-                add_test(
-                    NAME psycles.luisa_stacked_volume_vk
-                    COMMAND
-                        psycles_luisa_stacked_volume_tests
-                        vk)
             endif()
 
             add_executable(
@@ -1859,32 +1737,6 @@ if(PSYCLES_ENABLE_LUISA)
                 PRIVATE Psycles::luisa_runtime)
             add_test(NAME psycles.cycles_svm_attribute_residency
                 COMMAND psycles_cycles_svm_attribute_residency_tests)
-
-            add_executable(
-                psycles_attribute_residency_tests
-                tests/test_attribute_residency.cpp)
-            target_link_libraries(
-                psycles_attribute_residency_tests
-                PRIVATE Psycles::luisa_runtime)
-            target_compile_features(
-                psycles_attribute_residency_tests
-                PRIVATE cxx_std_20)
-            add_test(
-                NAME psycles.attribute_residency
-                COMMAND psycles_attribute_residency_tests)
-
-            add_executable(
-                psycles_normal_map_semantics_tests
-                tests/test_normal_map_semantics.cpp)
-            target_link_libraries(
-                psycles_normal_map_semantics_tests
-                PRIVATE Psycles::core)
-            target_compile_features(
-                psycles_normal_map_semantics_tests
-                PRIVATE cxx_std_20)
-            add_test(
-                NAME psycles.normal_map_semantics
-                COMMAND psycles_normal_map_semantics_tests)
         endif()
 
         if(PSYCLES_BUILD_EXAMPLES)
@@ -1945,45 +1797,6 @@ if(PSYCLES_ENABLE_LUISA)
                 PROPERTIES
                     RUNTIME_OUTPUT_DIRECTORY
                         "${CMAKE_BINARY_DIR}/bin")
-
-            add_executable(
-                psycles_inspect_blender_material
-                tools/inspect_blender_material.cpp)
-            target_link_libraries(
-                psycles_inspect_blender_material
-                PRIVATE
-                    Psycles::luisa_runtime)
-            target_compile_features(
-                psycles_inspect_blender_material
-                PRIVATE cxx_std_20)
-            set_target_properties(
-                psycles_inspect_blender_material
-                PROPERTIES
-                    RUNTIME_OUTPUT_DIRECTORY
-                        "${CMAKE_BINARY_DIR}/bin")
-
-            add_executable(
-                psycles_benchmark_surface_closures
-                tools/benchmark_surface_closures.cpp)
-            target_link_libraries(
-                psycles_benchmark_surface_closures PRIVATE Psycles::luisa)
-            target_compile_features(
-                psycles_benchmark_surface_closures PRIVATE cxx_std_20)
-            set_target_properties(
-                psycles_benchmark_surface_closures
-                PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-            if(PSYCLES_BUILD_TESTS)
-                add_test(
-                    NAME psycles.inspect_blender_material_producer_partition
-                    COMMAND
-                        psycles_inspect_blender_material
-                        --self-test-producer-partition)
-                add_test(
-                    NAME psycles.inspect_blender_material_operand_index_partition
-                    COMMAND
-                        psycles_inspect_blender_material
-                        --self-test-operand-index-partition)
-            endif()
         endif()
     else()
         message(STATUS

@@ -1,8 +1,6 @@
 #include <psycles/luisa/cycles_svm.h>
-#include <psycles/compiler/surface_program.h>
 
 #include "luisa_cycles_svm_test_kernel_globals.h"
-#include "surface_displacement.h"
 
 #include <array>
 #include <bit>
@@ -20,38 +18,7 @@ namespace {
 using namespace luisa::compute;
 using namespace psycles::compiler::cycles_svm;
 namespace device_svm = psycles::luisa_backend::cycles_svm;
-namespace compatibility = psycles::luisa_backend::detail;
 using psycles::test_support::DefaultCyclesSvmKernelGlobals;
-
-static_assert([] {
-  using namespace psycles::compiler;
-  const auto bump = cycles_node_feature_semantics(
-      ValueOperation::vector_displacement);
-  const auto ao = cycles_node_feature_semantics(
-      ValueOperation::ambient_occlusion);
-  constexpr std::array depth_operations{
-      ValueOperation::path_ray_depth,
-      ValueOperation::path_diffuse_depth,
-      ValueOperation::path_glossy_depth,
-      ValueOperation::path_transparent_depth,
-      ValueOperation::path_transmission_depth,
-      ValueOperation::path_portal_depth};
-  const auto unguarded = cycles_node_feature_semantics(
-      ValueOperation::path_ray_length);
-  auto depths_exact = true;
-  for (const auto operation : depth_operations) {
-    const auto semantics = cycles_node_feature_semantics(operation);
-    depths_exact &= semantics.required == cycles_node_feature_light_path &&
-                    semantics.disabled_value ==
-                        CyclesNodeDisabledValue::zero;
-  }
-  return depths_exact && bump.required == cycles_node_feature_bump &&
-         bump.disabled_value == CyclesNodeDisabledValue::zero &&
-         ao.required == cycles_node_feature_raytrace &&
-         ao.disabled_value == CyclesNodeDisabledValue::one &&
-         unguarded.required == 0u &&
-         unguarded.disabled_value == CyclesNodeDisabledValue::evaluate;
-}());
 
 constexpr auto scenario_count = 8u;
 constexpr auto shader_count = 5u;
@@ -59,7 +26,7 @@ constexpr auto jump_words = 4u;
 constexpr auto tail_words = 13u;
 constexpr auto output_offset = 20u;
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 5.0e-5f) noexcept {
   return std::abs(actual - expected) <= tolerance;
 }
@@ -67,8 +34,8 @@ constexpr auto output_offset = 20u;
 [[nodiscard]] bool require_float4(luisa::float4 actual,
                                   luisa::float4 expected,
                                   std::string_view label) {
-  if (near(actual.x, expected.x) && near(actual.y, expected.y) &&
-      near(actual.z, expected.z) && near(actual.w, expected.w)) {
+  if (is_near(actual.x, expected.x) && is_near(actual.y, expected.y) &&
+      is_near(actual.z, expected.z) && is_near(actual.w, expected.w)) {
     return true;
   }
   std::cerr << label << " mismatch: (" << actual.x << ", " << actual.y
@@ -364,99 +331,6 @@ void append_tail(std::vector<std::uint32_t> &words, NodeNormalMapSpace space,
   return true;
 }
 
-[[nodiscard]] bool test_compatibility_bitangent(Device &device,
-                                                Stream &stream) {
-  const auto kernel = Kernel1D<Buffer<luisa::float4>>{
-      [](BufferFloat4 output) noexcept {
-        const auto nonzero = dispatch_x() == 1u;
-        const auto tangent =
-            select(make_float3(0.0f, 0.0f, 1.0f),
-                   make_float3(1.0e-11f, 0.0f, 1.0f), nonzero);
-        const auto input = compatibility::SurfaceVectorDisplacementInput{
-            .vector = make_float3(0.0f, 0.0f, 1.0f),
-            .midlevel = 0.0f,
-            .scale = 1.0f,
-            .shading_normal = make_float3(0.0f, 0.0f, 1.0f),
-            .object_tangent = tangent,
-            .tangent_sign = 1.0f,
-            .tangent_attribute_found = true,
-            .tangent_sign_found = true,
-            .dpdu = tangent,
-            .normal_to_world_x = make_float3(1.0f, 0.0f, 0.0f),
-            .normal_to_world_y = make_float3(0.0f, 1.0f, 0.0f),
-            .normal_to_world_z = make_float3(0.0f, 0.0f, 1.0f)};
-        const UInt space = static_cast<std::uint32_t>(
-            psycles::compiler::VectorDisplacementSpace::tangent);
-        output.write(
-            dispatch_x(),
-            make_float4(
-                compatibility::vector_displacement_inline(input, space),
-                0.0f));
-      }};
-  auto shader = device.compile(kernel, ShaderOption{.enable_cache = false});
-  auto output = device.create_buffer<luisa::float4>(2u);
-  std::array<luisa::float4, 2u> actual{};
-  stream << shader(output).dispatch(2u)
-         << output.copy_to(luisa::span{actual}) << synchronize();
-  return require_float4(actual[0u], {0.0f, 0.0f, 0.0f, 0.0f},
-                        "parallel compatibility bitangent") &&
-         require_float4(actual[1u], {0.0f, 1.0f, 0.0f, 0.0f},
-                        "nonzero compatibility bitangent");
-}
-
-[[nodiscard]] bool test_compatibility_curve_fallback(Device &device,
-                                                     Stream &stream) {
-  const auto kernel = Kernel1D<Buffer<luisa::float4>>{
-      [](BufferFloat4 output) noexcept {
-        const auto scenario = dispatch_x();
-        const auto is_curve = scenario == 1u;
-        const UInt geometry_index =
-            select(0u, ~static_cast<std::uint32_t>(0u), scenario == 2u);
-        const auto tangent = compatibility::vector_displacement_default_tangent(
-            normalize(make_float3(1.0f, 1.0f, 0.0f)), -1.0f, is_curve,
-            geometry_index);
-        const auto input = compatibility::SurfaceVectorDisplacementInput{
-            .vector = make_float3(1.0f, 0.0f, 0.0f),
-            .midlevel = 0.0f,
-            .scale = 1.0f,
-            .shading_normal = make_float3(0.0f, 0.0f, 1.0f),
-            .object_tangent = tangent.object_tangent,
-            .tangent_sign = tangent.tangent_sign,
-            .tangent_attribute_found = tangent.tangent_attribute_found,
-            .tangent_sign_found = tangent.tangent_sign_found,
-            .dpdu = make_float3(-3.0f, 2.0f, 0.0f),
-            // A = (M^-1)^T for M = Rz(90 degrees) * diag(2, 3, 4).
-            .normal_to_world_x = make_float3(0.0f, 0.5f, 0.0f),
-            .normal_to_world_y = make_float3(-1.0f / 3.0f, 0.0f, 0.0f),
-            .normal_to_world_z = make_float3(0.0f, 0.0f, 0.25f)};
-        const UInt space = static_cast<std::uint32_t>(
-            psycles::compiler::VectorDisplacementSpace::tangent);
-        Float3 result = make_float3(0.0f);
-        $if(scenario != 2u) {
-          result = compatibility::vector_displacement_inline(input, space);
-        };
-        output.write(scenario,
-                     make_float4(
-                         result,
-                         select(0.0f, 1.0f,
-                                tangent.tangent_attribute_found |
-                                    tangent.tangent_sign_found)));
-      }};
-  auto shader = device.compile(kernel, ShaderOption{.enable_cache = false});
-  auto output = device.create_buffer<luisa::float4>(3u);
-  std::array<luisa::float4, 3u> actual{};
-  stream << shader(output).dispatch(3u)
-         << output.copy_to(luisa::span{actual}) << synchronize();
-  return require_float4(
-             actual[0u], {-2.12132025f, 1.41421354f, 0.0f, 1.0f},
-             "mesh standard tangent") &&
-         require_float4(
-             actual[1u], {-1.66410065f, -1.66410065f, 0.0f, 0.0f},
-             "curve missing-standard-tangent fallback") &&
-         require_float4(actual[2u], {0.0f, 0.0f, 0.0f, 0.0f},
-                        "non-geometry missing-standard-tangent state");
-}
-
 } // namespace
 
 int main(int argc, char **argv) {
@@ -464,9 +338,7 @@ int main(int argc, char **argv) {
   Context context{argv[0]};
   auto device = context.create_device(backend);
   auto stream = device.create_stream();
-  if (!test_eval_nodes(device, stream) ||
-      !test_compatibility_bitangent(device, stream) ||
-      !test_compatibility_curve_fallback(device, stream)) {
+  if (!test_eval_nodes(device, stream)) {
     return EXIT_FAILURE;
   }
   std::cout << "Luisa Cycles SVM vector-displacement tests passed on "

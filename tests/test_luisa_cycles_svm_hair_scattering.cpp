@@ -116,18 +116,18 @@ inline constexpr std::uint32_t meta_count = 2u;
   }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 8.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 8.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -148,42 +148,42 @@ inline constexpr std::uint32_t meta_count = 2u;
    * trace oracle. Tolerances intentionally cover ordinary backend float
    * contraction; they do not weaken any branch, label, or support check. */
   auto valid =
-      near(actual[0u].xyz(),
+      is_near(actual[0u].xyz(),
            luisa::float3{0.7938507795333862f, 0.6015447974205017f,
                          -0.08913364261388779f}) &&
-      near(actual[0u].w, 0.03163303807377815f) &&
-      near(actual[1u].xyz(), luisa::float3{0.03163303807377815f}) &&
-      near(actual[1u].w, 1.0f) && near(actual[2u].x, 0.1f) &&
-      near(actual[2u].y, 1.0f) && actual[2u].z < 0.0f &&
-      near(actual[2u].w, 0.0f) &&
-      near(actual[3u].xyz(), luisa::float3{0.02530643157660961f}) &&
+      is_near(actual[0u].w, 0.03163303807377815f) &&
+      is_near(actual[1u].xyz(), luisa::float3{0.03163303807377815f}) &&
+      is_near(actual[1u].w, 1.0f) && is_near(actual[2u].x, 0.1f) &&
+      is_near(actual[2u].y, 1.0f) && actual[2u].z < 0.0f &&
+      is_near(actual[2u].w, 0.0f) &&
+      is_near(actual[3u].xyz(), luisa::float3{0.02530643157660961f}) &&
       actual_meta[0u] == (closure::label_reflect | closure::label_glossy);
 
-  valid &= near(actual[4u].xyz(),
+  valid &= is_near(actual[4u].xyz(),
                 luisa::float3{0.2497742772102356f, -0.8188082575798035f,
                               -0.5168809294700623f}) &&
-           near(actual[4u].w, 1.7582085132598877f) &&
-           near(actual[5u].xyz(), luisa::float3{1.7582085132598877f}) &&
-           near(actual[5u].w, 1.0f) && near(actual[6u].x, 0.001f) &&
-           near(actual[6u].y, 1.0f) && actual[6u].z < 0.0f &&
+           is_near(actual[4u].w, 1.7582085132598877f) &&
+           is_near(actual[5u].xyz(), luisa::float3{1.7582085132598877f}) &&
+           is_near(actual[5u].w, 1.0f) && is_near(actual[6u].x, 0.001f) &&
+           is_near(actual[6u].y, 1.0f) && actual[6u].z < 0.0f &&
            std::isfinite(actual[6u].w) && actual[6u].w > 0.0f &&
-           near(actual[7u].xyz(),
+           is_near(actual[7u].xyz(),
                 luisa::float3{1.4593130350112915f, 0.2988954484462738f,
                               0.9142683744430542f}) &&
            actual_meta[1u] == (closure::label_transmit | closure::label_glossy);
 
-  valid &= near(actual[8u].xyz(), luisa::float3{0.0f});
-  valid &= near(actual[9u].x, 3.14159265358979323846f) &&
-           near(actual[9u].y, -3.14159265358979323846f) &&
-           near(actual[9u].z, 0.0f) &&
-           near(actual[9u].w, 3.14159265358979323846f);
-  valid &= near(actual[10u].xyz(), luisa::float3{0.34622371196746826f}) &&
+  valid &= is_near(actual[8u].xyz(), luisa::float3{0.0f});
+  valid &= is_near(actual[9u].x, 3.14159265358979323846f) &&
+           is_near(actual[9u].y, -3.14159265358979323846f) &&
+           is_near(actual[9u].z, 0.0f) &&
+           is_near(actual[9u].w, 3.14159265358979323846f);
+  valid &= is_near(actual[10u].xyz(), luisa::float3{0.34622371196746826f}) &&
            actual[10u].w > 0.0f &&
-           near(actual[11u].xyz(),
+           is_near(actual[11u].xyz(),
                 luisa::float3{0.0009033323149196804f, 0.00018501987506169826f,
                               0.0005659431335516274f}) &&
            actual[11u].w > 0.0f;
-  valid &= near(actual[12u].x, 0.0f);
+  valid &= is_near(actual[12u].x, 0.0f);
   if (!valid) {
     std::cerr << "Cycles Hair scattering mismatch on " << backend << '\n';
     for (auto index = 0u; index < actual.size(); ++index) {

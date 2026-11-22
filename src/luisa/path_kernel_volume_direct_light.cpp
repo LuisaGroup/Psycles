@@ -439,30 +439,6 @@ class AnalyticVolumeLightProvider final
                         light);
         };
     }
-
-    void evaluate_deferred_emission(
-        Bool receiving_nonzero)
-        const noexcept override {
-        $if(_sample_valid &
-            !_emission_is_constant &
-            receiving_nonzero) {
-            Var<LightGpu> light =
-                _config.scene
-                    ->light_buffer
-                    ->read(
-                        _sample_light_index);
-            _result.radiance *=
-                _event.bounce.sample
-                    .analytic_light_shader(
-                        light,
-                        _sample_light_index,
-                        _sample_position,
-                        _sample_normal,
-                        _sample_uv,
-                        _sample_incoming,
-                        _sample_distance);
-        };
-    }
 };
 
 class CombinedVolumeLightProvider final
@@ -563,13 +539,6 @@ class CombinedVolumeLightProvider final
                 _result.radiance *= _native_emission->evaluate(
                     task, sample.invocation.parameters);
             };
-            return;
-        }
-        for (const auto &provider :
-             _providers) {
-            provider
-                ->evaluate_deferred_emission(
-                    receiving_nonzero);
         }
     }
 };
@@ -955,11 +924,9 @@ class PathVolumeDirectLightingComponent final
                 std::move(providers),
                 result, event, std::move(segment_position),
                 std::move(segment_direction),
-                _config.scene->native_cycles_svm_surface
-                    ? make_cycles_svm_light_emission_component(
-                          _config.scene, _config.camera_projection,
-                          _config.reflective_caustics, _config.refractive_caustics)
-                    : nullptr);
+                make_cycles_svm_light_emission_component(
+                    _config.scene, _config.camera_projection,
+                    _config.reflective_caustics, _config.refractive_caustics));
     }
 
     void accumulate(

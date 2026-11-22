@@ -53,4 +53,6 @@ void upload_cycles_svm_runtime(Stream &stream,
 void upload_cycles_svm_scene_runtime(Stream &stream,
                                      CyclesSvmRuntime &runtime) noexcept;
 
+void reset_cycles_svm_scene_runtime(CyclesSvmRuntime &runtime) noexcept;
+
 } // namespace psycles::luisa_backend::detail

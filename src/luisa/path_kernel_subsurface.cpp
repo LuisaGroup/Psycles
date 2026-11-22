@@ -141,19 +141,19 @@ public:
         const auto &parameters = invocation.parameters;
         auto &surface = context.surface;
         const bool may_have_burley =
-            !scene->native_cycles_svm_surface || !scene->cycles_svm ||
+            !scene->cycles_svm ||
             (scene->cycles_svm->compilation.surface_closure_usage
                  .surface_closure_mask &
              compiler::cycles_svm::ClosureUsage::bit(
                  cycles_closure::type_bssrdf_burley)) != 0ull;
         const bool may_have_skin =
-            !scene->native_cycles_svm_surface || !scene->cycles_svm ||
+            !scene->cycles_svm ||
             (scene->cycles_svm->compilation.surface_closure_usage
                  .surface_closure_mask &
              compiler::cycles_svm::ClosureUsage::bit(
                  cycles_closure::type_bssrdf_random_walk_skin)) != 0ull;
         const bool may_have_legacy_or_skin =
-            !scene->native_cycles_svm_surface || !scene->cycles_svm ||
+            !scene->cycles_svm ||
             (scene->cycles_svm->compilation.surface_closure_usage
                  .surface_closure_mask &
              (compiler::cycles_svm::ClosureUsage::bit(
@@ -226,12 +226,10 @@ public:
             0u,
             cycles_path_state::flag_subsurface_backfacing,
             surface.point.back_facing);
-        if (invocation.config.scene->native_cycles_svm_surface) {
-            $if(valid & (path.path_depth == 0u)) {
-                path.path_diffuse_weight = make_float3(1.0f);
-                path.path_glossy_weight = make_float3(0.0f);
-            };
-        }
+        $if(valid & (path.path_depth == 0u)) {
+            path.path_diffuse_weight = make_float3(1.0f);
+            path.path_glossy_weight = make_float3(0.0f);
+        };
 
         Float encoded_anisotropy = closure_sample.bssrdf_anisotropy;
         if (may_have_legacy_or_skin) {
@@ -269,7 +267,7 @@ public:
         const auto &subsurface_accel = *scene->subsurface_accel;
 
         const bool may_have_burley =
-            !scene->native_cycles_svm_surface || !scene->cycles_svm ||
+            !scene->cycles_svm ||
             (scene->cycles_svm->compilation.surface_closure_usage
                  .surface_closure_mask &
              compiler::cycles_svm::ClosureUsage::bit(

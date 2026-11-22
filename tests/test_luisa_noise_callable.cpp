@@ -1,8 +1,9 @@
 #include "luisa_shader_shape_test_support.h"
-#include "luisa_surface_test_support.h"
 
 #include <psycles/luisa/cycles_noise.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -19,8 +20,23 @@ namespace {
 
 using namespace luisa::compute;
 using namespace psycles::luisa_backend;
-using psycles::test_support::approximately_equal;
 using psycles::test_support::xir_instruction_count;
+
+[[nodiscard]] bool approximately_equal(float actual, float expected,
+                                       float tolerance = 3.0e-6f) noexcept {
+  return std::abs(actual - expected) <=
+         tolerance *
+             std::max(1.0f, std::max(std::abs(actual), std::abs(expected)));
+}
+
+[[nodiscard]] bool approximately_equal(luisa::float4 actual,
+                                       luisa::float4 expected,
+                                       float tolerance = 3.0e-6f) noexcept {
+  return approximately_equal(actual.x, expected.x, tolerance) &&
+         approximately_equal(actual.y, expected.y, tolerance) &&
+         approximately_equal(actual.z, expected.z, tolerance) &&
+         approximately_equal(actual.w, expected.w, tolerance);
+}
 
 constexpr auto case_count = std::uint32_t{8u};
 constexpr auto result_stride = std::uint32_t{2u};

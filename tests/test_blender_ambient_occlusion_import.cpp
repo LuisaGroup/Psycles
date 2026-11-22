@@ -1,7 +1,6 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
-#include <psycles/compiler/surface_program.h>
 
 #include <chrono>
 #include <cstdlib>
@@ -14,10 +13,8 @@
 namespace {
 
 using psycles::adapter::load_blender_scene_bundle;
-using psycles::compiler::ValueOperation;
 using psycles::contract::feature_bit;
 using psycles::contract::ShaderFeature;
-using psycles::contract::SocketType;
 
 void require(bool condition, const char *message) {
   if (!condition) {
@@ -186,55 +183,6 @@ void test_ambient_occlusion_import() {
   require((shader.program->analysis().required_features &
            feature_bit(ShaderFeature::ambient_occlusion)) != 0u,
           "Ambient Occlusion graph lost its traversal capability");
-
-  const auto surface =
-      psycles::compiler::compile_surface_program(*shader.program);
-  require(surface.ok(), "Ambient Occlusion graph did not lower");
-  const psycles::compiler::ValueInstruction *ao_instruction = nullptr;
-  auto ao_instruction_count = 0u;
-  auto multiply_instruction_count = 0u;
-  for (const auto &instruction : surface.program->value_instructions()) {
-    if (instruction.operation == ValueOperation::ambient_occlusion) {
-      ++ao_instruction_count;
-      ao_instruction = &instruction;
-    }
-    multiply_instruction_count +=
-        instruction.operation == ValueOperation::multiply_color;
-  }
-  require(ao_instruction_count == 1u && ao_instruction != nullptr,
-          "AO outputs duplicated scene traversal in the value IR");
-  require(multiply_instruction_count == 1u,
-          "AO Color multiplication was not lowered exactly once");
-  require(ao_instruction->result_type == SocketType::floating &&
-              ao_instruction->operands.size() ==
-                  psycles::compiler::value_operand::ambient_occlusion::count,
-          "AO value instruction lost its typed operand contract");
-  require(ao_instruction->static_u0 ==
-              (psycles::compiler::ambient_occlusion_only_local |
-               psycles::compiler::ambient_occlusion_inside |
-               psycles::compiler::ambient_occlusion_global_radius |
-               psycles::compiler::ambient_occlusion_normal_linked),
-          "AO value instruction lost immutable Cycles flags");
-
-  const auto samples = ao_instruction->operand(
-      psycles::compiler::value_operand::ambient_occlusion::samples);
-  require(samples.valid() &&
-              samples.value < surface.program->value_instructions().size(),
-          "AO Samples operand is invalid");
-  const auto &samples_value =
-      surface.program->value_instructions()[samples.value];
-  require(samples_value.operation == ValueOperation::parameter &&
-              samples_value.parameter.valid(),
-          "AO Samples was embedded in shader shape instead of parameter data");
-  const auto &samples_parameter =
-      surface.program->parameters()[samples_value.parameter.value];
-  require(samples_parameter.source ==
-                  psycles::compiler::ParameterSource::property &&
-              samples_parameter.socket == "Samples" &&
-              samples_parameter.type == SocketType::unsigned_integer &&
-              std::get<std::uint64_t>(samples_parameter.default_value.value) ==
-                  17u,
-          "AO Samples parameter contract is not exact");
 }
 
 } // namespace

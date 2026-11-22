@@ -81,19 +81,9 @@ int main(int argc, char **argv) {
             "native scene image was not finalized");
     require(scene.cycles_svm->compilation.table.node_types_used[abi::NODE_INFO_OB_INDEX],
             "native Object Index opcode was omitted");
-    require(scene.materials.materials().empty() && scene.surfaces.size() == 0u &&
-                !scene.surface_values,
-            "surface admission still constructs legacy material programs");
     const auto consumers = make_surface_callables(compiled->data());
-    require(consumers.population && !consumers.preparation.function_builder() &&
-                !consumers.evaluate_light.function_builder() &&
-                !consumers.constant_emission.function_builder() &&
-                !consumers.emission.function_builder() &&
-                !consumers.sample.function_builder() &&
-                !consumers.closure_trace.function_builder() &&
-                !consumers.sample_trace.function_builder() &&
-                !consumers.bssrdf_normal.function_builder(),
-            "native scene constructed an unused legacy material callable");
+    require(consumers.population != nullptr,
+            "native scene failed to construct surface population component");
     std::cout << "Native scene admission passed on " << backend << '\n';
     return EXIT_SUCCESS;
   } catch (const std::exception &error) {

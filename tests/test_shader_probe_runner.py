@@ -46,7 +46,7 @@ class ShaderProbeRunnerContract(unittest.TestCase):
         self.assertEqual(
             command[separator + 1 : device_option],
             [
-                "/probe/cycles.exr",
+                str(pathlib.Path("/probe/cycles.exr")),
                 "128",
                 "64",
                 "4096",
@@ -66,16 +66,16 @@ class ShaderProbeRunnerContract(unittest.TestCase):
         )
         self.assertEqual(command[0], "/venv/bin/python")
         self.assertEqual(
-            command[1], "/tools/compare_cycles.py"
+            command[1], str(pathlib.Path("/tools/compare_cycles.py"))
         )
         self.assertNotIn("/opt/blender", command)
         self.assertEqual(
             command[command.index("--reference-metadata") + 1],
-            "/probe/cycles.json",
+            str(pathlib.Path("/probe/cycles.json")),
         )
         self.assertEqual(
             command[command.index("--actual-metadata") + 1],
-            "/probe/export/scene.json",
+            str(pathlib.Path("/probe/export/scene.json")),
         )
         bindings = [
             item for item in command if "=" in item

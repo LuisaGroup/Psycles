@@ -90,8 +90,8 @@ int main(int argc, char **argv) {
                                   BufferFloat4 sample_c,
                                   BufferFloat4 sample_d) noexcept {
         const auto index = dispatch_x();
-        const auto near = index < 2u;
-        const auto z = select(100.0f, 1.0f, near);
+        const auto is_near = index < 2u;
+        const auto z = select(100.0f, 1.0f, is_near);
         const auto reference = make_float3(0.0f, 0.0f, 0.0f);
         const auto p0 = make_float3(-2.0f, -2.0f, z);
         const auto p1 = make_float3(2.0f, -2.0f, z);

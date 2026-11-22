@@ -186,18 +186,18 @@ inline constexpr std::uint32_t meta_stride = 13u;
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 5.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 5.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool positive_finite(luisa::float4 value) noexcept {
@@ -270,11 +270,11 @@ inline constexpr std::uint32_t meta_stride = 13u;
         case_index == 0u ? 2u : (case_index == 1u ? 3u :
                                  (case_index == 2u ? 5u : 6u));
     const auto common_valid =
-        near(actual[base + 0u].xyz(), luisa::float3{0.1899999976f}) &&
-        near(actual[base + 0u].w, 0.1899999976f) &&
-        near(actual[base + 13u].xyz(),
+        is_near(actual[base + 0u].xyz(), luisa::float3{0.1899999976f}) &&
+        is_near(actual[base + 0u].w, 0.1899999976f) &&
+        is_near(actual[base + 13u].xyz(),
              luisa::float3{0.1927800030f, 0.1020600051f, 0.5783399940f}) &&
-        near(actual[base + 13u].w, 0.1899999976f) &&
+        is_near(actual[base + 13u].w, 0.1899999976f) &&
         actual_meta[meta_base + 0u] == expected_count &&
         actual_meta[meta_base + 1u] == expected_left &&
         actual_meta[meta_base + 2u] ==
@@ -290,12 +290,12 @@ inline constexpr std::uint32_t meta_stride = 13u;
 
     if (reflective) {
       const auto reflection_valid = positive_finite(actual[base + 1u]) &&
-               near(actual[base + 6u].xyz(), up) &&
+               is_near(actual[base + 6u].xyz(), up) &&
                actual_meta[meta_base + 6u] == ggx_type &&
                actual_meta[meta_base + 10u] == no_fresnel &&
-               near(actual[base + 10u].x, 0.0961f) &&
-               near(actual[base + 10u].y, 0.0961f) &&
-               near(actual[base + 10u].z, 1.0f) &&
+               is_near(actual[base + 10u].x, 0.0961f) &&
+               is_near(actual[base + 10u].y, 0.0961f) &&
+               is_near(actual[base + 10u].z, 1.0f) &&
                std::isfinite(actual[base + 10u].w) &&
                actual[base + 10u].w >= 1.0f;
       if (!reflection_valid) {
@@ -308,14 +308,14 @@ inline constexpr std::uint32_t meta_stride = 13u;
     if (refractive) {
       const auto transmission_valid =
           positive_finite(actual[base + transmission_index]) &&
-               near(actual[base + 5u + transmission_index].xyz(), down) &&
+               is_near(actual[base + 5u + transmission_index].xyz(), down) &&
                actual_meta[meta_base + 5u + transmission_index] == thin_type &&
                actual_meta[meta_base + 9u + transmission_index] == no_fresnel &&
-               near(actual[base + 9u + transmission_index].x,
+               is_near(actual[base + 9u + transmission_index].x,
                     0.0668216149f) &&
-               near(actual[base + 9u + transmission_index].y,
+               is_near(actual[base + 9u + transmission_index].y,
                     0.0668216149f) &&
-               near(actual[base + 9u + transmission_index].z, 1.0f) &&
+               is_near(actual[base + 9u + transmission_index].z, 1.0f) &&
                std::isfinite(actual[base + 9u + transmission_index].w) &&
           actual[base + 9u + transmission_index].w >= 1.0f;
       if (!transmission_valid) {
@@ -329,18 +329,18 @@ inline constexpr std::uint32_t meta_stride = 13u;
    * above is source-derived because Cycles' diagnostic trace intentionally
    * observes ShaderClosure common fields only. */
   const auto external_valid =
-      near(actual[1u].xyz(),
+      is_near(actual[1u].xyz(),
            luisa::float3{0.0274434481f, 0.0141683603f, 0.0517196022f}) &&
-      near(actual[1u].w, 0.0310758036f) &&
-      near(actual[2u].xyz(),
+      is_near(actual[1u].w, 0.0310758036f) &&
+      is_near(actual[2u].xyz(),
            luisa::float3{0.1949812770f, 0.3594840169f, 0.4788061380f}) &&
-      near(actual[2u].w, 0.3444238305f) &&
-      near(actual[3u].xyz(),
+      is_near(actual[2u].w, 0.3444238305f) &&
+      is_near(actual[3u].xyz(),
            luisa::float3{0.2245076895f, 0.2244775295f, 0.2245223373f}) &&
-      near(actual[3u].w, 0.0080270125f) &&
-      near(actual[4u].xyz(),
+      is_near(actual[3u].w, 0.0080270125f) &&
+      is_near(actual[4u].xyz(),
            luisa::float3{0.0778046995f, 0.1383194625f, 0.1966729909f}) &&
-      near(actual[4u].w, 0.1375990510f) &&
+      is_near(actual[4u].w, 0.1375990510f) &&
       actual_meta[7u] == thin_type && actual_meta[8u] == ggx_type &&
       actual_meta[9u] == diffuse_type;
   if (!external_valid) {
@@ -355,10 +355,10 @@ inline constexpr std::uint32_t meta_stride = 13u;
   const auto singular_base = singular_case * output_stride;
   const auto singular_meta = singular_case * meta_stride;
   const auto singular_valid =
-      near(actual[singular_base + 0u].xyz(),
+      is_near(actual[singular_base + 0u].xyz(),
            luisa::float3{0.3849812746f, 0.5494840145f, 0.6688061357f}) &&
-      near(actual[singular_base + 0u].w, 0.5344238281f) &&
-      near(actual[singular_base + 13u].w, 0.3849812746f) &&
+      is_near(actual[singular_base + 0u].w, 0.5344238281f) &&
+      is_near(actual[singular_base + 13u].w, 0.3849812746f) &&
       actual_meta[singular_meta + 0u] == 4u &&
       actual_meta[singular_meta + 1u] == 3u &&
       actual_meta[singular_meta + 2u] == base_flags &&

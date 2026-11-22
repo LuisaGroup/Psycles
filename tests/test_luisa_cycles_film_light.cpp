@@ -10,7 +10,7 @@
 
 namespace {
 
-[[nodiscard]] bool near(float actual,
+[[nodiscard]] bool is_near(float actual,
                         float expected,
                         float tolerance = 2.0e-6f) noexcept {
     return std::isfinite(actual) &&
@@ -19,10 +19,10 @@ namespace {
 
 [[nodiscard]] bool matches(luisa::float4 actual,
                            luisa::float4 expected) noexcept {
-    return near(actual.x, expected.x) &&
-           near(actual.y, expected.y) &&
-           near(actual.z, expected.z) &&
-           near(actual.w, expected.w);
+    return is_near(actual.x, expected.x) &&
+           is_near(actual.y, expected.y) &&
+           is_near(actual.z, expected.z) &&
+           is_near(actual.w, expected.w);
 }
 
 }// namespace

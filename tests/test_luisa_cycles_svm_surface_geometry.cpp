@@ -29,7 +29,6 @@ bool run(const char *program, const char *backend) {
   auto device = context.create_device(backend);
   auto stream = device.create_stream();
   auto scene = std::make_shared<LuisaSceneData>();
-  scene->native_cycles_svm_surface = true;
   scene->cycles_svm = std::make_unique<CyclesSvmRuntime>();
   auto &runtime = *scene->cycles_svm;
   runtime.geometry = std::make_unique<CyclesSvmGeometryRuntime>();

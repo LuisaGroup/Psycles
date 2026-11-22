@@ -62,8 +62,6 @@ public:
          std::map<contract::GeometryId, std::uint32_t> &geometry_indices,
          luisa::vector<GeometryGpu> &geometry_gpu,
          luisa::vector<MaterialBindingGpu> &geometry_materials,
-         luisa::vector<AttributeBindingGpu> &attribute_bindings,
-         luisa::vector<AttributeRangeGpu> &attribute_ranges,
          const SceneAttributeResidencyPlan &attribute_residency,
          std::uint32_t &next_attribute_slot) const;
 };

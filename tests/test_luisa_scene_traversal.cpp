@@ -37,15 +37,15 @@ using psycles::luisa_backend::surface_ray::invalid_primitive;
 
 inline constexpr std::size_t record_count = 23u;
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
   return std::abs(actual - expected) <= tolerance;
 }
 
 [[nodiscard]] bool equal_record(luisa::float4 actual,
                                 luisa::float4 expected) noexcept {
-  return near(actual.x, expected.x) && near(actual.y, expected.y) &&
-         near(actual.z, expected.z) && near(actual.w, expected.w);
+  return is_near(actual.x, expected.x) && is_near(actual.y, expected.y) &&
+         is_near(actual.z, expected.z) && is_near(actual.w, expected.w);
 }
 
 [[nodiscard]] bool
@@ -63,7 +63,7 @@ valid_backend_native_record(std::size_t index, luisa::float4 actual,
   constexpr auto transformed_overlap = std::size_t{16u};
   constexpr auto near_overlap = std::size_t{20u};
   const auto miss = equal_record(actual, make_float4(0.0f)) ||
-                    near(actual.y, static_cast<float>(invalid_primitive));
+                    is_near(actual.y, static_cast<float>(invalid_primitive));
   if ((index == filtered_coincident_endpoint ||
        index == filtered_coincident_truncated) &&
       miss) {
@@ -76,9 +76,9 @@ valid_backend_native_record(std::size_t index, luisa::float4 actual,
       index == curve_triangle_source || index == curve_unknown_source) {
     // Both procedural primitives are identical segments of the same Cycles
     // curve. Their local acceleration indices are not renderer identities.
-    return near(actual.x, expected.x) && near(actual.y, expected.y) &&
-           (near(actual.z, 0.0f) || near(actual.z, 1.0f)) &&
-           near(actual.w, expected.w);
+    return is_near(actual.x, expected.x) && is_near(actual.y, expected.y) &&
+           (is_near(actual.z, 0.0f) || is_near(actual.z, 1.0f)) &&
+           is_near(actual.w, expected.w);
   }
   if (index == coincident_forward || index == coincident_endpoint ||
       index == coincident_truncated) {
@@ -95,20 +95,20 @@ valid_backend_native_record(std::size_t index, luisa::float4 actual,
     // backend. Both identities describe the same accepted surface; the
     // adjacent odd-numbered cases separately prove that rejecting either
     // identity continues traversal to the other one.
-    const auto first_identity = near(actual.y, 489.0f) && near(actual.w, 2.0f);
+    const auto first_identity = is_near(actual.y, 489.0f) && is_near(actual.w, 2.0f);
     const auto second_identity =
-        near(actual.y, 1936.0f) && near(actual.w, 3.0f);
-    return near(actual.x, expected.x) && near(actual.z, 100.0f) &&
+        is_near(actual.y, 1936.0f) && is_near(actual.w, 3.0f);
+    return is_near(actual.x, expected.x) && is_near(actual.z, 100.0f) &&
            (first_identity || second_identity);
   }
   if (index == transformed_overlap) {
-    const auto transform_applied = near(actual.y, 2131.0f) &&
-                                   near(actual.z, 20474114.0f) &&
-                                   near(actual.w, 4.0f);
-    const auto object_space = near(actual.y, 2372.0f) &&
-                              near(actual.z, 3396299.0f) &&
-                              near(actual.w, 5.0f);
-    return near(actual.x, expected.x) && (transform_applied || object_space);
+    const auto transform_applied = is_near(actual.y, 2131.0f) &&
+                                   is_near(actual.z, 20474114.0f) &&
+                                   is_near(actual.w, 4.0f);
+    const auto object_space = is_near(actual.y, 2372.0f) &&
+                              is_near(actual.z, 3396299.0f) &&
+                              is_near(actual.w, 5.0f);
+    return is_near(actual.x, expected.x) && (transform_applied || object_space);
   }
   if (index == near_overlap) {
     // The two nearly coincident Barbershop-floor instances are both valid
@@ -116,9 +116,9 @@ valid_backend_native_record(std::size_t index, luisa::float4 actual,
     // tracing is that the selected identity is filtered from the derived
     // shadow ray and the sibling does not create a false occluder.
     const auto valid_object =
-        near(actual.x, 5011.0f) || near(actual.x, 5066.0f);
-    return valid_object && near(actual.y, expected.y) &&
-           near(actual.z, expected.z) && near(actual.w, expected.w);
+        is_near(actual.x, 5011.0f) || is_near(actual.x, 5066.0f);
+    return valid_object && is_near(actual.y, expected.y) &&
+           is_near(actual.z, expected.z) && is_near(actual.w, expected.w);
   }
   return equal_record(actual, expected);
 }
@@ -1381,7 +1381,7 @@ int main(int argc, char **argv) {
         failed = true;
       }
     }
-    if (!near(shadow_batch_actual[record_base + 8u].x, 1.0f)) {
+    if (!is_near(shadow_batch_actual[record_base + 8u].x, 1.0f)) {
       std::cerr << "opaque shadow candidate did not terminate collection on "
                 << backend << " at lane " << lane << '\n';
       failed = true;
@@ -1405,8 +1405,8 @@ int main(int argc, char **argv) {
   }
   for (auto lane = std::size_t{0u}; lane < shadow_batch_lane_count; ++lane) {
     const auto value = shadow_callable_actual[lane];
-    if (!near(value.x, 4.0f) || !near(value.y, 6.0f) ||
-        !near(value.z, 0.0f) || !(value.w >= 1.0f && value.w <= 6.0f)) {
+    if (!is_near(value.x, 4.0f) || !is_near(value.y, 6.0f) ||
+        !is_near(value.z, 0.0f) || !(value.w >= 1.0f && value.w <= 6.0f)) {
       std::cerr << "shadow callable failed on " << backend << " at lane "
                 << lane << ": got {" << value.x << ", " << value.y << ", "
                 << value.z << ", " << value.w << "}\n";
@@ -1455,12 +1455,12 @@ int main(int argc, char **argv) {
     }
     const auto before_suspend = shadow_coro_actual[record_base + 6u];
     const auto valid_first = count == 0u
-        ? near(before_suspend.w, 10.0f)
+        ? is_near(before_suspend.w, 10.0f)
         : (before_suspend.w >= static_cast<float>(skipped + 1u) &&
            before_suspend.w <= 6.0f);
-    if (!near(before_suspend.x, static_cast<float>(count)) ||
-        !near(before_suspend.y, static_cast<float>(total)) ||
-        !near(before_suspend.z, 0.0f) ||
+    if (!is_near(before_suspend.x, static_cast<float>(count)) ||
+        !is_near(before_suspend.y, static_cast<float>(total)) ||
+        !is_near(before_suspend.z, 0.0f) ||
         !valid_first) {
       std::cerr << "shadow coroutine pre-suspend result failed on " << backend
                 << " at lane " << lane << ": got {" << before_suspend.x

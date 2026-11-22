@@ -55,7 +55,7 @@ void append_node(std::vector<std::uint32_t> &words, NodeTexCoord type,
   }
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 4.0e-5f) noexcept {
   return std::abs(actual - expected) <= tolerance;
 }
@@ -444,9 +444,9 @@ template<std::size_t N>
                            std::string_view label,
                            std::string_view backend) noexcept {
   for (auto i = std::size_t{}; i < N; ++i) {
-    if (!near(actual[i].x, expected[i].x) ||
-        !near(actual[i].y, expected[i].y) ||
-        !near(actual[i].z, expected[i].z)) {
+    if (!is_near(actual[i].x, expected[i].x) ||
+        !is_near(actual[i].y, expected[i].y) ||
+        !is_near(actual[i].z, expected[i].z)) {
       std::cerr << label << " lane " << i << " mismatch on " << backend
                 << ": (" << actual[i].x << ", " << actual[i].y << ", "
                 << actual[i].z << ") != (" << expected[i].x << ", "

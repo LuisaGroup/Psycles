@@ -766,30 +766,30 @@ public:
   }
 };
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 4.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 4.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
-[[nodiscard]] bool near(luisa::float2 actual, luisa::float2 expected,
+[[nodiscard]] bool is_near(luisa::float2 actual, luisa::float2 expected,
                         float tolerance = 4.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance);
 }
 
-[[nodiscard]] bool near(luisa::float4 actual, luisa::float4 expected,
+[[nodiscard]] bool is_near(luisa::float4 actual, luisa::float4 expected,
                         float tolerance = 4.0e-5f) noexcept {
-  return near(actual.xyz(), expected.xyz(), tolerance) &&
-         near(actual.w, expected.w, tolerance);
+  return is_near(actual.xyz(), expected.xyz(), tolerance) &&
+         is_near(actual.w, expected.w, tolerance);
 }
 
 [[nodiscard]] device_svm::TransformState identity_transform_state() noexcept {
@@ -1224,7 +1224,7 @@ inline constexpr std::size_t tail_allocator_value_count = 20u;
   auto valid = actual_meta ==
                std::array<std::uint32_t, 7u>{3u, 59u, 1u, 1u, 1u, 1u, 1u};
   for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
-    valid &= near(actual[index], expected[index]);
+    valid &= is_near(actual[index], expected[index]);
   }
   if (!valid) {
     std::cerr << "Cycles closure front/tail allocation mismatch on " << backend
@@ -1265,11 +1265,11 @@ template <std::size_t word_count>
 
   const auto expected_closure_normal =
       expected.count == 0u ? luisa::float3{0.0f} : expected.normal;
-  auto valid = near(actual[0].xyz(), expected.weight) &&
-               near(actual[0].w, expected.sample_weight) &&
-               near(actual[1].xyz(), expected_closure_normal) &&
-               near(actual[3].yzw(), expected.transparent_extinction) &&
-               near(actual[4].xyz(), expected.emission) &&
+  auto valid = is_near(actual[0].xyz(), expected.weight) &&
+               is_near(actual[0].w, expected.sample_weight) &&
+               is_near(actual[1].xyz(), expected_closure_normal) &&
+               is_near(actual[3].yzw(), expected.transparent_extinction) &&
+               is_near(actual[4].xyz(), expected.emission) &&
                actual_meta[0] == expected.type &&
                actual_meta[1] == expected.count &&
                actual_meta[2] == expected.left &&
@@ -1281,32 +1281,32 @@ template <std::size_t word_count>
                                             device_svm::EvaluationStatus::ended) &&
                           actual_meta[5] == expected.final_offset);
   if (expected.oren_nayar) {
-    valid &= near(actual[1].w, 0.43f) &&
-             near(actual[2].x, 0.28325653076171875f) &&
-             near(actual[2].y, 0.12180031090974808f) &&
-             near(actual[2].zw(),
+    valid &= is_near(actual[1].w, 0.43f) &&
+             is_near(actual[2].x, 0.28325653076171875f) &&
+             is_near(actual[2].y, 0.12180031090974808f) &&
+             is_near(actual[2].zw(),
                   luisa::float2{0.19124409556388855f, 0.022941801697015762f}) &&
-             near(actual[3].x, 0.0031860244926065207f);
+             is_near(actual[3].x, 0.0031860244926065207f);
   }
   if (expected.microfacet) {
-    valid &= near(actual[5], expected.alpha_ior_energy) &&
-             near(actual[6].xyz(), expected.tangent) &&
+    valid &= is_near(actual[5], expected.alpha_ior_energy) &&
+             is_near(actual[6].xyz(), expected.tangent) &&
              actual_meta[6] == expected.fresnel_type;
   }
   if (expected.generalized_schlick) {
-    valid &= near(actual[7], expected.thin_film_exponent) &&
-             near(actual[8].xyz(), expected.reflection_tint) &&
-             near(actual[9].xyz(), expected.transmission_tint) &&
-             near(actual[10].xyz(), expected.f0) &&
-             near(actual[11].xyz(), expected.f90);
+    valid &= is_near(actual[7], expected.thin_film_exponent) &&
+             is_near(actual[8].xyz(), expected.reflection_tint) &&
+             is_near(actual[9].xyz(), expected.transmission_tint) &&
+             is_near(actual[10].xyz(), expected.f0) &&
+             is_near(actual[11].xyz(), expected.f90);
   }
   if (expected.fresnel_payload) {
-    valid &= near(actual[7], expected.thin_film_exponent) &&
-             near(actual[8].xyz(), expected.reflection_tint) &&
-             near(actual[9].xyz(), expected.transmission_tint);
+    valid &= is_near(actual[7], expected.thin_film_exponent) &&
+             is_near(actual[8].xyz(), expected.reflection_tint) &&
+             is_near(actual[9].xyz(), expected.transmission_tint);
   }
   if (expected.direct_evaluation) {
-    valid &= near(actual[12].xyz(), expected.direct_value);
+    valid &= is_near(actual[12].xyz(), expected.direct_value);
   }
 
   if (!valid) {

@@ -301,18 +301,18 @@ template<typename... Args>
   return result;
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-4f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 2.0e-4f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool equal(luisa::float3 actual,
@@ -387,7 +387,7 @@ template<typename... Args>
          position_w[index].w == w_sentinel) &&
         (test.output == OutputKind::radius ||
          radius[index].x == radius_sentinel);
-    if (!near(actual, test.expected) || !untouched ||
+    if (!is_near(actual, test.expected) || !untouched ||
         cursors[index] != voronoi_word_count) {
       std::cerr << "Cycles Voronoi oracle mismatch on " << backend
                 << ", case=" << index << ": got {" << actual.x << ", "
@@ -499,8 +499,8 @@ template<typename... Args>
          << output_buffer.copy_to(&actual) << status_buffer.copy_to(&status)
          << synchronize();
   const auto expected = f32(0x3dba5e40u);
-  if (!near(actual.x, expected) || !near(actual.y, expected) ||
-      !near(actual.z, expected) ||
+  if (!is_near(actual.x, expected) || !is_near(actual.y, expected) ||
+      !is_near(actual.z, expected) ||
       actual.w != static_cast<float>(cycles_stream_end_offset) ||
       status != static_cast<std::uint32_t>(
                     device_svm::EvaluationStatus::ended)) {

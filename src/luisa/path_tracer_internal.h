@@ -2,16 +2,10 @@
 
 #include <psycles/luisa/path_tracer.h>
 
-#include <psycles/compiler/material_library.h>
 #include <psycles/compiler/cycles_svm_scene.h>
 #include <psycles/compiler/cycles_svm_object_scene.h>
-#include <psycles/compiler/surface_execution_plan.h>
-#include <psycles/compiler/surface_svm_program.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sampler.h>
-#include <psycles/luisa/graph_surface.h>
-#include <psycles/luisa/surface_closure_reachability.h>
-#include <psycles/luisa/surface_value_runtime_limits.h>
 #include <psycles/luisa/volume_majorant_hierarchy.h>
 
 #include "path_kernel_executor.h"
@@ -73,9 +67,6 @@ namespace cycles_sampler =
 namespace tabulated_sobol =
     ::psycles::sampling::tabulated_sobol;
 
-using compiler::CompiledMaterial;
-using compiler::MaterialLibrary;
-using compiler::ShaderCompiler;
 using contract::CameraDesc;
 using contract::CameraProjection;
 using contract::CameraSensorFit;
@@ -229,15 +220,6 @@ struct MaterialBinding {
             multiple_importance};
 };
 
-struct NishitaTextureBinding {
-    std::uint32_t parameter_block{};
-    std::uint32_t sky_index{};
-    std::uint32_t texture_slot{};
-    contract::NishitaSkyDesc parameters;
-    luisa::float3 pixel_bottom_xyz{};
-    luisa::float3 pixel_top_xyz{};
-};
-
 struct GeometryResource {
     Buffer<luisa::float3> positions;
     Buffer<luisa::float3> normals;
@@ -312,141 +294,6 @@ struct NishitaEnvironmentRuntime {
     luisa::float3 pixel_top_xyz{};
     luisa::float3 sun_direction{};
     float angular_radius{};
-};
-
-// Scene-pruned typed value program used by the compact surface-population
-// path. The host image is retained because Luisa records one evaluator body
-// per exact semantic variant while the path kernel is constructed. Device
-// streams contain only program control, typed addresses, and late-bound table
-// parameter ids; authored material parameters remain in their existing SoA
-// buffers.
-struct SurfaceValueRuntimeTopology {
-    std::shared_ptr<const compiler::SurfaceProgram> program;
-};
-
-// Exact host/JIT identity of one closure-leaf evaluator in the replacement
-// SVM. `static_variant` selects the closure algorithm and its topology flags;
-// `principled_features` is the per-leaf Cycles feature mask, not a scene-wide
-// union. Keeping the pair explicit is what lets the device interpreter emit
-// only the Principled branches which can actually inhabit a runtime leaf.
-struct SurfaceSvmClosureVariant {
-    std::uint32_t static_variant{};
-    compiler::PrincipledClosureFeatureMask principled_features{};
-
-    auto operator<=>(const SurfaceSvmClosureVariant &) const noexcept =
-        default;
-};
-
-// Fixed semantic slots in the compact surface program's private bindless
-// device view. The view has scene-independent shape, so adding material
-// programs changes data only; it does not grow the path-kernel resource ABI.
-enum class SurfaceValueRuntimeBufferSlot : std::uint32_t {
-  svm_program,
-  svm_instruction,
-  svm_value_operand,
-  svm_metadata_static_u0,
-  svm_metadata_parameter,
-  svm_metadata_static_range,
-  svm_static_data,
-  svm_closure_operand,
-  count,
-};
-
-[[nodiscard]] constexpr std::uint32_t
-surface_value_runtime_buffer_slot(SurfaceValueRuntimeBufferSlot slot) noexcept {
-    return static_cast<std::uint32_t>(slot);
-}
-
-inline constexpr auto surface_value_runtime_buffer_slot_count =
-    surface_value_runtime_buffer_slot(SurfaceValueRuntimeBufferSlot::count);
-static_assert(surface_value_runtime_buffer_slot_count == 8u);
-
-struct SurfaceValueRuntime {
-    static constexpr std::uint32_t programs_per_topology = 2u;
-    static constexpr std::uint32_t preparation_program_offset = 0u;
-    static constexpr std::uint32_t emission_program_offset = 1u;
-    // This is the Cycles-compatible 32-bit lane-stack execution capacity, not
-    // a weakly typed value ABI. The builder rejects a program whose formally
-    // colored live ranges exceed the finite SVM stack.
-    static constexpr auto storage_capacity =
-        compact_surface_value_storage_capacity;
-    static constexpr std::uint32_t stack_capacity =
-        storage_capacity.stack_lanes;
-
-    // Exact evaluator domain proven directly from the unified CFG and its
-    // source-provenance relation. No split-stream executable participates in
-    // production handler selection.
-    std::vector<compiler::SurfaceValueStaticVariant> value_variants;
-    // Executed single-stream image. `svm_instruction_variants` is retained
-    // strictly as a host-side construction proof and domain projection. The
-    // device instruction selects its typed handler from its own control word;
-    // no scene-parallel evaluator side stream is uploaded or read.
-    compiler::SurfaceSvmSceneImage svm_scene;
-    std::vector<std::uint32_t> svm_instruction_variants;
-    std::vector<SurfaceSvmClosureVariant>
-        preparation_svm_closure_variants;
-    std::vector<SurfaceSvmClosureVariant>
-        emission_svm_closure_variants;
-    std::vector<SurfaceSvmClosureVariant>
-        bssrdf_svm_closure_variants;
-    std::vector<SurfaceValueRuntimeTopology> topologies;
-    // Sorted unique host/JIT semantic keys. The device switches on the same
-    // masked control word, so AST size is bounded by closure algorithms used
-    // by the scene rather than by material topology count.
-    std::vector<std::uint32_t> closure_static_variants;
-    compiler::PrincipledClosureFeatureMask used_principled_closure_features{};
-    // Exact host/JIT image of the canonical physical identities reachable
-    // from the scene's closure opcodes and Principled feature stream. This is
-    // specialization metadata only; authored parameters remain device data.
-    SurfaceClosureReachability physical_closure_reachability{};
-    // Exact semantic domains induced by each projected one-stream program.
-    // The automatic-normal prefix, graph-expanded Bump samples, and endpoint
-    // root form one transaction; no hidden callable domain exists.
-    std::vector<std::uint32_t> preparation_value_static_variants;
-    // Emission is a separately projected consumer and therefore has its own
-    // transaction domain. These sets are host/JIT metadata only; material data
-    // and the device program id remain runtime values.
-    std::vector<std::uint32_t> emission_value_static_variants;
-    std::vector<std::uint32_t> emission_closure_static_variants;
-    compiler::PrincipledClosureFeatureMask
-        emission_principled_closure_features{};
-    // BSSRDF exit reconstruction can only be invoked for the conservative
-    // topology-tag set derived from Cycles' has_bssrdf_bump capability. Its
-    // interpreter domain is the exact program image of that set. Closure
-    // variants still include every physical leaf in each selected topology:
-    // non-BSSRDF leaves consume the same finite Cycles closure budget and
-    // therefore cannot be erased independently.
-    std::vector<std::uint32_t> bssrdf_value_static_variants;
-    std::vector<std::uint32_t> bssrdf_closure_static_variants;
-    compiler::PrincipledClosureFeatureMask bssrdf_principled_closure_features{};
-
-    // Device projection of the replacement scene. Program descriptors occupy
-    // two uint4 words in the exact 32-byte host layout; all instruction-owned
-    // offsets are already scene-absolute, so no per-invocation side-range data
-    // is uploaded.
-    luisa::vector<luisa::uint4> svm_program_descriptors;
-    luisa::vector<luisa::uint4> svm_instructions;
-    luisa::vector<luisa::uint> svm_value_operands;
-    // Exact device projection of the only unbounded static_u0 consumer:
-    // Nishita sky indices. Other metadata records carry zero here because no
-    // value handler observes their static_u0 through this buffer.
-    luisa::vector<luisa::uint> svm_metadata_static_u0;
-    luisa::vector<luisa::uint> svm_metadata_parameters;
-    luisa::vector<luisa::uint2> svm_metadata_static_ranges;
-    luisa::vector<float> svm_static_data;
-    luisa::vector<luisa::uint> svm_closure_operands;
-
-    Buffer<luisa::uint4> svm_program_buffer;
-    Buffer<luisa::uint4> svm_instruction_buffer;
-    Buffer<luisa::uint> svm_value_operand_buffer;
-    Buffer<luisa::uint> svm_metadata_static_u0_buffer;
-    Buffer<luisa::uint> svm_metadata_parameter_buffer;
-    Buffer<luisa::uint2> svm_metadata_static_range_buffer;
-    Buffer<float> svm_static_data_buffer;
-    Buffer<luisa::uint> svm_closure_operand_buffer;
-    // Declared after the bound buffers so reverse member destruction releases
-    // the descriptor view before its resources.
-    BindlessArray device_view;
 };
 
 // Transactional host/device image of Cycles' native scene-wide SVM program.
@@ -526,47 +373,11 @@ struct VolumeMajorantRuntime {
 struct LuisaSceneData {
     luisa::compute::Device device;
     std::uint64_t revision{};
-    MaterialLibrary materials;
-    SurfaceDispatch surfaces;
-    // Production Cycles-style single shader population. The independent
-    // environment opt-out is retained only as an exact expanded-graph A/B
-    // oracle for diagnosing interpreter and population effects separately.
-    bool populate_surface_once{};
-    // Explicit host/JIT migration gate for evaluating the uploaded native
-    // Cycles word stream at production surface hits. No device-side route
-    // predicate is generated.
-    bool native_cycles_svm_surface{};
-    // Replacement native Cycles bytecode image. During the migration this is
-    // built and uploaded transactionally before the legacy surface evaluator
-    // is constructed; shade_surface wiring consumes only this image once all
-    // closure families are present.
     std::unique_ptr<CyclesSvmRuntime> cycles_svm;
-    // Production scene-pruned ShaderGraph -> SVM image. A transactional build
-    // failure produces no partial device image; an explicit environment
-    // opt-out selects the established expanded diagnostic implementation.
-    std::unique_ptr<SurfaceValueRuntime> surface_values;
-    // Scene-level Cycles has_bssrdf_bump materials mapped onto the
-    // structure-deduplicated SurfaceDispatch tags. Shared tags form only the
-    // conservative host/JIT dispatch image; MaterialBindingGpu keeps the
-    // exact per-parameter-block predicate used at runtime. Closures and
-    // parameters remain device expressions.
-    luisa::vector<luisa::uint> surface_bssrdf_bump_tags;
-    // Host-stage scene capability used to decide whether the production path
-    // kernel must record spatial BSSRDF transport at all. The predicate is
-    // derived from the raw SurfaceProgram plus its parameter block; it never
-    // rewrites, bakes, or approximates a material closure.
     bool has_subsurface{};
     std::uint32_t subsurface_instance_count{};
-    // Exact scene-level shader-raytrace capabilities. They are derived from
-    // reachable SurfaceProgram instructions before kernel construction, so a
-    // scene without AO neither builds its secondary local TLAS nor records AO
-    // traversal callables.
     bool has_ambient_occlusion{};
     bool has_local_ambient_occlusion{};
-    // One-element material-like scene data, allocated only when an AO node is
-    // reachable. Keeping it out of RenderKernelParameters preserves the exact
-    // no-AO kernel ABI and prevents the authored distance from specializing
-    // shader cache identity.
     std::optional<Buffer<float>> ambient_occlusion_distance_buffer;
     std::map<contract::MaterialId, MaterialBinding>
         material_bindings;
@@ -580,11 +391,6 @@ struct LuisaSceneData {
     std::uint32_t world_visibility_mask{
         contract::all_ray_visibility};
     std::uint32_t world_max_bounces{1024u};
-    // Shader literals retain their compiler IR type. Both buffers use the
-    // same material-block/ParameterId address so dispatch remains compact,
-    // while no float4 type erasure crosses the device ABI.
-    Buffer<float> scalar_parameter_buffer;
-    Buffer<luisa::float3> vector_parameter_buffer;
     Buffer<float> cycles_bsdf_table_buffer;
     std::vector<GeometryResource> geometries;
     std::vector<CurveGeometryResource> curve_geometries;
@@ -610,8 +416,6 @@ struct LuisaSceneData {
     luisa::float3 background_guided_sun_axis{
         0.0f, 0.0f, 1.0f};
     float background_guided_sun_radius{};
-    std::vector<NishitaTextureBinding>
-        nishita_texture_bindings;
     BindlessArray heap;
     Buffer<GeometryGpu> geometry_buffer;
     Buffer<InstanceGpu> instance_buffer;
@@ -637,10 +441,6 @@ struct LuisaSceneData {
     std::vector<luisa::uint> primary_to_volume_local_host;
     std::optional<Buffer<luisa::uint>> primary_to_volume_local_buffer;
     bool all_volume_boundary_primitives_have_volume{false};
-    Buffer<AttributeBindingGpu> attribute_binding_buffer;
-    Buffer<AttributeRangeGpu> attribute_range_buffer;
-    std::uint32_t attribute_binding_slot{};
-    std::uint32_t attribute_range_slot{};
     Buffer<LightGpu> light_buffer;
     std::uint32_t light_count{};
     std::uint32_t light_type_mask{0xfu};

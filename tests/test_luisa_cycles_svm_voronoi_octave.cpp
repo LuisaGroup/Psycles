@@ -61,13 +61,14 @@ int main(int argc, char **argv) {
       const auto index = dispatch_x();
       svm::Stack stack{fixture::stack_size};
       for (unsigned slot = 0; slot < 8u; ++slot) {
-        stack[slot] = inputs.read(index * 2u + slot / 4u)[slot % 4u];
+        svm::stack_store_float(stack, slot, inputs.read(index * 2u + slot / 4u)[slot % 4u]);
       }
       UInt pc = index * 13u;
       svm::Cursor cursor{words, pc};
       svm::node_tex_voronoi(cursor, stack, extra != 0u);
       for (unsigned slot = 0; slot < fixture::output_count; ++slot) {
-        output.write(index * fixture::output_count + slot, stack[fixture::output_begin + slot]);
+        output.write(index * fixture::output_count + slot,
+                     svm::stack_load_float(stack, fixture::output_begin + slot));
       }
       offsets.write(index, pc - index * 13u);
     };

@@ -1,7 +1,6 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
-#include <psycles/compiler/surface_program.h>
 
 #include <chrono>
 #include <cstdlib>
@@ -139,20 +138,6 @@ void test_legacy_hair_closure_import() {
       psycles::compiler::make_core_node_registry()};
   const auto shader = compiler.compile(material->shader);
   expect(shader.ok(), "legacy Hair graph did not validate");
-  const auto surface =
-      psycles::compiler::compile_surface_program(*shader.program);
-  expect(surface.ok() &&
-             surface.program->closure_instructions().size() == 1u,
-         "legacy Hair graph did not lower");
-  const auto &closure = surface.program->closure_instructions().front();
-  expect(
-      closure.operation ==
-              psycles::compiler::ClosureOperation::hair_transmission &&
-          closure.color.valid() && closure.hair_offset.valid() &&
-          closure.roughness.valid() &&
-          closure.diffuse_roughness.valid() && closure.tangent.valid() &&
-          !closure.hair_tangent_linked,
-      "legacy Hair closure was not preserved as raw typed inputs");
 }
 
 } // namespace

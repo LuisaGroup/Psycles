@@ -156,18 +156,18 @@ template <std::size_t Capacity,
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 2.0e-6f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -252,34 +252,34 @@ template <std::size_t Capacity,
   auto valid = state(0u, 0u) == reflection_type && state(0u, 1u) == 1u &&
                state(0u, 2u) == 7u && state(0u, 3u) == reflection_flags &&
                state(0u, 4u) == ended && state(0u, 5u) == 16u &&
-               near(value(0u, 0u).xyz(), luisa::float3{0.8f}) &&
-               near(value(0u, 0u).w, 0.8f) &&
-               near(value(0u, 1u).xyz(), luisa::float3{0.0f, 0.0f, 1.0f}) &&
-               near(value(0u, 2u).xyz(), luisa::float3{0.0f, 0.6f, 0.8f}) &&
-               near(value(0u, 2u).w, 0.1f) && near(value(0u, 3u).x, 1.0f) &&
-               near(value(0u, 3u).y, 0.0f);
+               is_near(value(0u, 0u).xyz(), luisa::float3{0.8f}) &&
+               is_near(value(0u, 0u).w, 0.8f) &&
+               is_near(value(0u, 1u).xyz(), luisa::float3{0.0f, 0.0f, 1.0f}) &&
+               is_near(value(0u, 2u).xyz(), luisa::float3{0.0f, 0.6f, 0.8f}) &&
+               is_near(value(0u, 2u).w, 0.1f) && is_near(value(0u, 3u).x, 1.0f) &&
+               is_near(value(0u, 3u).y, 0.0f);
 
   valid &= state(1u, 0u) == transmission_type && state(1u, 1u) == 1u &&
            state(1u, 2u) == 7u && state(1u, 3u) == transmission_flags &&
            state(1u, 4u) == ended && state(1u, 5u) == 21u &&
-           near(value(1u, 0u).xyz(), luisa::float3{0.83f, 0.17f, 0.52f}) &&
-           near(value(1u, 0u).w, 0.5066666603088379f) &&
-           near(value(1u, 2u).xyz(), luisa::float3{0.6f, 0.8f, 0.0f}) &&
-           near(value(1u, 2u).w, 0.001f) && near(value(1u, 3u).x, 1.0f) &&
-           near(value(1u, 3u).y, -0.27f);
+           is_near(value(1u, 0u).xyz(), luisa::float3{0.83f, 0.17f, 0.52f}) &&
+           is_near(value(1u, 0u).w, 0.5066666603088379f) &&
+           is_near(value(1u, 2u).xyz(), luisa::float3{0.6f, 0.8f, 0.0f}) &&
+           is_near(value(1u, 2u).w, 0.001f) && is_near(value(1u, 3u).x, 1.0f) &&
+           is_near(value(1u, 3u).y, -0.27f);
 
   valid &= state(2u, 0u) == reflection_type && state(2u, 5u) == 16u &&
-           near(value(2u, 2u).xyz(), luisa::float3{0.6f, 0.8f, 0.0f}) &&
-           near(value(2u, 2u).w, 0.25f) && near(value(2u, 3u).x, 0.5f) &&
-           near(value(2u, 3u).y, -0.31f);
+           is_near(value(2u, 2u).xyz(), luisa::float3{0.6f, 0.8f, 0.0f}) &&
+           is_near(value(2u, 2u).w, 0.25f) && is_near(value(2u, 3u).x, 0.5f) &&
+           is_near(value(2u, 3u).y, -0.31f);
 
   valid &= state(3u, 0u) == reflection_type && state(3u, 5u) == 19u &&
-           near(value(3u, 0u).xyz(), luisa::float3{0.2f}) &&
-           near(value(3u, 0u).w, 0.2f);
+           is_near(value(3u, 0u).xyz(), luisa::float3{0.2f}) &&
+           is_near(value(3u, 0u).w, 0.2f);
 
   valid &= state(4u, 0u) == reflection_type &&
-           near(value(4u, 0u).xyz(), luisa::float3{0.0f, 0.6f, 0.3f}) &&
-           near(value(4u, 0u).w, 0.3f);
+           is_near(value(4u, 0u).xyz(), luisa::float3{0.0f, 0.6f, 0.3f}) &&
+           is_near(value(4u, 0u).w, 0.3f);
 
   for (auto scenario : {5u, 7u}) {
     valid &=

@@ -251,12 +251,6 @@ void test_runtime(Device &device) {
   scene->device = Device{device.impl_shared()};
   const auto snapshot = make_scene();
 
-  ShaderCompiler shader_compiler{make_core_node_registry()};
-  const auto reachability = build_scene_material_reachability(snapshot);
-  const auto update = scene->materials.update(snapshot, shader_compiler,
-                                              reachability.shader_materials);
-  require(update.committed, "runtime material fixture did not compile");
-
   std::string diagnostic;
   scene->cycles_svm = build_cycles_svm_runtime(scene, snapshot, diagnostic);
   require(scene->cycles_svm != nullptr, diagnostic);
@@ -264,8 +258,6 @@ void test_runtime(Device &device) {
                                kernel_feature_path_tracing;
   require(scene->cycles_svm->kernel_features == shader_features,
           "runtime dropped shader-owned Cycles kernel features");
-  require(scene->materials.find(MaterialId{5u}) == nullptr,
-          "supplemental Cycles shader polluted legacy material reachability");
   const auto &named_attributes =
       scene->cycles_svm->compilation.named_attributes;
   require(named_attributes.size() == 2u &&
@@ -442,11 +434,6 @@ void test_geometry_feature_projection(Device &device) {
       }
       auto scene = std::make_shared<LuisaSceneData>();
       scene->device = Device{device.impl_shared()};
-      ShaderCompiler compiler{make_core_node_registry()};
-      const auto reachability = build_scene_material_reachability(snapshot);
-      require(scene->materials.update(snapshot, compiler,
-                                       reachability.shader_materials).committed,
-              "feature-mask material fixture did not compile");
       std::string diagnostic;
       scene->cycles_svm = build_cycles_svm_runtime(scene, snapshot, diagnostic);
       require(scene->cycles_svm != nullptr, diagnostic);

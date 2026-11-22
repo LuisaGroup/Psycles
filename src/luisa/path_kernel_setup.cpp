@@ -1,6 +1,5 @@
 #include "path_kernel_builder.h"
 #include "path_tracer_cycles_svm_emission.h"
-#include "subsurface_exit_closure_component.h"
 
 #include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/cycles_path_state.h>
@@ -235,268 +234,48 @@ volume_guiding_majorant_optical_depth()
             0.0f);
 }
 
-SurfaceEvaluation PathKernelInvocation::evaluate_light_surface(
-    UInt surface_tag,
-    const SurfacePoint &point,
-    Float3 outgoing,
-    const SurfaceQuery &query,
-    UInt shader_flags) const noexcept {
-    auto result = unpack_surface_evaluation(
-        config.surfaces.evaluate_light(
-            config.scene->scalar_parameter_buffer,
-            config.scene->vector_parameter_buffer,
-            config.scene->cycles_bsdf_table_buffer,
-            config.scene->texture_heap,
-            config.scene->heap,
-            surface_tag,
-            pack_surface_point(point),
-            outgoing,
-            query.lobe_mask,
-            query.transport_mode,
-            query.glossy_filter_roughness,
-            query.reflective_caustics,
-            query.refractive_caustics,
-            shader_flags));
-    $if(query.subsurface_exit) {
-        result = SubsurfaceExitClosureComponent{}.evaluate_light(
-            point, outgoing, query, shader_flags);
-    };
-    return result;
-}
-
 SurfaceEvaluation SurfaceShadingState::evaluate_light(
-    PathKernelInvocation &invocation,
-    UInt surface_tag,
-    const SurfacePoint &point,
+    PathKernelInvocation &,
+    UInt,
+    const SurfacePoint &,
     Float3 outgoing,
     const SurfaceQuery &query,
     UInt shader_flags) const noexcept {
-    if (populated_surface) {
-        return populated_surface->evaluate_light(
-            Expr<luisa::float3>{outgoing.expression()},
-            {.surface = query, .shader_flags = shader_flags});
-    }
-    return invocation.evaluate_light_surface(
-        std::move(surface_tag),
-        point,
-        std::move(outgoing),
-        query,
-        std::move(shader_flags));
-}
-
-SurfacePreparation PathKernelInvocation::prepare_surface(
-    UInt surface_tag,
-    const SurfacePoint &point,
-    Float3 outgoing,
-    const SurfaceQuery &query,
-    Bool include_runtime_flags,
-    Bool include_aov) const noexcept {
-    const auto preparation_query = surface_preparation_query(
-        point,
-        std::move(outgoing),
-        query,
-        std::move(include_runtime_flags),
-        std::move(include_aov));
-    return unpack_surface_preparation(
-        config.surfaces.preparation(
-            config.scene->scalar_parameter_buffer,
-            config.scene->vector_parameter_buffer,
-            config.scene->cycles_bsdf_table_buffer,
-            config.scene->texture_heap,
-            config.scene->heap,
-            surface_tag,
-            pack_surface_point(point),
-            pack_surface_preparation_query(preparation_query)));
-}
-
-SurfacePreparationQuery PathKernelInvocation::surface_preparation_query(
-    const SurfacePoint &point,
-    Float3 outgoing,
-    const SurfaceQuery &query,
-    Bool include_runtime_flags,
-    Bool include_aov) const noexcept {
-    const auto emission_reflective_caustics =
-        Bool{config.reflective_caustics} |
-        ((point.ray_visibility &
-             contract::visibility_bit(
-                 contract::RayVisibility::diffuse)) ==
-            0u);
-    return SurfacePreparationQuery{
-        .outgoing = std::move(outgoing),
-        .glossy_filter_roughness =
-            query.glossy_filter_roughness,
-        .emission_reflective_caustics =
-            emission_reflective_caustics,
-        .reflective_caustics = query.reflective_caustics,
-        .refractive_caustics = query.refractive_caustics,
-        .include_runtime_flags = include_runtime_flags,
-        .include_aov = include_aov};
-}
-
-Float3 PathKernelInvocation::surface_emission(UInt surface_tag,
-                                              const SurfacePoint &point,
-                                              Float3 outgoing) const noexcept {
-    const auto reflective_caustics =
-        Bool{config.reflective_caustics} |
-        ((point.ray_visibility &
-             contract::visibility_bit(
-                 contract::RayVisibility::diffuse)) ==
-            0u);
-    return config.surfaces.emission(config.scene->scalar_parameter_buffer,
-                                    config.scene->vector_parameter_buffer,
-                                    config.scene->cycles_bsdf_table_buffer,
-                                    config.scene->texture_heap,
-                                    config.scene->heap,
-                                    surface_tag,
-                                    pack_surface_point(point),
-                                    outgoing,
-                                    reflective_caustics);
-}
-
-Float3 PathKernelInvocation::constant_surface_emission(
-    UInt surface_tag,
-    UInt parameter_block) const noexcept {
-    return config.surfaces.constant_emission(
-        config.scene->scalar_parameter_buffer,
-        config.scene->vector_parameter_buffer,
-        surface_tag,
-        parameter_block);
-}
-
-SurfaceSample
-PathKernelInvocation::sample_surface(UInt surface_tag,
-                                     const SurfacePoint &point,
-                                     Float u_lobe,
-                                     Float2 u_direction,
-                                     const SurfaceQuery &query) const noexcept {
-    auto result = unpack_surface_sample(
-        config.surfaces.sample(config.scene->scalar_parameter_buffer,
-                               config.scene->vector_parameter_buffer,
-                               config.scene->cycles_bsdf_table_buffer,
-                               config.scene->texture_heap,
-                               config.scene->heap,
-                               surface_tag,
-                               pack_surface_point(point),
-                               u_lobe,
-                               u_direction,
-                               query.lobe_mask,
-                               query.transport_mode,
-                               query.glossy_filter_roughness,
-                               query.reflective_caustics,
-                               query.refractive_caustics));
-    $if(query.subsurface_exit) {
-        result = SubsurfaceExitClosureComponent{}.sample(
-            point, u_direction, query);
-    };
-    return result;
+    LUISA_ASSERT(populated_surface != nullptr,
+                 "Native surface evaluation requires populated surface state.");
+    return populated_surface->evaluate_light(
+        Expr<luisa::float3>{outgoing.expression()},
+        {.surface = query, .shader_flags = shader_flags});
 }
 
 SurfaceSample SurfaceShadingState::sample(
-    PathKernelInvocation &invocation,
-    UInt surface_tag,
-    const SurfacePoint &point,
+    PathKernelInvocation &,
+    UInt,
+    const SurfacePoint &,
     Float u_lobe,
     Float2 u_direction,
     const SurfaceQuery &query) const noexcept {
-    if (populated_surface) {
-        return populated_surface->sample(
-            Expr<float>{u_lobe.expression()},
-            Expr<luisa::float2>{u_direction.expression()},
-            query);
-    }
-    return invocation.sample_surface(
-        std::move(surface_tag),
-        point,
-        std::move(u_lobe),
-        std::move(u_direction),
+    LUISA_ASSERT(populated_surface != nullptr,
+                 "Native surface sampling requires populated surface state.");
+    return populated_surface->sample(
+        Expr<float>{u_lobe.expression()},
+        Expr<luisa::float2>{u_direction.expression()},
         query);
-}
-
-SurfaceClosureTrace PathKernelInvocation::trace_surface_closure(
-    UInt surface_tag,
-    const SurfacePoint &point,
-    UInt requested_index,
-    Bool reflective_caustics,
-    Bool refractive_caustics) const noexcept {
-    return unpack_surface_closure_trace(
-        config.surfaces.closure_trace(config.scene->scalar_parameter_buffer,
-                                      config.scene->vector_parameter_buffer,
-                                      config.scene->cycles_bsdf_table_buffer,
-                                      config.scene->texture_heap,
-                                      config.scene->heap,
-                                      surface_tag,
-                                      pack_surface_point(point),
-                                      requested_index,
-                                      reflective_caustics,
-                                      refractive_caustics));
-}
-
-SurfaceSampleTrace PathKernelInvocation::trace_sample_surface(
-    UInt surface_tag,
-    const SurfacePoint &point,
-    Float u_lobe,
-    Float2 u_direction,
-    const SurfaceQuery &query) const noexcept {
-    auto result = unpack_surface_sample_trace(
-        config.surfaces.sample_trace(config.scene->scalar_parameter_buffer,
-                                     config.scene->vector_parameter_buffer,
-                                     config.scene->cycles_bsdf_table_buffer,
-                                     config.scene->texture_heap,
-                                     config.scene->heap,
-                                     surface_tag,
-                                     pack_surface_point(point),
-                                     u_lobe,
-                                     u_direction,
-                                     query.lobe_mask,
-                                     query.transport_mode,
-                                     query.glossy_filter_roughness,
-                                     query.reflective_caustics,
-                                     query.refractive_caustics));
-    $if(query.subsurface_exit) {
-        result = SubsurfaceExitClosureComponent{}.sample_trace(
-            point, u_direction, query);
-    };
-    return result;
 }
 
 SurfaceSampleTrace SurfaceShadingState::sample_trace(
-    PathKernelInvocation &invocation,
-    UInt surface_tag,
-    const SurfacePoint &point,
+    PathKernelInvocation &,
+    UInt,
+    const SurfacePoint &,
     Float u_lobe,
     Float2 u_direction,
     const SurfaceQuery &query) const noexcept {
-    if (populated_surface) {
-        return populated_surface->sample_trace(
-            Expr<float>{u_lobe.expression()},
-            Expr<luisa::float2>{u_direction.expression()},
-            query);
-    }
-    return invocation.trace_sample_surface(
-        std::move(surface_tag),
-        point,
-        std::move(u_lobe),
-        std::move(u_direction),
+    LUISA_ASSERT(populated_surface != nullptr,
+                 "Native surface sample trace requires populated surface state.");
+    return populated_surface->sample_trace(
+        Expr<float>{u_lobe.expression()},
+        Expr<luisa::float2>{u_direction.expression()},
         query);
-}
-
-Float3 PathKernelInvocation::surface_bssrdf_normal(
-    UInt surface_tag,
-    const SurfacePoint &point,
-    Bool has_bssrdf_bump,
-    Bool reflective_caustics,
-    Bool refractive_caustics) const noexcept {
-    return config.surfaces.bssrdf_normal(
-        config.scene->scalar_parameter_buffer,
-        config.scene->vector_parameter_buffer,
-        config.scene->cycles_bsdf_table_buffer,
-        config.scene->texture_heap,
-        config.scene->heap,
-        surface_tag,
-        pack_surface_point(point),
-        has_bssrdf_bump,
-        reflective_caustics,
-        refractive_caustics);
 }
 
 Float3 PathKernelInvocation::constant_environment() const noexcept {

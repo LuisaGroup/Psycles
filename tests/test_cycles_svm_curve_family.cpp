@@ -32,7 +32,7 @@ void require(bool condition, std::string_view message) {
   }
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
@@ -224,8 +224,8 @@ void test_constant_folding_and_zero_factor_bypass() {
   const auto vector_image = compile_graph(vector_graph);
   require(vector_image.valid, vector_image.diagnostic);
   const auto vector_weight = closure_weight(vector_image);
-  require(near(vector_weight[0u], 0.275f) && near(vector_weight[1u], 0.5f) &&
-              near(vector_weight[2u], 0.475f) &&
+  require(is_near(vector_weight[0u], 0.275f) && is_near(vector_weight[1u], 0.5f) &&
+              is_near(vector_weight[2u], 0.475f) &&
               !vector_image.node_types_used[NODE_CURVES],
           "Vector Curves constant fold differs from Cycles 5.2.1");
 
@@ -235,8 +235,8 @@ void test_constant_folding_and_zero_factor_bypass() {
   const auto float_image = compile_graph(float_graph);
   require(float_image.valid, float_image.diagnostic);
   const auto scalar_weight = closure_weight(float_image);
-  require(near(scalar_weight[0u], 0.26f) && near(scalar_weight[1u], 0.26f) &&
-              near(scalar_weight[2u], 0.26f) &&
+  require(is_near(scalar_weight[0u], 0.26f) && is_near(scalar_weight[1u], 0.26f) &&
+              is_near(scalar_weight[2u], 0.26f) &&
               !float_image.node_types_used[NODE_FLOAT_CURVE],
           "Float Curve constant fold differs from Cycles 5.2.1");
 

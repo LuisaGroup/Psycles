@@ -15,6 +15,9 @@
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_voronoi {
+
+using namespace luisa::compute;
+
 namespace {
 
 using luisa::compute::Int;
@@ -1438,73 +1441,6 @@ make_callable(Configuration configuration) noexcept {
 }
 
 }// namespace
-
-bool is_operation(compiler::ValueOperation operation) noexcept {
-    switch (operation) {
-        case compiler::ValueOperation::voronoi_distance:
-        case compiler::ValueOperation::voronoi_color:
-        case compiler::ValueOperation::voronoi_position:
-        case compiler::ValueOperation::voronoi_w:
-        case compiler::ValueOperation::voronoi_radius:
-            return true;
-        default:
-            return false;
-    }
-}
-
-Configuration
-decode_configuration(const compiler::ValueInstruction &instruction) noexcept {
-    const auto encoded = instruction.static_u0;
-    auto dimensions = static_cast<std::uint32_t>(encoded & 0xffu);
-    if (dimensions < 1u || dimensions > 4u) {
-        dimensions = 3u;
-    }
-    auto feature = compiler::VoronoiFeature::f1;
-    switch (static_cast<compiler::VoronoiFeature>((encoded >> 8u) & 0xffu)) {
-        case compiler::VoronoiFeature::f1:
-        case compiler::VoronoiFeature::f2:
-        case compiler::VoronoiFeature::smooth_f1:
-        case compiler::VoronoiFeature::distance_to_edge:
-        case compiler::VoronoiFeature::n_sphere_radius:
-            feature = static_cast<compiler::VoronoiFeature>(
-                (encoded >> 8u) & 0xffu);
-            break;
-    }
-    auto metric = compiler::VoronoiDistanceMetric::euclidean;
-    switch (static_cast<compiler::VoronoiDistanceMetric>(
-        (encoded >> 16u) & 0xffu)) {
-        case compiler::VoronoiDistanceMetric::euclidean:
-        case compiler::VoronoiDistanceMetric::manhattan:
-        case compiler::VoronoiDistanceMetric::chebychev:
-        case compiler::VoronoiDistanceMetric::minkowski:
-            metric = static_cast<compiler::VoronoiDistanceMetric>(
-                (encoded >> 16u) & 0xffu);
-            break;
-    }
-    auto output = compiler::VoronoiOutput::distance;
-    switch (instruction.operation) {
-        case compiler::ValueOperation::voronoi_color:
-            output = compiler::VoronoiOutput::color;
-            break;
-        case compiler::ValueOperation::voronoi_position:
-            output = compiler::VoronoiOutput::position;
-            break;
-        case compiler::ValueOperation::voronoi_w:
-            output = compiler::VoronoiOutput::w;
-            break;
-        case compiler::ValueOperation::voronoi_radius:
-            output = compiler::VoronoiOutput::radius;
-            break;
-        case compiler::ValueOperation::voronoi_distance:
-        default:
-            break;
-    }
-    return {.dimensions = dimensions,
-            .feature = feature,
-            .metric = metric,
-            .output = output,
-            .normalize = ((encoded >> 24u) & 1u) != 0u};
-}
 
 void prepare(const Configuration &configuration) noexcept {
     const auto key = configuration_key(configuration);

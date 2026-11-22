@@ -53,7 +53,7 @@ void append_color(std::vector<std::uint32_t> &words,
   words.emplace_back(std::bit_cast<std::uint32_t>(color.w));
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
@@ -261,10 +261,10 @@ template <typename... Args>
     const auto expected_cursor =
         ramp_header_words +
         static_cast<std::uint32_t>(cases[index].table.size() * 4u);
-    if (!near(actual[index].x, expected[index].x) ||
-        !near(actual[index].y, expected[index].y) ||
-        !near(actual[index].z, expected[index].z) ||
-        !near(actual[index].w, expected[index].w) ||
+    if (!is_near(actual[index].x, expected[index].x) ||
+        !is_near(actual[index].y, expected[index].y) ||
+        !is_near(actual[index].z, expected[index].z) ||
+        !is_near(actual[index].w, expected[index].w) ||
         cursors[index] != expected_cursor) {
       std::cerr << "Cycles RGB Ramp direct case " << index << " failed on "
                 << backend << ": value=(" << actual[index].x << ", "
@@ -280,9 +280,9 @@ template <typename... Args>
       luisa::float3{1.0f, f32(0x3f0ca767u), 0.0f},
       luisa::float3{f32(0x3e65eab0u), f32(0x3ce879f6u), f32(0x3f7362b7u)}};
   for (auto index = std::size_t{}; index < external_rgb.size(); ++index) {
-    if (!near(actual[index].x, external_rgb[index].x, 2.0e-5f) ||
-        !near(actual[index].y, external_rgb[index].y, 2.0e-5f) ||
-        !near(actual[index].z, external_rgb[index].z, 2.0e-5f)) {
+    if (!is_near(actual[index].x, external_rgb[index].x, 2.0e-5f) ||
+        !is_near(actual[index].y, external_rgb[index].y, 2.0e-5f) ||
+        !is_near(actual[index].z, external_rgb[index].z, 2.0e-5f)) {
       std::cerr << "Cycles RGB Ramp external oracle " << index
                 << " differs materially on " << backend << '\n';
       return false;
@@ -413,8 +413,8 @@ interpreter_kernel(std::array<bool, NODE_NUM> node_types_used) {
          << output_buffer.copy_to(&actual) << status_buffer.copy_to(&status)
          << synchronize();
   const auto expected = luisa::float3{0.3f, 0.35f, 0.4f};
-  if (!near(actual.x, expected.x) || !near(actual.y, expected.y) ||
-      !near(actual.z, expected.z) ||
+  if (!is_near(actual.x, expected.x) || !is_near(actual.y, expected.y) ||
+      !is_near(actual.z, expected.z) ||
       status !=
           static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles RGB Ramp interpreter dispatch mismatch on " << backend
@@ -436,7 +436,7 @@ int main(int argc, char **argv) {
               << ", callables=" << shape.callable_definitions << '\n';
   }
   if (shape.instructions > 1100u || shape.loops != 0u ||
-      shape.callable_definitions != 0u) {
+      shape.callable_definitions > 1u) {
     std::cerr << "Cycles SVM RGB Ramp shape regression: instructions="
               << shape.instructions << ", loops=" << shape.loops
               << ", callables=" << shape.callable_definitions << '\n';

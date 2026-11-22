@@ -15,9 +15,9 @@ STRICT_FAST_MATH_PATTERN = re.compile(
 
 # No production shader currently needs strict arithmetic. In particular, the
 # sampled volume-density maximum is not a proven conservative bound; strict
-# FP does not make it one. See validation/2026-09-07/volume-fast-math. Keep this
-# allowlist exact: any future exception requires an explicit proof obligation,
-# not a regression's preference for one floating-point bit pattern.
+# FP does not make it one. Keep this allowlist exact: any future exception
+# requires an explicit proof obligation, not a regression's preference for
+# one floating-point bit pattern.
 ALLOWED_STRICT_FAST_MATH: dict[str, int] = {}
 
 # This old component re-ran a software Pluecker triangle test after native

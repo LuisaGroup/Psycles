@@ -184,7 +184,10 @@ int main(int argc, char **argv) {
   using psycles::luisa_backend::path_trace_schema::index;
   const auto &surface =
       trace_sink->trace()->slots[index(0u, EventSlot::surface_p)];
-  if (surface[3u] != 1.0f || std::abs(surface[2u] - 0.4f) > 2.0e-6f) {
+  // Native Cycles SVM decodes 16-bit octahedral packed_normal from
+  // attributes_normal, so (0, 0.6, 0.8) quantizes by ~1.8e-5 and yields
+  // 0.5 * N.z ~= 0.399991 (whereas a flat-normal setup would give 0.5).
+  if (surface[3u] != 1.0f || std::abs(surface[2u] - 0.4f) > 5.0e-5f) {
     std::cerr << "Cycles forced-smooth displacement regression on " << backend
               << ": surface z=" << surface[2u] << ", expected 0.4\n";
     return EXIT_FAILURE;

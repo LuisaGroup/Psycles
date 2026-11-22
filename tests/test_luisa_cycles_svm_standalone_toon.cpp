@@ -185,18 +185,18 @@ template <std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 2.0e-6f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -266,42 +266,42 @@ template <std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
                state(0u, 1u) == 1u && state(0u, 2u) == 7u &&
                state(0u, 3u) == expected_flags && state(0u, 4u) == ended &&
                state(0u, 5u) == 18u &&
-               near(value(0u, 0u).xyz(), luisa::float3{0.31f, 0.73f, 0.19f}) &&
-               near(value(0u, 0u).w, 0.4100000262260437f) &&
-               near(value(0u, 1u).xyz(), up) &&
-               near(value(0u, 2u).x, 0.37f * half_pi) &&
-               near(value(0u, 2u).y, 0.21f * half_pi);
+               is_near(value(0u, 0u).xyz(), luisa::float3{0.31f, 0.73f, 0.19f}) &&
+               is_near(value(0u, 0u).w, 0.4100000262260437f) &&
+               is_near(value(0u, 1u).xyz(), up) &&
+               is_near(value(0u, 2u).x, 0.37f * half_pi) &&
+               is_near(value(0u, 2u).y, 0.21f * half_pi);
 
   valid &= state(1u, 0u) ==
                static_cast<std::uint32_t>(CLOSURE_BSDF_GLOSSY_TOON_ID) &&
            state(1u, 1u) == 1u && state(1u, 2u) == 7u &&
            state(1u, 3u) == expected_flags && state(1u, 4u) == ended &&
            state(1u, 5u) == 18u &&
-           near(value(1u, 0u).xyz(), luisa::float3{0.84f, 0.22f, 0.56f}) &&
-           near(value(1u, 0u).w, 0.5399999618530273f) &&
-           near(value(1u, 1u).xyz(), up) &&
-           near(value(1u, 2u).x, 0.63f * half_pi) &&
-           near(value(1u, 2u).y, 0.14f * half_pi);
+           is_near(value(1u, 0u).xyz(), luisa::float3{0.84f, 0.22f, 0.56f}) &&
+           is_near(value(1u, 0u).w, 0.5399999618530273f) &&
+           is_near(value(1u, 1u).xyz(), up) &&
+           is_near(value(1u, 2u).x, 0.63f * half_pi) &&
+           is_near(value(1u, 2u).y, 0.14f * half_pi);
 
   valid &= state(2u, 0u) ==
                static_cast<std::uint32_t>(CLOSURE_BSDF_DIFFUSE_TOON_ID) &&
-           near(value(2u, 2u).x, 1.0e-5f * half_pi) &&
-           near(value(2u, 2u).y, 0.0f);
+           is_near(value(2u, 2u).x, 1.0e-5f * half_pi) &&
+           is_near(value(2u, 2u).y, 0.0f);
   valid &= state(3u, 0u) ==
                static_cast<std::uint32_t>(CLOSURE_BSDF_GLOSSY_TOON_ID) &&
-           near(value(3u, 2u).x, half_pi) && near(value(3u, 2u).y, half_pi);
+           is_near(value(3u, 2u).x, half_pi) && is_near(value(3u, 2u).y, half_pi);
 
   valid &=
       state(4u, 0u) ==
           static_cast<std::uint32_t>(CLOSURE_BSDF_DIFFUSE_TOON_ID) &&
       state(4u, 5u) == 21u &&
-      near(value(4u, 0u).xyz(), luisa::float3{0.31f, 0.73f, 0.19f} * 0.25f) &&
-      near(value(4u, 0u).w, 0.4100000262260437f * 0.25f);
+      is_near(value(4u, 0u).xyz(), luisa::float3{0.31f, 0.73f, 0.19f} * 0.25f) &&
+      is_near(value(4u, 0u).w, 0.4100000262260437f * 0.25f);
 
   valid &= state(5u, 0u) ==
                static_cast<std::uint32_t>(CLOSURE_BSDF_GLOSSY_TOON_ID) &&
            state(5u, 5u) == 23u &&
-           near(value(5u, 1u).xyz(), luisa::float3{0.0f, 0.6f, 0.8f});
+           is_near(value(5u, 1u).xyz(), luisa::float3{0.0f, 0.6f, 0.8f});
 
   /* Cycles' caustics trick is a Glossy-only allocation guard. It still
    * consumes the typed payload; Diffuse Toon and non-diffuse rays remain

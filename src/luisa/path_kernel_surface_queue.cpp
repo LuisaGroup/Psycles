@@ -503,59 +503,32 @@ public:
     // Cycles intersection_get_shader_from_isect_prim(): the native
     // interpreter's identity is the shader-table index, not the deduped
     // graph topology. Material overrides are already resolved in this
-    // geometry image. Do not reintroduce the legacy binding indirections.
-    if (scene->native_cycles_svm_surface) {
-      LUISA_ASSERT(scene->cycles_svm && scene->cycles_svm->geometry,
-                   "Native surface sorting requires finalized Cycles geometry.");
-      const auto &native = *scene->cycles_svm->geometry;
-      UInt shader = 0u;
-      const auto triangle_shader = [&] noexcept {
-        shader = native.triangle_shader_buffer->read(
-            instance.cycles_primitive_offset + hit->prim);
-      };
-      const auto curve_shader = [&] noexcept {
-        Var<GeometryGpu> geometry =
-            scene->geometry_buffer->read(instance.geometry_index);
-        const auto segment =
-            scene->heap->buffer<CurveSegmentGpu>(geometry.bindless_base).read(hit->prim);
-        shader = native.curve_buffer->read(segment.cycles_curve_index)
-                     .shader_id.cast<std::uint32_t>();
-      };
-      if (_plan.mixed()) {
-        $if(hit->is_procedural()) { curve_shader(); }
-        $else { triangle_shader(); };
-      } else if (_plan.curves) {
-        curve_shader();
-      } else {
-        triangle_shader();
-      }
-      return shader & cycles_shader_identity::shader_mask;
-    }
-    Var<GeometryGpu> geometry = scene->geometry_buffer->read(instance.geometry_index);
-    UInt material_slot = 0u;
-
-    const auto resolve_triangle = [&] noexcept {
-      material_slot = _material->triangle_material_slot(scene, geometry, hit->prim);
+    // geometry image.
+    LUISA_ASSERT(scene->cycles_svm && scene->cycles_svm->geometry,
+                 "Native surface sorting requires finalized Cycles geometry.");
+    const auto &native = *scene->cycles_svm->geometry;
+    UInt shader = 0u;
+    const auto triangle_shader = [&] noexcept {
+      shader = native.triangle_shader_buffer->read(
+          instance.cycles_primitive_offset + hit->prim);
     };
-    const auto resolve_curve = [&] noexcept {
+    const auto curve_shader = [&] noexcept {
+      Var<GeometryGpu> geometry =
+          scene->geometry_buffer->read(instance.geometry_index);
       const auto segment =
           scene->heap->buffer<CurveSegmentGpu>(geometry.bindless_base).read(hit->prim);
-      material_slot = _material->curve_material_slot(scene, geometry, segment);
+      shader = native.curve_buffer->read(segment.cycles_curve_index)
+                   .shader_id.cast<std::uint32_t>();
     };
-
     if (_plan.mixed()) {
-      $if(hit->is_procedural()) { resolve_curve(); }
-      $else { resolve_triangle(); };
+      $if(hit->is_procedural()) { curve_shader(); }
+      $else { triangle_shader(); };
     } else if (_plan.curves) {
-      resolve_curve();
+      curve_shader();
     } else {
-      resolve_triangle();
+      triangle_shader();
     }
-
-    // The legacy diagnostic evaluator still expands graph implementations
-    // by SurfaceDispatch::surface_tag. Keep its own coherence key.
-    auto binding = _material->resolve_binding(scene, instance, geometry, material_slot);
-    return std::move(binding.surface_tag);
+    return shader & cycles_shader_identity::shader_mask;
   }
 };
 
@@ -567,11 +540,9 @@ make_surface_queue_key_stage(ScenePrimitiveStagePlan plan) {
 }
 
 std::uint32_t surface_queue_key_range(const LuisaSceneData &scene) noexcept {
-  LUISA_ASSERT(!scene.native_cycles_svm_surface || scene.cycles_svm,
+  LUISA_ASSERT(scene.cycles_svm,
                "Native surface sorting requires a Cycles shader table.");
-  const auto count = scene.native_cycles_svm_surface
-                         ? scene.cycles_svm->compilation.kernel_shaders.size()
-                         : scene.surfaces.size();
+  const auto count = scene.cycles_svm->compilation.kernel_shaders.size();
   LUISA_ASSERT(count <= std::numeric_limits<std::uint32_t>::max(),
                "Surface queue key range {} exceeds the uint32 scheduler ABI.", count);
   return static_cast<std::uint32_t>(count);

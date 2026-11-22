@@ -1,7 +1,6 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
-#include <psycles/compiler/surface_program.h>
 
 #include <chrono>
 #include <cstdlib>
@@ -180,14 +179,6 @@ void test_muted_node_uses_internal_bypass() {
       psycles::compiler::make_core_node_registry()};
   const auto shader = compiler.compile(graph);
   expect(shader.ok(), "muted bypass graph did not validate");
-  const auto surface =
-      psycles::compiler::compile_surface_program(*shader.program);
-  expect(surface.ok(), "muted bypass graph did not lower");
-  for (const auto &instruction : surface.program->value_instructions()) {
-    expect(instruction.operation !=
-               psycles::compiler::ValueOperation::mix,
-           "muted Mix emitted a value instruction");
-  }
   for (const auto &diagnostic : imported.diagnostics) {
     expect(diagnostic.message.find("UNSUPPORTED") == std::string::npos,
            "dead muted-node branch emitted a diagnostic");

@@ -1,9 +1,7 @@
 #include "cycles_svm_imported_word_fixture.h"
 
-#include <psycles/compiler/surface_program.h>
-
 namespace {
-void check_import_boundary_and_private_prepass() {
+void check_import_boundary() {
   using namespace psycles;
   using test_support::require;
   test_support::Bundle bundle{"cycles_math_expand"};
@@ -26,13 +24,6 @@ void check_import_boundary_and_private_prepass() {
     require(clamped_math == unsigned(clamp), "Math clamp property was lost");
     const auto shader = compiler.compile(material->second.shader);
     require(shader.ok(), "minimal graph validation");
-    const auto prepass = compiler::compile_surface_program(*shader.program);
-    require(prepass.ok(), "private displacement representation");
-    const auto instructions = prepass.program->value_instructions();
-    const auto count = std::ranges::count_if(instructions, [](const auto &instruction) {
-      return instruction.operation == compiler::ValueOperation::clamp01;
-    });
-    require(count == int(clamp), "private prepass discarded Math.use_clamp");
   }
 }
 } // namespace
@@ -40,7 +31,7 @@ void check_import_boundary_and_private_prepass() {
 int main() {
   try {
     psycles::test_support::check_imported_words("cycles_math_expand", 18);
-    check_import_boundary_and_private_prepass();
+    check_import_boundary();
     std::cout << "18 Math expansion/scheduling graphs match original Cycles\n";
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

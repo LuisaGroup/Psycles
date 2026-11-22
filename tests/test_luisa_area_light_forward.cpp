@@ -35,20 +35,6 @@ concept CarriesRadiance = requires(T value) {
     value.radiance;
 };
 
-template<typename T>
-concept CanSampleTexture = requires(
-    const T &services,
-    UInt handle,
-    Float2 uv) {
-    services.texture_2d(
-        handle,
-        uv,
-        uv,
-        uv,
-        0u,
-        0u);
-};
-
 using EmissiveProposalFunction =
     EmissiveTriangleLightProposal (
         EmissiveTriangleComponent::*)(
@@ -57,21 +43,11 @@ using EmissiveProposalFunction =
         Float3,
         Float2,
         Float) const noexcept;
-using EmissiveEvaluationFunction =
-    Float3 (EmissiveTriangleComponent::*)(
-        PathSampleContext &,
-        const EmissiveTriangleLightProposal &)
-        const noexcept;
 using EmissiveConstantEvaluationFunction =
     Float3 (EmissiveTriangleComponent::*)(
         PathSampleContext &,
         const EmissiveTriangleLightProposal &)
         const noexcept;
-using SurfaceConstantEvaluationFunction =
-    Float3 (psycles::luisa_backend::Surface::*)(
-        const psycles::luisa_backend::
-            SurfaceParameterServices &,
-        Expr<std::uint32_t>) const noexcept;
 using EnvironmentProposalFunction =
     EnvironmentLightProposal (
         EnvironmentLightComponent::*)(
@@ -99,10 +75,6 @@ static_assert(
     !CarriesRadiance<
         EnvironmentLightProposal>);
 static_assert(
-    !CanSampleTexture<
-        psycles::luisa_backend::
-            SurfaceParameterServices>);
-static_assert(
     std::same_as<
         decltype(
             &EmissiveTriangleComponent::
@@ -112,20 +84,8 @@ static_assert(
     std::same_as<
         decltype(
             &EmissiveTriangleComponent::
-                evaluate_emission),
-        EmissiveEvaluationFunction>);
-static_assert(
-    std::same_as<
-        decltype(
-            &EmissiveTriangleComponent::
                 evaluate_constant_emission),
         EmissiveConstantEvaluationFunction>);
-static_assert(
-    std::same_as<
-        decltype(
-            &psycles::luisa_backend::Surface::
-                constant_emission),
-        SurfaceConstantEvaluationFunction>);
 static_assert(
     std::same_as<
         decltype(

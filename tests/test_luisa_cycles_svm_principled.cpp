@@ -155,18 +155,18 @@ make_shader_data(device_svm::ClosurePool *closure) noexcept {
   }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 4.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 4.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, int argc, char **argv) {
@@ -196,19 +196,19 @@ make_shader_data(device_svm::ClosurePool *closure) noexcept {
   const auto zero = luisa::float3{0.0f};
   const auto up = luisa::float3{0.0f, 0.0f, 1.0f};
   auto valid =
-      near(actual[0].xyz(), luisa::float3{0.9220424294471741f}) &&
-      near(actual[0].w, 0.03738487884402275f) && near(actual[1].xyz(), up) &&
-      near(actual[2].xyz(), luisa::float3{0.7700921297073364f}) &&
-      near(actual[2].w, 0.7700921893119812f) && near(actual[3].xyz(), up) &&
-      near(actual[4].x, 0.25f) && near(actual[4].y, 0.25f) &&
-      near(actual[4].z, 1.5f) && actual[4].w > 1.0f &&
-      near(actual[5].xyz(), zero) &&
-      near(actual[6].xyz(), luisa::float3{0.0f, 0.0f, -1.5f}) &&
-      near(actual[7].xyz(), luisa::float3{1.0f}) &&
-      near(actual[8].xyz(), zero) &&
-      near(actual[9].xyz(), luisa::float3{0.04f}) &&
-      near(actual[10].xyz(), luisa::float3{1.0f}) &&
-      near(actual[11].xyz(), zero) && near(actual[12].xyz(), zero) &&
+      is_near(actual[0].xyz(), luisa::float3{0.9220424294471741f}) &&
+      is_near(actual[0].w, 0.03738487884402275f) && is_near(actual[1].xyz(), up) &&
+      is_near(actual[2].xyz(), luisa::float3{0.7700921297073364f}) &&
+      is_near(actual[2].w, 0.7700921893119812f) && is_near(actual[3].xyz(), up) &&
+      is_near(actual[4].x, 0.25f) && is_near(actual[4].y, 0.25f) &&
+      is_near(actual[4].z, 1.5f) && actual[4].w > 1.0f &&
+      is_near(actual[5].xyz(), zero) &&
+      is_near(actual[6].xyz(), luisa::float3{0.0f, 0.0f, -1.5f}) &&
+      is_near(actual[7].xyz(), luisa::float3{1.0f}) &&
+      is_near(actual[8].xyz(), zero) &&
+      is_near(actual[9].xyz(), luisa::float3{0.04f}) &&
+      is_near(actual[10].xyz(), luisa::float3{1.0f}) &&
+      is_near(actual[11].xyz(), zero) && is_near(actual[12].xyz(), zero) &&
       actual_meta[0] == 2u && actual_meta[1] == 5u &&
       actual_meta[2] == (device_svm::shader_data_use_bump_map_correction |
                          device_svm::shader_data_bsdf |

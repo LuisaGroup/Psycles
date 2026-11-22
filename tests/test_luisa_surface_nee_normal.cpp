@@ -284,7 +284,6 @@ int main(int argc, char **argv) {
                                     : CompiledSubsurfaceCapability{};
         const auto compiled_material_domain_is_exact =
             capability.ok() &&
-            compiled_scene_data(capability).materials.materials().empty() &&
             compiled_scene_data(capability).cycles_svm &&
             compiled_scene_data(capability).cycles_svm->material_shader_indices
                 .contains(MaterialId{99u});

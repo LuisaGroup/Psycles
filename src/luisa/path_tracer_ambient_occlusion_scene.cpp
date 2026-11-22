@@ -14,38 +14,6 @@ AmbientOcclusionSceneComponent::AmbientOcclusionSceneComponent(
         "Native SVM AO requires its native scene/provider implementation.");
 }
 
-AmbientOcclusionSceneComponent::AmbientOcclusionSceneComponent(
-    const contract::SceneSnapshot &snapshot,
-    const compiler::MaterialLibrary &materials,
-    const std::set<contract::MaterialId> &
-        reachable_materials) noexcept {
-    for (const auto &[material_id, material] :
-         materials.materials()) {
-        if (!reachable_materials.contains(material_id)) {
-            continue;
-        }
-        for (const auto &instruction :
-             material.surface_program()->value_instructions()) {
-            if (instruction.operation !=
-                compiler::ValueOperation::ambient_occlusion) {
-                continue;
-            }
-            _plan.enabled = true;
-            _plan.local_requested |=
-                (instruction.static_u0 &
-                 compiler::ambient_occlusion_only_local) != 0u;
-        }
-    }
-    if (!_plan.local_requested) {
-        return;
-    }
-    for (const auto &[instance_id, instance] : snapshot.instances) {
-        static_cast<void>(instance_id);
-        _plan.triangle_instance_count +=
-            snapshot.geometries.contains(instance.geometry) ? 1u : 0u;
-    }
-}
-
 void AmbientOcclusionSceneComponent::initialize(
     const std::shared_ptr<LuisaSceneData> &scene) const {
     scene->has_ambient_occlusion = _plan.enabled;

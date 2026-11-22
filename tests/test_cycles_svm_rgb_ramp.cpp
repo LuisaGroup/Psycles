@@ -29,7 +29,7 @@ void require(bool condition, const char *message) {
   }
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-5f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
@@ -208,9 +208,9 @@ void test_external_constant_folds() {
                 "RGB Ramp constant-fold stream structure differs from Cycles");
       }
     }
-    if (!near(f32(image.words[5u]), f32(x)) ||
-        !near(f32(image.words[6u]), f32(y)) ||
-        !near(f32(image.words[7u]), f32(z))) {
+    if (!is_near(f32(image.words[5u]), f32(x)) ||
+        !is_near(f32(image.words[6u]), f32(y)) ||
+        !is_near(f32(image.words[7u]), f32(z))) {
       std::cerr << "RGB Ramp external case " << case_index
                 << " differs materially from Cycles: got ("
                 << f32(image.words[5u]) << ", " << f32(image.words[6u]) << ", "

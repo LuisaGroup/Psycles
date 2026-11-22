@@ -54,12 +54,6 @@ void provide_inert_storage(SceneTableUploadInput input) {
     if (input.geometries.empty()) {
         input.geometries.emplace_back(GeometryGpu{});
     }
-    if (input.attribute_bindings.empty()) {
-        input.attribute_bindings.emplace_back(AttributeBindingGpu{});
-    }
-    if (input.attribute_ranges.empty()) {
-        input.attribute_ranges.emplace_back(AttributeRangeGpu{});
-    }
     if (input.instances.empty()) {
         input.instances.emplace_back(InstanceGpu{});
     }
@@ -430,20 +424,6 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
     }
     scene->geometry_buffer =
         scene->device.create_buffer<GeometryGpu>(input.geometries.size());
-    if (!scene->attribute_binding_buffer) {
-        scene->attribute_binding_buffer =
-            scene->device.create_buffer<AttributeBindingGpu>(
-                input.attribute_bindings.size());
-        scene->heap.emplace_on_update(scene->attribute_binding_slot,
-                                      scene->attribute_binding_buffer);
-    }
-    if (!scene->attribute_range_buffer) {
-        scene->attribute_range_buffer =
-            scene->device.create_buffer<AttributeRangeGpu>(
-                input.attribute_ranges.size());
-        scene->heap.emplace_on_update(scene->attribute_range_slot,
-                                      scene->attribute_range_buffer);
-    }
     scene->instance_buffer =
         scene->device.create_buffer<InstanceGpu>(input.instances.size());
     scene->ambient_occlusion_object_distance_buffer =
@@ -489,10 +469,6 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
             input.light_tree_triangle_lookup.size());
 
     stream << scene->geometry_buffer.copy_from(luisa::span{input.geometries})
-           << scene->attribute_binding_buffer.copy_from(
-                  luisa::span{input.attribute_bindings})
-           << scene->attribute_range_buffer.copy_from(
-                  luisa::span{input.attribute_ranges})
            << scene->instance_buffer.copy_from(luisa::span{input.instances})
            << scene->ambient_occlusion_object_distance_buffer.copy_from(
                   luisa::span{input.ambient_occlusion_object_distances})

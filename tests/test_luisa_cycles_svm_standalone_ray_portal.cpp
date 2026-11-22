@@ -152,18 +152,18 @@ template <std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 2.0e-6f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -241,38 +241,38 @@ template <std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
   auto valid = state(0u, 0u) == portal_type && state(0u, 1u) == 1u &&
                state(0u, 2u) == 7u && state(0u, 3u) == expected_flags &&
                state(0u, 4u) == ended && state(0u, 5u) == 19u &&
-               near(value(0u, 0u).xyz(), default_weight) &&
-               near(value(0u, 0u).w, 0.46666666865348816f) &&
-               near(value(0u, 1u).xyz(), luisa::float3{0.0f, 0.0f, 1.0f}) &&
-               near(value(0u, 2u).xyz(), shader_position) &&
-               near(value(0u, 3u).xyz(), fallback_direction) &&
-               near(value(0u, 4u).xyz(), default_weight);
+               is_near(value(0u, 0u).xyz(), default_weight) &&
+               is_near(value(0u, 0u).w, 0.46666666865348816f) &&
+               is_near(value(0u, 1u).xyz(), luisa::float3{0.0f, 0.0f, 1.0f}) &&
+               is_near(value(0u, 2u).xyz(), shader_position) &&
+               is_near(value(0u, 3u).xyz(), fallback_direction) &&
+               is_near(value(0u, 4u).xyz(), default_weight);
 
   valid &= state(1u, 0u) == portal_type && state(1u, 1u) == 1u &&
            state(1u, 3u) == expected_flags && state(1u, 5u) == 21u &&
-           near(value(1u, 0u).xyz(), luisa::float3{0.83f, 0.17f, 0.52f}) &&
-           near(value(1u, 0u).w, 0.5066666603088379f) &&
-           near(value(1u, 2u).xyz(), luisa::float3{1.25f, -0.75f, 2.5f}) &&
-           near(value(1u, 3u).xyz(),
+           is_near(value(1u, 0u).xyz(), luisa::float3{0.83f, 0.17f, 0.52f}) &&
+           is_near(value(1u, 0u).w, 0.5066666603088379f) &&
+           is_near(value(1u, 2u).xyz(), luisa::float3{1.25f, -0.75f, 2.5f}) &&
+           is_near(value(1u, 3u).xyz(),
                 luisa::float3{3.0f / 13.0f, -4.0f / 13.0f, 12.0f / 13.0f}) &&
-           near(value(1u, 4u).xyz(), luisa::float3{0.83f, 0.17f, 0.52f});
+           is_near(value(1u, 4u).xyz(), luisa::float3{0.83f, 0.17f, 0.52f});
 
   valid &= state(2u, 0u) == portal_type && state(2u, 5u) == 22u &&
-           near(value(2u, 0u).xyz(), default_weight * 0.25f) &&
-           near(value(2u, 0u).w, 0.46666666865348816f * 0.25f) &&
-           near(value(2u, 4u).xyz(), default_weight * 0.25f);
+           is_near(value(2u, 0u).xyz(), default_weight * 0.25f) &&
+           is_near(value(2u, 0u).w, 0.46666666865348816f * 0.25f) &&
+           is_near(value(2u, 4u).xyz(), default_weight * 0.25f);
 
   const auto signed_value = luisa::float3{-0.3f, 0.6f, 0.3f};
   valid &=
-      state(3u, 0u) == portal_type && near(value(3u, 0u).xyz(), signed_value) &&
-      near(value(3u, 0u).w, 0.2f) && near(value(3u, 4u).xyz(), signed_value);
+      state(3u, 0u) == portal_type && is_near(value(3u, 0u).xyz(), signed_value) &&
+      is_near(value(3u, 0u).w, 0.2f) && is_near(value(3u, 4u).xyz(), signed_value);
 
   for (auto scenario : {4u, 5u, 7u}) {
     valid &=
         state(scenario, 0u) == static_cast<std::uint32_t>(CLOSURE_NONE_ID) &&
         state(scenario, 1u) == 0u && state(scenario, 2u) == 8u &&
         state(scenario, 3u) == 0u && state(scenario, 4u) == ended &&
-        near(value(scenario, 4u).xyz(), luisa::float3{0.0f});
+        is_near(value(scenario, 4u).xyz(), luisa::float3{0.0f});
   }
   valid &= state(4u, 5u) == 19u && state(5u, 5u) == 19u && state(7u, 5u) == 22u;
 
@@ -281,7 +281,7 @@ template <std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
   valid &= state(6u, 0u) == static_cast<std::uint32_t>(CLOSURE_NONE_ID) &&
            state(6u, 1u) == 0u && state(6u, 2u) == 0u && state(6u, 3u) == 0u &&
            state(6u, 4u) == ended && state(6u, 5u) == 19u &&
-           near(value(6u, 4u).xyz(), default_weight);
+           is_near(value(6u, 4u).xyz(), default_weight);
 
   if (!valid) {
     std::cerr << "Cycles standalone Ray Portal transition mismatch on "

@@ -596,4 +596,9 @@ void upload_cycles_svm_scene_runtime(Stream &stream,
                             objects.image.object_flags);
 }
 
+void reset_cycles_svm_scene_runtime(CyclesSvmRuntime &runtime) noexcept {
+  runtime.geometry.reset();
+  runtime.objects.reset();
+}
+
 } // namespace psycles::luisa_backend::detail

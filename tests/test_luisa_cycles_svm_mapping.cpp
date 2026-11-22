@@ -42,16 +42,16 @@ void append_payload(std::vector<std::uint32_t> &words,
   words.insert(words.end(), encoded.begin(), encoded.end());
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 8.0e-5f) noexcept {
   return std::abs(actual - expected) <= tolerance;
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 8.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] auto mapping_kernel() {
@@ -195,10 +195,10 @@ void append_payload(std::vector<std::uint32_t> &words,
          << output_buffer.copy_to(luisa::span{output})
          << cursor_buffer.copy_to(luisa::span{cursors}) << synchronize();
   for (auto type = std::size_t{}; type < expected.size(); ++type) {
-    if (!near(output[type * 4u], expected[type][0u]) ||
-        !near(output[type * 4u + 1u], expected[type][0u]) ||
-        !near(output[type * 4u + 2u], expected[type][1u]) ||
-        !near(output[type * 4u + 3u], expected[type][2u]) ||
+    if (!is_near(output[type * 4u], expected[type][0u]) ||
+        !is_near(output[type * 4u + 1u], expected[type][0u]) ||
+        !is_near(output[type * 4u + 2u], expected[type][1u]) ||
+        !is_near(output[type * 4u + 3u], expected[type][2u]) ||
         cursors[type * 2u] != mapping_word_count ||
         cursors[type * 2u + 1u] != mapping_word_count) {
       std::cerr << "Cycles Mapping value/dual/cursor mismatch for type "
@@ -273,7 +273,7 @@ void append_payload(std::vector<std::uint32_t> &words,
       luisa::float3{0.128f, -0.096f, 0.0f},
       luisa::float3{-0.096f, 0.072f, 0.0f}};
   for (auto index = std::size_t{}; index < expected.size(); ++index) {
-    if (!near(output[index], expected[index])) {
+    if (!is_near(output[index], expected[index])) {
       std::cerr << "Cycles TextureMapping result " << index
                 << " differs on " << backend << '\n';
       return false;

@@ -1,30 +1,13 @@
 #include "surface_math.h"
 #include "surface_math_constants.h"
 
-#include <array>
 #include <cstdlib>
 
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::detail {
-namespace {
 
-using SurfaceMathSvmCallable =
-    luisa::compute::Callable<float(luisa::uint, float, float, float)>;
-
-[[nodiscard]] auto active_math_operations(
-    std::span<const std::uint16_t> immediate_domain) noexcept {
-    std::array<bool, compiler::math_operation_count> result{};
-    for (const auto encoded : immediate_domain) {
-        if (encoded >= compiler::math_operation_count) {
-            std::abort();
-        }
-        result[encoded] = true;
-    }
-    return result;
-}
-
-} // namespace
+using namespace luisa::compute;
 
 Float3 safe_normalize(
     Float3 value,
@@ -184,47 +167,6 @@ Float evaluate_surface_math_operation(
             return a * (180.0f / pi);
     }
     std::abort();
-}
-
-Float evaluate_surface_math_svm(
-    UInt immediate,
-    std::span<const std::uint16_t> immediate_domain,
-    Float a,
-    Float b,
-    Float c) noexcept {
-    const auto active_operations = active_math_operations(immediate_domain);
-    SurfaceMathSvmCallable callable =
-        [active_operations](UInt operation,
-                            Float input_a,
-                            Float input_b,
-                            Float input_c) noexcept {
-            Float result = 0.0f;
-            luisa::compute::detail::SwitchStmtBuilder{operation} % [&] {
-                for (auto index = std::size_t{0u};
-                     index < active_operations.size();
-                     ++index) {
-                    if (!active_operations[index]) {
-                        continue;
-                    }
-                    luisa::compute::detail::SwitchCaseStmtBuilder{
-                        static_cast<luisa::uint>(index)} %
-                        [&, index] {
-                            result = evaluate_surface_math_operation(
-                                static_cast<compiler::MathOperation>(index),
-                                input_a,
-                                input_b,
-                                input_c);
-                        };
-                }
-                luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
-                    luisa::compute::dsl::unreachable(
-                        "invalid compact surface Math operation");
-                };
-            };
-            return result;
-        };
-    callable.set_name("surface_math_svm");
-    return callable(immediate, a, b, c);
 }
 
 } // namespace psycles::luisa_backend::detail

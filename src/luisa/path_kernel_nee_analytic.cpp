@@ -217,9 +217,7 @@ class AnalyticDirectLightProvider final : public DirectLightProvider {
                          sampling::LightDistributionEmitterKind::analytic_light),
                      .emitter_index = light_index,
                      .light_object = light.cycles_object_index,
-                     .light_primitive = select(
-                         surface_ray::invalid_primitive, light_index,
-                         Bool{config.scene->native_cycles_svm_surface}),
+                     .light_primitive = light_index,
                      .shader_flags = light.cycles_shader_flags,
                      .apply_mis = forward_intersectable,
                      .constant_light_shader = constant_emission,
@@ -237,29 +235,6 @@ class AnalyticDirectLightProvider final : public DirectLightProvider {
                      .visibility_flag = 0u,
                      .selection_pdf = selected_light.selection_pdf});
             };
-        };
-    }
-
-    void evaluate_deferred_emission(
-        Bool receiving_nonzero) const noexcept override {
-        const auto owns_sample =
-            _result.valid &
-            (_result.emitter_kind ==
-             static_cast<std::uint32_t>(
-                 sampling::LightDistributionEmitterKind::analytic_light));
-        $if(owns_sample & !_result.constant_light_shader & receiving_nonzero) {
-            Var<LightGpu> light =
-                _context.bounce.sample.invocation.config.scene
-                    ->light_buffer->read(_result.emitter_index);
-            _result.light_shader =
-                _context.bounce.sample.analytic_light_shader(
-                    light,
-                    _result.emitter_index,
-                    _result.target_position,
-                    _result.light_normal,
-                    _result.light_uv,
-                    -_result.direction,
-                    _result.distance);
         };
     }
 };

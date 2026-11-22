@@ -183,18 +183,18 @@ inline constexpr std::uint32_t meta_stride = 8u;
   }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 5.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 5.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -241,24 +241,24 @@ inline constexpr std::uint32_t meta_stride = 8u;
   const auto valid_meta = 0u;
   const auto invalid_meta = meta_stride;
   auto valid =
-      near(actual[valid_base + 0u].xyz(), luisa::float3{0.1999999881f}) &&
-      near(actual[valid_base + 0u].w, 0.1999999881f) &&
-      near(actual[valid_base + 1u].xyz(),
+      is_near(actual[valid_base + 0u].xyz(), luisa::float3{0.1999999881f}) &&
+      is_near(actual[valid_base + 0u].w, 0.1999999881f) &&
+      is_near(actual[valid_base + 1u].xyz(),
            luisa::float3{0.00036242406f, 0.00101478747f, 0.00065236329f}) &&
-      near(actual[valid_base + 1u].w, 0.00067652494f) &&
-      near(actual[valid_base + 2u].xyz(),
+      is_near(actual[valid_base + 1u].w, 0.00067652494f) &&
+      is_near(actual[valid_base + 2u].xyz(),
            luisa::float3{0.247685403f, 0.455421537f, 0.663157701f}) &&
-      near(actual[valid_base + 2u].w, 0.455421537f) &&
-      near(actual[valid_base + 3u].xyz(), up) &&
-      near(actual[valid_base + 4u].xyz(), up) &&
-      near(actual[valid_base + 5u].x, 0.37f) &&
+      is_near(actual[valid_base + 2u].w, 0.455421537f) &&
+      is_near(actual[valid_base + 3u].xyz(), up) &&
+      is_near(actual[valid_base + 4u].xyz(), up) &&
+      is_near(actual[valid_base + 5u].x, 0.37f) &&
       std::abs(actual[valid_base + 5u].y) >= 1.0e-5f &&
       std::isfinite(actual[valid_base + 5u].z) &&
-      near(actual[valid_base + 6u].xyz(), basis_t) &&
-      near(actual[valid_base + 7u].xyz(), basis_b) &&
-      near(actual[valid_base + 8u].xyz(),
+      is_near(actual[valid_base + 6u].xyz(), basis_t) &&
+      is_near(actual[valid_base + 7u].xyz(), basis_b) &&
+      is_near(actual[valid_base + 8u].xyz(),
            luisa::float3{0.207736135f, 0.103868067f, 0.623208463f}) &&
-      near(actual[valid_base + 8u].w, 0.1999999881f) &&
+      is_near(actual[valid_base + 8u].w, 0.1999999881f) &&
       actual_meta[valid_meta + 0u] == 3u &&
       actual_meta[valid_meta + 1u] == 5u &&
       actual_meta[valid_meta + 2u] == expected_flags &&
@@ -275,18 +275,18 @@ inline constexpr std::uint32_t meta_stride = 8u;
   /* Source edge oracle: an invalid LTC consumes the already allocated slot,
    * retains its input weight and typed setup payload, and clears only its
    * sample weight. Lower layers must remain unattenuated. */
-  valid &= near(actual[invalid_base + 1u].xyz(),
+  valid &= is_near(actual[invalid_base + 1u].xyz(),
                 luisa::float3{0.12f, 0.336f, 0.216f}) &&
-           near(actual[invalid_base + 1u].w, 0.0f) &&
-           near(actual[invalid_base + 2u].xyz(),
+           is_near(actual[invalid_base + 1u].w, 0.0f) &&
+           is_near(actual[invalid_base + 2u].xyz(),
                 luisa::float3{0.248f, 0.456f, 0.664f}) &&
-           near(actual[invalid_base + 2u].w, 0.456f) &&
-           near(actual[invalid_base + 5u].x, 0.37f) &&
-           near(actual[invalid_base + 5u].y, 0.0f) &&
-           near(actual[invalid_base + 5u].z, 0.0f) &&
-           near(actual[invalid_base + 6u].xyz(), basis_t) &&
-           near(actual[invalid_base + 7u].xyz(), basis_b) &&
-           near(actual[invalid_base + 8u].xyz(),
+           is_near(actual[invalid_base + 2u].w, 0.456f) &&
+           is_near(actual[invalid_base + 5u].x, 0.37f) &&
+           is_near(actual[invalid_base + 5u].y, 0.0f) &&
+           is_near(actual[invalid_base + 5u].z, 0.0f) &&
+           is_near(actual[invalid_base + 6u].xyz(), basis_t) &&
+           is_near(actual[invalid_base + 7u].xyz(), basis_b) &&
+           is_near(actual[invalid_base + 8u].xyz(),
                 luisa::float3{0.208f, 0.104f, 0.624f}) &&
            actual_meta[invalid_meta + 0u] == 3u &&
            actual_meta[invalid_meta + 1u] == 5u &&
@@ -300,11 +300,11 @@ inline constexpr std::uint32_t meta_stride = 8u;
    * still an ordinary closure, while Sheen attenuates emission without
    * consuming a pool slot and the BSDF-only lower layers are not evaluated. */
   valid &=
-      near(actual_emission[0u].xyz(),
+      is_near(actual_emission[0u].xyz(),
            luisa::float3{0.207736135f, 0.103868067f, 0.623208463f}) &&
-      near(actual_emission[0u].w, 0.1999999881f) &&
-      near(actual_emission[1u].xyz(), luisa::float3{0.1999999881f}) &&
-      near(actual_emission[1u].w, 0.1999999881f) &&
+      is_near(actual_emission[0u].w, 0.1999999881f) &&
+      is_near(actual_emission[1u].xyz(), luisa::float3{0.1999999881f}) &&
+      is_near(actual_emission[1u].w, 0.1999999881f) &&
       actual_emission_meta[0u] == 1u && actual_emission_meta[1u] == 7u &&
       actual_emission_meta[2u] == expected_flags &&
       actual_emission_meta[3u] ==

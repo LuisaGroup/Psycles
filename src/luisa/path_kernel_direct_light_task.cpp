@@ -185,12 +185,9 @@ make_direct_light_task_evaluator(const PathKernelConfig &config) noexcept {
           .light_sample_roulette =
               config.light_transport.light_sample_roulette_weight,
           .clamp_contribution = config.light_transport.clamp_light_contribution,
-          .light_emission = config.scene->native_cycles_svm_surface
-                                ? make_cycles_svm_light_emission_component(
-                                      config.scene, config.camera_projection,
-                                      config.reflective_caustics,
-                                      config.refractive_caustics)
-                                : nullptr,
+          .light_emission = make_cycles_svm_light_emission_component(
+              config.scene, config.camera_projection,
+              config.reflective_caustics, config.refractive_caustics),
           .volume_guiding = config.volume_state != nullptr};
 }
 

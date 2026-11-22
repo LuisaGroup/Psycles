@@ -52,18 +52,18 @@ void append_payload(std::vector<std::uint32_t> &words,
   return std::bit_cast<float>(bits);
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 1.0e-4f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float4 actual, luisa::float4 expected,
+[[nodiscard]] bool is_near(luisa::float4 actual, luisa::float4 expected,
                         float tolerance = 1.0e-4f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance) &&
-         near(actual.w, expected.w, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance) &&
+         is_near(actual.w, expected.w, tolerance);
 }
 
 [[nodiscard]] auto noise_kernel(NoiseUsage usage = {}) {
@@ -351,7 +351,7 @@ constexpr std::array normalized_fbm_oracle{
                       std::abs(actual[index].y - expected.y),
                       std::abs(actual[index].z - expected.z),
                       std::abs(actual[index].w - expected.w)}));
-        if (!near(actual[index], expected) ||
+        if (!is_near(actual[index], expected) ||
             cursors[index] != noise_word_count) {
           std::cerr << "Cycles Noise oracle mismatch on " << backend
                     << ", type=" << type
@@ -492,7 +492,7 @@ constexpr std::array normalized_fbm_oracle{
     const auto expected =
         luisa::float4{expected_color.x, expected_color.y, expected_color.z,
                       expected_color.x};
-    if (!near(actual[index], expected) ||
+    if (!is_near(actual[index], expected) ||
         cursors[index] != noise_word_count) {
       std::cerr << "Cycles Noise specialized oracle mismatch on " << backend
                 << ", case=" << index << ", type=" << noise_case.type
@@ -585,12 +585,12 @@ constexpr std::array normalized_fbm_oracle{
   };
   std::array<luisa::float4, case_count> actual{};
   run({}, false, actual);
-  if (!near(actual[0u], actual[1u]) || !near(actual[2u], actual[3u]) ||
-      !near(actual[4u].w, actual[7u].w) || actual[4u].x != -92.0f ||
+  if (!is_near(actual[0u], actual[1u]) || !is_near(actual[2u], actual[3u]) ||
+      !is_near(actual[4u].w, actual[7u].w) || actual[4u].x != -92.0f ||
       actual[4u].y != -93.0f || actual[4u].z != -94.0f ||
-      !near(actual[5u].x, actual[7u].x) ||
-      !near(actual[5u].y, actual[7u].y) ||
-      !near(actual[5u].z, actual[7u].z) || actual[5u].w != -91.0f ||
+      !is_near(actual[5u].x, actual[7u].x) ||
+      !is_near(actual[5u].y, actual[7u].y) ||
+      !is_near(actual[5u].z, actual[7u].z) || actual[5u].w != -91.0f ||
       actual[6u].x != -92.0f || actual[6u].y != -93.0f ||
       actual[6u].z != -94.0f || actual[6u].w != -91.0f) {
     std::cerr << "Cycles Noise clamp/output-validity mismatch on "
@@ -601,15 +601,15 @@ constexpr std::array normalized_fbm_oracle{
   run(singleton_noise_usage(3u,
                             static_cast<std::uint32_t>(NODE_NOISE_FBM)),
       true, specialized_actual);
-  if (!near(specialized_actual[0u], specialized_actual[1u]) ||
-      !near(specialized_actual[2u], specialized_actual[3u]) ||
-      !near(specialized_actual[4u].w, specialized_actual[7u].w) ||
+  if (!is_near(specialized_actual[0u], specialized_actual[1u]) ||
+      !is_near(specialized_actual[2u], specialized_actual[3u]) ||
+      !is_near(specialized_actual[4u].w, specialized_actual[7u].w) ||
       specialized_actual[4u].x != -92.0f ||
       specialized_actual[4u].y != -93.0f ||
       specialized_actual[4u].z != -94.0f ||
-      !near(specialized_actual[5u].x, specialized_actual[7u].x) ||
-      !near(specialized_actual[5u].y, specialized_actual[7u].y) ||
-      !near(specialized_actual[5u].z, specialized_actual[7u].z) ||
+      !is_near(specialized_actual[5u].x, specialized_actual[7u].x) ||
+      !is_near(specialized_actual[5u].y, specialized_actual[7u].y) ||
+      !is_near(specialized_actual[5u].z, specialized_actual[7u].z) ||
       specialized_actual[5u].w != -91.0f ||
       specialized_actual[6u].x != -92.0f ||
       specialized_actual[6u].y != -93.0f ||
@@ -708,9 +708,9 @@ constexpr std::array normalized_fbm_oracle{
          << output_buffer.copy_to(&actual)
          << status_buffer.copy_to(&status) << synchronize();
   const auto expected_color = normalized_fbm_oracle[2u];
-  if (!near(actual.x, expected_color.x) ||
-      !near(actual.y, expected_color.y) ||
-      !near(actual.z, expected_color.z) ||
+  if (!is_near(actual.x, expected_color.x) ||
+      !is_near(actual.y, expected_color.y) ||
+      !is_near(actual.z, expected_color.z) ||
       status != static_cast<std::uint32_t>(
                     device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles Noise interpreter dispatch mismatch on " << backend
@@ -730,9 +730,9 @@ constexpr std::array normalized_fbm_oracle{
                 .dispatch(1u)
          << output_buffer.copy_to(&actual)
          << status_buffer.copy_to(&status) << synchronize();
-  if (!near(actual.x, expected_color.x) ||
-      !near(actual.y, expected_color.y) ||
-      !near(actual.z, expected_color.z) ||
+  if (!is_near(actual.x, expected_color.x) ||
+      !is_near(actual.y, expected_color.y) ||
+      !is_near(actual.z, expected_color.z) ||
       status != static_cast<std::uint32_t>(
                     device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles Noise specialized interpreter dispatch mismatch on "

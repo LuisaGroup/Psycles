@@ -83,18 +83,18 @@ constexpr auto tangent_payload_words =
 constexpr auto normal_map_record_words = normal_map_payload_words + 1u;
 constexpr auto tangent_record_words = tangent_payload_words + 1u;
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 3.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 3.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 class NormalMapTangentKernelGlobals final
@@ -500,7 +500,7 @@ public:
 
   auto valid = true;
   for (auto index = std::size_t{}; index < expected.size(); ++index) {
-    valid &= near(actual[index].xyz(), expected[index]) &&
+    valid &= is_near(actual[index].xyz(), expected[index]) &&
              actual[index].w == untouched &&
              cursors[index] == normal_map_payload_words;
   }
@@ -540,7 +540,7 @@ public:
       luisa::float3{-inverse_sqrt_two, inverse_sqrt_two, 0.0f}};
   auto valid = records.size() == tangent_case_count * tangent_record_words;
   for (auto index = std::size_t{}; index < expected.size(); ++index) {
-    valid &= near(actual[index].xyz(), expected[index]) &&
+    valid &= is_near(actual[index].xyz(), expected[index]) &&
              actual[index].w == untouched &&
              cursors[index] == tangent_payload_words;
   }
@@ -583,7 +583,7 @@ public:
   auto valid = records.size() ==
                tangent_derivative_case_count * tangent_record_words;
   for (auto index = std::size_t{}; index < expected.size(); ++index) {
-    valid &= near(actual[index].xyz(), expected[index], 8.0e-5f) &&
+    valid &= is_near(actual[index].xyz(), expected[index], 8.0e-5f) &&
              actual[index].w == untouched;
   }
   for (const auto value : cursors) {
@@ -691,7 +691,7 @@ public:
          << synchronize();
   const auto expected =
       luisa::float3{0.9805806756909202f, 0.1961161351381840f, 0.0f};
-  if (!near(actual.xyz(), expected) ||
+  if (!is_near(actual.xyz(), expected) ||
       status !=
           static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles Normal Map/Tangent interpreter mismatch on "

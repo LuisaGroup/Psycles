@@ -157,23 +157,6 @@ class MeshVolumeLightProvider final
             };
         }
     }
-
-    void evaluate_deferred_emission(
-        Bool receiving_nonzero)
-        const noexcept override {
-        if (_sample) {
-            $if(_sample_valid &
-                !_emission_is_constant &
-                receiving_nonzero) {
-                _result.radiance *=
-                    _emissive_triangle
-                        ->evaluate_emission(
-                            _event.bounce
-                                .sample,
-                            *_sample);
-            };
-        }
-    }
 };
 
 class PathVolumeMeshLightComponent final

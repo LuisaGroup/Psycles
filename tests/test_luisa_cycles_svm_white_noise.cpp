@@ -54,17 +54,17 @@ void append_payload(std::vector<std::uint32_t> &words,
   return {f32(x), f32(y), f32(z)};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-7f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 2.0e-7f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 // Cycles 5.2.1 CPU Combined pixels sampled at the centers of the 4x2
@@ -191,7 +191,7 @@ template<typename... Args>
          << cursor_buffer.copy_to(luisa::span{cursors}) << synchronize();
 
   for (auto index = std::uint32_t{}; index < 4u; ++index) {
-    if (!near(actual[index].w, color_oracle[index].x) ||
+    if (!is_near(actual[index].w, color_oracle[index].x) ||
         actual[index].x != -92.0f || actual[index].y != -93.0f ||
         actual[index].z != -94.0f ||
         cursors[index] != white_noise_word_count) {
@@ -202,7 +202,7 @@ template<typename... Args>
   }
   for (auto index = std::uint32_t{}; index < 4u; ++index) {
     const auto case_index = index + 4u;
-    if (!near(luisa::float3{actual[case_index].x,
+    if (!is_near(luisa::float3{actual[case_index].x,
                             actual[case_index].y,
                             actual[case_index].z},
               color_oracle[index]) ||
@@ -214,9 +214,9 @@ template<typename... Args>
     }
   }
   const auto stack_case = actual[8u];
-  if (!near(luisa::float3{stack_case.x, stack_case.y, stack_case.z},
+  if (!is_near(luisa::float3{stack_case.x, stack_case.y, stack_case.z},
             color_oracle[3u]) ||
-      !near(stack_case.w, color_oracle[3u].x) ||
+      !is_near(stack_case.w, color_oracle[3u].x) ||
       cursors[8u] != white_noise_word_count) {
     std::cerr << "Cycles White Noise stack-input oracle mismatch on "
               << backend << '\n';
@@ -336,7 +336,7 @@ template<typename... Args>
          << shader(word_buffer, output_buffer, status_buffer).dispatch(1u)
          << output_buffer.copy_to(&actual)
          << status_buffer.copy_to(&status) << synchronize();
-  if (!near(luisa::float3{actual.x, actual.y, actual.z},
+  if (!is_near(luisa::float3{actual.x, actual.y, actual.z},
             color_oracle[3u]) ||
       status != static_cast<std::uint32_t>(
                     device_svm::EvaluationStatus::ended)) {

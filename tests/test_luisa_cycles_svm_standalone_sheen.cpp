@@ -179,18 +179,18 @@ template<std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 5.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 5.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -266,13 +266,13 @@ template<std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
       state(0u, 1u) == 1u && state(0u, 2u) == 7u &&
       state(0u, 3u) == expected_flags && state(0u, 4u) == ended &&
       state(0u, 5u) == 17u &&
-      near(value(0u, 0u).xyz(), external_microfiber_weight) &&
-      near(value(0u, 0u).w, external_microfiber_sample) &&
-      near(value(0u, 1u).xyz(), up) && near(value(0u, 2u).x, 0.43f) &&
+      is_near(value(0u, 0u).xyz(), external_microfiber_weight) &&
+      is_near(value(0u, 0u).w, external_microfiber_sample) &&
+      is_near(value(0u, 1u).xyz(), up) && is_near(value(0u, 2u).x, 0.43f) &&
       std::abs(value(0u, 2u).y) >= 1.0e-5f &&
       std::isfinite(value(0u, 2u).z) &&
-      near(value(0u, 3u).xyz(), basis_t) &&
-      near(value(0u, 4u).xyz(), basis_b);
+      is_near(value(0u, 3u).xyz(), basis_t) &&
+      is_near(value(0u, 4u).xyz(), basis_b);
 
   valid &=
       state(1u, 0u) ==
@@ -280,10 +280,10 @@ template<std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
       state(1u, 1u) == 1u && state(1u, 2u) == 7u &&
       state(1u, 3u) == expected_flags && state(1u, 4u) == ended &&
       state(1u, 5u) == 17u &&
-      near(value(1u, 0u).xyz(), luisa::float3{0.82f, 0.19f, 0.57f}) &&
-      near(value(1u, 0u).w, 0.526666641f) &&
-      near(value(1u, 1u).xyz(), up) && near(value(1u, 2u).x, 0.24f) &&
-      near(value(1u, 2u).y, 1.0f / (0.24f * 0.24f));
+      is_near(value(1u, 0u).xyz(), luisa::float3{0.82f, 0.19f, 0.57f}) &&
+      is_near(value(1u, 0u).w, 0.526666641f) &&
+      is_near(value(1u, 1u).xyz(), up) && is_near(value(1u, 2u).x, 0.24f) &&
+      is_near(value(1u, 2u).y, 1.0f / (0.24f * 0.24f));
 
   /* Cycles consumes the allocated slot before discovering an invalid LTC.
    * Its input weight and typed setup fields remain observable; only the type,
@@ -292,13 +292,13 @@ template<std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
            state(2u, 1u) == 1u && state(2u, 2u) == 7u &&
            state(2u, 3u) == 0u && state(2u, 4u) == ended &&
            state(2u, 5u) == 17u &&
-           near(value(2u, 0u).xyz(), luisa::float3{0.38f, 0.77f, 0.16f}) &&
-           near(value(2u, 0u).w, 0.0f) &&
-           near(value(2u, 2u).x, 0.43f) &&
-           near(value(2u, 2u).y, 0.0f) &&
-           near(value(2u, 2u).z, 0.0f) &&
-           near(value(2u, 3u).xyz(), basis_t) &&
-           near(value(2u, 4u).xyz(), basis_b);
+           is_near(value(2u, 0u).xyz(), luisa::float3{0.38f, 0.77f, 0.16f}) &&
+           is_near(value(2u, 0u).w, 0.0f) &&
+           is_near(value(2u, 2u).x, 0.43f) &&
+           is_near(value(2u, 2u).y, 0.0f) &&
+           is_near(value(2u, 2u).z, 0.0f) &&
+           is_near(value(2u, 3u).xyz(), basis_t) &&
+           is_near(value(2u, 4u).xyz(), basis_b);
 
   /* Saturation first maps the authored negative roughness to zero, then
    * bsdf_sheen_setup canonicalizes it to 1e-3. Cycles' real LTC endpoint is
@@ -307,27 +307,27 @@ template<std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
   valid &= state(3u, 0u) == static_cast<std::uint32_t>(CLOSURE_NONE_ID) &&
            state(3u, 1u) == 1u && state(3u, 2u) == 7u &&
            state(3u, 3u) == 0u &&
-           near(value(3u, 0u).xyz(),
+           is_near(value(3u, 0u).xyz(),
                 luisa::float3{0.38f, 0.77f, 0.16f}) &&
-           near(value(3u, 0u).w, 0.0f) &&
-           near(value(3u, 2u).x, 1.0e-3f) &&
-           near(value(3u, 2u).y, 0.0f) &&
-           near(value(3u, 2u).z, 0.0f);
+           is_near(value(3u, 0u).w, 0.0f) &&
+           is_near(value(3u, 2u).x, 1.0e-3f) &&
+           is_near(value(3u, 2u).y, 0.0f) &&
+           is_near(value(3u, 2u).z, 0.0f);
 
   valid &= state(4u, 0u) ==
                static_cast<std::uint32_t>(
                    CLOSURE_BSDF_ASHIKHMIN_VELVET_ID) &&
            state(4u, 3u) == expected_flags &&
-           near(value(4u, 2u).x, 0.0f) &&
-           near(value(4u, 2u).y, 10000.0f);
+           is_near(value(4u, 2u).x, 0.0f) &&
+           is_near(value(4u, 2u).y, 10000.0f);
 
   valid &=
       state(5u, 0u) == static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID) &&
       state(5u, 1u) == 1u && state(5u, 2u) == 7u &&
       state(5u, 3u) == expected_flags && state(5u, 4u) == ended &&
       state(5u, 5u) == 20u &&
-      near(value(5u, 0u).xyz(), external_microfiber_weight * 0.25f) &&
-      near(value(5u, 0u).w, external_microfiber_sample * 0.25f);
+      is_near(value(5u, 0u).xyz(), external_microfiber_weight * 0.25f) &&
+      is_near(value(5u, 0u).w, external_microfiber_sample * 0.25f);
 
   valid &= state(6u, 0u) == static_cast<std::uint32_t>(CLOSURE_NONE_ID) &&
            state(6u, 1u) == 0u && state(6u, 2u) == 0u &&

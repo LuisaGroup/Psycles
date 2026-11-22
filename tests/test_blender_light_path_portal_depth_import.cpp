@@ -1,9 +1,10 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
+#include <psycles/compiler/cycles_svm_compiler.h>
 #include <psycles/compiler/shader_program.h>
-#include <psycles/compiler/surface_program.h>
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -118,18 +119,51 @@ void test_blender_light_path_portal_depth_import() {
       psycles::compiler::make_core_node_registry()};
   const auto shader = compiler.compile(material->shader);
   expect(shader.ok(), "Light Path Portal Depth graph did not validate");
-  const auto surface =
-      psycles::compiler::compile_surface_program(*shader.program);
-  expect(surface.ok(), "Light Path Portal Depth graph did not lower");
   auto portal_count = 0u;
   auto transmission_count = 0u;
-  for (const auto &instruction : surface.program->value_instructions()) {
-    portal_count += instruction.operation ==
-                    psycles::compiler::ValueOperation::path_portal_depth;
-    transmission_count +=
-        instruction.operation ==
-        psycles::compiler::ValueOperation::path_transmission_depth;
+  for (const auto &node : material->shader.nodes()) {
+    if (node.type != psycles::compiler::node_type::emission) {
+      continue;
+    }
+    const auto strength = node.inputs.find("Strength");
+    if (strength == node.inputs.end() || !strength->second.source.has_value()) {
+      continue;
+    }
+    const auto *source = material->shader.find(strength->second.source->node);
+    if (source != nullptr &&
+        source->type == psycles::compiler::node_type::light_path) {
+      portal_count += strength->second.source->socket == "PortalDepth";
+      transmission_count +=
+          strength->second.source->socket == "TransmissionDepth";
+    }
   }
   expect(portal_count == 1u && transmission_count == 0u,
          "Blender Portal Depth was aliased to Transmission Depth");
+
+  psycles::compiler::cycles_svm::AttributeIDMap attributes;
+  psycles::compiler::cycles_svm::ImageIDMap images;
+  const auto svm = psycles::compiler::cycles_svm::compile_shader(
+      *shader.program, attributes, images,
+      psycles::compiler::cycles_svm::ShaderCompileContext{.background = false});
+  expect(svm.valid,
+         "Light Path Portal Depth graph did not compile to Cycles SVM");
+  auto svm_portal_count = 0u;
+  auto svm_transmission_count = 0u;
+  for (auto index = std::size_t{}; index + 1u < svm.words.size(); ++index) {
+    if (svm.words[index] !=
+        static_cast<std::uint32_t>(
+            psycles::compiler::cycles_svm::NODE_LIGHT_PATH)) {
+      continue;
+    }
+    const auto path_type = svm.words[index + 1u];
+    svm_portal_count +=
+        path_type == static_cast<std::uint32_t>(
+                         psycles::compiler::cycles_svm::NODE_LP_ray_portal);
+    svm_transmission_count +=
+        path_type ==
+        static_cast<std::uint32_t>(
+            psycles::compiler::cycles_svm::NODE_LP_ray_transmission);
+  }
+  expect(svm_portal_count == 1u && svm_transmission_count == 0u,
+         "Cycles SVM Portal Depth lowered to Transmission Depth");
 }

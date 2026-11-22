@@ -310,7 +310,7 @@ Bool SubsurfaceRandomWalkComponent::transport(
     const auto &subsurface_accel = *scene->subsurface_accel;
 
     const bool may_have_legacy_or_skin =
-        !scene->native_cycles_svm_surface || !scene->cycles_svm ||
+        !scene->cycles_svm ||
         (scene->cycles_svm->compilation.surface_closure_usage
              .surface_closure_mask &
          (compiler::cycles_svm::ClosureUsage::bit(

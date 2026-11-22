@@ -127,9 +127,9 @@ bool run(char **argv) {
     sd.closure_emission_background = inputs.read(i * input_float_rows + 5u).xyz();
     snapshot(sd, make_float3(0.0f), output, metadata, i, 0u);
     UInt offset = i;
+    native::Stack stack;
     $if(operation.x != 0u) {
-      native::Stack stack;
-      $if(operation.y != unsigned(abi::SVM_STACK_INVALID)) { stack[operation.y] = extinction.w; };
+      native::stack_store_float_if_valid(stack, operation.y, extinction.w);
       native::Cursor cursor{words, offset};
       native::node_closure_holdout(cursor, stack,
           inputs.read(i * input_float_rows + 6u).xyz(), sd);

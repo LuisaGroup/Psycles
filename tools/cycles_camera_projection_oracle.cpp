@@ -1,6 +1,5 @@
 // Original Cycles 5.2.1 host camera projection. No CPU shading or rendering.
-// Compile against the oracle's libcycles_util and guardedalloc libraries;
-// see docs/validation/2026-09-07/camera-projection/README.md.
+// Compile against the oracle's libcycles_util and guardedalloc libraries.
 #define CCL_NAMESPACE_BEGIN namespace ccl {
 #define CCL_NAMESPACE_END }
 #include "util/boundbox.h"

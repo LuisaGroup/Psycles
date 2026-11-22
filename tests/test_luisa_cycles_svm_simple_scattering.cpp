@@ -146,19 +146,19 @@ inline constexpr std::uint32_t label_count = 6u;
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 8.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float4 actual, luisa::float4 expected,
+[[nodiscard]] bool is_near(luisa::float4 actual, luisa::float4 expected,
                         float tolerance = 8.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance) &&
-         near(actual.w, expected.w, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance) &&
+         is_near(actual.w, expected.w, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -206,7 +206,7 @@ inline constexpr std::uint32_t label_count = 6u;
 
   auto valid = true;
   for (std::size_t index = 0u; index < expected.size(); ++index) {
-    valid &= near(actual[index], expected[index]);
+    valid &= is_near(actual[index], expected[index]);
   }
   const auto exactly_zero = [](luisa::float4 value) noexcept {
     return value.x == 0.0f && value.y == 0.0f && value.z == 0.0f &&

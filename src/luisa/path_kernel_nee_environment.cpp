@@ -105,14 +105,9 @@ class EnvironmentDirectLightProvider final : public DirectLightProvider {
                      .emitter_kind = static_cast<std::uint32_t>(
                          sampling::LightDistributionEmitterKind::environment),
                      .emitter_index = selected_light.index,
-                     .light_object = UInt{
-                         config.scene->native_cycles_svm_surface
-                             ? config.scene->cycles_background_object_index
-                             : surface_ray::invalid_primitive},
-                     .light_primitive = UInt{
-                         config.scene->native_cycles_svm_surface
-                             ? config.scene->light_count
-                             : surface_ray::invalid_primitive},
+                     .light_object =
+                         UInt{config.scene->cycles_background_object_index},
+                     .light_primitive = UInt{config.scene->light_count},
                      .shader_flags =
                          config.scene->cycles_background_shader_flags,
                      .apply_mis = true,
@@ -132,28 +127,6 @@ class EnvironmentDirectLightProvider final : public DirectLightProvider {
                      .selection_pdf = selected_light.selection_pdf});
             };
         };
-    }
-
-    void evaluate_deferred_emission(
-        Bool receiving_nonzero) const noexcept override {
-        auto &sample = _context.bounce.sample;
-        if (!sample.invocation.config.scene
-                 ->environment_emission_is_constant) {
-            const auto owns_sample =
-                _result.valid &
-                (_result.emitter_kind ==
-                 static_cast<std::uint32_t>(
-                     sampling::LightDistributionEmitterKind::environment));
-            $if(owns_sample & receiving_nonzero) {
-                _result.light_shader =
-                    _environment_light->evaluate_emission(
-                        sample,
-                        _context.surface.hit_position,
-                        _result.direction,
-                        sample.ray_dD,
-                        CyclesSvmBackgroundEvaluation::light);
-            };
-        }
     }
 };
 

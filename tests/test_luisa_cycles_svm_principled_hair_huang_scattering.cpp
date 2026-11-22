@@ -194,18 +194,18 @@ make_closure(Float pixel_coverage) noexcept {
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 4.0e-4f) noexcept {
   return std::isfinite(actual) && std::abs(actual - expected) <=
                                       2.0e-6f + tolerance * std::abs(expected);
 }
 
-[[nodiscard]] bool near(luisa::float4 actual, luisa::float4 expected,
+[[nodiscard]] bool is_near(luisa::float4 actual, luisa::float4 expected,
                         float tolerance = 4.0e-4f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance) &&
-         near(actual.w, expected.w, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance) &&
+         is_near(actual.w, expected.w, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -301,7 +301,7 @@ make_closure(Float pixel_coverage) noexcept {
 
   auto valid = true;
   for (auto index = std::size_t{0u}; index < actual.size(); ++index) {
-    valid &= near(actual[index], expected[index]);
+    valid &= is_near(actual[index], expected[index]);
   }
   valid &= actual_meta == expected_meta;
   if (!valid) {

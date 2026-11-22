@@ -26,7 +26,7 @@ void require(bool condition, std::string_view message) {
   }
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
@@ -169,9 +169,9 @@ void test_blackbody_scene_linear_constant_fold() {
     }
     SVMNodeClosureSetWeight payload{};
     std::memcpy(&payload, image.words.data() + index + 1u, sizeof(payload));
-    require(near(payload.rgb.x, 0.984052539f) &&
-                near(payload.rgb.y, 1.03527153f) &&
-                near(payload.rgb.z, 1.04255211f),
+    require(is_near(payload.rgb.x, 0.984052539f) &&
+                is_near(payload.rgb.y, 1.03527153f) &&
+                is_near(payload.rgb.z, 1.04255211f),
             "Blackbody constant fold ignored the active scene color space");
     return;
   }

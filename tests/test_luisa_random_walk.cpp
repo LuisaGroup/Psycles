@@ -1,8 +1,8 @@
-#include "luisa_surface_test_support.h"
 #include "subsurface_random_walk_component.h"
 
 #include <psycles/luisa/cycles_sample_mapping.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -19,8 +19,88 @@ namespace {
 using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 using namespace psycles::luisa_backend::detail;
-using psycles::test_support::approximately_equal;
-using psycles::test_support::make_surface_point;
+
+[[nodiscard]] bool approximately_equal(float actual, float expected,
+                                       float tolerance = 3.0e-6f) noexcept {
+    return std::abs(actual - expected) <=
+           tolerance *
+               std::max(1.0f, std::max(std::abs(actual), std::abs(expected)));
+}
+
+[[nodiscard]] bool approximately_equal(luisa::float4 actual,
+                                       luisa::float4 expected,
+                                       float tolerance = 3.0e-6f) noexcept {
+    return approximately_equal(actual.x, expected.x, tolerance) &&
+           approximately_equal(actual.y, expected.y, tolerance) &&
+           approximately_equal(actual.z, expected.z, tolerance) &&
+           approximately_equal(actual.w, expected.w, tolerance);
+}
+
+[[nodiscard]] SurfacePoint make_surface_point() noexcept {
+    return {
+        .position = make_float3(0.0f),
+        .object_position = make_float3(0.0f),
+        .object_location = make_float3(0.0f),
+        .generated = make_float3(0.5f),
+        .geometric_normal = make_float3(0.0f, 0.0f, 1.0f),
+        .shading_normal = make_float3(0.0f, 0.0f, 1.0f),
+        .object_shading_normal = make_float3(0.0f, 0.0f, 1.0f),
+        .object_tangent = make_float3(1.0f, 0.0f, 0.0f),
+        .tangent_sign = 1.0f,
+        .undisplaced_position = make_float3(0.0f),
+        .undisplaced_object_position = make_float3(0.0f),
+        .undisplaced_shading_normal = make_float3(0.0f, 0.0f, 1.0f),
+        .undisplaced_object_shading_normal = make_float3(0.0f, 0.0f, 1.0f),
+        .undisplaced_object_tangent = make_float3(1.0f, 0.0f, 0.0f),
+        .undisplaced_tangent_sign = 1.0f,
+        .normal_to_world_x = make_float3(1.0f, 0.0f, 0.0f),
+        .normal_to_world_y = make_float3(0.0f, 1.0f, 0.0f),
+        .normal_to_world_z = make_float3(0.0f, 0.0f, 1.0f),
+        .dpdu = make_float3(1.0f, 0.0f, 0.0f),
+        .dpdv = make_float3(0.0f, 1.0f, 0.0f),
+        .dPdx = make_float3(0.0f),
+        .dPdy = make_float3(0.0f),
+        .object_dPdx = make_float3(0.0f),
+        .object_dPdy = make_float3(0.0f),
+        .undisplaced_dPdx = make_float3(0.0f),
+        .undisplaced_dPdy = make_float3(0.0f),
+        .undisplaced_object_dPdx = make_float3(0.0f),
+        .undisplaced_object_dPdy = make_float3(0.0f),
+        .generated_dx = make_float3(0.0f),
+        .generated_dy = make_float3(0.0f),
+        .incoming = make_float3(0.0f, 0.0f, 1.0f),
+        .uv = make_float2(0.0f),
+        .uv_dx = make_float2(0.0f),
+        .uv_dy = make_float2(0.0f),
+        .geometry_index = 0u,
+        .barycentric = make_float2(0.0f),
+        .barycentric_dx = make_float2(0.0f),
+        .barycentric_dy = make_float2(0.0f),
+        .instance_id = 0u,
+        .primitive_id = 0u,
+        .parameter_block = 0u,
+        .object_random = 0.0f,
+        .particle_index = 0u,
+        .random_per_island = 0.0f,
+        .triangle_smooth = true,
+        .is_curve = false,
+        .curve_intercept = 0.0f,
+        .curve_length = 0.0f,
+        .curve_thickness = 0.0f,
+        .curve_tangent_normal = make_float3(0.0f),
+        .curve_random = 0.0f,
+        .ray_visibility = 1u,
+        .ray_events = 0u,
+        .ray_depth = 0u,
+        .diffuse_depth = 0u,
+        .glossy_depth = 0u,
+        .transparent_depth = 0u,
+        .transmission_depth = 0u,
+        .ray_length = 0.0f,
+        .time = 0.0f,
+        .use_bump_map_correction = true,
+        .back_facing = false};
+}
 
 inline constexpr std::uint32_t record_count = 22u;
 

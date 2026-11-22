@@ -201,7 +201,7 @@ template <typename... Args>
   return result;
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 5.0e-6f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
@@ -280,7 +280,7 @@ template <typename... Args>
       std::equal(actual_fresnel.begin(), actual_fresnel.end(),
                  fresnel_expected.begin(),
                  [](float actual, float expected) noexcept {
-                   return near(actual, expected);
+                   return is_near(actual, expected);
                  }) &&
       std::all_of(actual_fresnel_cursors.begin(), actual_fresnel_cursors.end(),
                   [](auto cursor) noexcept { return cursor == 2u; });
@@ -288,7 +288,7 @@ template <typename... Args>
       std::equal(actual_layer.begin(), actual_layer.end(),
                  layer_expected.begin(),
                  [](float actual, float expected) noexcept {
-                   return near(actual, expected);
+                   return is_near(actual, expected);
                  }) &&
       std::all_of(actual_layer_cursors.begin(), actual_layer_cursors.end(),
                   [](auto cursor) noexcept { return cursor == 3u; });
@@ -435,8 +435,8 @@ interpreter_kernel(std::array<bool, NODE_NUM> node_types_used) {
          << shader(word_buffer, output_buffer, status_buffer).dispatch(1u)
          << output_buffer.copy_to(&actual) << status_buffer.copy_to(&status)
          << synchronize();
-  if (!near(actual.x, 0.0400000028f) || !near(actual.y, 0.0f) ||
-      !near(actual.z, 0.25f) ||
+  if (!is_near(actual.x, 0.0400000028f) || !is_near(actual.y, 0.0f) ||
+      !is_near(actual.z, 0.25f) ||
       status !=
           static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles Fresnel-family interpreter mismatch on " << backend

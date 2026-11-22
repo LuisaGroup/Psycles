@@ -7,9 +7,7 @@
 namespace psycles::luisa_backend {
 
 /* Minimal device-side projection of Cycles' contiguous BSDF lookup-table
- * buffer. Both the native SVM KernelGlobals and the legacy graph surface
- * services implement this interface; table interpolation therefore has one
- * implementation and does not depend on either shading architecture. */
+ * buffer implemented by the native SVM KernelGlobals. */
 class CyclesBsdfTableReader {
 public:
     virtual ~CyclesBsdfTableReader() noexcept = default;

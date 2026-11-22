@@ -2,8 +2,6 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/cycles_svm_compiler.h>
 #include <psycles/compiler/shader_program.h>
-#include <psycles/compiler/surface_execution_plan.h>
-#include <psycles/compiler/surface_program.h>
 
 #include <algorithm>
 #include <array>
@@ -19,8 +17,6 @@
 namespace {
 
 using psycles::adapter::load_blender_scene_bundle;
-using psycles::compiler::SurfaceSvmValueOpcode;
-using psycles::compiler::ValueOperation;
 
 void require(bool condition, const char *message) {
   if (!condition) {
@@ -271,40 +267,6 @@ void test_light_falloff_import() {
   require(record_count == expected_records.size() &&
               actual_records == expected_records,
           "imported Light Falloff payload differs from Cycles 5.2.1");
-
-  const auto surface =
-      psycles::compiler::compile_surface_program(*shader.program);
-  require(surface.ok(), "Light Falloff graph did not lower");
-
-  std::array<bool, 3u> falloff_types{};
-  auto instruction_count = 0u;
-  for (const auto &instruction : surface.program->value_instructions()) {
-    if (instruction.operation != ValueOperation::light_falloff) {
-      continue;
-    }
-    ++instruction_count;
-    require(instruction.static_u0 < falloff_types.size(),
-            "Light Falloff output selector is invalid");
-    falloff_types[instruction.static_u0] = true;
-    require(instruction.result_type ==
-                    psycles::contract::SocketType::floating &&
-                instruction.operands.size() ==
-                    psycles::compiler::value_operand::light_falloff::count,
-            "Light Falloff lost its named operand ABI");
-    const auto immediate =
-        psycles::compiler::make_surface_value_svm_immediate(
-            instruction.operation, instruction.static_u0,
-            instruction.static_u1);
-    require(immediate == instruction.static_u0 &&
-                psycles::compiler::surface_svm_value_opcode(
-                    instruction.operation, immediate) ==
-                    SurfaceSvmValueOpcode::light_falloff,
-            "Light Falloff did not project to its exact SVM family");
-  }
-  require(instruction_count == 3u &&
-              std::ranges::all_of(falloff_types,
-                                  [](bool present) { return present; }),
-          "Light Falloff reachability lost a connected Cycles output");
 }
 
 } // namespace

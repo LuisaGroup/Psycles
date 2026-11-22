@@ -125,7 +125,7 @@ auto make_kernel(bool has_storage, bool diagnose) {
       }};
 }
 
-bool near(float actual, float expected) {
+bool is_near(float actual, float expected) {
   // Relative scaling keeps the below-cutoff cases meaningful; 1 ULP is not
   // the compatibility boundary and no software floating-point path is used.
   return std::isfinite(actual) &&
@@ -212,8 +212,8 @@ bool production_lamp(Device &device, Stream &stream) {
       return false;
     }
     const auto actual = values[i];
-    if (!near(actual.x, emission.x) || !near(actual.y, emission.y) ||
-        !near(actual.z, emission.z)) {
+    if (!is_near(actual.x, emission.x) || !is_near(actual.y, emission.y) ||
+        !is_near(actual.z, emission.z)) {
       std::cerr << "production lamp differs from original Cycles, case " << i << '\n';
       passed = false;
     }
@@ -286,10 +286,10 @@ bool run(int argc, char **argv) {
             (s.y == static_cast<unsigned>(svm::EvaluationStatus::ended) &&
              s.z == offset && offset == image[i * 4u + 2u] + 1u &&
              weight.x == 0.125f && weight.y == 0.25f && weight.z == 0.5f);
-        const auto matches = near(e.x, emission.x) && near(e.y, emission.y) &&
-                             near(e.z, emission.z) && near(t.x, extinction.x) &&
-                             near(t.y, extinction.y) &&
-                             near(t.z, extinction.z) && s.x == flags &&
+        const auto matches = is_near(e.x, emission.x) && is_near(e.y, emission.y) &&
+                             is_near(e.z, emission.z) && is_near(t.x, extinction.x) &&
+                             is_near(t.y, extinction.y) &&
+                             is_near(t.z, extinction.z) && s.x == flags &&
                              s.w == 0xabcdu && p.x == count && p.y == left &&
                              state_matches;
         if (!matches) {

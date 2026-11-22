@@ -1,6 +1,6 @@
 #include "microfacet_albedo.h"
 
-#include "graph_surface_internal.h"
+#include "surface_fresnel.h"
 #include "thin_film_fresnel.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>

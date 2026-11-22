@@ -66,9 +66,8 @@ public:
     Float3 shadow_shading_normal = point.shading_normal;
 
     UInt path_lobe_mask = surface_query.lobe_mask;
-    const Bool previous_ray_was_diffuse = scene->native_cycles_svm_surface
-        ? (sample.cycles_path_visibility & cycles_path_state::visibility_diffuse) != 0u
-        : (ray_events & static_cast<std::uint32_t>(contract::event_diffuse)) != 0u;
+    const Bool previous_ray_was_diffuse =
+        (sample.cycles_path_visibility & cycles_path_state::visibility_diffuse) != 0u;
     const auto path_reflective_caustics =
         Bool{reflective_caustics} | !previous_ray_was_diffuse;
     const auto path_refractive_caustics =
@@ -92,16 +91,6 @@ public:
         static_cast<std::uint32_t>(contract::event_transparent),
         terminate_after_transparent);
     Float3 subsurface_normal = point.shading_normal;
-    if (!scene->native_cycles_svm_surface) {
-      $if(bounce.subsurface_exit) {
-        subsurface_normal = invocation.surface_bssrdf_normal(
-            primitive.surface_tag,
-            point,
-            primitive.surface_has_bssrdf_bump,
-            path_reflective_caustics,
-            path_refractive_caustics);
-      };
-    }
     SurfaceQuery path_surface_query{
         .lobe_mask = path_lobe_mask,
         .transport_mode = surface_query.transport_mode,

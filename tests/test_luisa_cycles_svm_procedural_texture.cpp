@@ -53,18 +53,18 @@ void append_record(std::vector<std::uint32_t> &words, const T &payload) {
   words.resize(words.size() + record_stride - encoded.size(), 0u);
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 3.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 3.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] SVMNodeTexWave simple_wave_payload() noexcept {
@@ -332,8 +332,8 @@ template <typename... Args>
   for (auto index = std::size_t{}; index < actual.size(); ++index) {
     const auto color =
         luisa::float3{actual[index].x, actual[index].y, actual[index].z};
-    const auto case_valid = near(color, expected_colors[index]) &&
-                            near(actual[index].w, expected_factors[index]) &&
+    const auto case_valid = is_near(color, expected_colors[index]) &&
+                            is_near(actual[index].w, expected_factors[index]) &&
                             cursors[index] == expected_cursors[index];
     valid &= case_valid;
     if (!case_valid) {
@@ -410,7 +410,7 @@ run_interpreter_case(Device &device, Stream &stream, Shader &shader,
          << output_buffer.copy_to(&actual) << status_buffer.copy_to(&status)
          << synchronize();
   const auto actual_color = luisa::float3{actual.x, actual.y, actual.z};
-  if (!near(actual_color, expected) ||
+  if (!is_near(actual_color, expected) ||
       status !=
           static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles " << label << " interpreter mismatch on " << backend

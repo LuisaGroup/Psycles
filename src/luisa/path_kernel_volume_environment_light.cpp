@@ -143,28 +143,6 @@ class EnvironmentVolumeLightProvider final
             };
         }
     }
-
-    void evaluate_deferred_emission(
-        Bool receiving_nonzero)
-        const noexcept override {
-        if (!_event.bounce.sample
-                 .invocation.config.scene
-                 ->environment_emission_is_constant) {
-            $if(_sample_valid &
-                receiving_nonzero) {
-                _result.radiance *=
-                    _environment_light
-                        ->evaluate_emission(
-                            _event.bounce
-                                .sample,
-                            _sample_position,
-                            _result.direction,
-                            // shadow_ray_setup sets the volume shadow dD to zero.
-                            0.0f,
-                            CyclesSvmBackgroundEvaluation::light);
-            };
-        }
-    }
 };
 
 class PathVolumeEnvironmentLightComponent final

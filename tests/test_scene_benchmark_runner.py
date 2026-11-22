@@ -272,11 +272,11 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
         )
         self.assertEqual(
             command[command.index("--reference-metadata") + 1],
-            "/out/cycles/hip.json",
+            str(pathlib.Path("/out/cycles/hip.json")),
         )
         self.assertEqual(
             command[command.index("--actual-metadata") + 1],
-            "/out/export/scene.json",
+            str(pathlib.Path("/out/export/scene.json")),
         )
         bindings = [item for item in command if "=" in item]
         self.assertEqual(

@@ -553,15 +553,15 @@ void assign(detail::BsdfSample &destination,
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 8.0e-4f) noexcept {
   return std::isfinite(actual) && std::abs(actual - expected) <=
                                       2.0e-6f + tolerance * std::abs(expected);
 }
 
-[[nodiscard]] bool near(luisa::float4 actual, luisa::float4 expected) noexcept {
-  return near(actual.x, expected.x) && near(actual.y, expected.y) &&
-         near(actual.z, expected.z) && near(actual.w, expected.w);
+[[nodiscard]] bool is_near(luisa::float4 actual, luisa::float4 expected) noexcept {
+  return is_near(actual.x, expected.x) && is_near(actual.y, expected.y) &&
+         is_near(actual.z, expected.z) && is_near(actual.w, expected.w);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -617,42 +617,42 @@ void assign(detail::BsdfSample &destination,
   auto valid = true;
   for (auto scenario = std::size_t{0u}; scenario < scenario_count; ++scenario) {
     const auto base = scenario * values_per_scenario;
-    valid &= near(actual_values[base + 0u], actual_values[base + 1u]);
-    valid &= near(actual_values[base + 2u], actual_values[base + 3u]);
-    valid &= near(actual_values[base + 4u], actual_values[base + 5u]);
-    valid &= near(actual_values[base + 6u], actual_values[base + 7u]);
-    valid &= near(actual_values[base + 8u], expected_blur[scenario]);
-    valid &= near(actual_values[base + 9u], expected_roughness_eta[scenario]);
+    valid &= is_near(actual_values[base + 0u], actual_values[base + 1u]);
+    valid &= is_near(actual_values[base + 2u], actual_values[base + 3u]);
+    valid &= is_near(actual_values[base + 4u], actual_values[base + 5u]);
+    valid &= is_near(actual_values[base + 6u], actual_values[base + 7u]);
+    valid &= is_near(actual_values[base + 8u], expected_blur[scenario]);
+    valid &= is_near(actual_values[base + 9u], expected_roughness_eta[scenario]);
 
     const auto meta_base = scenario * meta_per_scenario;
     valid &= actual_meta[meta_base + 0u] == actual_meta[meta_base + 1u];
     valid &= actual_meta[meta_base + 2u] == expected_labels[scenario];
   }
-  valid &= near(actual_values[table_probe_base + 0u],
+  valid &= is_near(actual_values[table_probe_base + 0u],
                 luisa::float4{0.3f, 0.35f, 0.4f, 0.0f});
-  valid &= near(actual_values[table_probe_base + 1u],
+  valid &= is_near(actual_values[table_probe_base + 1u],
                 luisa::float4{0.7f, 0.65f, 0.6f, 0.0f});
   valid &= actual_meta[modifier_meta_base + 0u] ==
            (closure::label_transmit | closure::label_diffuse);
   valid &= actual_meta[modifier_meta_base + 1u] ==
            (closure::label_transmit | closure::label_diffuse |
             closure::label_transmit_transparent);
-  valid &= near(actual_values[modifier_value_base + 0u], luisa::float4{0.0f});
+  valid &= is_near(actual_values[modifier_value_base + 0u], luisa::float4{0.0f});
   const auto raw_bump = actual_values[modifier_value_base + 1u];
   valid &= raw_bump.x > 0.0f && raw_bump.y > 0.0f && raw_bump.z > 0.0f &&
            raw_bump.w > 0.0f;
-  valid &= near(actual_values[modifier_value_base + 2u],
+  valid &= is_near(actual_values[modifier_value_base + 2u],
                 actual_values[modifier_value_base + 3u]);
   const auto neutral_sample = actual_values[modifier_value_base + 4u];
   const auto shifted_sample = actual_values[modifier_value_base + 5u];
-  valid &= near(neutral_sample.w, shifted_sample.w);
+  valid &= is_near(neutral_sample.w, shifted_sample.w);
   valid &= shifted_sample.x > 0.0f && shifted_sample.x < neutral_sample.x;
   valid &= shifted_sample.y > 0.0f && shifted_sample.y < neutral_sample.y;
   valid &= shifted_sample.z > 0.0f && shifted_sample.z < neutral_sample.z;
   valid &=
-      near(actual_diffuse_values[2u], luisa::float4{0.8f, 0.4f, 0.2f, 1.0f});
+      is_near(actual_diffuse_values[2u], luisa::float4{0.8f, 0.4f, 0.2f, 1.0f});
   valid &=
-      near(actual_diffuse_values[3u], luisa::float4{1.0f, 1.0f, 1.0f, 1.0f});
+      is_near(actual_diffuse_values[3u], luisa::float4{1.0f, 1.0f, 1.0f, 1.0f});
   valid &= actual_diffuse_meta[0u] ==
            (closure::label_reflect | closure::label_diffuse);
   valid &= actual_diffuse_meta[1u] ==

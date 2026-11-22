@@ -25,7 +25,7 @@ constexpr auto scenario_count = 8u;
 constexpr auto scenario_output_count = 9u;
 constexpr auto displacement_scenario_count = 4u;
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 4.0e-5f) noexcept {
   return std::abs(actual - expected) <= tolerance;
 }
@@ -34,10 +34,10 @@ constexpr auto displacement_scenario_count = 4u;
                                   luisa::float4 expected,
                                   std::string_view label,
                                   float tolerance = 4.0e-5f) {
-  if (near(actual.x, expected.x, tolerance) &&
-      near(actual.y, expected.y, tolerance) &&
-      near(actual.z, expected.z, tolerance) &&
-      near(actual.w, expected.w, tolerance)) {
+  if (is_near(actual.x, expected.x, tolerance) &&
+      is_near(actual.y, expected.y, tolerance) &&
+      is_near(actual.z, expected.z, tolerance) &&
+      is_near(actual.w, expected.w, tolerance)) {
     return true;
   }
   std::cerr << label << " mismatch: (" << actual.x << ", " << actual.y

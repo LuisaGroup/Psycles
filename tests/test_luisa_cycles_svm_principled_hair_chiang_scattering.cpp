@@ -108,15 +108,15 @@ inline constexpr std::uint32_t values_per_scenario = 5u;
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 8.0e-4f) noexcept {
   return std::isfinite(actual) && std::abs(actual - expected) <=
                                       2.0e-6f + tolerance * std::abs(expected);
 }
 
-[[nodiscard]] bool near(luisa::float4 actual, luisa::float4 expected) noexcept {
-  return near(actual.x, expected.x) && near(actual.y, expected.y) &&
-         near(actual.z, expected.z) && near(actual.w, expected.w);
+[[nodiscard]] bool is_near(luisa::float4 actual, luisa::float4 expected) noexcept {
+  return is_near(actual.x, expected.x) && is_near(actual.y, expected.y) &&
+         is_near(actual.z, expected.z) && is_near(actual.w, expected.w);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -167,7 +167,7 @@ inline constexpr std::uint32_t values_per_scenario = 5u;
 
   auto valid = true;
   for (auto index = std::size_t{0u}; index < actual.size(); ++index) {
-    valid &= near(actual[index], expected[index]);
+    valid &= is_near(actual[index], expected[index]);
   }
   valid &= actual_labels == expected_labels;
   if (!valid) {

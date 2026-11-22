@@ -14,9 +14,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-sys.path.insert(0, str(ROOT / 'docs/validation/2026-09-09/resource-identities'))
 import decode_cycles_bindings as decoder
-import audit_bindings as audit
+import audit_cycles_bindings as audit
 
 
 class BindingOracleTests(unittest.TestCase):

@@ -1,7 +1,7 @@
 """Validate original Holdout domain inputs and words without evaluating a shader."""
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shlex
 import unittest
@@ -17,7 +17,10 @@ class HoldoutVolumeFixtureTests(unittest.TestCase):
         cls.manifest = json.loads((DATA / "manifest.json").read_text())
 
     def identity(self, value):
-        self.assertTrue(Path(value["path"]).is_absolute())
+        self.assertTrue(
+            PurePosixPath(value["path"]).is_absolute()
+            or Path(value["path"]).is_absolute()
+        )
         self.assertRegex(value["sha256"], r"^[0-9a-f]{64}$")
 
     def test_fixture_hashes_and_original_input_bytes(self):

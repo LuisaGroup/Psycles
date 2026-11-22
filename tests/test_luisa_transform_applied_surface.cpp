@@ -14,7 +14,7 @@ namespace {
 using namespace luisa::compute;
 using namespace psycles::luisa_backend::detail;
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance) noexcept {
   return std::abs(actual - expected) <= tolerance;
 }
@@ -168,9 +168,9 @@ int main(int argc, char **argv) {
   constexpr auto applied_x = std::uint32_t{0x3f252da9u};
   constexpr auto applied_p0_x = std::uint32_t{0x3f252da8u};
   if (actual_bits[0u].x != applied_x || actual_bits[0u].w != applied_p0_x ||
-      !near(actual_values[0u].x, 1.0f, 1.0e-7f) ||
-      !near(actual_values[0u].y, 4.0900164e-13f, 1.0e-11f) ||
-      !near(actual_values[0u].z, -2.6574685e-6f, 2.0e-9f) ||
+      !is_near(actual_values[0u].x, 1.0f, 1.0e-7f) ||
+      !is_near(actual_values[0u].y, 4.0900164e-13f, 1.0e-11f) ||
+      !is_near(actual_values[0u].z, -2.6574685e-6f, 2.0e-9f) ||
       actual_values[0u].w != 0.0f) {
     std::cerr << "transform-applied Cycles support failed on " << backend
               << ": position bits {" << std::hex << actual_bits[0u].x << ", "
@@ -199,9 +199,9 @@ int main(int argc, char **argv) {
                     0.9608958959579468f};
   const auto near_vector = [](luisa::float4 actual,
                               luisa::float3 expected) noexcept {
-    return near(actual.x, expected.x, 1.0e-7f) &&
-           near(actual.y, expected.y, 1.0e-7f) &&
-           near(actual.z, expected.z, 1.0e-7f) && actual.w == 0.0f;
+    return is_near(actual.x, expected.x, 1.0e-7f) &&
+           is_near(actual.y, expected.y, 1.0e-7f) &&
+           is_near(actual.z, expected.z, 1.0e-7f) && actual.w == 0.0f;
   };
   if (!near_vector(actual_values[3u], expected_dpdu) ||
       !near_vector(actual_values[4u], expected_dpdv) ||

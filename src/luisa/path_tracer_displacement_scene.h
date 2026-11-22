@@ -2,8 +2,10 @@
 
 #include "path_tracer_displacement_plan.h"
 #include "path_tracer_internal.h"
+#include "path_tracer_scene_geometry.h"
 
 #include <map>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -25,11 +27,11 @@ public:
         const std::shared_ptr<LuisaSceneData> &scene,
         Stream &stream,
         const contract::SceneSnapshot &snapshot,
-        const std::map<contract::GeometryId, std::uint32_t> &
-            geometry_indices,
-        std::vector<GeometryUpload> &uploads,
-        luisa::vector<AttributeBindingGpu> &attribute_bindings,
-        luisa::vector<AttributeRangeGpu> &attribute_ranges) const;
+        std::span<const CyclesInstanceIntersectionPlan> intersection_plans,
+        const std::map<contract::GeometryId, std::uint32_t> &geometry_indices,
+        const std::map<contract::GeometryId, std::uint32_t> &triangle_primitive_offsets,
+        const std::map<contract::GeometryId, std::uint32_t> &curve_primitive_offsets,
+        std::vector<GeometryUpload> &uploads) const;
 };
 
 }// namespace psycles::luisa_backend::detail

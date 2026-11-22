@@ -15,7 +15,7 @@ namespace {
 using namespace luisa::compute;
 using namespace psycles::luisa_backend::detail;
 
-[[nodiscard]] bool near(float lhs, float rhs) noexcept {
+[[nodiscard]] bool is_near(float lhs, float rhs) noexcept {
     const auto scale = std::max({1.0f, std::abs(lhs), std::abs(rhs)});
     return std::abs(lhs - rhs) <= 1.0e-5f * scale;
 }
@@ -115,12 +115,12 @@ int main(int argc, char **argv) {
     const auto front = actual[0u].x;
     const auto failed =
         !(front > 0.0f) || actual[0u].y != 1.0f || actual[0u].z != 0.0f ||
-        actual[0u].w != 0.0f || !near(actual[1u].x, front) ||
-        actual[1u].y != 1.0f || !near(actual[1u].z, front) ||
+        actual[0u].w != 0.0f || !is_near(actual[1u].x, front) ||
+        actual[1u].y != 1.0f || !is_near(actual[1u].z, front) ||
         actual[1u].w != 1.0f || actual[2u].x != 0.0f || actual[2u].y != 0.0f ||
-        !near(actual[2u].z, 2.0f * front) || actual[2u].w != 1.0f ||
+        !is_near(actual[2u].z, 2.0f * front) || actual[2u].w != 1.0f ||
         actual[3u].x != 0.0f || actual[3u].y != 0.0f ||
-        !near(actual[3u].z, front) || actual[3u].w != 1.0f ||
+        !is_near(actual[3u].z, front) || actual[3u].w != 1.0f ||
         actual[4u].x != 0.0f || actual[4u].y != 0.0f;
     if (failed) {
         std::cerr << "O(1) emissive-triangle forward PDF contract failed on "

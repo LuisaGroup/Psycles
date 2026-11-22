@@ -1,8 +1,6 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
-#include <psycles/compiler/surface_execution_plan.h>
-#include <psycles/compiler/surface_program.h>
 
 #include <chrono>
 #include <cstdlib>
@@ -15,8 +13,6 @@
 namespace {
 
 using psycles::adapter::load_blender_scene_bundle;
-using psycles::compiler::SurfaceSvmValueOpcode;
-using psycles::compiler::ValueOperation;
 
 void require(bool condition, const char *message) {
   if (!condition) {
@@ -172,33 +168,6 @@ void test_object_displacement_import() {
       psycles::compiler::make_core_node_registry()};
   const auto shader = compiler.compile(material->shader);
   require(shader.ok(), "OBJECT Displacement graph did not validate");
-  const auto surface =
-      psycles::compiler::compile_surface_program(*shader.program);
-  require(surface.ok(), "OBJECT Displacement graph did not lower");
-
-  const psycles::compiler::ValueInstruction *instruction = nullptr;
-  auto instruction_count = 0u;
-  for (const auto &candidate : surface.program->value_instructions()) {
-    if (candidate.operation == ValueOperation::displacement) {
-      instruction = &candidate;
-      ++instruction_count;
-    }
-  }
-  require(instruction_count == 1u && instruction != nullptr,
-          "OBJECT Displacement did not survive as one value instruction");
-  require(instruction->result_type == psycles::contract::SocketType::vector &&
-              instruction->operands.size() ==
-                  psycles::compiler::value_operand::displacement::count &&
-              instruction->static_u0 ==
-                  psycles::compiler::displacement_object_space,
-          "OBJECT Displacement lost its typed operands or configuration");
-  const auto immediate = psycles::compiler::make_surface_value_svm_immediate(
-      instruction->operation, instruction->static_u0, instruction->static_u1);
-  require(immediate == psycles::compiler::displacement_object_space &&
-              psycles::compiler::surface_svm_value_opcode(
-                  instruction->operation, immediate) ==
-                  SurfaceSvmValueOpcode::displacement,
-          "OBJECT Displacement did not project to its exact SVM family");
 }
 
 } // namespace

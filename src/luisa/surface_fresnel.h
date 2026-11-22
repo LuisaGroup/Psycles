@@ -1,12 +1,18 @@
 #pragma once
 
-#include <psycles/luisa/surface.h>
+#include <luisa/dsl/syntax.h>
 
 namespace psycles::luisa_backend::detail {
 
-// Cycles' dielectric Fresnel primitive shared by closure setup and direct SVM
-// context evaluation. This declaration deliberately has no dependency on the
-// legacy graph-value object model.
-[[nodiscard]] Float fresnel_dielectric_cos(Float cosine, Float eta) noexcept;
+[[nodiscard]] luisa::compute::Float fresnel_dielectric_cos(
+    luisa::compute::Float cosine, luisa::compute::Float eta) noexcept;
+
+[[nodiscard]] luisa::compute::Float f0_from_ior(
+    luisa::compute::Float ior) noexcept;
+
+[[nodiscard]] luisa::compute::Float3 fresnel_conductor(
+    luisa::compute::Float cosine,
+    luisa::compute::Float3 ior,
+    luisa::compute::Float3 extinction) noexcept;
 
 } // namespace psycles::luisa_backend::detail

@@ -114,17 +114,17 @@ void test_bounds_match_cycles_segment_radius_rule() {
   // deliberately does not spline the radius controls, whose cubic would peak
   // at 0.225 here.
   const auto &bounds = upload.bounds[1u];
-  const auto near = [](float lhs, float rhs) noexcept {
+  const auto is_near = [](float lhs, float rhs) noexcept {
     return std::abs(lhs - rhs) <= 1.0e-6f;
   };
-  expect(near(bounds.packed_min[0u], -0.2f),
+  expect(is_near(bounds.packed_min[0u], -0.2f),
          "wrong Cycles segment AABB minimum");
-  expect(near(bounds.packed_max[0u], 0.2f),
+  expect(is_near(bounds.packed_max[0u], 0.2f),
          "Cycles degenerate-quadratic bound changed");
-  expect(near(bounds.packed_min[1u], -0.2f) &&
-             near(bounds.packed_min[2u], -0.2f) &&
-             near(bounds.packed_max[1u], 0.2f) &&
-             near(bounds.packed_max[2u], 0.2f),
+  expect(is_near(bounds.packed_min[1u], -0.2f) &&
+             is_near(bounds.packed_min[2u], -0.2f) &&
+             is_near(bounds.packed_max[1u], 0.2f) &&
+             is_near(bounds.packed_max[2u], 0.2f),
          "Cycles active-endpoint radius expansion changed");
 }
 

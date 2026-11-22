@@ -20,7 +20,7 @@ using psycles::luisa_backend::detail::BackgroundPortalSampling;
 using psycles::luisa_backend::detail::LightGpu;
 
 [[nodiscard]] bool
-near(float actual, float expected, float tolerance) noexcept {
+is_near(float actual, float expected, float tolerance) noexcept {
     return std::abs(actual - expected) <= tolerance;
 }
 
@@ -232,10 +232,10 @@ int main(int argc, char **argv) {
            << portal_result_buffer.copy_to(luisa::span{portal_results})
            << synchronize();
 
-    if (!near(pole_uv[0u].x, 0.5f, 1.0e-7f) ||
-        !near(pole_uv[0u].y, 1.0f, 1.0e-7f) ||
-        !near(pole_uv[1u].x, 0.5f, 1.0e-7f) ||
-        !near(pole_uv[1u].y, 0.0f, 1.0e-7f)) {
+    if (!is_near(pole_uv[0u].x, 0.5f, 1.0e-7f) ||
+        !is_near(pole_uv[0u].y, 1.0f, 1.0e-7f) ||
+        !is_near(pole_uv[1u].x, 0.5f, 1.0e-7f) ||
+        !is_near(pole_uv[1u].y, 0.0f, 1.0e-7f)) {
         std::cerr << "canonical pole azimuth failed on " << backend
                   << ": north {" << pole_uv[0u].x << ", "
                   << pole_uv[0u].y << "}, south {" << pole_uv[1u].x
@@ -252,11 +252,11 @@ int main(int argc, char **argv) {
     // implementations. Keep proposal/evaluation self-consistency below at
     // the tighter tolerance so this does not hide a structural PDF mismatch.
     constexpr auto portal_oracle_tolerance = 5.0e-5f;
-    if (!near(portal_direction_length, 1.0f, 2.0e-5f) ||
-        !near(portal_results[0u].w,
+    if (!is_near(portal_direction_length, 1.0f, 2.0e-5f) ||
+        !is_near(portal_results[0u].w,
               square_solid_angle_pdf,
               portal_oracle_tolerance) ||
-        !near(portal_results[1u].x, portal_results[0u].w, 2.0e-5f) ||
+        !is_near(portal_results[1u].x, portal_results[0u].w, 2.0e-5f) ||
         portal_results[1u].y != 1.0f ||
         portal_results[1u].z != 1.0f ||
         portal_results[1u].w != 1.0f ||
@@ -283,7 +283,7 @@ int main(int argc, char **argv) {
          std::abs(oracle.y - expected_lone_monk_direction.y),
          std::abs(oracle.z - expected_lone_monk_direction.z)});
     if (oracle_error > 3.0e-6f ||
-        !near(oracle.w, expected_lone_monk_sun_pdf, 0.05f)) {
+        !is_near(oracle.w, expected_lone_monk_sun_pdf, 0.05f)) {
         std::cerr << "Cycles background-Sun oracle failed on " << backend
                   << ": direction/pdf {" << oracle.x << ", " << oracle.y
                   << ", " << oracle.z << ", " << oracle.w << "}\n";
@@ -299,9 +299,9 @@ int main(int argc, char **argv) {
             std::max({std::abs(direction_pdf[i].x - round_trip[i].x),
                       std::abs(direction_pdf[i].y - round_trip[i].y),
                       std::abs(direction_pdf[i].z - round_trip[i].z)});
-        if (!near(direction_length, 1.0f, 2.0e-5f) ||
+        if (!is_near(direction_length, 1.0f, 2.0e-5f) ||
             reconstruction_error > 2.0e-4f || !(direction_pdf[i].w > 0.0f) ||
-            !near(direction_pdf[i].w,
+            !is_near(direction_pdf[i].w,
                   round_trip[i].w,
                   3.0e-4f * std::max(direction_pdf[i].w, 1.0f))) {
             std::cerr << "background sampling invariant failed on " << backend

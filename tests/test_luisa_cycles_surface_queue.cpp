@@ -229,7 +229,6 @@ bool check_multi_bucket_surface_routing(Device &device, Stream &stream) {
   using namespace luisa::compute::coro;
   constexpr unsigned shader_count = 78u;
   auto scene = std::make_shared<LuisaSceneData>(device);
-  scene->native_cycles_svm_surface = true;
   scene->cycles_svm = std::make_unique<CyclesSvmRuntime>();
   auto &comp = scene->cycles_svm->compilation;
   comp.table.valid = true;
@@ -439,35 +438,31 @@ int main(int argc, char **argv) {
 
   auto output = device.create_buffer<unsigned>(hits.size());
   std::array<unsigned, hits.size()> actual{};
-  const std::array<unsigned, hits.size()> legacy{1u, 1u, 7u, 9u, 1u, 1u};
   bool ok = check_partition_policy();
-  for (const auto native : {false, true}) {
-    scene->native_cycles_svm_surface = native;
-    if (native && surface_queue_key_range(*scene) != oracle.shaders) {
-      std::cerr << "Native key range must preserve sparse shader-table identity\n";
-      ok = false;
-    }
-    for (const auto plan :
-         {ScenePrimitiveStagePlan{true, false}, ScenePrimitiveStagePlan{false, true},
-          ScenePrimitiveStagePlan{true, true}}) {
-      const auto stage = make_surface_queue_key_stage(plan);
-      Kernel1D kernel = [&](Var<Buffer<CommittedHit>> input, BufferUInt out, UInt first) {
-        const auto row = first + dispatch_x();
-        const Var<CommittedHit> hit = input.read(row);
-        out.write(row, stage->emit(scene, hit));
-      };
-      auto shader = device.compile(kernel);
-      const auto first = plan.triangles ? 0u : 4u;
-      const auto count = plan.mixed() ? 6u : (plan.triangles ? 4u : 2u);
-      stream << shader(hit_buffer, output, first).dispatch(count)
-             << output.copy_to(actual.data()) << synchronize();
-      for (auto row = first; row < first + count; ++row) {
-        const auto expected = native ? oracle.rows[row].z : legacy[row];
-        if (actual[row] != expected) {
-          std::cerr << "native=" << native << " row=" << row << " key=" << actual[row]
-                    << " expected=" << expected << '\n';
-          ok = false;
-        }
+  if (surface_queue_key_range(*scene) != oracle.shaders) {
+    std::cerr << "Native key range must preserve sparse shader-table identity\n";
+    ok = false;
+  }
+  for (const auto plan :
+       {ScenePrimitiveStagePlan{true, false}, ScenePrimitiveStagePlan{false, true},
+        ScenePrimitiveStagePlan{true, true}}) {
+    const auto stage = make_surface_queue_key_stage(plan);
+    Kernel1D kernel = [&](Var<Buffer<CommittedHit>> input, BufferUInt out, UInt first) {
+      const auto row = first + dispatch_x();
+      const Var<CommittedHit> hit = input.read(row);
+      out.write(row, stage->emit(scene, hit));
+    };
+    auto shader = device.compile(kernel);
+    const auto first = plan.triangles ? 0u : 4u;
+    const auto count = plan.mixed() ? 6u : (plan.triangles ? 4u : 2u);
+    stream << shader(hit_buffer, output, first).dispatch(count)
+           << output.copy_to(actual.data()) << synchronize();
+    for (auto row = first; row < first + count; ++row) {
+      const auto expected = oracle.rows[row].z;
+      if (actual[row] != expected) {
+        std::cerr << "row=" << row << " key=" << actual[row]
+                  << " expected=" << expected << '\n';
+        ok = false;
       }
     }
   }

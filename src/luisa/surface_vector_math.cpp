@@ -2,7 +2,6 @@
 
 #include "surface_math.h"
 
-#include <array>
 #include <cstdlib>
 
 #include <luisa/dsl/sugar.h>
@@ -10,51 +9,8 @@
 #include <psycles/luisa/native_vector_math.h>
 
 namespace psycles::luisa_backend::detail {
-namespace {
 
-using SurfaceVectorMathValueSvmCallable = luisa::compute::Callable<float(
-    luisa::uint, luisa::float3, luisa::float3, luisa::float3, float)>;
-using SurfaceVectorMathVectorSvmCallable =
-    luisa::compute::Callable<luisa::float3(
-        luisa::uint, luisa::float3, luisa::float3, luisa::float3, float)>;
-
-[[nodiscard]] auto active_vector_math_operations(
-    std::span<const std::uint16_t> immediate_domain) noexcept {
-    std::array<bool, compiler::vector_math_operation_count> result{};
-    for (const auto encoded : immediate_domain) {
-        if (encoded >= compiler::vector_math_operation_count) {
-            std::abort();
-        }
-        result[encoded] = true;
-    }
-    return result;
-}
-
-template<typename Evaluate>
-void dispatch_surface_vector_math_operation(
-    UInt operation,
-    const std::array<bool, compiler::vector_math_operation_count> &active,
-    Evaluate &&evaluate) noexcept {
-    luisa::compute::detail::SwitchStmtBuilder{operation} % [&] {
-        for (auto index = std::size_t{0u}; index < active.size(); ++index) {
-            if (!active[index]) {
-                continue;
-            }
-            luisa::compute::detail::SwitchCaseStmtBuilder{
-                static_cast<luisa::uint>(index)} %
-                [&, index] {
-                    evaluate(
-                        static_cast<compiler::VectorMathOperation>(index));
-                };
-        }
-        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
-            luisa::compute::dsl::unreachable(
-                "invalid compact surface Vector Math operation");
-        };
-    };
-}
-
-} // namespace
+using namespace luisa::compute;
 
 SurfaceVectorMathResult evaluate_surface_vector_math_operation(
     compiler::VectorMathOperation operation,
@@ -226,72 +182,6 @@ SurfaceVectorMathResult evaluate_surface_vector_math_operation(
             std::abort();
     }
     return result;
-}
-
-Float evaluate_surface_vector_math_value_svm(
-    UInt immediate,
-    std::span<const std::uint16_t> immediate_domain,
-    Float3 a,
-    Float3 b,
-    Float3 c,
-    Float scale) noexcept {
-    const auto active = active_vector_math_operations(immediate_domain);
-    SurfaceVectorMathValueSvmCallable callable =
-        [active](UInt operation,
-                 Float3 input_a,
-                 Float3 input_b,
-                 Float3 input_c,
-                 Float input_scale) noexcept {
-            Float result = 0.0f;
-            dispatch_surface_vector_math_operation(
-                operation,
-                active,
-                [&](compiler::VectorMathOperation selected) noexcept {
-                    result = evaluate_surface_vector_math_operation(
-                                 selected,
-                                 input_a,
-                                 input_b,
-                                 input_c,
-                                 input_scale)
-                                 .value;
-                });
-            return result;
-        };
-    callable.set_name("surface_vector_math_value_svm");
-    return callable(immediate, a, b, c, scale);
-}
-
-Float3 evaluate_surface_vector_math_vector_svm(
-    UInt immediate,
-    std::span<const std::uint16_t> immediate_domain,
-    Float3 a,
-    Float3 b,
-    Float3 c,
-    Float scale) noexcept {
-    const auto active = active_vector_math_operations(immediate_domain);
-    SurfaceVectorMathVectorSvmCallable callable =
-        [active](UInt operation,
-                 Float3 input_a,
-                 Float3 input_b,
-                 Float3 input_c,
-                 Float input_scale) noexcept {
-            Float3 result = make_float3(0.0f);
-            dispatch_surface_vector_math_operation(
-                operation,
-                active,
-                [&](compiler::VectorMathOperation selected) noexcept {
-                    result = evaluate_surface_vector_math_operation(
-                                 selected,
-                                 input_a,
-                                 input_b,
-                                 input_c,
-                                 input_scale)
-                                 .vector;
-                });
-            return result;
-        };
-    callable.set_name("surface_vector_math_vector_svm");
-    return callable(immediate, a, b, c, scale);
 }
 
 } // namespace psycles::luisa_backend::detail

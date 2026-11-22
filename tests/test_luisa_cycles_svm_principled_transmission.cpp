@@ -218,18 +218,18 @@ inline constexpr std::uint32_t meta_stride = 10u;
   }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 5.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 5.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool finite_positive(luisa::float4 value) noexcept {
@@ -295,11 +295,11 @@ inline constexpr std::uint32_t meta_stride = 10u;
     const auto refractive = (case_index == 0u) || (case_index == 2u);
     const auto has_glass = reflective || refractive;
     valid &=
-        near(actual[base + 0u].xyz(), luisa::float3{transparent_weight}) &&
-        near(actual[base + 0u].w, transparent_weight) &&
-        near(actual[base + 12u].xyz(),
+        is_near(actual[base + 0u].xyz(), luisa::float3{transparent_weight}) &&
+        is_near(actual[base + 0u].w, transparent_weight) &&
+        is_near(actual[base + 12u].xyz(),
              luisa::float3{0.1927800030f, 0.1020600051f, 0.5783399940f}) &&
-        near(actual[base + 12u].w, transparent_weight) &&
+        is_near(actual[base + 12u].w, transparent_weight) &&
         actual_meta[meta_base + 2u] ==
             (has_glass ? transmission_flags : base_flags) &&
         actual_meta[meta_base + 3u] ==
@@ -311,42 +311,42 @@ inline constexpr std::uint32_t meta_stride = 10u;
     if (has_glass) {
       valid &=
           finite_positive(actual[base + 1u]) &&
-          near(actual[base + 4u].xyz(), up) &&
-          near(actual[base + 5u].x, 0.0961f) &&
-          near(actual[base + 5u].y, 0.0961f) &&
-          near(actual[base + 5u].z, 1.48f) &&
+          is_near(actual[base + 4u].xyz(), up) &&
+          is_near(actual[base + 5u].x, 0.0961f) &&
+          is_near(actual[base + 5u].y, 0.0961f) &&
+          is_near(actual[base + 5u].z, 1.48f) &&
           std::isfinite(actual[base + 5u].w) && actual[base + 5u].w >= 1.0f &&
-          near(actual[base + 6u].xyz(), zero) &&
-          near(actual[base + 7u].xyz(), luisa::float3{330.0f, 1.56f, -1.48f}) &&
-          near(actual[base + 8u].xyz(), reflective ? one : zero) &&
-          near(actual[base + 9u].xyz(),
+          is_near(actual[base + 6u].xyz(), zero) &&
+          is_near(actual[base + 7u].xyz(), luisa::float3{330.0f, 1.56f, -1.48f}) &&
+          is_near(actual[base + 8u].xyz(), reflective ? one : zero) &&
+          is_near(actual[base + 9u].xyz(),
                refractive ? transmission_tint : zero) &&
-          near(actual[base + 10u].xyz(), f0) &&
-          near(actual[base + 11u].xyz(), one) &&
+          is_near(actual[base + 10u].xyz(), f0) &&
+          is_near(actual[base + 11u].xyz(), one) &&
           actual_meta[meta_base + 6u] == glass_type &&
           actual_meta[meta_base + 9u] == generalized_schlick;
     } else {
-      valid &= near(actual[base + 1u].xyz(), zero) &&
+      valid &= is_near(actual[base + 1u].xyz(), zero) &&
                actual_meta[meta_base + 6u] ==
                    static_cast<std::uint32_t>(CLOSURE_NONE_ID);
     }
 
     if (reflective) {
       valid &=
-          near(actual[base + 2u].xyz(),
+          is_near(actual[base + 2u].xyz(),
                luisa::float3{0.2245076895f, 0.2244775295f, 0.2245223373f}) &&
-          near(actual[base + 2u].w, 0.0080270125f) &&
-          near(actual[base + 3u].xyz(),
+          is_near(actual[base + 2u].w, 0.0080270125f) &&
+          is_near(actual[base + 3u].xyz(),
                luisa::float3{0.0778046995f, 0.1383194625f, 0.1966729909f}) &&
-          near(actual[base + 3u].w, 0.1375990510f) &&
+          is_near(actual[base + 3u].w, 0.1375990510f) &&
           actual_meta[meta_base + 0u] == 4u &&
           actual_meta[meta_base + 1u] == 2u &&
           actual_meta[meta_base + 7u] == specular_type;
     } else {
-      valid &= near(actual[base + 2u].xyz(), zero) &&
-               near(actual[base + 3u].xyz(),
+      valid &= is_near(actual[base + 2u].xyz(), zero) &&
+               is_near(actual[base + 3u].xyz(),
                     luisa::float3{0.081648f, 0.1451519877f, 0.2063879967f}) &&
-               near(actual[base + 3u].w, 0.1443959922f) &&
+               is_near(actual[base + 3u].w, 0.1443959922f) &&
                actual_meta[meta_base + 0u] == (has_glass ? 3u : 2u) &&
                actual_meta[meta_base + 1u] == (has_glass ? 4u : 6u) &&
                actual_meta[meta_base + 7u] ==
@@ -354,9 +354,9 @@ inline constexpr std::uint32_t meta_stride = 10u;
     }
   }
 
-  valid &= near(actual[1u].xyz(),
+  valid &= is_near(actual[1u].xyz(),
                 luisa::float3{0.5829386115f, 0.5830691457f, 0.5831698179f}) &&
-           near(actual[1u].w, 0.4619406760f);
+           is_near(actual[1u].w, 0.4619406760f);
 
   if (!valid) {
     std::cerr << "Cycles thick Principled Transmission mismatch on " << backend

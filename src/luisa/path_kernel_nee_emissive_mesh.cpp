@@ -161,25 +161,6 @@ class EmissiveMeshDirectLightProvider final : public DirectLightProvider {
             };
         };
     }
-
-    void evaluate_deferred_emission(
-        Bool receiving_nonzero) const noexcept override {
-        const auto owns_sample =
-            _result.valid &
-            (_result.emitter_kind ==
-             static_cast<std::uint32_t>(
-                 sampling::LightDistributionEmitterKind::emissive_triangle));
-        $if(owns_sample & !_result.constant_light_shader & receiving_nonzero) {
-            _result.light_shader =
-                _emissive_triangle->evaluate_emission_from_sample(
-                    _context.bounce.sample,
-                    _result.emitter_index,
-                    _result.target_position,
-                    _result.barycentric,
-                    _result.direction,
-                    _result.distance);
-        };
-    }
 };
 
 class EmissiveMeshLightingComponent final

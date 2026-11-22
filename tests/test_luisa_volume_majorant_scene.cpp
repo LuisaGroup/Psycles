@@ -3,13 +3,10 @@
 #include "path_kernel_heterogeneous_volume.h"
 #include "path_kernel_volume_majorant_provider.h"
 #include "path_tracer_generated_coordinates.h"
-#include "path_tracer_volume_capabilities.h"
 #include "path_tracer_volume_majorant_scene.h"
 
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
-#include <psycles/compiler/surface_program.h>
-#include <psycles/luisa/graph_surface.h>
 #include <psycles/sampling/tabulated_sobol.h>
 
 #include <algorithm>
@@ -687,49 +684,6 @@ make_volume_graph(VolumeGraphKind kind) {
     return graph;
 }
 
-struct TypedParameterData {
-    std::vector<float> scalars;
-    std::vector<luisa::float3> vectors;
-};
-
-[[nodiscard]] TypedParameterData
-parameter_data(const SurfaceProgram &program) {
-    TypedParameterData result;
-    result.scalars.reserve(program.parameters().size());
-    result.vectors.reserve(program.parameters().size());
-    for (const auto &parameter :
-         program.parameters()) {
-        const auto &value =
-            parameter.default_value;
-        if (const auto *scalar =
-                std::get_if<float>(
-                    &value.value)) {
-            result.scalars.emplace_back(*scalar);
-            result.vectors.emplace_back(
-                luisa::make_float3(0.0f));
-        } else if (
-            const auto *vector =
-                std::get_if<Vec3f>(
-                    &value.value)) {
-            result.scalars.emplace_back(0.0f);
-            result.vectors.emplace_back(
-                vector->x,
-                vector->y,
-                vector->z);
-        } else {
-            throw std::runtime_error{
-                "scene-majorant fixture has an "
-                "unsupported parameter type"};
-        }
-    }
-    if (result.scalars.empty()) {
-        result.scalars.emplace_back(0.0f);
-        result.vectors.emplace_back(
-            luisa::make_float3(0.0f));
-    }
-    return result;
-}
-
 void run_scene_build(
     std::string_view backend,
     const char *program) {
@@ -747,9 +701,6 @@ void run_scene_build(
     auto spatial_light_path_graph =
         make_volume_graph(
             VolumeGraphKind::spatial_light_path);
-    auto surface_light_path_graph =
-        make_volume_graph(
-            VolumeGraphKind::surface_light_path);
     ShaderCompiler compiler{
         make_core_node_registry()};
     const auto spatial_shader_program =
@@ -757,23 +708,11 @@ void run_scene_build(
     expect(
         spatial_shader_program.ok(),
         "failed to compile raw spatial volume graph");
-    const auto spatial_lowered =
-        compile_surface_program(
-            *spatial_shader_program.program);
-    expect(
-        spatial_lowered.ok(),
-        "failed to lower raw spatial volume graph");
     const auto homogeneous_shader_program =
         compiler.compile(homogeneous_graph);
     expect(
         homogeneous_shader_program.ok(),
         "failed to compile raw homogeneous volume graph");
-    const auto homogeneous_lowered =
-        compile_surface_program(
-            *homogeneous_shader_program.program);
-    expect(
-        homogeneous_lowered.ok(),
-        "failed to lower raw homogeneous volume graph");
     const auto spatial_light_path_shader_program =
         compiler.compile(
             spatial_light_path_graph);
@@ -781,70 +720,6 @@ void run_scene_build(
         spatial_light_path_shader_program.ok(),
         "failed to compile raw spatial Light Path "
         "volume graph");
-    const auto spatial_light_path_lowered =
-        compile_surface_program(
-            *spatial_light_path_shader_program
-                 .program);
-    expect(
-        spatial_light_path_lowered.ok(),
-        "failed to lower raw spatial Light Path "
-        "volume graph");
-    const auto surface_light_path_shader_program =
-        compiler.compile(
-            surface_light_path_graph);
-    expect(
-        surface_light_path_shader_program.ok(),
-        "failed to compile surface-only Light Path "
-        "graph");
-    const auto surface_light_path_lowered =
-        compile_surface_program(
-            *surface_light_path_shader_program
-                 .program);
-    expect(
-        surface_light_path_lowered.ok(),
-        "failed to lower surface-only Light Path "
-        "graph");
-    const VolumeProgramCapabilityComponent
-        capabilities;
-    const auto spatial_capabilities =
-        capabilities.analyze(
-            *spatial_lowered.program);
-    const auto homogeneous_capabilities =
-        capabilities.analyze(
-            *homogeneous_lowered.program);
-    const auto spatial_light_path_capabilities =
-        capabilities.analyze(
-            *spatial_light_path_lowered.program);
-    const auto surface_light_path_capabilities =
-        capabilities.analyze(
-            *surface_light_path_lowered.program);
-    const auto program_has_surface_light_path =
-        std::any_of(
-            surface_light_path_lowered.program
-                ->value_instructions()
-                .begin(),
-            surface_light_path_lowered.program
-                ->value_instructions()
-                .end(),
-            [](const auto &instruction) {
-                return instruction.operation ==
-                       ValueOperation::path_ray_depth;
-            });
-    expect(
-        program_has_surface_light_path &&
-            !spatial_capabilities.homogeneous &&
-            !spatial_capabilities.has_light_path &&
-            homogeneous_capabilities.homogeneous &&
-            homogeneous_capabilities.has_light_path &&
-            !spatial_light_path_capabilities
-                 .homogeneous &&
-            spatial_light_path_capabilities
-                .has_light_path &&
-            surface_light_path_capabilities
-                .homogeneous &&
-            surface_light_path_capabilities
-                .has_light_path,
-        "volume-root capability analysis changed");
 
     SceneSnapshot snapshot;
     TriangleMeshDesc geometry{
@@ -1573,92 +1448,6 @@ void run_scene_build(
             std::string{backend});
 }
 
-void test_last_value_operand_participates_in_volume_analysis() {
-    // Isolate the IR edge contract from graph lowering: a spatial source is
-    // reachable only through the final operand slot. An analysis that
-    // hand-spells an a..j prefix will misclassify this volume as homogeneous.
-    const SurfaceProgram program{
-        0u,
-        {},
-        {ValueInstruction{
-             .operation = ValueOperation::surface_position,
-             .result_type = SocketType::point},
-         ValueInstruction{
-             .operation = ValueOperation::brick_factor,
-             .result_type = SocketType::floating,
-             .operands = [] {
-                 std::vector<ValueExpressionId> operands(
-                     value_operand::brick::count);
-                 operands[value_operand::brick::squash_frequency] =
-                     ValueExpressionId{0u};
-                 return operands;
-             }()}},
-        {},
-        {},
-        {VolumeInstruction{
-            .operation = VolumeOperation::scatter,
-            .density = ValueExpressionId{1u}}},
-        VolumeExpressionId{0u}};
-    const auto capabilities =
-        VolumeProgramCapabilityComponent{}.analyze(program);
-    expect(
-        !capabilities.homogeneous,
-        "the final value operand was omitted from volume dependency analysis");
-}
-
-void test_displacement_spatial_metadata() {
-    for (const auto operation :
-         std::array{ValueOperation::displacement,
-                    ValueOperation::vector_displacement}) {
-        const auto input =
-            operation == ValueOperation::displacement
-                ? value_operand::displacement::height
-                : value_operand::vector_displacement::vector;
-        const auto make_program = [operation, input](
-                                      bool spatial_dependency) {
-            std::vector<ValueInstruction> values;
-            if (spatial_dependency) {
-                values.emplace_back(ValueInstruction{
-                    .operation = ValueOperation::surface_position,
-                    .result_type = SocketType::point});
-            }
-            std::vector<ValueExpressionId> operands(
-                value_operation_operand_count(operation));
-            operands[input] =
-                spatial_dependency ? ValueExpressionId{0u}
-                                   : ValueExpressionId{};
-            const auto displacement = ValueExpressionId{
-                static_cast<std::uint32_t>(values.size())};
-            values.emplace_back(ValueInstruction{
-                .operation = operation,
-                .result_type = SocketType::vector,
-                .operands = std::move(operands)});
-            return SurfaceProgram{
-                0u,
-                {},
-                std::move(values),
-                {},
-                {},
-                {VolumeInstruction{
-                    .operation = VolumeOperation::coefficients,
-                    .emission_coefficients = displacement}},
-                VolumeExpressionId{0u}};
-        };
-        const auto constant =
-            VolumeProgramCapabilityComponent{}.analyze(
-                make_program(false));
-        const auto spatial =
-            VolumeProgramCapabilityComponent{}.analyze(
-                make_program(true));
-        expect(
-            constant.homogeneous &&
-                !constant.has_spatial_values &&
-                !spatial.homogeneous &&
-                spatial.has_spatial_values,
-            "Displacement intrinsic spatial metadata diverged from Cycles");
-    }
-}
-
 }// namespace
 
 int main(int argc, char **argv) {
@@ -1670,8 +1459,6 @@ int main(int argc, char **argv) {
                     : "fallback"};
         test_scene_plan();
         test_flatten_contract();
-        test_last_value_operand_participates_in_volume_analysis();
-        test_displacement_spatial_metadata();
         run_scene_build(backend, argv[0]);
         std::cout
             << "All current-Cycles volume-majorant "

@@ -14,7 +14,6 @@ add_test(NAME psycles.blender_camera_projection_import
 
 add_executable(
     psycles_blender_import_tests
-    tests/blender_texture_coordinate_import_expectations.cpp
     tests/test_blender_import.cpp
     tests/test_blender_light_path_portal_depth_import.cpp
     tests/test_blender_legacy_mix_import.cpp

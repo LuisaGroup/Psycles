@@ -45,7 +45,6 @@ bool run(const char *program, const char *backend) {
   auto stream = device.create_stream();
   auto scene = std::make_shared<LuisaSceneData>();
   scene->device = Device{device.impl_shared()};
-  scene->native_cycles_svm_surface = true;
   scene->emissive_triangle_count = case_count;
   scene->cycles_svm = std::make_unique<CyclesSvmRuntime>();
   auto &runtime = *scene->cycles_svm;
@@ -117,14 +116,7 @@ bool run(const char *program, const char *backend) {
                      unbound<LightTreePdfCallable>(),
                      unbound<LightTreeForwardPdfCallable>(),
                      unbound<LightTreeTriangleEmitterCallable>()},
-      .surfaces = {nullptr, unbound<SurfacePreparationCallable>(),
-                   unbound<SurfaceEvaluateLightCallable>(),
-                   unbound<SurfaceConstantEmissionCallable>(),
-                   unbound<SurfaceEmissionCallable>(),
-                   unbound<SurfaceSampleCallable>(),
-                   unbound<SurfaceClosureTraceCallable>(),
-                   unbound<SurfaceSampleTraceCallable>(),
-                   unbound<SurfaceBssrdfNormalCallable>()},
+      .surfaces = {},
       .shade_shadow_surface = unbound<EvaluateShadowSurfaceCallable>(),
       .trace_shadow = unbound<TraceShadowCallable>()};
   const auto evaluator = make_direct_light_task_evaluator(config);
@@ -179,14 +171,14 @@ bool run(const char *program, const char *backend) {
     oracle >> scenario >> emission.x >> emission.y >> emission.z >> flags >>
         extinction.x >> extinction.y >> extinction.z >> offset >> count >> left;
     const auto actual = values[i];
-    const auto near = [](float a, float b) {
+    const auto is_near = [](float a, float b) {
       return std::isfinite(a) &&
              std::abs(a - b) <= 5.0e-5f * std::max(std::abs(b), 1.0e-8f);
     };
     const auto active =
         emission.x != 0.0f || emission.y != 0.0f || emission.z != 0.0f;
-    if (!oracle || scenario != i || !near(actual.x, emission.x) ||
-        !near(actual.y, emission.y) || !near(actual.z, emission.z) ||
+    if (!oracle || scenario != i || !is_near(actual.x, emission.x) ||
+        !is_near(actual.y, emission.y) || !is_near(actual.z, emission.z) ||
         actual.w != static_cast<float>(active)) {
       std::cerr << "Native NEE case " << i << " got (" << actual.x << ','
                 << actual.y << ',' << actual.z << ") expected (" << emission.x

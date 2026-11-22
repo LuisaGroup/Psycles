@@ -74,15 +74,6 @@ std::shared_ptr<LuisaSceneData> empty_scene(Device &device) {
   return scene;
 }
 
-void retain_stale_library(LuisaSceneData &scene,
-                          const SceneSnapshot &snapshot) {
-  auto stale = snapshot;
-  stale.materials.at(camera_material(stale)).shader = constant_shader();
-  const ShaderCompiler frontend{make_core_node_registry()};
-  const auto update = scene.materials.update(stale, frontend);
-  require(update.committed, "stale legacy material fixture failed to compile");
-}
-
 std::vector<unsigned> oracle_words() {
   // Entire external Cycles 5.2.1 svm_nodes image, not a Psycles-generated
   // expected stream. Only the shader-tail relocation is normalized below.
@@ -172,22 +163,11 @@ bool run(Device &device, const SceneSnapshot &snapshot) {
     std::string diagnostic;
     auto runtime = build_cycles_svm_runtime(scene, snapshot, diagnostic);
     require(runtime != nullptr, diagnostic);
-    require(scene->materials.materials().empty(),
-            "native compilation mutated legacy materials");
     verify_camera_image(*runtime, snapshot);
     verify_device_upload(device, *runtime);
   });
-  check("snapshot overrides stale legacy programs", [&] {
+  check("invalid source is diagnosed", [&] {
     auto scene = empty_scene(device);
-    retain_stale_library(*scene, snapshot);
-    std::string diagnostic;
-    auto runtime = build_cycles_svm_runtime(scene, snapshot, diagnostic);
-    require(runtime != nullptr, diagnostic);
-    verify_camera_image(*runtime, snapshot);
-  });
-  check("stale cache cannot hide invalid source", [&] {
-    auto scene = empty_scene(device);
-    retain_stale_library(*scene, snapshot);
     auto invalid = snapshot;
     auto &graph = invalid.materials.at(camera_material(invalid)).shader;
     graph = ShaderGraph{};
@@ -197,8 +177,7 @@ bool run(Device &device, const SceneSnapshot &snapshot) {
     std::string diagnostic;
     require(!build_cycles_svm_runtime(scene, invalid, diagnostic) &&
                 !diagnostic.empty(),
-            "native compilation trusted stale legacy shader instead of "
-            "validating source");
+            "native compilation accepted an invalid source shader");
   });
   check("unreachable invalid material stays outside used-shader domain", [&] {
     auto scene = empty_scene(device);
@@ -248,8 +227,6 @@ int main(int argc, char **argv) {
       std::string diagnostic;
       auto runtime = build_cycles_svm_runtime(scene, *imported.scene, diagnostic);
       require(runtime != nullptr, diagnostic);
-      require(scene->materials.materials().empty(),
-              "native compilation mutated legacy materials");
       verify_device_upload(device, *runtime);
       const auto &table = runtime->compilation.table;
       std::cout << "Native scene compile/upload passed: " << table.shader_count

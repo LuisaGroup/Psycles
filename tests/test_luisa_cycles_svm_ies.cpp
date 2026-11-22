@@ -180,7 +180,7 @@ template <typename... Args>
   return result;
 }
 
-[[nodiscard]] bool near(float actual, float expected_value,
+[[nodiscard]] bool is_near(float actual, float expected_value,
                         float tolerance = 8.0e-6f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected_value) <=
@@ -223,7 +223,7 @@ template <typename... Args>
 
   auto valid = true;
   for (auto index = std::size_t{}; index < actual.size(); ++index) {
-    valid &= near(actual[index], expected[index]) &&
+    valid &= is_near(actual[index], expected[index]) &&
              cursors[index] == payload_word_count;
   }
   if (!valid) {
@@ -337,10 +337,10 @@ template <typename... Args>
          << output_buffer.copy_to(&actual) << status_buffer.copy_to(&status)
          << synchronize();
   const auto factor = expected[1u];
-  const auto valid = near(actual.x, factor) &&
-                     near(actual.y, factor * 0.5f) &&
-                     near(actual.z, factor * 0.25f) &&
-                     near(actual.w, factor) &&
+  const auto valid = is_near(actual.x, factor) &&
+                     is_near(actual.y, factor * 0.5f) &&
+                     is_near(actual.z, factor * 0.25f) &&
+                     is_near(actual.w, factor) &&
                      status == static_cast<std::uint32_t>(
                                    device_svm::EvaluationStatus::ended);
   if (!valid) {

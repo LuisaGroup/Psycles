@@ -222,9 +222,9 @@ struct LuisaPathTracerOptions {
   std::uint32_t wavefront_tail_megakernel_threshold{
       luisa_wavefront_auto_tail_threshold};
   // Host/JIT policy for ordering the staged shade_surface queue by the
-  // structure-deduplicated SurfaceDispatch tag. False preserves the same
-  // continuation cuts without recording a key resolver, frame export, or
-  // sorting kernel, providing a matched scheduler-only baseline.
+  // shader queue key. False preserves the same continuation cuts without
+  // recording a key resolver, frame export, or sorting kernel, providing a
+  // matched scheduler-only baseline.
   bool staged_surface_sorting{true};
   // Host/JIT policy that splits reduced direct-light visibility work from
   // shade_surface into an independent compact side-queue. Both modes use the

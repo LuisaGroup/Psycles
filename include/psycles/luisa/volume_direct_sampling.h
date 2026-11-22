@@ -60,8 +60,8 @@ class VolumeDirectLightProvider {
         const noexcept = 0;
 
     virtual void evaluate_deferred_emission(
-        luisa::compute::Bool receiving_nonzero)
-        const noexcept = 0;
+        luisa::compute::Bool)
+        const noexcept {}
 };
 
 // Pure Luisa-AST implementation of Cycles' direct-volume technique choice and

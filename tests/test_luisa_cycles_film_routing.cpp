@@ -14,7 +14,7 @@ struct Oracle {
   std::array<float, f::film_lanes> film{};
   std::array<unsigned, f::film_lanes> writes{};
 };
-bool near(float a, float b) { return std::isfinite(a) && std::abs(a - b) <= 2e-6f; }
+bool is_near(float a, float b) { return std::isfinite(a) && std::abs(a - b) <= 2e-6f; }
 
 bool run(const char *program, const char *backend) {
   std::array<Oracle, f::cases> oracle{};
@@ -69,13 +69,13 @@ bool run(const char *program, const char *backend) {
                << state.copy_to(actual_state.data()) << synchronize();
         bool good = true;
         for (unsigned lane = 0; lane < f::film_lanes; ++lane) {
-          good &= near(actual[lane / 4][lane % 4], oracle[i].film[lane]);
+          good &= is_near(actual[lane / 4][lane % 4], oracle[i].film[lane]);
         }
         if (!good) {
           std::cerr << "film op=" << op << " sink=" << sink << " case=" << i;
           for (unsigned lane = 0; lane < f::film_lanes; ++lane) {
             const auto v = actual[lane / 4][lane % 4];
-            if (!near(v, oracle[i].film[lane])) {
+            if (!is_near(v, oracle[i].film[lane])) {
               std::cerr << " lane=" << lane << " actual=" << v
                         << " native=" << oracle[i].film[lane];
             }
@@ -87,7 +87,7 @@ bool run(const char *program, const char *backend) {
         if (op == f::surface_nee) {
           bool matches = actual_state == oracle[i].state;
           for (unsigned lane = 0; lane < 6; ++lane) {
-            matches &= near(actual_weights[lane / 3][lane % 3], oracle[i].weights[lane]);
+            matches &= is_near(actual_weights[lane / 3][lane % 3], oracle[i].weights[lane]);
           }
           if (!matches) {
             std::cerr << "shadow state sink=" << sink << " case=" << i

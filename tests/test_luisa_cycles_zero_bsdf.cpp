@@ -131,9 +131,9 @@ int main(int argc, char **argv) {
     require(compiled.ok(), "external zero-BSDF fixture did not compile");
     const auto &native = dynamic_cast<const backend::detail::LuisaCompiledScene &>(
         *compiled.scene).data();
-    require(native->native_cycles_svm_surface && native->cycles_svm,
-            "Cycles SVM must be the default without an environment opt-in");
-    // A stale shell setting must not resurrect the retired surface route.
+    require(native->cycles_svm != nullptr,
+            "Cycles SVM must be active without an environment opt-in");
+    // A stale shell setting must not resurrect any legacy surface route.
 #if defined(_WIN32)
     _putenv_s("PSYCLES_NATIVE_CYCLES_SVM_SURFACE", "0");
 #else
@@ -142,8 +142,8 @@ int main(int argc, char **argv) {
     const auto disabled = compiler.compile_scene(*imported.scene);
     require(disabled.ok(), "retired opt-out broke scene compilation");
     require(dynamic_cast<const backend::detail::LuisaCompiledScene &>(
-                *disabled.scene).data()->native_cycles_svm_surface,
-            "retired opt-out selected the legacy evaluator");
+                *disabled.scene).data()->cycles_svm != nullptr,
+            "retired opt-out disabled native Cycles SVM");
     // Renderer-authored scenes have no Blender indices. Reserve a sparse
     // explicit index as well: container order is not the native object ID.
     auto authored = *imported.scene;

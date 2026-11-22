@@ -79,7 +79,6 @@ std::shared_ptr<LuisaSceneData> make_scene(Device &device,
                                            const SceneSnapshot &snapshot) {
   auto scene = std::make_shared<LuisaSceneData>();
   scene->device = Device{device.impl_shared()};
-  scene->native_cycles_svm_surface = true;
   std::string diagnostic;
   scene->cycles_svm = build_cycles_svm_runtime(scene, snapshot, diagnostic);
   require(scene->cycles_svm != nullptr, diagnostic);
@@ -88,16 +87,6 @@ std::shared_ptr<LuisaSceneData> make_scene(Device &device,
   scene->material_bindings.emplace(
       dark, make_cycles_svm_material_binding(*scene, dark, 1u, 29u, 3u));
   return scene;
-}
-
-void install_stale_library(LuisaSceneData &scene,
-                           const SceneSnapshot &snapshot) {
-  auto stale = snapshot;
-  stale.materials.at(emitter).shader = emission_graph({1.0f}, 0.0f);
-  stale.materials.at(dark).shader = emission_graph({1.0f}, 8.0f);
-  const ShaderCompiler compiler{make_core_node_registry()};
-  require(scene.materials.update(stale, compiler).committed,
-          "cannot construct stale legacy metadata counterexample");
 }
 
 void verify_lights(const SceneSnapshot &snapshot, const LuisaSceneData &scene) {
@@ -292,35 +281,23 @@ int main(int argc, char **argv) {
                   scene->cycles_svm->material_shader_indices.at(emitter),
               "light resource did not use its assigned native shader identity");
     });
-    check("analytic lights ignore stale legacy metadata", [&] {
-      auto scene = make_scene(device, snapshot);
-      install_stale_library(*scene, snapshot);
-      verify_lights(snapshot, *scene);
-    });
     check("mesh light metadata without legacy lowering",
           [&] { verify_mesh(snapshot, *make_scene(device, snapshot)); });
-    check("mesh light metadata ignores stale legacy metadata", [&] {
-      auto scene = make_scene(device, snapshot);
-      install_stale_library(*scene, snapshot);
-      verify_mesh(snapshot, *scene);
-    });
     check("native graph facts and geometry binding flags",
           [&] { verify_metadata(device); });
     check("missing native state is diagnosed without cache fallback", [&] {
       auto scene = make_scene(device, snapshot);
-      install_stale_library(*scene, snapshot);
       scene->cycles_svm.reset();
       const auto lights = AnalyticLightSceneComponent{}.build(snapshot, *scene);
       require(!lights.ok() && !lights.diagnostic.empty(),
-              "missing native shader table silently fell back to old metadata");
+              "missing native shader table silently succeeded without metadata");
     });
     check("missing native material is diagnosed without cache fallback", [&] {
       auto scene = make_scene(device, snapshot);
-      install_stale_library(*scene, snapshot);
       scene->cycles_svm->material_shader_indices.erase(emitter);
       const auto lights = AnalyticLightSceneComponent{}.build(snapshot, *scene);
       require(!lights.ok() && !lights.diagnostic.empty(),
-              "missing native material silently fell back to old metadata");
+              "missing native material silently succeeded without metadata");
     });
     return passed ? EXIT_SUCCESS : EXIT_FAILURE;
   } catch (const std::exception &error) {

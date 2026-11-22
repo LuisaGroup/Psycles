@@ -1,8 +1,8 @@
+#include <psycles/luisa/cycles_bsdf_tables.h>
 #include "path_tracer_bsdf_tables.h"
 #include "thin_film_fresnel.h"
 
-#include "luisa_surface_test_support.h"
-
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -17,10 +17,38 @@ using namespace luisa::compute;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 using namespace psycles::luisa_backend::detail;
-using psycles::test_support::approximately_equal;
-using psycles::test_support::compile_named_kernel;
 
-class TableShaderServices final : public ShaderServices {
+[[nodiscard]] bool approximately_equal(float actual, float expected,
+                                       float tolerance = 3.0e-6f) noexcept {
+  return std::abs(actual - expected) <=
+         tolerance *
+             std::max(1.0f, std::max(std::abs(actual), std::abs(expected)));
+}
+
+[[nodiscard]] bool approximately_equal(luisa::float4 actual,
+                                       luisa::float4 expected,
+                                       float tolerance = 3.0e-6f) noexcept {
+  return approximately_equal(actual.x, expected.x, tolerance) &&
+         approximately_equal(actual.y, expected.y, tolerance) &&
+         approximately_equal(actual.z, expected.z, tolerance) &&
+         approximately_equal(actual.w, expected.w, tolerance);
+}
+
+template <typename Device, typename Kernel>
+[[nodiscard]] auto compile_named_kernel(Device &device, std::string_view name,
+                                        const Kernel &kernel) {
+  const auto trace = std::getenv("PSYCLES_TRACE_SHADER_COMPILATION") != nullptr;
+  if (trace) {
+    std::cerr << "compiling " << name << "..." << std::endl;
+  }
+  auto shader = device.compile(kernel);
+  if (trace) {
+    std::cerr << "compiled " << name << std::endl;
+  }
+  return shader;
+}
+
+class TableShaderServices final : public CyclesBsdfTableReader {
 
 private:
   const BufferFloat &_table;
@@ -30,55 +58,8 @@ public:
       : _table{table} {}
 
   [[nodiscard]] Float
-  parameter_float(Expr<std::uint32_t>,
-                  Expr<std::uint32_t>) const noexcept override {
-    return 0.0f;
-  }
-
-  [[nodiscard]] Float3
-  parameter_float3(Expr<std::uint32_t>,
-                   Expr<std::uint32_t>) const noexcept override {
-    return make_float3(0.0f);
-  }
-
-  [[nodiscard]] ULong
-  parameter_uint64(Expr<std::uint32_t>,
-                   Expr<std::uint32_t>) const noexcept override {
-    return 0u;
-  }
-
-  [[nodiscard]] Float4 texture_2d(Expr<std::uint32_t>, Expr<luisa::float2>,
-                                  Expr<luisa::float2>, Expr<luisa::float2>,
-                                  std::uint32_t,
-                                  std::uint32_t) const noexcept override {
-    return make_float4(0.0f);
-  }
-
-  [[nodiscard]] ShaderAttribute
-  attribute(Expr<luisa::ulong>, const SurfacePoint &) const noexcept override {
-    return ShaderAttribute::missing();
-  }
-
-  [[nodiscard]] Float
   cycles_bsdf_data(Expr<std::uint32_t> index) const noexcept override {
     return _table->read(index);
-  }
-
-  [[nodiscard]] Float3
-  xyz_to_rgb(Expr<luisa::float3> value) const noexcept override {
-    return Float3{value};
-  }
-
-  [[nodiscard]] Float3
-  rec709_to_rgb(Expr<luisa::float3> value) const noexcept override {
-    return Float3{value};
-  }
-
-  [[nodiscard]] Float3 nishita_sky(Expr<std::uint32_t>, Expr<std::uint32_t>,
-                                   Expr<luisa::float3>, Expr<float>,
-                                   Expr<float>, Expr<float>,
-                                   Expr<float>) const noexcept override {
-    return make_float3(0.0f);
   }
 };
 

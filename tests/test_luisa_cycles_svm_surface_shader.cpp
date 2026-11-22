@@ -321,15 +321,15 @@ void write_pick(BufferUInt &meta, std::uint32_t base,
   }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 8.0e-4f) noexcept {
   return std::isfinite(actual) && std::abs(actual - expected) <=
                                       2.0e-6f + tolerance * std::abs(expected);
 }
 
-[[nodiscard]] bool near(luisa::float4 actual, luisa::float4 expected) noexcept {
-  return near(actual.x, expected.x) && near(actual.y, expected.y) &&
-         near(actual.z, expected.z) && near(actual.w, expected.w);
+[[nodiscard]] bool is_near(luisa::float4 actual, luisa::float4 expected) noexcept {
+  return is_near(actual.x, expected.x) && is_near(actual.y, expected.y) &&
+         is_near(actual.z, expected.z) && is_near(actual.w, expected.w);
 }
 
 [[nodiscard]] std::uint32_t expected_predicates(std::uint32_t type) noexcept {
@@ -378,37 +378,37 @@ void write_pick(BufferUInt &meta, std::uint32_t base,
   const auto weighted_sum = luisa::float3{0.5f, 0.6f, 0.7f} * closure_pdf;
 
   auto valid = true;
-  valid &= near(actual_values[0u], luisa::float4{weighted_sum.x, weighted_sum.y,
+  valid &= is_near(actual_values[0u], luisa::float4{weighted_sum.x, weighted_sum.y,
                                                  weighted_sum.z, mixture_pdf});
-  valid &= near(actual_values[1u], luisa::float4{weighted_sum.x, weighted_sum.y,
+  valid &= is_near(actual_values[1u], luisa::float4{weighted_sum.x, weighted_sum.y,
                                                  weighted_sum.z, 1.0f});
-  valid &= near(actual_values[2u], luisa::float4{0.0f});
-  valid &= near(actual_values[3u], luisa::float4{weighted_sum.x, weighted_sum.y,
+  valid &= is_near(actual_values[2u], luisa::float4{0.0f});
+  valid &= is_near(actual_values[3u], luisa::float4{weighted_sum.x, weighted_sum.y,
                                                  weighted_sum.z, 0.0f});
   valid &=
-      near(actual_values[4u], luisa::float4{0.0f, 0.0f, 0.0f, mixture_pdf});
-  valid &= near(actual_values[5u], luisa::float4{0.6f, 0.0f, 0.0f, 0.0f});
+      is_near(actual_values[4u], luisa::float4{0.0f, 0.0f, 0.0f, mixture_pdf});
+  valid &= is_near(actual_values[5u], luisa::float4{0.6f, 0.0f, 0.0f, 0.0f});
   valid &=
-      near(actual_values[6u], luisa::float4{2.0f / 3.0f, 0.0f, 0.0f, 0.0f});
-  valid &= near(actual_values[7u], luisa::float4{0.7f, 0.0f, 0.0f, 0.0f});
-  valid &= near(actual_values[8u], luisa::float4{1.2f, 1.5f, 1.8f, 0.0f});
-  valid &= near(actual_values[9u], actual_values[12u]);
-  valid &= near(actual_values[10u].x, actual_values[12u].x) &&
-           near(actual_values[10u].y, actual_values[12u].y) &&
-           near(actual_values[10u].z, actual_values[12u].z) &&
-           near(actual_values[10u].w, 1.0f);
-  valid &= near(actual_values[11u].w, 2.0f / 3.0f);
-  valid &= near(actual_values[13u], luisa::float4{0.3f, 0.2f, 0.1f, 0.75f});
-  valid &= near(actual_values[14u], luisa::float4{0.625f, 0.0f, 0.0f, 0.0f});
-  valid &= near(actual_values[15u].w, actual_values[16u].x / 0.7f);
-  valid &= near(actual_values[16u].w, 1.0f);
-  valid &= near(actual_values[17u], luisa::float4{0.3f, 0.0f, 0.0f, 0.0f});
-  valid &= near(actual_values[18u],
+      is_near(actual_values[6u], luisa::float4{2.0f / 3.0f, 0.0f, 0.0f, 0.0f});
+  valid &= is_near(actual_values[7u], luisa::float4{0.7f, 0.0f, 0.0f, 0.0f});
+  valid &= is_near(actual_values[8u], luisa::float4{1.2f, 1.5f, 1.8f, 0.0f});
+  valid &= is_near(actual_values[9u], actual_values[12u]);
+  valid &= is_near(actual_values[10u].x, actual_values[12u].x) &&
+           is_near(actual_values[10u].y, actual_values[12u].y) &&
+           is_near(actual_values[10u].z, actual_values[12u].z) &&
+           is_near(actual_values[10u].w, 1.0f);
+  valid &= is_near(actual_values[11u].w, 2.0f / 3.0f);
+  valid &= is_near(actual_values[13u], luisa::float4{0.3f, 0.2f, 0.1f, 0.75f});
+  valid &= is_near(actual_values[14u], luisa::float4{0.625f, 0.0f, 0.0f, 0.0f});
+  valid &= is_near(actual_values[15u].w, actual_values[16u].x / 0.7f);
+  valid &= is_near(actual_values[16u].w, 1.0f);
+  valid &= is_near(actual_values[17u], luisa::float4{0.3f, 0.0f, 0.0f, 0.0f});
+  valid &= is_near(actual_values[18u],
                 luisa::float4{0.5f, 0.25f, 0.125f,
                               (0.5f + 0.25f + 0.125f) / 3.0f});
-  valid &= near(actual_values[19u],
+  valid &= is_near(actual_values[19u],
                 luisa::float4{-0.25f, -0.5f, 1.45f, 1.0f});
-  valid &= near(actual_values[20u],
+  valid &= is_near(actual_values[20u],
                 luisa::float4{0.4f, 0.4f, 1.45f, 1.0f});
 
   constexpr std::array expected_pick_meta{0u, closure::type_diffuse,

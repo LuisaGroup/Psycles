@@ -287,19 +287,19 @@ template <std::size_t Capacity,
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 4.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float4 actual, luisa::float4 expected,
+[[nodiscard]] bool is_near(luisa::float4 actual, luisa::float4 expected,
                         float tolerance = 4.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance) &&
-         near(actual.w, expected.w, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance) &&
+         is_near(actual.w, expected.w, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -455,7 +455,7 @@ template <std::size_t Capacity,
              state(scenario, 4u) == ended &&
              state(scenario, 5u) == programs[scenario].final_offset;
     for (auto field = 0u; field < output_stride; ++field) {
-      valid &= near(value(scenario, field),
+      valid &= is_near(value(scenario, field),
                     oracle[scenario * output_stride + field]);
     }
   }
@@ -467,7 +467,7 @@ template <std::size_t Capacity,
              state(scenario, 4u) == ended &&
              state(scenario, 5u) == programs[scenario].final_offset;
     for (auto field = 0u; field < output_stride; ++field) {
-      valid &= near(value(scenario, field), oracle[24u + field]);
+      valid &= is_near(value(scenario, field), oracle[24u + field]);
     }
   }
   for (auto scenario : {4u, 5u, 6u, 7u, 8u, 10u}) {

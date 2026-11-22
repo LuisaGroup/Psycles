@@ -37,14 +37,7 @@ PathKernelConfig make_config(std::shared_ptr<LuisaSceneData> scene) {
                          unbound<LightTreePdfCallable>(),
                          unbound<LightTreeForwardPdfCallable>(),
                          unbound<LightTreeTriangleEmitterCallable>()},
-          .surfaces = {nullptr, unbound<SurfacePreparationCallable>(),
-                       unbound<SurfaceEvaluateLightCallable>(),
-                       unbound<SurfaceConstantEmissionCallable>(),
-                       unbound<SurfaceEmissionCallable>(),
-                       unbound<SurfaceSampleCallable>(),
-                       unbound<SurfaceClosureTraceCallable>(),
-                       unbound<SurfaceSampleTraceCallable>(),
-                       unbound<SurfaceBssrdfNormalCallable>()},
+          .surfaces = {},
           .shade_shadow_surface = unbound<EvaluateShadowSurfaceCallable>(),
           .trace_shadow = unbound<TraceShadowCallable>()};
 }

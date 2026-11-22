@@ -134,7 +134,7 @@ template <typename... Args>
   return result;
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 3.0e-6f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
@@ -167,8 +167,8 @@ template <typename... Args>
   const auto ny = 4.0f / distance;
   const auto nz = 2.0f / distance;
   const auto valid_vector = [&](std::size_t index) {
-    return near(actual[index * 2u].x, nx) && near(actual[index * 2u].y, ny) &&
-           near(actual[index * 2u].z, nz);
+    return is_near(actual[index * 2u].x, nx) && is_near(actual[index * 2u].y, ny) &&
+           is_near(actual[index * 2u].z, nz);
   };
   const auto sentinel_vector = [&](std::size_t index) {
     return actual[index * 2u].x == sentinel_x &&
@@ -176,10 +176,10 @@ template <typename... Args>
            actual[index * 2u].z == sentinel_z;
   };
   const auto valid_depth = [&](std::size_t index) {
-    return near(actual[index * 2u].w, 2.0f);
+    return is_near(actual[index * 2u].w, 2.0f);
   };
   const auto valid_distance = [&](std::size_t index) {
-    return near(actual[index * 2u + 1u].x, distance);
+    return is_near(actual[index * 2u + 1u].x, distance);
   };
 
   const auto valid =
@@ -325,8 +325,8 @@ interpreter_kernel(std::array<bool, NODE_NUM> node_types_used) {
          << synchronize();
 
   const auto distance = std::sqrt(29.0f);
-  if (!near(actual.x, 3.0f / distance) || !near(actual.y, 4.0f / distance) ||
-      !near(actual.z, 2.0f / distance) ||
+  if (!is_near(actual.x, 3.0f / distance) || !is_near(actual.y, 4.0f / distance) ||
+      !is_near(actual.z, 2.0f / distance) ||
       status !=
           static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles Camera Data interpreter mismatch on " << backend

@@ -27,7 +27,7 @@ void require(bool condition, const char *message) {
   }
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
@@ -139,9 +139,9 @@ void test_cycles_reference_constant_fold() {
               "RGB Curves constant-fold structure differs from Cycles");
     }
   }
-  require(near(std::bit_cast<float>(image.words[5u]), 0.275f) &&
-              near(std::bit_cast<float>(image.words[6u]), 0.5f) &&
-              near(std::bit_cast<float>(image.words[7u]), 0.475f),
+  require(is_near(std::bit_cast<float>(image.words[5u]), 0.275f) &&
+              is_near(std::bit_cast<float>(image.words[6u]), 0.5f) &&
+              is_near(std::bit_cast<float>(image.words[7u]), 0.475f),
           "RGB Curves constant fold differs from the Cycles source oracle");
 }
 
@@ -165,9 +165,9 @@ void test_linked_cycles_value_and_color_fold() {
       image.words.begin(), image.words.end(),
       static_cast<std::uint32_t>(NODE_CLOSURE_SET_WEIGHT));
   require(weight != image.words.end() && image.words.end() - weight >= 4u &&
-              near(std::bit_cast<float>(weight[1u]), 0.275f) &&
-              near(std::bit_cast<float>(weight[2u]), 0.5f) &&
-              near(std::bit_cast<float>(weight[3u]), 0.475f),
+              is_near(std::bit_cast<float>(weight[1u]), 0.275f) &&
+              is_near(std::bit_cast<float>(weight[2u]), 0.5f) &&
+              is_near(std::bit_cast<float>(weight[3u]), 0.475f),
           "linked Cycles Value/Color fold produced the wrong curve value");
 }
 

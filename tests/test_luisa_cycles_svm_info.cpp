@@ -213,9 +213,9 @@ public:
 }
 
 inline void initialize_stack(svm_detail::Stack &stack) noexcept {
-  stack[0u] = untouched;
-  stack[1u] = untouched;
-  stack[2u] = untouched;
+  svm_detail::stack_store_float(stack, 0u, untouched);
+  svm_detail::stack_store_float(stack, 1u, untouched);
+  svm_detail::stack_store_float(stack, 2u, untouched);
 }
 
 [[nodiscard]] Float4 capture_stack(svm_detail::Stack &stack,
@@ -310,14 +310,14 @@ inline void initialize_stack(svm_detail::Stack &stack) noexcept {
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected) noexcept {
+[[nodiscard]] bool is_near(float actual, float expected) noexcept {
   return std::abs(actual - expected) <= 2.0e-6f;
 }
 
 [[nodiscard]] bool equal(luisa::float4 actual,
                          luisa::float4 expected) noexcept {
-  return near(actual.x, expected.x) && near(actual.y, expected.y) &&
-         near(actual.z, expected.z) && near(actual.w, expected.w);
+  return is_near(actual.x, expected.x) && is_near(actual.y, expected.y) &&
+         is_near(actual.z, expected.z) && is_near(actual.w, expected.w);
 }
 
 void capture_direct_results(std::string_view family,

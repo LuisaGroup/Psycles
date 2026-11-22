@@ -211,7 +211,7 @@ template <typename... Args>
   return result;
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-4f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
@@ -277,7 +277,7 @@ template <typename... Args>
          actual[index].y == phase_sentinel) &&
         (test.output == OutputKind::intensity ||
          actual[index].z == intensity_sentinel);
-    if (!near(selected, test.expected) || !untouched ||
+    if (!is_near(selected, test.expected) || !untouched ||
         cursors[index] != gabor_word_count) {
       std::cerr << "Cycles Gabor oracle mismatch on " << backend
                 << ", case=" << index << ": output={" << actual[index].x
@@ -379,8 +379,8 @@ template <typename... Args>
          << output_buffer.copy_to(&actual) << status_buffer.copy_to(&status)
          << synchronize();
   const auto expected = f32(0x3effb850u);
-  if (!near(actual.x, expected) || !near(actual.y, expected) ||
-      !near(actual.z, expected) || actual.w != 41.0f ||
+  if (!is_near(actual.x, expected) || !is_near(actual.y, expected) ||
+      !is_near(actual.z, expected) || actual.w != 41.0f ||
       status != static_cast<std::uint32_t>(
                     device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles Gabor interpreter mismatch on " << backend

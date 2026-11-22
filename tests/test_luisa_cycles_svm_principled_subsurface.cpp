@@ -238,24 +238,24 @@ template <std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 5.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 5.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
-[[nodiscard]] bool near(luisa::float4 actual, luisa::float4 expected,
+[[nodiscard]] bool is_near(luisa::float4 actual, luisa::float4 expected,
                         float tolerance = 5.0e-5f) noexcept {
-  return near(actual.xyz(), expected.xyz(), tolerance) &&
-         near(actual.w, expected.w, tolerance);
+  return is_near(actual.xyz(), expected.xyz(), tolerance) &&
+         is_near(actual.w, expected.w, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -358,48 +358,48 @@ template <std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
   /* External Cycles common closure oracle plus source-derived typed state. */
   valid &= type(0u, 0u) == transparent_type && type(0u, 1u) == skin_type &&
            type(0u, 2u) == diffuse_type &&
-           near(common(0u, 0u).xyz(), {0.18f, 0.18f, 0.18f}) &&
-           near(common(0u, 0u).w, 0.1800000072f) &&
-           near(common(0u, 1u).xyz(),
+           is_near(common(0u, 0u).xyz(), {0.18f, 0.18f, 0.18f}) &&
+           is_near(common(0u, 0u).w, 0.1800000072f) &&
+           is_near(common(0u, 1u).xyz(),
                 {0.2291900069f, 0.1119299904f, 0.4050799906f}) &&
-           near(common(0u, 1u).w, 0.7461999655f) &&
-           near(common(0u, 2u).xyz(),
+           is_near(common(0u, 1u).w, 0.7461999655f) &&
+           is_near(common(0u, 2u).xyz(),
                 {0.1234100088f, 0.06027000025f, 0.2181199938f}) &&
-           near(common(0u, 2u).w, 0.1339333355f) &&
-           near(radius(0u, 1u).xyz(),
+           is_near(common(0u, 2u).w, 0.1339333355f) &&
+           is_near(radius(0u, 1u).xyz(),
                 {0.0101080587f, 0.0063496992f, 0.0001951562f}) &&
-           near(radius(0u, 1u).w, 0.27f) &&
-           near(albedo(0u, 1u).xyz(), {0.43f, 0.21f, 0.76f}) &&
-           near(albedo(0u, 1u).w, 1.37f) && near(alpha(0u, 1u), 1.0f) &&
-           near(normal(0u, 1u), up) && state(0u, 0u) == 3u &&
+           is_near(radius(0u, 1u).w, 0.27f) &&
+           is_near(albedo(0u, 1u).xyz(), {0.43f, 0.21f, 0.76f}) &&
+           is_near(albedo(0u, 1u).w, 1.37f) && is_near(alpha(0u, 1u), 1.0f) &&
+           is_near(normal(0u, 1u), up) && state(0u, 0u) == 3u &&
            state(0u, 1u) == 5u &&
            state(0u, 2u) == (base_flags | device_svm::shader_data_bssrdf) &&
            state(0u, 3u) == ended && state(0u, 4u) == 55u;
 
   valid &= type(1u, 0u) == transparent_type && type(1u, 1u) == burley_type &&
            type(1u, 2u) == diffuse_type &&
-           near(common(1u, 0u).xyz(), {0.24f, 0.24f, 0.24f}) &&
-           near(common(1u, 1u).xyz(),
+           is_near(common(1u, 0u).xyz(), {0.24f, 0.24f, 0.24f}) &&
+           is_near(common(1u, 1u).xyz(),
                 {0.1057919860f, 0.2997440100f, 0.1719119847f}) &&
-           near(common(1u, 1u).w, 0.5774480104f) &&
-           near(common(1u, 2u).xyz(),
+           is_near(common(1u, 1u).w, 0.5774480104f) &&
+           is_near(common(1u, 2u).xyz(),
                 {0.0766080022f, 0.2170560062f, 0.1244879961f}) &&
-           near(radius(1u, 1u).xyz(),
+           is_near(radius(1u, 1u).xyz(),
                 {0.0012891550f, 0.0004297183f, 0.0000572958f}) &&
-           near(radius(1u, 1u).w, -0.42f) &&
-           near(albedo(1u, 1u).xyz(), {0.24f, 0.68f, 0.39f}) &&
-           near(albedo(1u, 1u).w, 1.01f) && near(alpha(1u, 1u), 0.2601f) &&
+           is_near(radius(1u, 1u).w, -0.42f) &&
+           is_near(albedo(1u, 1u).xyz(), {0.24f, 0.68f, 0.39f}) &&
+           is_near(albedo(1u, 1u).w, 1.01f) && is_near(alpha(1u, 1u), 0.2601f) &&
            state(1u, 0u) == 3u && state(1u, 1u) == 5u &&
            state(1u, 2u) == (base_flags | device_svm::shader_data_bssrdf);
 
   /* One small channel is transferred to a newly appended Diffuse closure. */
   valid &= type(2u, 1u) == skin_type && type(2u, 2u) == diffuse_type &&
            type(2u, 3u) == diffuse_type &&
-           near(common(2u, 1u).xyz(), {0.2291900069f, 0.0f, 0.4050799906f}) &&
-           near(common(2u, 1u).w, 0.4228466650f) &&
-           near(common(2u, 2u).xyz(), {0.0f, 0.1119299904f, 0.0f}) &&
-           near(common(2u, 2u).w, 0.0373099968f) &&
-           near(radius(2u, 1u).xyz(), {0.0101080587f, 0.0f, 0.0001951562f}) &&
+           is_near(common(2u, 1u).xyz(), {0.2291900069f, 0.0f, 0.4050799906f}) &&
+           is_near(common(2u, 1u).w, 0.4228466650f) &&
+           is_near(common(2u, 2u).xyz(), {0.0f, 0.1119299904f, 0.0f}) &&
+           is_near(common(2u, 2u).w, 0.0373099968f) &&
+           is_near(radius(2u, 1u).xyz(), {0.0101080587f, 0.0f, 0.0001951562f}) &&
            state(2u, 0u) == 4u && state(2u, 1u) == 4u &&
            state(2u, 2u) == (base_flags | device_svm::shader_data_bssrdf);
 
@@ -407,11 +407,11 @@ template <std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
    * its entire weight to Diffuse before the ordinary residual Diffuse. */
   valid &= type(3u, 1u) == static_cast<std::uint32_t>(CLOSURE_NONE_ID) &&
            type(3u, 2u) == diffuse_type && type(3u, 3u) == diffuse_type &&
-           near(common(3u, 1u).xyz(), common(1u, 1u).xyz()) &&
-           near(common(3u, 1u).w, 0.0f) &&
-           near(common(3u, 2u).xyz(), common(1u, 1u).xyz()) &&
-           near(radius(3u, 1u).xyz(), {0.0162f, 0.0054f, 0.00072f}) &&
-           near(albedo(3u, 1u).xyz(), {0.24f, 0.68f, 0.39f}) &&
+           is_near(common(3u, 1u).xyz(), common(1u, 1u).xyz()) &&
+           is_near(common(3u, 1u).w, 0.0f) &&
+           is_near(common(3u, 2u).xyz(), common(1u, 1u).xyz()) &&
+           is_near(radius(3u, 1u).xyz(), {0.0162f, 0.0054f, 0.00072f}) &&
+           is_near(albedo(3u, 1u).xyz(), {0.24f, 0.68f, 0.39f}) &&
            state(3u, 0u) == 4u && state(3u, 1u) == 4u &&
            state(3u, 2u) == base_flags;
 
@@ -420,15 +420,15 @@ template <std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
   valid &=
       type(4u, 1u) == oren_type && type(4u, 2u) == rough_translucent_type &&
       type(4u, 3u) == oren_type &&
-      near(common(4u, 1u).xyz(),
+      is_near(common(4u, 1u).xyz(),
            {0.0836543525f, 0.0408544465f, 0.1478541966f}) &&
-      near(common(4u, 2u).xyz(),
+      is_near(common(4u, 2u).xyz(),
            {0.1455356544f, 0.0710755439f, 0.2572257940f}) &&
-      near(normal(4u, 1u), up) && near(normal(4u, 2u), down) &&
-      near(oren(4u, 1u).xyz(), {0.4f, 0.2854496724f, 0.1141798690f}) &&
-      near(oren(4u, 2u).xyz(), oren(4u, 1u).xyz()) &&
-      near(oren_ms(4u, 1u), {0.0750885648f, 0.0175998613f, 0.2409164660f}) &&
-      near(oren_ms(4u, 2u), oren_ms(4u, 1u)) && state(4u, 0u) == 4u &&
+      is_near(normal(4u, 1u), up) && is_near(normal(4u, 2u), down) &&
+      is_near(oren(4u, 1u).xyz(), {0.4f, 0.2854496724f, 0.1141798690f}) &&
+      is_near(oren(4u, 2u).xyz(), oren(4u, 1u).xyz()) &&
+      is_near(oren_ms(4u, 1u), {0.0750885648f, 0.0175998613f, 0.2409164660f}) &&
+      is_near(oren_ms(4u, 2u), oren_ms(4u, 1u)) && state(4u, 0u) == 4u &&
       state(4u, 1u) == 4u &&
       state(4u, 2u) ==
           (base_flags | device_svm::shader_data_bsdf_has_transmission);
@@ -452,8 +452,8 @@ template <std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
                              device_svm::shader_data_bssrdf);
 
   valid &=
-      near(actual[35u].xyz(), {0.1476000100f, 0.0492000021f, 0.3936000168f}) &&
-      near(actual[output_stride + 35u].xyz(),
+      is_near(actual[35u].xyz(), {0.1476000100f, 0.0492000021f, 0.3936000168f}) &&
+      is_near(actual[output_stride + 35u].xyz(),
            {0.2188799828f, 0.0547199957f, 0.1299599856f});
 
   if (!valid || std::getenv("PSYCLES_DUMP_PRINCIPLED_SUBSURFACE_REGRESSION")) {

@@ -126,14 +126,14 @@ template <typename... Args>
   return result;
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 1.0e-5f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
 }
 
 [[nodiscard]] bool finite_equal(float actual, float expected) noexcept {
-  return std::isfinite(actual) && near(actual, expected);
+  return std::isfinite(actual) && is_near(actual, expected);
 }
 
 [[nodiscard]] bool test_direct_handler(Device &device, Stream &stream,
@@ -311,8 +311,8 @@ interpreter_kernel(std::array<bool, NODE_NUM> node_types_used) {
          << shader(word_buffer, output_buffer, status_buffer).dispatch(1u)
          << output_buffer.copy_to(&actual) << status_buffer.copy_to(&status)
          << synchronize();
-  if (!near(actual.x, 0.0f) || !near(actual.y, 0.0f) || !near(actual.z, 1.0f) ||
-      !near(actual.w, 0.0f) ||
+  if (!is_near(actual.x, 0.0f) || !is_near(actual.y, 0.0f) || !is_near(actual.z, 1.0f) ||
+      !is_near(actual.w, 0.0f) ||
       status !=
           static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles Normal interpreter mismatch on " << backend

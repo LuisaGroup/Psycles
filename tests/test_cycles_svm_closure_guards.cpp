@@ -7,6 +7,8 @@
 #include <type_traits>
 #include <vector>
 
+#include <luisa/ast/function_builder.h>
+
 #include "cycles_svm_internal.h"
 #include "luisa_cycles_svm_test_kernel_globals.h"
 
@@ -64,7 +66,7 @@ bool has_label(const SwitchCaseStmt* statement, unsigned label) {
 
 bool check(bool physical_pool, bool reflective, bool refractive) {
   unsigned visibility_id = ~0u;
-  const Expression* stack_expression = nullptr;
+  unsigned stack_var_id = ~0u;
   Kernel1D kernel = [&](BufferUInt words, BufferUInt4 output, UInt visibility) {
     visibility_id =
         static_cast<const RefExpr*>(visibility.expression())->variable().uid();
@@ -98,7 +100,11 @@ bool check(bool physical_pool, bool reflective, bool refractive) {
                        physical_pool ? &pool : nullptr};
     const Globals kg{reflective, refractive};
     svm::detail::Stack stack{32u};
-    stack_expression = stack.expression();
+    const auto locals =
+        luisa::compute::detail::FunctionBuilder::current()->local_variables();
+    if (!locals.empty()) {
+      stack_var_id = locals.back().uid();
+    }
     UInt offset = 0u;
     Bool supported = true;
     svm::detail::Cursor cursor{words, offset};
@@ -110,6 +116,9 @@ bool check(bool physical_pool, bool reflective, bool refractive) {
     output.write(0u, make_uint4(offset, sd.flag, pool.count(),
                                 supported.cast<unsigned>()));
   };
+  if (stack_var_id == ~0u) {
+    return false;
+  }
   const auto body = kernel.function()->body();
   std::vector<const AssignStmt*> assignments;
   traverse_expressions<false>(
@@ -164,11 +173,15 @@ bool check(bool physical_pool, bool reflective, bool refractive) {
           traverse_expressions<true>(
               branch->body(),
               [&](const Expression* expression) {
-                if (expression->tag() == Expression::Tag::ACCESS &&
-                    static_cast<const AccessExpr*>(expression)->range() ==
-                        stack_expression) {
-                  reads++;
-                  unguarded += guard_depth == 0u;
+                if (expression->tag() == Expression::Tag::ACCESS) {
+                  const auto* range =
+                      static_cast<const AccessExpr*>(expression)->range();
+                  if (range->tag() == Expression::Tag::REF &&
+                      static_cast<const RefExpr*>(range)->variable().uid() ==
+                          stack_var_id) {
+                    reads++;
+                    unguarded += guard_depth == 0u;
+                  }
                 }
               },
               [&](const Statement* child) {

@@ -7,10 +7,35 @@
 
 #include <cstdint>
 
-#include <psycles/compiler/surface_program.h>
-#include <psycles/luisa/surface.h>
-
 #include <luisa/dsl/struct.h>
+#include <luisa/dsl/syntax.h>
+
+namespace psycles::compiler {
+
+enum class VoronoiFeature : std::uint8_t {
+  f1,
+  f2,
+  smooth_f1,
+  distance_to_edge,
+  n_sphere_radius
+};
+
+enum class VoronoiDistanceMetric : std::uint8_t {
+  euclidean,
+  manhattan,
+  chebychev,
+  minkowski
+};
+
+enum class VoronoiOutput : std::uint8_t {
+  distance,
+  color,
+  position,
+  w,
+  radius
+};
+
+} // namespace psycles::compiler
 
 namespace psycles::luisa_backend::cycles_voronoi {
 
@@ -48,19 +73,19 @@ struct Configuration {
     bool operator==(const Configuration &) const noexcept = default;
 };
 
-[[nodiscard]] bool
-is_operation(compiler::ValueOperation operation) noexcept;
-
-[[nodiscard]] Configuration
-decode_configuration(const compiler::ValueInstruction &instruction) noexcept;
-
 void prepare(const Configuration &configuration) noexcept;
 
-[[nodiscard]] Float4 evaluate(const Configuration &configuration, Float3 vector,
-                              Float w, Float scale, Float detail,
-                              Float roughness, Float lacunarity,
-                              Float smoothness, Float exponent,
-                              Float randomness) noexcept;
+[[nodiscard]] luisa::compute::Float4 evaluate(
+    const Configuration &configuration,
+    luisa::compute::Float3 vector,
+    luisa::compute::Float w,
+    luisa::compute::Float scale,
+    luisa::compute::Float detail,
+    luisa::compute::Float roughness,
+    luisa::compute::Float lacunarity,
+    luisa::compute::Float smoothness,
+    luisa::compute::Float exponent,
+    luisa::compute::Float randomness) noexcept;
 
 struct RuntimeFilterOptions {
     std::uint32_t dimension_mask{~0u};
@@ -88,9 +113,11 @@ struct RuntimeFilterOptions {
     luisa::compute::Expr<std::uint32_t> feature,
     luisa::compute::Expr<std::uint32_t> metric,
     luisa::compute::Expr<bool> normalize,
-    Float3 vector, Float w, Float scale, Float detail, Float roughness,
-    Float lacunarity, Float smoothness, Float exponent,
-    Float randomness) noexcept;
+    luisa::compute::Float3 vector, luisa::compute::Float w,
+    luisa::compute::Float scale, luisa::compute::Float detail,
+    luisa::compute::Float roughness, luisa::compute::Float lacunarity,
+    luisa::compute::Float smoothness, luisa::compute::Float exponent,
+    luisa::compute::Float randomness) noexcept;
 
 [[nodiscard]] luisa::compute::Var<EvaluationCall> evaluate_runtime_filtered(
     bool voronoi_extra_enabled,
@@ -99,8 +126,10 @@ struct RuntimeFilterOptions {
     luisa::compute::Expr<std::uint32_t> feature,
     luisa::compute::Expr<std::uint32_t> metric,
     luisa::compute::Expr<bool> normalize,
-    Float3 vector, Float w, Float scale, Float detail, Float roughness,
-    Float lacunarity, Float smoothness, Float exponent,
-    Float randomness) noexcept;
+    luisa::compute::Float3 vector, luisa::compute::Float w,
+    luisa::compute::Float scale, luisa::compute::Float detail,
+    luisa::compute::Float roughness, luisa::compute::Float lacunarity,
+    luisa::compute::Float smoothness, luisa::compute::Float exponent,
+    luisa::compute::Float randomness) noexcept;
 
 }// namespace psycles::luisa_backend::cycles_voronoi

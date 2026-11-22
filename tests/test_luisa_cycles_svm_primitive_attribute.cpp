@@ -327,7 +327,7 @@ make_shader_data(Expr<std::uint32_t> object,
           identity};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 4.0e-5f) noexcept {
   return std::abs(actual - expected) <= tolerance;
 }
@@ -703,10 +703,10 @@ int main(int argc, char **argv) {
     }
   }
   for (auto i = std::size_t{}; i < actual.size(); ++i) {
-    if (!near(actual[i].x, expected[i].x) ||
-        !near(actual[i].y, expected[i].y) ||
-        !near(actual[i].z, expected[i].z) ||
-        !near(actual[i].w, expected[i].w)) {
+    if (!is_near(actual[i].x, expected[i].x) ||
+        !is_near(actual[i].y, expected[i].y) ||
+        !is_near(actual[i].z, expected[i].z) ||
+        !is_near(actual[i].w, expected[i].w)) {
       std::cerr << "Cycles primitive attribute lane " << i << " mismatch on "
                 << backend << ": (" << actual[i].x << ", " << actual[i].y
                 << ", " << actual[i].z << ", " << actual[i].w << ") != ("
@@ -794,7 +794,8 @@ int main(int argc, char **argv) {
             device_svm::detail::Stack stack{SVM_STACK_SIZE};
             for (auto lane = vertex_color_offset;
                  lane <= vertex_alpha_offset; ++lane) {
-              stack[lane] = -9.0f;
+              device_svm::detail::stack_store_float(
+                  stack, static_cast<std::uint32_t>(lane), -9.0f);
             }
             UInt offset = index * 2u;
             device_svm::detail::Cursor cursor{words, offset};
@@ -854,10 +855,10 @@ int main(int argc, char **argv) {
   for (auto i = std::size_t{}; i < vertex_color_actual.size(); ++i) {
     const auto &value = vertex_color_actual[i];
     const auto &expected_value = vertex_color_expected[i];
-    if (!near(value.x, expected_value.x) ||
-        !near(value.y, expected_value.y) ||
-        !near(value.z, expected_value.z) ||
-        !near(value.w, expected_value.w) ||
+    if (!is_near(value.x, expected_value.x) ||
+        !is_near(value.y, expected_value.y) ||
+        !is_near(value.z, expected_value.z) ||
+        !is_near(value.w, expected_value.w) ||
         vertex_color_cursors[i] != i * 2u + 2u) {
       std::cerr << "Cycles Vertex Color case " << i << " mismatch on "
                 << backend << ": (" << value.x << ", " << value.y << ", "
@@ -947,10 +948,10 @@ int main(int argc, char **argv) {
          << vertex_color_stream_status.copy_to(
                 luisa::span{&vertex_color_stream_state, 1u})
          << synchronize();
-  if (!near(vertex_color_stream_actual.x, 0.11f) ||
-      !near(vertex_color_stream_actual.y, 0.22f) ||
-      !near(vertex_color_stream_actual.z, 0.33f) ||
-      !near(vertex_color_stream_actual.w, 0.11f) ||
+  if (!is_near(vertex_color_stream_actual.x, 0.11f) ||
+      !is_near(vertex_color_stream_actual.y, 0.22f) ||
+      !is_near(vertex_color_stream_actual.z, 0.33f) ||
+      !is_near(vertex_color_stream_actual.w, 0.11f) ||
       vertex_color_stream_state.x !=
           static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended) ||
       vertex_color_stream_state.y != 15u ||

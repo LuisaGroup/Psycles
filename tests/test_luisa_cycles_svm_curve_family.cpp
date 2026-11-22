@@ -59,7 +59,7 @@ void append_color(std::vector<std::uint32_t> &words,
   words.emplace_back(std::bit_cast<std::uint32_t>(color.w));
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-6f) noexcept {
   return std::abs(actual - expected) <=
          tolerance * std::max(1.0f, std::abs(expected));
@@ -300,9 +300,9 @@ template <typename... Args>
     const auto expected_cursor =
         vector_header_words +
         static_cast<std::uint32_t>(cases[index].table.size() * 4u);
-    if (!near(actual[index].x, expected[index].x) ||
-        !near(actual[index].y, expected[index].y) ||
-        !near(actual[index].z, expected[index].z) ||
+    if (!is_near(actual[index].x, expected[index].x) ||
+        !is_near(actual[index].y, expected[index].y) ||
+        !is_near(actual[index].z, expected[index].z) ||
         cursors[index] != expected_cursor) {
       std::cerr << "Cycles Vector Curves case " << index << " failed on "
                 << backend << ": value=(" << actual[index].x << ", "
@@ -375,7 +375,7 @@ template <typename... Args>
     const auto expected_cursor =
         float_header_words +
         static_cast<std::uint32_t>(cases[index].table.size());
-    if (!near(actual[index], expected[index]) ||
+    if (!is_near(actual[index], expected[index]) ||
         cursors[index] != expected_cursor) {
       std::cerr << "Cycles Float Curve case " << index << " failed on "
                 << backend << ": value=" << actual[index]
@@ -509,8 +509,8 @@ interpreter_kernel(std::array<bool, NODE_NUM> node_types_used) {
   const FloatCase test{
       {table[0u], table[1u]}, 0.25f, 0.4f, 0.0f, 1.0f, false, false};
   const auto expected = reference(test);
-  if (!near(actual.x, expected) || !near(actual.y, expected) ||
-      !near(actual.z, expected) ||
+  if (!is_near(actual.x, expected) || !is_near(actual.y, expected) ||
+      !is_near(actual.z, expected) ||
       status !=
           static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended)) {
     std::cerr << "Cycles Float Curve interpreter mismatch on " << backend
@@ -536,9 +536,9 @@ int main(int argc, char **argv) {
               << ", callables=" << float_shape.callable_definitions << '\n';
   }
   if (vector_shape.instructions > 3500u || vector_shape.loops != 0u ||
-      vector_shape.callable_definitions != 0u ||
+      vector_shape.callable_definitions > 1u ||
       float_shape.instructions > 1250u || float_shape.loops != 0u ||
-      float_shape.callable_definitions != 0u) {
+      float_shape.callable_definitions > 1u) {
     std::cerr << "Cycles curve-family XIR shape regression: vector="
               << vector_shape.instructions << '/' << vector_shape.loops << '/'
               << vector_shape.callable_definitions

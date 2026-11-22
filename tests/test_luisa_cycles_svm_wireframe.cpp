@@ -38,7 +38,7 @@ constexpr auto attribute_missing_id = 999u;
          (static_cast<std::uint32_t>(bump_offset) << 16u) |
          (static_cast<std::uint32_t>(store_derivatives) << 24u);
 }
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 3.0e-5f) noexcept {
   return std::abs(actual - expected) <= tolerance;
 }
@@ -627,9 +627,9 @@ attribute_node_types(bool use_bump) {
           luisa::float3{-0.2f, -0.2f, 0.0f},
       };
   for (auto i = std::size_t{}; i < actual.size(); ++i) {
-    if (!near(actual[i].x, expected[i].x) ||
-        !near(actual[i].y, expected[i].y) ||
-        !near(actual[i].z, expected[i].z)) {
+    if (!is_near(actual[i].x, expected[i].x) ||
+        !is_near(actual[i].y, expected[i].y) ||
+        !is_near(actual[i].z, expected[i].z)) {
       std::cerr << "Cycles Geometry dual lane " << i << " mismatch: ("
                 << actual[i].x << ", " << actual[i].y << ", "
                 << actual[i].z << ") != (" << expected[i].x << ", "
@@ -749,7 +749,7 @@ attribute_node_types(bool use_bump) {
             ProbeKernelGlobals kernel_globals;
             device_svm::detail::Stack stack{SVM_STACK_SIZE};
             for (auto lane = 0u; lane < 9u; ++lane) {
-              stack[lane] = 0.0f;
+              device_svm::detail::stack_store_float(stack, lane, 0.0f);
             }
             UInt offset = index * 3u;
             device_svm::detail::Cursor cursor{words, offset};
@@ -769,9 +769,9 @@ attribute_node_types(bool use_bump) {
          << shader(word_buffer, output_buffer).dispatch(case_count)
          << output_buffer.copy_to(luisa::span{actual}) << synchronize();
   for (auto index = std::size_t{}; index < case_count; ++index) {
-    if (!near(actual[index].x, expected[index].x) ||
-        !near(actual[index].y, expected[index].y) ||
-        !near(actual[index].z, expected[index].z)) {
+    if (!is_near(actual[index].x, expected[index].x) ||
+        !is_near(actual[index].y, expected[index].y) ||
+        !is_near(actual[index].z, expected[index].z)) {
       std::cerr << "Cycles ATTR surface case " << index << " mismatch: ("
                 << actual[index].x << ", " << actual[index].y << ", "
                 << actual[index].z << ") != (" << expected[index].x << ", "
@@ -914,7 +914,7 @@ attribute_node_types(bool use_bump) {
             ProbeKernelGlobals kernel_globals;
             device_svm::detail::Stack stack{SVM_STACK_SIZE};
             for (auto lane = 0u; lane < 9u; ++lane) {
-              stack[lane] = 0.0f;
+              device_svm::detail::stack_store_float(stack, lane, 0.0f);
             }
             UInt offset = index * 3u;
             device_svm::detail::Cursor cursor{words, offset};
@@ -944,9 +944,9 @@ attribute_node_types(bool use_bump) {
          << shader(word_buffer, output_buffer).dispatch(case_count)
          << output_buffer.copy_to(luisa::span{actual}) << synchronize();
   for (auto index = std::size_t{}; index < expected.size(); ++index) {
-    if (!near(actual[index].x, expected[index].x) ||
-        !near(actual[index].y, expected[index].y) ||
-        !near(actual[index].z, expected[index].z)) {
+    if (!is_near(actual[index].x, expected[index].x) ||
+        !is_near(actual[index].y, expected[index].y) ||
+        !is_near(actual[index].z, expected[index].z)) {
       std::cerr << "Cycles ATTR derivative lane group " << index
                 << " mismatch: (" << actual[index].x << ", "
                 << actual[index].y << ", " << actual[index].z << ") != ("
@@ -990,7 +990,7 @@ attribute_node_types(bool use_bump) {
             ProbeKernelGlobals kernel_globals;
             device_svm::detail::Stack stack{SVM_STACK_SIZE};
             for (auto lane = 0u; lane < 3u; ++lane) {
-              stack[lane] = 0.0f;
+              device_svm::detail::stack_store_float(stack, lane, 0.0f);
             }
             UInt offset = index * 3u;
             device_svm::detail::Cursor cursor{words, offset};
@@ -1010,9 +1010,9 @@ attribute_node_types(bool use_bump) {
          << shader(word_buffer, output_buffer).dispatch(case_count)
          << output_buffer.copy_to(luisa::span{actual}) << synchronize();
   for (auto index = std::size_t{}; index < case_count; ++index) {
-    if (!near(actual[index].x, expected[index].x) ||
-        !near(actual[index].y, expected[index].y) ||
-        !near(actual[index].z, expected[index].z)) {
+    if (!is_near(actual[index].x, expected[index].x) ||
+        !is_near(actual[index].y, expected[index].y) ||
+        !is_near(actual[index].z, expected[index].z)) {
       std::cerr << "Cycles ATTR volume case " << index << " mismatch: ("
                 << actual[index].x << ", " << actual[index].y << ", "
                 << actual[index].z << ") != (" << expected[index].x << ", "
@@ -1189,8 +1189,8 @@ attribute_node_types(bool use_bump) {
     const auto &reference = expected[index];
     const auto expected_lcg = index == 7u ? 40u : 23u;
     const auto expected_volume = index == 9u ? 0u : 1u;
-    if (!near(value.x, reference.x) || !near(value.y, reference.y) ||
-        !near(value.z, reference.z) || !near(value.w, reference.w) ||
+    if (!is_near(value.x, reference.x) || !is_near(value.y, reference.y) ||
+        !is_near(value.z, reference.z) || !is_near(value.w, reference.w) ||
         states[index].x != expected_lcg ||
         states[index].y != expected_volume) {
       std::cerr << "Cycles primitive volume attribute case " << index
@@ -1445,10 +1445,10 @@ int main(int argc, char **argv) {
       luisa::float3{0.596504688f, -0.596504688f, 0.536995649f};
   const auto &perturbed = floating[12u];
   const auto &unchanged = floating[13u];
-  if (!near(perturbed.x, expected_bump.x) ||
-      !near(perturbed.y, expected_bump.y) ||
-      !near(perturbed.z, expected_bump.z) || !near(unchanged.x, 0.0f) ||
-      !near(unchanged.y, 0.0f) || !near(unchanged.z, 1.0f) ||
+  if (!is_near(perturbed.x, expected_bump.x) ||
+      !is_near(perturbed.y, expected_bump.y) ||
+      !is_near(perturbed.z, expected_bump.z) || !is_near(unchanged.x, 0.0f) ||
+      !is_near(unchanged.y, 0.0f) || !is_near(unchanged.z, 1.0f) ||
       integer[12].x != ended || integer[12].y != 33u ||
       integer[13].x != ended || integer[13].y != 33u) {
     std::cerr << "Cycles Wireframe Bump mismatch on " << backend << ": ("
@@ -1460,8 +1460,8 @@ int main(int argc, char **argv) {
   floating = {};
   integer = {};
   run(device, stream, bump, bump_node_types(), false, floating, integer);
-  if (!near(floating[12u].x, 0.0f) || !near(floating[12u].y, 0.0f) ||
-      !near(floating[12u].z, 0.0f) || integer[12].x != ended ||
+  if (!is_near(floating[12u].x, 0.0f) || !is_near(floating[12u].y, 0.0f) ||
+      !is_near(floating[12u].z, 0.0f) || integer[12].x != ended ||
       integer[12].y != 33u) {
     std::cerr << "Cycles disabled Bump feature branch mismatch on " << backend
               << '\n';
@@ -1474,9 +1474,9 @@ int main(int argc, char **argv) {
       floating, integer);
   static constexpr auto expected_position =
       luisa::float3{-0.281100065f, 0.0f, 0.959678471f};
-  if (!near(floating[13u].x, expected_position.x) ||
-      !near(floating[13u].y, expected_position.y) ||
-      !near(floating[13u].z, expected_position.z) ||
+  if (!is_near(floating[13u].x, expected_position.x) ||
+      !is_near(floating[13u].y, expected_position.y) ||
+      !is_near(floating[13u].z, expected_position.z) ||
       integer[13u].x != ended || integer[13u].y != 75u) {
     std::cerr << "Cycles Geometry Position Bump stream mismatch on " << backend
               << ": (" << floating[13u].x << ", " << floating[13u].y << ", "
@@ -1491,9 +1491,9 @@ int main(int argc, char **argv) {
       floating, integer);
   static constexpr auto expected_parametric =
       luisa::float3{0.376315475f, 0.0f, 0.926491559f};
-  if (!near(floating[13u].x, expected_parametric.x) ||
-      !near(floating[13u].y, expected_parametric.y) ||
-      !near(floating[13u].z, expected_parametric.z) ||
+  if (!is_near(floating[13u].x, expected_parametric.x) ||
+      !is_near(floating[13u].y, expected_parametric.y) ||
+      !is_near(floating[13u].z, expected_parametric.z) ||
       integer[13u].x != ended || integer[13u].y != 75u) {
     std::cerr << "Cycles Geometry Parametric Bump stream mismatch on "
               << backend << ": (" << floating[13u].x << ", "
@@ -1532,9 +1532,9 @@ int main(int argc, char **argv) {
   // supplied unrelated hand-authored derivatives and is intentionally gone.
   static constexpr auto expected_pointiness_bump =
       luisa::float3{-0.198768035f, 0.198768035f, 0.959678471f};
-  if (!near(floating[0u].x, expected_pointiness_bump.x) ||
-      !near(floating[0u].y, expected_pointiness_bump.y) ||
-      !near(floating[0u].z, expected_pointiness_bump.z) ||
+  if (!is_near(floating[0u].x, expected_pointiness_bump.x) ||
+      !is_near(floating[0u].y, expected_pointiness_bump.y) ||
+      !is_near(floating[0u].z, expected_pointiness_bump.z) ||
       integer[0u].x != ended || integer[0u].y != 33u) {
     std::cerr << "Cycles Geometry Pointiness Bump stream mismatch on "
               << backend << ": (" << floating[0u].x << ", "
@@ -1548,9 +1548,9 @@ int main(int argc, char **argv) {
   integer = {};
   run(device, stream, geometry_random_bump,
       attribute_node_types(true), true, floating, integer);
-  if (!near(floating[0u].x, 0.0f) ||
-      !near(floating[0u].y, 0.0f) ||
-      !near(floating[0u].z, 1.0f) || integer[0u].x != ended ||
+  if (!is_near(floating[0u].x, 0.0f) ||
+      !is_near(floating[0u].y, 0.0f) ||
+      !is_near(floating[0u].z, 1.0f) || integer[0u].x != ended ||
       integer[0u].y != 33u) {
     std::cerr << "Cycles Geometry Random Per Island Bump stream mismatch on "
               << backend << ": (" << floating[0u].x << ", "

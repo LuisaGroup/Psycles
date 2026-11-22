@@ -279,7 +279,7 @@ void PathKernelPipeline::emit(
       };
       const bool fast_post_closure =
           env_enabled("PSYCLES_POST_CLOSURE_ORDER", true) &&
-          scene->native_cycles_svm_surface && !config.path_trace_enabled &&
+          !config.path_trace_enabled &&
           !has_portal && config.surfaces.population != nullptr;
       const auto pipeline_backend_name =
           static_cast<bool>(scene->device)
@@ -302,7 +302,7 @@ void PathKernelPipeline::emit(
 
       const auto emit_volume_only_skip =
           [&](SurfaceGeometryContext &surface) noexcept {
-            if (scene->native_cycles_svm_surface && config.volume_state) {
+            if (config.volume_state) {
               namespace abi = compiler::cycles_svm;
               const UInt shader_flags =
                   surface.cycles_shader_flags
@@ -407,14 +407,6 @@ void PathKernelPipeline::emit(
                     lighting.surface.path_surface_query,
                     direct_light.shader_flags);
               };
-              const auto receiving_nonzero =
-                  direct_light.valid & any(evaluation.f != 0.0f);
-              if (!scene->native_cycles_svm_surface) {
-                for (const auto &provider : light_providers) {
-                  provider->evaluate_deferred_emission(receiving_nonzero);
-                }
-              }
-
               $if(direct_light.valid) {
                 const auto cycles_mis_weight =
                     config.light_transport.nee_light_weight(direct_light.pdf,
@@ -652,7 +644,7 @@ void PathKernelPipeline::emit(
               $suspend(path_transition::shade_surface,
                        make_surface_sort_annotation(
                            surface_queue_key, surface_queue_key_range(*scene),
-                           scene->native_cycles_svm_surface));
+                           true));
             } else {
               $suspend(path_transition::shade_surface,
                        coro_frame_export(path_transition::scheduler_hint,
@@ -799,7 +791,7 @@ void PathKernelPipeline::emit(
               $suspend(path_transition::shade_surface,
                        make_surface_sort_annotation(
                            surface_queue_key, surface_queue_key_range(*scene),
-                           scene->native_cycles_svm_surface));
+                           true));
             } else {
               $suspend(path_transition::shade_surface,
                        coro_frame_export(path_transition::scheduler_hint,

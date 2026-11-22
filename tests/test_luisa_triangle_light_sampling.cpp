@@ -60,19 +60,19 @@ int main(int argc, char **argv) {
                         0.0f, 1.0f, value);
                 };
             TriangleLightSampling sampling;
-            const TriangleLightSampleInput near{
+            const TriangleLightSampleInput near_input{
                 .reference = make_float3(0.0f),
                 .p0 = make_float3(-2.0f, -2.0f, 1.0f),
                 .p1 = make_float3(2.0f, -2.0f, 1.0f),
                 .p2 = make_float3(0.0f, 2.0f, 1.0f),
                 .random = make_float2(0.1f, 0.8f)};
             const auto segment =
-                sampling.from_segment(near);
+                sampling.from_segment(near_input);
             const auto collision =
-                sampling.from_position(near);
+                sampling.from_position(near_input);
             const auto forward =
                 sampling.from_intersection(
-                    near,
+                    near_input,
                     collision.position);
             records.write(
                 0u,
@@ -102,14 +102,14 @@ int main(int argc, char **argv) {
                     flag(forward.valid),
                     collision.conditional_pdf));
 
-            auto far = near;
-            far.p0.z = 100.0f;
-            far.p1.z = 100.0f;
-            far.p2.z = 100.0f;
+            auto far_input = near_input;
+            far_input.p0.z = 100.0f;
+            far_input.p1.z = 100.0f;
+            far_input.p2.z = 100.0f;
             const auto far_segment =
-                sampling.from_segment(far);
+                sampling.from_segment(far_input);
             const auto far_collision =
-                sampling.from_position(far);
+                sampling.from_position(far_input);
             records.write(
                 4u,
                 make_float4(

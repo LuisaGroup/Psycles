@@ -1,90 +1,12 @@
 #include "path_tracer_attribute_residency.h"
-#include "path_tracer_scene_geometry.h"
-
-#include <psycles/compiler/surface_execution_plan.h>
 
 #include <algorithm>
 #include <array>
 #include <limits>
-#include <optional>
 #include <string_view>
-#include <vector>
 
 namespace psycles::luisa_backend::detail {
 namespace {
-
-enum class ResolutionState : std::uint8_t {
-    unvisited,
-    visiting,
-    resolved,
-    unknown
-};
-
-[[nodiscard]] std::optional<std::uint64_t> resolve_unsigned_expression(
-    const compiler::SurfaceProgram &program,
-    const compiler::SurfaceParameterBlock &parameters,
-    compiler::ValueExpressionId expression,
-    std::vector<ResolutionState> &states,
-    std::vector<std::optional<std::uint64_t>> &values) {
-    if (!expression.valid() ||
-        expression.value >= program.value_instructions().size()) {
-        return std::nullopt;
-    }
-    const auto index = static_cast<std::size_t>(expression.value);
-    switch (states[index]) {
-        case ResolutionState::resolved:
-            return values[index];
-        case ResolutionState::visiting:
-        case ResolutionState::unknown:
-            return std::nullopt;
-        case ResolutionState::unvisited:
-            break;
-    }
-    states[index] = ResolutionState::visiting;
-    const auto &instruction = program.value_instructions()[index];
-    std::optional<std::uint64_t> value;
-    if (instruction.operation == compiler::ValueOperation::parameter &&
-        instruction.parameter.valid()) {
-        const auto *parameter = parameters.find(instruction.parameter);
-        if (parameter != nullptr &&
-            parameter->type == contract::SocketType::unsigned_integer) {
-            value = std::get<std::uint64_t>(parameter->value);
-        }
-    } else if (instruction.operation ==
-                   compiler::ValueOperation::passthrough &&
-               !instruction.operands.empty()) {
-        value = resolve_unsigned_expression(
-            program,
-            parameters,
-            instruction.operands.front(),
-            states,
-            values);
-    }
-    states[index] = value ? ResolutionState::resolved
-                          : ResolutionState::unknown;
-    values[index] = value;
-    return value;
-}
-
-void require_expression(
-    SurfaceAttributeDemand &result,
-    const compiler::SurfaceProgram &program,
-    const compiler::SurfaceParameterBlock &parameters,
-    compiler::ValueExpressionId expression,
-    std::vector<ResolutionState> &states,
-    std::vector<std::optional<std::uint64_t>> &values) {
-    if (result.all) {
-        return;
-    }
-    const auto value = resolve_unsigned_expression(
-        program, parameters, expression, states, values);
-    if (value) {
-        result.ids.emplace(*value);
-    } else {
-        result.all = true;
-        result.ids.clear();
-    }
-}
 
 [[nodiscard]] std::uint64_t float4_bytes(std::size_t count) noexcept {
     constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
@@ -105,19 +27,6 @@ void add_bytes(std::uint64_t &total, std::uint64_t bytes) noexcept {
     total = bytes > maximum - total ? maximum : total + bytes;
 }
 
-void merge_material(
-    SurfaceAttributeDemand &demand,
-    contract::MaterialId id,
-    const std::map<contract::MaterialId, SurfaceAttributeDemand> &materials) {
-    const auto iter = materials.find(id);
-    if (iter == materials.end()) {
-        demand.all = true;
-        demand.ids.clear();
-        return;
-    }
-    demand.merge(iter->second);
-}
-
 void close_tangent_dependencies(
     SurfaceAttributeDemand &demand,
     const contract::TriangleMeshDesc &geometry) {
@@ -130,8 +39,7 @@ void close_tangent_dependencies(
             demand.contains(
                 contract::uv_undisplaced_tangent_attribute_id(name))) {
             // MikkTSpace construction consumes the corresponding UV layer at
-            // scene-build time. Retaining it is the dependency closure which
-            // makes tangent pruning independent of material graph shape.
+            // scene-build time.
             demand.ids.emplace(contract::uv_attribute_id(name));
         }
     }
@@ -203,131 +111,12 @@ bool SurfaceAttributeDemand::contains(std::uint64_t id) const noexcept {
     return all || ids.contains(id);
 }
 
-void SurfaceAttributeDemand::merge(const SurfaceAttributeDemand &other) {
-    if (all || other.all) {
-        all = true;
-        ids.clear();
-        return;
-    }
-    ids.insert(other.ids.begin(), other.ids.end());
-}
-
-SurfaceAttributeDemand collect_surface_attribute_demand(
-    const compiler::SurfaceProgram &program,
-    const compiler::SurfaceParameterBlock &parameters) {
-    SurfaceAttributeDemand result;
-    std::vector<ResolutionState> states(
-        program.value_instructions().size(), ResolutionState::unvisited);
-    std::vector<std::optional<std::uint64_t>> values(
-        program.value_instructions().size());
-    const auto require = [&](compiler::ValueExpressionId expression) {
-        require_expression(
-            result, program, parameters, expression, states, values);
-    };
-    namespace operand = compiler::value_operand;
-    for (const auto &instruction : program.value_instructions()) {
-        switch (instruction.operation) {
-            case compiler::ValueOperation::pointiness:
-            case compiler::ValueOperation::sampled_pointiness:
-                result.ids.emplace(
-                    contract::cycles_pointiness_attribute_id);
-                break;
-            case compiler::ValueOperation::attribute_color:
-            case compiler::ValueOperation::attribute_factor:
-            case compiler::ValueOperation::attribute_alpha:
-                require(instruction.operand(operand::attribute::id));
-                break;
-            case compiler::ValueOperation::sampled_attribute_color:
-            case compiler::ValueOperation::sampled_attribute_factor:
-            case compiler::ValueOperation::sampled_attribute_alpha:
-                require(instruction.operand(operand::sampled_attribute::id));
-                break;
-            case compiler::ValueOperation::uv:
-                if (instruction.static_u0 != 0u) {
-                    require(instruction.operand(operand::uv::map));
-                }
-                break;
-            case compiler::ValueOperation::sampled_uv:
-                if (instruction.static_u0 != 0u) {
-                    require(instruction.operand(operand::sampled_uv::map));
-                }
-                break;
-            case compiler::ValueOperation::normal_map:
-                if (compiler::normal_map_has_named_tangent(
-                        instruction.static_u0)) {
-                    require(instruction.operand(operand::normal_map::uv_map));
-                }
-                break;
-            case compiler::ValueOperation::sampled_normal_map:
-                if (compiler::normal_map_has_named_tangent(
-                        instruction.static_u0)) {
-                    require(instruction.operand(
-                        operand::sampled_normal_map::uv_map));
-                }
-                break;
-            case compiler::ValueOperation::vector_displacement:
-                if ((instruction.static_u0 &
-                     compiler::vector_displacement_named_tangent) != 0u) {
-                    require(instruction.operand(
-                        operand::vector_displacement::attribute));
-                }
-                break;
-            default:
-                break;
-        }
-    }
-    return result;
-}
-
 const GeometryAttributeResidency &SceneAttributeResidencyPlan::geometry(
     contract::GeometryId id) const noexcept {
     static const GeometryAttributeResidency conservative{
         .demand = SurfaceAttributeDemand{.all = true}};
     const auto iter = geometries.find(id);
     return iter == geometries.end() ? conservative : iter->second;
-}
-
-SceneAttributeResidencyPlan build_scene_attribute_residency_plan(
-    const contract::SceneSnapshot &snapshot,
-    const compiler::MaterialLibrary &materials) {
-    std::map<contract::MaterialId, SurfaceAttributeDemand> material_demands;
-    for (const auto &[id, material] : materials.materials()) {
-        material_demands.emplace(
-            id,
-            collect_surface_attribute_demand(
-                *material.surface_program(), material.parameters()));
-    }
-
-    SceneAttributeResidencyPlan result;
-    const auto reachability =
-        build_scene_material_reachability(snapshot);
-    for (const auto &[geometry_id, geometry] : snapshot.geometries) {
-        auto &residency = result.geometries[geometry_id];
-        const auto reachable =
-            reachability.surface_by_geometry.find(geometry_id);
-        if (reachable !=
-            reachability.surface_by_geometry.end()) {
-            for (const auto material : reachable->second) {
-                merge_material(residency.demand, material, material_demands);
-            }
-        }
-        close_tangent_dependencies(residency.demand, geometry);
-        measure_geometry(result, geometry, residency);
-    }
-    for (const auto &[geometry_id, geometry] :
-         snapshot.curve_geometries) {
-        auto &residency = result.geometries[geometry_id];
-        const auto reachable =
-            reachability.surface_by_geometry.find(geometry_id);
-        if (reachable != reachability.surface_by_geometry.end()) {
-            for (const auto material : reachable->second) {
-                merge_material(
-                    residency.demand, material, material_demands);
-            }
-        }
-        measure_geometry(result, geometry, residency);
-    }
-    return result;
 }
 
 SceneAttributeResidencyPlan build_scene_attribute_residency_plan(
@@ -355,15 +144,11 @@ SceneAttributeResidencyPlan build_scene_attribute_residency_plan(
                                    const auto &geometry, const auto &requests) {
         for (const auto &[name, id] : compilation.named_attributes) {
             if (!requests.contains(id)) { continue; }
-            // Match append_mesh_named_sources / append_curve_sources:
-            // an actual UV/color name takes precedence over tangent suffixes.
             if (geometry.uv_layers.contains(name)) {
                 demand.ids.emplace(contract::uv_attribute_id(name));
                 continue;
             }
             if constexpr (requires { geometry.cycles_byte_color_attributes; }) {
-                // Native byte colors are uploaded directly from their exact
-                // source, before float colors or generated tangent names.
                 if (geometry.cycles_byte_color_attributes.contains(name)) { continue; }
             }
             if (geometry.color_attributes.contains(name)) {

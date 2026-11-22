@@ -113,6 +113,7 @@ int main() {
     const std::vector<std::uint8_t> encoded{
         std::istreambuf_iterator<char>{encoded_stream},
         std::istreambuf_iterator<char>{}};
+    encoded_stream.close();
     psycles::io::DecodedImageRgba8 decoded;
     require(
         psycles::io::decode_image_rgba8(

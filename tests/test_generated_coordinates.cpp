@@ -10,20 +10,20 @@ using namespace psycles;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend::detail;
 
-[[nodiscard]] bool near(
+[[nodiscard]] bool is_near(
     float actual,
     float expected) noexcept {
     return std::abs(actual - expected) <=
            1.0e-6f;
 }
 
-[[nodiscard]] bool near(
+[[nodiscard]] bool is_near(
     Vec3f actual,
     Vec3f expected) noexcept {
     return
-        near(actual.x, expected.x) &&
-        near(actual.y, expected.y) &&
-        near(actual.z, expected.z);
+        is_near(actual.x, expected.x) &&
+        is_near(actual.y, expected.y) &&
+        is_near(actual.z, expected.z);
 }
 
 [[nodiscard]] bool check(
@@ -46,15 +46,15 @@ int main() {
         make_generated_coordinate_mapping(
             derived);
     if (!check(
-            near(
+            is_near(
                 bounds.apply(
                     derived.positions[0u]),
                 Vec3f{0.0f, 0.0f, 0.5f}) &&
-                near(
+                is_near(
                     bounds.apply(
                         derived.positions[1u]),
                     Vec3f{1.0f, 1.0f, 0.5f}) &&
-                near(
+                is_near(
                     bounds.apply(
                         Vec3f{0.0f, 7.0f, 100.0f}),
                     Vec3f{0.5f, 0.5f, 0.5f}),
@@ -77,7 +77,7 @@ int main() {
     if (!check(
             authored.object_to_generated ==
                     explicit_transform &&
-                near(
+                is_near(
                     authored.apply(
                         Vec3f{1.0f, 2.0f, 3.0f}),
                     Vec3f{

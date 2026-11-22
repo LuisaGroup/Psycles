@@ -25,12 +25,6 @@ public:
     explicit AmbientOcclusionSceneComponent(
         const compiler::cycles_svm::CompiledShaderTable &compilation) noexcept;
 
-    AmbientOcclusionSceneComponent(
-        const contract::SceneSnapshot &snapshot,
-        const compiler::MaterialLibrary &materials,
-        const std::set<contract::MaterialId> &
-            reachable_materials) noexcept;
-
     void initialize(
         const std::shared_ptr<LuisaSceneData> &scene) const;
 

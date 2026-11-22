@@ -1,5 +1,4 @@
 #include "cycles_shader_identity.h"
-#include "graph_surface_value_expression.h"
 #include "path_tracer_bsdf_tables.h"
 #include "path_tracer_curve_scene.h"
 #include "path_tracer_cycles_svm_scene.h"
@@ -11,19 +10,13 @@
 #include "path_tracer_light_sampling_scene.h"
 #include "path_tracer_scene_geometry.h"
 #include "path_tracer_scene_upload.h"
-#include "path_tracer_shader_services.h"
 #include "path_tracer_subsurface_scene.h"
 #include "path_tracer_ambient_occlusion_scene.h"
 #include "path_tracer_analytic_light_scene.h"
 #include "path_tracer_attribute_residency.h"
-#include "path_tracer_surface_route_policy.h"
-#include "path_tracer_surfaces.h"
-#include "path_tracer_surface_values.h"
 #include "path_tracer_tangent_space.h"
 #include "path_tracer_volume_majorant_scene.h"
-#include "shader_table_data.h"
 
-#include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/cycles_emission_sampling.h>
 #include <psycles/compiler/cycles_nishita.h>
 #include <psycles/contract/cycles_pointiness.h>
@@ -79,10 +72,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->device =
         luisa::compute::Device{_device.impl_shared()};
     data->revision = snapshot.revision;
-    data->native_cycles_svm_surface = true;
-    data->populate_surface_once =
-        data->native_cycles_svm_surface ||
-        populate_surface_once_requested();
     data->camera = camera_iter->second;
     data->shader_color_space = snapshot.shader_color_space;
     data->cycles_background_object_index =
@@ -101,49 +90,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             snapshot.world_cast_shadow,
             snapshot.world_visibility_mask);
 
-    ShaderCompiler shader_compiler{
-        compiler::make_core_node_registry()};
     const auto material_reachability =
         build_scene_material_reachability(snapshot);
-    // Only the still-unmigrated mesh-displacement consumer needs legacy
-    // parameters. Its private input contains the displacement domain alone;
-    // no surface, volume, light or world graph may be gated by this compiler.
-    SceneSnapshot displacement_inputs;
-    std::set<contract::MaterialId> displacement_materials;
-    for (const auto material : material_reachability.surface_materials) {
-        const auto &source = snapshot.materials.at(material);
-        if (!contract::uses_true_displacement(source.displacement_method) ||
-            !source.shader.root(contract::ShaderDomain::displacement)) {
-            continue;
-        }
-        auto &input = displacement_inputs.materials.emplace(material, source).first->second;
-        // SurfaceProgram requires a surface root even for its displacement
-        // method. This inert terminal belongs only to that private input;
-        // the native compiler below always receives the unmodified snapshot.
-        const auto terminal = input.shader.add_node(
-            compiler::node_type::null_closure, "Displacement-only input");
-        input.shader.set_root(contract::ShaderDomain::surface,
-            contract::OutputRef{terminal, "Closure"});
-        input.shader.set_root(contract::ShaderDomain::surface_normal, std::nullopt);
-        input.shader.set_root(contract::ShaderDomain::volume, std::nullopt);
-        displacement_materials.emplace(material);
-    }
-    auto material_update =
-        data->materials.update(
-            displacement_inputs,
-            shader_compiler,
-            displacement_materials);
-    if (!material_update.committed) {
-        for (const auto &diagnostic :
-             material_update.diagnostics) {
-            diagnose(
-                result.diagnostics,
-                "Material " +
-                    std::to_string(diagnostic.material.value) +
-                    ": " + diagnostic.message);
-        }
-        return result;
-    }
     {
         std::string diagnostic;
         data->cycles_svm = build_cycles_svm_runtime(
@@ -159,16 +107,12 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->cycles_background_object_index =
         data->cycles_svm->object_identities.background_index.value_or(
             cycles_shader_identity::invalid_index);
-    std::set<contract::MaterialId> surface_bssrdf_bump_materials;
     const auto &reachable_surface_materials =
         material_reachability.surface_materials;
     for (const auto material_id : reachable_surface_materials) {
         const auto &metadata = cycles_svm_material_metadata(*data, material_id);
         if (metadata.has_surface_bssrdf) {
             surface_bssrdf_materials.emplace(material_id);
-        }
-        if (metadata.has_bssrdf_bump) {
-            surface_bssrdf_bump_materials.emplace(material_id);
         }
     }
     data->has_subsurface = !surface_bssrdf_materials.empty();
@@ -228,237 +172,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             id, make_cycles_svm_material_binding(*data, id, 0u, 0u, identity));
     }
 
-    luisa::vector<float> scalar_parameters;
-    luisa::vector<luisa::float3> vector_parameters;
-    std::vector<PendingShaderTable> shader_tables;
-    std::map<std::uint64_t, std::uint32_t>
-        surface_tags_by_signature;
-    std::map<std::uint64_t, compiler::SurfaceClosurePlan>
-        closure_plans_by_signature;
-    for (const auto &[id, material] :
-         data->materials.materials()) {
-        static_cast<void>(id);
-        const auto &program = *material.surface_program();
-        closure_plans_by_signature[
-            program.structure_signature()]
-            .merge(compiler::analyze_surface_closure_plan(
-                program, material.parameters()));
-    }
-    std::vector<std::shared_ptr<const compiler::SurfaceProgram>>
-        surface_programs_by_tag;
-    std::vector<compiler::SurfaceClosurePlan>
-        surface_closure_plans_by_tag;
-    surface_programs_by_tag.reserve(closure_plans_by_signature.size());
-    surface_closure_plans_by_tag.reserve(closure_plans_by_signature.size());
-    std::set<std::uint32_t> surface_bssrdf_bump_tags;
-    for (const auto &[id, material] :
-         data->materials.materials()) {
-        const auto base = static_cast<std::uint32_t>(
-            scalar_parameters.size());
-        const auto signature =
-            material.surface_program()->structure_signature();
-        auto [surface_iter, inserted] =
-            surface_tags_by_signature.try_emplace(signature, 0u);
-        if (inserted) {
-            const auto tag =
-                data->surfaces.create<GraphSurface>(
-                    material.surface_program(),
-                    closure_plans_by_signature.at(signature));
-            if (tag != surface_programs_by_tag.size()) {
-                diagnose(
-                    result.diagnostics,
-                    "Surface runtime tags are not a dense insertion order.");
-                return result;
-            }
-            surface_iter->second = tag;
-            surface_programs_by_tag.emplace_back(
-                material.surface_program());
-            surface_closure_plans_by_tag.emplace_back(
-                closure_plans_by_signature.at(signature));
-        }
-        if (surface_bssrdf_bump_materials.contains(id)) {
-            surface_bssrdf_bump_tags.emplace(surface_iter->second);
-        }
-        // These two addresses are private to the remaining displacement
-        // prepass. Every shading capability and Cycles identity above came
-        // from the native KernelShader image, including unused shader slots.
-        auto &binding = data->material_bindings.at(id);
-        binding.surface_tag = surface_iter->second;
-        binding.parameter_block = base;
-        const auto &program = *material.surface_program();
-        const auto scalar_parameter =
-            [&](compiler::ValueExpressionId expression)
-            -> std::optional<float> {
-            if (!expression.valid() ||
-                expression.value >=
-                    program.value_instructions().size()) {
-                return std::nullopt;
-            }
-            const auto &source =
-                program.value_instructions()[expression.value];
-            if (source.operation !=
-                    compiler::ValueOperation::parameter ||
-                !source.parameter.valid()) {
-                return std::nullopt;
-            }
-            const auto *value =
-                material.parameters().find(source.parameter);
-            if (value == nullptr ||
-                value->type !=
-                    contract::SocketType::floating) {
-                return std::nullopt;
-            }
-            return std::get<float>(value->value);
-        };
-        for (const auto &instruction :
-             program.value_instructions()) {
-            if (instruction.operation !=
-                compiler::ValueOperation::nishita_sky) {
-                continue;
-            }
-            const std::array expressions{
-                instruction.operand(
-                    compiler::value_operand::nishita_sky::elevation),
-                instruction.operand(
-                    compiler::value_operand::nishita_sky::rotation),
-                instruction.operand(
-                    compiler::value_operand::nishita_sky::size),
-                instruction.operand(
-                    compiler::value_operand::nishita_sky::intensity),
-                instruction.operand(
-                    compiler::value_operand::nishita_sky::altitude),
-                instruction.operand(
-                    compiler::value_operand::nishita_sky::air),
-                instruction.operand(
-                    compiler::value_operand::nishita_sky::dust),
-                instruction.operand(
-                    compiler::value_operand::nishita_sky::ozone)};
-            std::array<float, expressions.size()> values{};
-            auto static_parameters = true;
-            for (std::size_t i = 0u;
-                 i < expressions.size();
-                 ++i) {
-                const auto value =
-                    scalar_parameter(expressions[i]);
-                if (!value) {
-                    static_parameters = false;
-                    break;
-                }
-                values[i] = *value;
-            }
-            if (!static_parameters) {
-                diagnose(
-                    result.diagnostics,
-                    "Material '" + material.name() +
-                        "' drives Nishita atmosphere properties from "
-                        "runtime graph expressions. Cycles treats these "
-                        "properties as precompute inputs; Psycles refuses "
-                        "to replace them with an analytic approximation.");
-                continue;
-            }
-            data->nishita_texture_bindings.emplace_back(
-                NishitaTextureBinding{
-                    .parameter_block = base,
-                    .sky_index = static_cast<std::uint32_t>(
-                        instruction.static_u0),
-                    .texture_slot = 0u,
-                    .parameters =
-                        contract::NishitaSkyDesc{
-                            .sun_elevation = values[0u],
-                            .sun_rotation = values[1u],
-                            .angular_diameter = values[2u],
-                            .sun_intensity = values[3u],
-                            .altitude = values[4u],
-                            .air_density = values[5u],
-                            .dust_density = values[6u],
-                            .ozone_density = values[7u],
-                            .background_strength = 1.0f}});
-        }
-        for (const auto &parameter :
-             material.surface_program()->parameters()) {
-            const auto *value =
-                material.parameters().find(parameter.id);
-            auto scalar = 0.0f;
-            auto vector = luisa::make_float3(0.0f);
-            if (parameter.type == contract::SocketType::string) {
-                if (value == nullptr) {
-                    diagnose(
-                        result.diagnostics,
-                        "Material '" + material.name() +
-                            "' has no value for shader table property '" +
-                            parameter.socket + "'.");
-                } else {
-                    const auto descriptor_index =
-                        static_cast<std::uint32_t>(
-                            vector_parameters.size());
-                    auto staged = stage_shader_table(
-                        program,
-                        parameter,
-                        *value,
-                        descriptor_index);
-                    if (!staged.valid) {
-                        diagnose(
-                            result.diagnostics,
-                            "Material '" + material.name() +
-                                "' shader table property '" +
-                                parameter.socket + "': " +
-                                staged.diagnostic + ".");
-                    } else {
-                        shader_tables.emplace_back(
-                            std::move(staged.table));
-                    }
-                }
-            } else if (value != nullptr) {
-                switch (surface_value_category(parameter.type)) {
-                    case SurfaceValueCategory::scalar:
-                        scalar = scalar_parameter_value(*value);
-                        break;
-                    case SurfaceValueCategory::vector:
-                        vector = vector_parameter_value(*value);
-                        break;
-                    case SurfaceValueCategory::unsigned_integer:
-                        vector = unsigned_parameter_value(*value);
-                        break;
-                }
-            }
-            scalar_parameters.emplace_back(scalar);
-            vector_parameters.emplace_back(vector);
-        }
-    }
-    std::string shader_table_diagnostic;
-    if (!finalize_shader_tables(
-            shader_tables,
-            scalar_parameters,
-            vector_parameters,
-            shader_table_diagnostic)) {
-        diagnose(
-            result.diagnostics,
-            "Shader table upload: " +
-                shader_table_diagnostic + ".");
-    }
-    if (!result.diagnostics.empty()) {
-        return result;
-    }
-    data->surface_bssrdf_bump_tags.reserve(
-        surface_bssrdf_bump_tags.size());
-    for (const auto tag : surface_bssrdf_bump_tags) {
-        data->surface_bssrdf_bump_tags.emplace_back(tag);
-    }
-    if (!data->native_cycles_svm_surface && compact_surface_values_requested()) {
-        std::string diagnostic;
-        data->surface_values = build_surface_value_runtime(
-            data->device,
-            surface_programs_by_tag,
-            surface_closure_plans_by_tag,
-            data->surface_bssrdf_bump_tags,
-            diagnostic);
-        if (!data->surface_values) {
-            diagnose(
-                result.diagnostics,
-                "Compact surface value execution: " + diagnostic + ".");
-            return result;
-        }
-    }
     if (snapshot.world_shader) {
         auto iter =
             data->material_bindings.find(*snapshot.world_shader);
@@ -474,16 +187,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             }
         }
     }
-    if (scalar_parameters.empty()) {
-        scalar_parameters.emplace_back(0.0f);
-        vector_parameters.emplace_back(luisa::make_float3(0.0f));
-    }
-    data->scalar_parameter_buffer =
-        data->device.create_buffer<float>(
-            scalar_parameters.size());
-    data->vector_parameter_buffer =
-        data->device.create_buffer<luisa::float3>(
-            vector_parameters.size());
     auto cycles_bsdf_values = make_cycles_bsdf_table_values(snapshot.shader_color_space);
     data->cycles_bsdf_table_buffer =
         data->device.create_buffer<float>(
@@ -522,21 +225,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         (snapshot.geometries.size() +
          snapshot.curve_geometries.size()) *
         geometry_bindless_stride;
-    const auto attribute_binding_slot =
-        fixed_geometry_slots +
-        attribute_count;
-    const auto attribute_range_slot =
-        attribute_binding_slot + 1u;
     const auto bindless_slots =
         std::max<std::size_t>(
-            attribute_range_slot + 1u,
+            fixed_geometry_slots + attribute_count,
             1u);
-    data->attribute_binding_slot =
-        static_cast<std::uint32_t>(
-            attribute_binding_slot);
-    data->attribute_range_slot =
-        static_cast<std::uint32_t>(
-            attribute_range_slot);
     data->heap =
         data->device.create_bindless_array(bindless_slots);
     data->geometries.reserve(snapshot.geometries.size());
@@ -549,31 +241,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     CyclesPrimitiveIntervalResolver
         cycles_primitive_intervals;
     luisa::vector<GeometryGpu> geometry_gpu;
-    luisa::vector<AttributeBindingGpu>
-        attribute_bindings;
-    attribute_bindings.reserve(attribute_count);
-    luisa::vector<AttributeRangeGpu>
-        attribute_ranges;
-    attribute_ranges.reserve(
-        snapshot.geometries.size() +
-        snapshot.curve_geometries.size());
     luisa::vector<MaterialBindingGpu> geometry_materials;
     auto next_attribute_slot =
         static_cast<std::uint32_t>(
             fixed_geometry_slots);
     Stream stream = data->device.create_stream();
-    stream << data->scalar_parameter_buffer.copy_from(
-                  luisa::span{scalar_parameters})
-           << data->vector_parameter_buffer.copy_from(
-                  luisa::span{vector_parameters})
-           << data->cycles_bsdf_table_buffer.copy_from(
+    stream << data->cycles_bsdf_table_buffer.copy_from(
                   luisa::span{cycles_bsdf_values});
     ambient_occlusion_scene.upload_distance(
         stream, data, snapshot.ambient_occlusion_distance);
-    if (data->surface_values) {
-        upload_surface_value_runtime(
-            stream, *data->surface_values);
-    }
     upload_cycles_svm_runtime(stream, *data->cycles_svm);
 
     std::size_t texture_slot_count = 1u;
@@ -587,12 +263,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         texture_slot_count = std::max(
             texture_slot_count,
             static_cast<std::size_t>(image.texture_slot) + 1u);
-    }
-    for (auto &binding :
-         data->nishita_texture_bindings) {
-        binding.texture_slot =
-            static_cast<std::uint32_t>(texture_slot_count);
-        ++texture_slot_count;
     }
     if (snapshot.environment) {
         const auto &environment = *snapshot.environment;
@@ -651,7 +321,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->images.reserve(
         snapshot.images.size() +
         data->cycles_svm->nishita_images.size() +
-        data->nishita_texture_bindings.size() +
         (snapshot.environment ? 2u : 1u));
     std::vector<luisa::vector<std::byte>> texture_uploads;
     texture_uploads.reserve(snapshot.images.size() + 1u);
@@ -802,8 +471,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         snapshot.environment &&
         snapshot.environment->nishita.has_value() &&
         data->environment_texture_slot.has_value();
-    if (!data->nishita_texture_bindings.empty() ||
-        has_nishita_environment) {
+    if (has_nishita_environment) {
         Kernel2D precompute_nishita =
             [](ImageFloat image,
                BufferFloat4 sun_pixels,
@@ -893,23 +561,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 pixel_bottom = sun_readback[0u].xyz();
                 pixel_top = sun_readback[1u].xyz();
             };
-        for (auto &binding :
-             data->nishita_texture_bindings) {
-            precompute(
-                binding.texture_slot,
-                binding.parameters,
-                binding.pixel_bottom_xyz,
-                binding.pixel_top_xyz);
-        }
-        if (has_nishita_environment) {
-            precompute(
-                *data->environment_texture_slot,
-                *snapshot.environment->nishita,
-                data->nishita_environment
-                    ->pixel_bottom_xyz,
-                data->nishita_environment
-                    ->pixel_top_xyz);
-        }
+        precompute(
+            *data->environment_texture_slot,
+            *snapshot.environment->nishita,
+            data->nishita_environment
+                ->pixel_bottom_xyz,
+            data->nishita_environment
+                ->pixel_top_xyz);
     }
     if (snapshot.environment &&
         data->environment_texture_slot &&
@@ -1406,9 +1064,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->heap.emplace_on_update(
             bindless_base + 12u,
             resource.uv_tangents);
-        const auto attribute_offset =
-            static_cast<std::uint32_t>(
-                attribute_bindings.size());
         for (const auto &attribute :
              upload.attributes) {
             auto &attribute_resource =
@@ -1419,22 +1074,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 next_attribute_slot++;
             data->heap.emplace_on_update(
                 attribute_slot, attribute_resource);
-            attribute_bindings.emplace_back(
-                AttributeBindingGpu{
-                    .id = attribute.id,
-                    .value_slot = attribute_slot,
-                    .domain = attribute.domain});
             stream << attribute_resource.copy_from(
                 luisa::span{attribute.values});
         }
-        attribute_ranges.emplace_back(
-            AttributeRangeGpu{
-                .offset = attribute_offset,
-                .count =
-                    static_cast<std::uint32_t>(
-                        upload.attributes.size()),
-                .primitive_slot = bindless_base,
-                .padding = 0u});
         stream << resource.positions.copy_from(
                       luisa::span{upload.positions})
                << resource.normals.copy_from(
@@ -1490,8 +1132,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             geometry_indices,
             geometry_gpu,
             geometry_materials,
-            attribute_bindings,
-            attribute_ranges,
             attribute_residency,
             next_attribute_slot);
     if (!curve_upload.ok()) {
@@ -1503,10 +1143,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data,
         stream,
         snapshot,
+        cycles_instance_intersection_plan,
         geometry_indices,
-        uploads,
-        attribute_bindings,
-        attribute_ranges);
+        cycles_primitive_offsets,
+        curve_upload.cycles_curve_offsets,
+        uploads);
     if (!displacement.ok()) {
         diagnose(result.diagnostics, displacement.diagnostic);
         return result;
@@ -1920,8 +1561,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data,
         stream,
         {.geometries = geometry_gpu,
-         .attribute_bindings = attribute_bindings,
-         .attribute_ranges = attribute_ranges,
          .instances = instances,
          .ambient_occlusion_object_distances =
              ambient_occlusion_object_distances,

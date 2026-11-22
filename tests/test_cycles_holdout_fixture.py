@@ -2,7 +2,7 @@
 import hashlib
 import json
 import math
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import sys
 import unittest
@@ -28,7 +28,10 @@ class HoldoutFixtureTests(unittest.TestCase):
         cls.manifest = json.loads((DATA / "manifest.json").read_text())
 
     def identity(self, value):
-        self.assertTrue(Path(value["path"]).is_absolute())
+        self.assertTrue(
+            PurePosixPath(value["path"]).is_absolute()
+            or Path(value["path"]).is_absolute()
+        )
         self.assertRegex(value["sha256"], r"^[0-9a-f]{64}$")
 
     def test_complete_fixture_hashes_and_original_input_bytes(self):

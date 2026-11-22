@@ -314,42 +314,6 @@ struct PathKernelInvocation {
     [[nodiscard]] Float sample_light_roulette(Float3 unshadowed_contribution,
                                               Float random) const noexcept;
   [[nodiscard]] Float volume_guiding_majorant_optical_depth() const noexcept;
-    [[nodiscard]] SurfaceEvaluation
-  evaluate_light_surface(UInt surface_tag, const SurfacePoint &point,
-                         Float3 outgoing, const SurfaceQuery &query,
-                           UInt shader_flags) const noexcept;
-    [[nodiscard]] SurfacePreparation
-  prepare_surface(UInt surface_tag, const SurfacePoint &point, Float3 outgoing,
-                  const SurfaceQuery &query, Bool include_runtime_flags,
-                    Bool include_aov) const noexcept;
-    [[nodiscard]] SurfacePreparationQuery surface_preparation_query(
-        const SurfacePoint &point,
-        Float3 outgoing,
-        const SurfaceQuery &query,
-        Bool include_runtime_flags,
-        Bool include_aov) const noexcept;
-    [[nodiscard]] Float3 surface_emission(UInt surface_tag,
-                                          const SurfacePoint &point,
-                                          Float3 outgoing) const noexcept;
-  [[nodiscard]] Float3
-  constant_surface_emission(UInt surface_tag,
-        UInt parameter_block) const noexcept;
-    [[nodiscard]] SurfaceSample
-  sample_surface(UInt surface_tag, const SurfacePoint &point, Float u_lobe,
-                 Float2 u_direction, const SurfaceQuery &query) const noexcept;
-    [[nodiscard]] SurfaceClosureTrace
-  trace_surface_closure(UInt surface_tag, const SurfacePoint &point,
-                        UInt requested_index, Bool reflective_caustics,
-                          Bool refractive_caustics) const noexcept;
-    [[nodiscard]] SurfaceSampleTrace
-  trace_sample_surface(UInt surface_tag, const SurfacePoint &point,
-                       Float u_lobe, Float2 u_direction,
-                         const SurfaceQuery &query) const noexcept;
-    [[nodiscard]] Float3
-  surface_bssrdf_normal(UInt surface_tag, const SurfacePoint &point,
-                          Bool has_bssrdf_bump,
-                          Bool reflective_caustics,
-                          Bool refractive_caustics) const noexcept;
   [[nodiscard]] Float3 constant_environment() const noexcept;
 
     void write_film() noexcept;
@@ -754,8 +718,6 @@ class DirectLightProvider {
   public:
     virtual ~DirectLightProvider() noexcept = default;
     virtual void sample() const noexcept = 0;
-    virtual void evaluate_deferred_emission(
-        Bool receiving_nonzero) const noexcept = 0;
 };
 
 class PathBounceSetupStage {

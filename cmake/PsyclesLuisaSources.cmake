@@ -59,74 +59,14 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_vector_transform.cpp
     src/luisa/cycles_svm_vertex_color.cpp
     src/luisa/cycles_svm_wireframe.cpp
-    src/luisa/graph_surface.cpp
-    src/luisa/graph_surface_closures.cpp
-    src/luisa/graph_surface_emission.cpp
-    src/luisa/graph_surface_implementation.cpp
-    src/luisa/graph_surface_physical_closures.cpp
-    src/luisa/bssrdf_closure_component.cpp
-    src/luisa/subsurface_exit_closure_component.cpp
-    src/luisa/surface_closure_blocks.cpp
-    src/luisa/surface_closure_physical_blocks.cpp
-    src/luisa/surface_closure_visitor.cpp
-    src/luisa/surface_closure_operations.cpp
-    src/luisa/surface_closure_reachability.cpp
-    src/luisa/surface_physical_closure_component.cpp
-    src/luisa/surface_closure_evaluation.cpp
-    src/luisa/surface_closure_population.cpp
-    src/luisa/surface_preparation_accumulator.cpp
-    src/luisa/surface_closure_set.cpp
-    src/luisa/surface_closure_evaluator.cpp
-    src/luisa/surface_closure_sampling_core.cpp
-    src/luisa/surface_closure_sampling.cpp
-    src/luisa/microfacet_anisotropy.cpp
-    src/luisa/metallic_closure_component.cpp
-    src/luisa/sheen_closure_component.cpp
-    src/luisa/hair_closure_component.cpp
-    src/luisa/hair_closure_scattering.cpp
-    src/luisa/microfacet_glass_component.cpp
-    src/luisa/principled_base_component.cpp
-    src/luisa/principled_diffuse_component.cpp
-    src/luisa/principled_layer_component.cpp
-    src/luisa/principled_metallic_component.cpp
-    src/luisa/principled_specular_state.cpp
-    src/luisa/thin_glass_component.cpp
     src/luisa/cycles_thin_film_table_5_2_1.cpp
     src/luisa/thin_film_fresnel.cpp
     src/luisa/microfacet_albedo.cpp
-    src/luisa/thin_subsurface_component.cpp
-    src/luisa/graph_surface_scattering.cpp
-    src/luisa/graph_surface_state.cpp
-    src/luisa/surface_bump.cpp
-    src/luisa/surface_displacement.cpp
-    src/luisa/surface_color_nodes.cpp
-    src/luisa/surface_color_transforms.cpp
-    src/luisa/surface_geometry_context.cpp
-    src/luisa/surface_image_box.cpp
+    src/luisa/surface_fresnel.cpp
     src/luisa/surface_image_sampling.cpp
-    src/luisa/surface_image_svm.cpp
-    src/luisa/surface_light_falloff.cpp
     src/luisa/surface_math.cpp
-    src/luisa/surface_map_range.cpp
-    src/luisa/surface_mix.cpp
     src/luisa/surface_vector_math.cpp
-    src/luisa/surface_normal_map.cpp
-    src/luisa/surface_shader_table_evaluation.cpp
     src/luisa/surface_vector_mapping.cpp
-    src/luisa/graph_surface_value_expression.cpp
-    src/luisa/graph_surface_values.cpp
-    src/luisa/graph_surface_value_context.cpp
-    src/luisa/graph_surface_value_ambient_occlusion.cpp
-    src/luisa/graph_surface_value_bump_expanded.cpp
-    src/luisa/graph_surface_value_image.cpp
-    src/luisa/graph_surface_value_math.cpp
-    src/luisa/graph_surface_value_normal.cpp
-    src/luisa/graph_surface_value_displacement.cpp
-    src/luisa/graph_surface_value_magic.cpp
-    src/luisa/graph_surface_value_wave.cpp
-    src/luisa/graph_surface_value_voronoi.cpp
-    src/luisa/graph_surface_value_procedural.cpp
-    src/luisa/shader_table_data.cpp
     src/luisa/cycles_transform.cpp
     src/luisa/cycles_magic.cpp
     src/luisa/cycles_triangle_surface_component.cpp
@@ -152,7 +92,6 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/volume_analytic_light_sampling.cpp
     src/luisa/volume_light_interval.cpp
     src/luisa/volume_guiding.cpp
-    src/luisa/stacked_volume.cpp
     src/luisa/volume_majorant_hierarchy.cpp
     src/luisa/volume_majorant_overlap.cpp
     src/luisa/volume_majorant_traversal.cpp
@@ -172,17 +111,10 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/adapter/blender_scene.cpp
     src/adapter/blender_scene_json.cpp
     src/luisa/path_tracer.cpp
-    src/luisa/path_tracer_attribute_lookup.cpp
     src/luisa/path_tracer_analytic_light_scene.cpp
     src/luisa/path_tracer_camera.cpp
-    src/luisa/path_tracer_bump.cpp
-    src/luisa/path_tracer_color_transforms.cpp
-    src/luisa/path_tracer_normal_maps.cpp
-    src/luisa/path_tracer_shader_tables.cpp
     src/luisa/path_tracer_subsurface_scene.cpp
     src/luisa/path_tracer_ambient_occlusion_scene.cpp
-    src/luisa/path_tracer_ambient_occlusion.cpp
-    src/luisa/path_tracer_vector_mapping.cpp
     src/luisa/path_tracer_common.cpp
     src/luisa/path_tracer_curve_scene.cpp
     src/luisa/path_tracer_environment.cpp
@@ -268,26 +200,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_scene_geometry.cpp
     src/luisa/path_tracer_tangent_space.cpp
     src/luisa/path_tracer_session.cpp
-    src/luisa/path_tracer_surface_closure_evaluation.cpp
-    src/luisa/path_tracer_surface_closure_sampling.cpp
-    src/luisa/path_tracer_surface_closure_setup.cpp
-    src/luisa/path_tracer_surface_execution_domain.cpp
-    src/luisa/path_tracer_surface_route_policy.cpp
-    src/luisa/path_tracer_surface_closure_decode.cpp
-    src/luisa/path_tracer_surface_svm.cpp
-    src/luisa/path_tracer_surface_svm_consumers.cpp
-    src/luisa/path_tracer_surface_value_family.cpp
-    src/luisa/path_tracer_surface_value_color_family.cpp
-    src/luisa/path_tracer_surface_value_context_family.cpp
-    src/luisa/path_tracer_surface_value_numeric_family.cpp
-    src/luisa/path_tracer_surface_value_procedural_family.cpp
-    src/luisa/path_tracer_surface_value_state_family.cpp
-    src/luisa/path_tracer_surface_value_texture_family.cpp
-    src/luisa/path_tracer_surface_value_runtime.cpp
-    src/luisa/path_tracer_surface_value_program.cpp
     src/luisa/path_tracer_surfaces.cpp
-    src/luisa/path_tracer_texture_sampling.cpp
-    src/luisa/path_tracer_volume_capabilities.cpp
     src/luisa/path_tracer_volume_majorant_scene.cpp
     src/luisa/path_tracer_volume_metadata.cpp
     src/luisa/volume_guiding_filter.cpp)

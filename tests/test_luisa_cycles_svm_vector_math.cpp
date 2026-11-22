@@ -234,16 +234,16 @@ void append_payload(std::vector<std::uint32_t> &words, const T &payload) {
       }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 2.0e-4f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected) noexcept {
-  return near(actual.x, expected.x) && near(actual.y, expected.y) &&
-         near(actual.z, expected.z);
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected) noexcept {
+  return is_near(actual.x, expected.x) && is_near(actual.y, expected.y) &&
+         is_near(actual.z, expected.z);
 }
 
 } // namespace
@@ -293,13 +293,13 @@ int main(int argc, char **argv) {
     const auto dual = actual[operation * 4u + 1u];
     const auto dual_dx = actual[operation * 4u + 2u];
     const auto dual_dy = actual[operation * 4u + 3u];
-    if (!near(plain.xyz(), expected.plain_vector) ||
-        !near(plain.w, expected.plain_value) ||
-        !near(dual.xyz(), expected.dual_vector) ||
-        !near(luisa::float3{dual.w, dual_dx.w, dual_dy.w},
+    if (!is_near(plain.xyz(), expected.plain_vector) ||
+        !is_near(plain.w, expected.plain_value) ||
+        !is_near(dual.xyz(), expected.dual_vector) ||
+        !is_near(luisa::float3{dual.w, dual_dx.w, dual_dy.w},
               expected.dual_value) ||
-        !near(dual_dx.xyz(), expected.dual_vector_dx) ||
-        !near(dual_dy.xyz(), expected.dual_vector_dy) ||
+        !is_near(dual_dx.xyz(), expected.dual_vector_dx) ||
+        !is_near(dual_dy.xyz(), expected.dual_vector_dy) ||
         cursors[operation * 2u] != vector_math_word_count ||
         cursors[operation * 2u + 1u] != vector_math_word_count) {
       std::cerr << "Cycles Vector Math oracle mismatch on " << backend

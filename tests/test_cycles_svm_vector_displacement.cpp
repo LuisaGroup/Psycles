@@ -1,7 +1,6 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/cycles_svm_compiler.h>
-#include <psycles/compiler/material_library.h>
 
 #include <algorithm>
 #include <array>
@@ -181,16 +180,11 @@ void test_vector_displacement_word_images() {
   require(imported.ok(), "Vector Displacement scene did not import");
 
   const ShaderCompiler frontend{make_core_node_registry()};
-  MaterialLibrary materials;
-  const auto material_update = materials.update(*imported.scene, frontend);
-  if (!material_update.committed) {
-    for (const auto &diagnostic : material_update.diagnostics) {
-      std::cerr << "Material " << diagnostic.material.value << ": "
-                << diagnostic.message << '\n';
-    }
+  for (const auto &candidate : imported.scene->materials) {
+    const auto compiled = frontend.compile(candidate.second.shader);
+    require(compiled.ok(),
+            "Vector Displacement scene did not survive material compilation");
   }
-  require(material_update.committed,
-          "Vector Displacement scene did not survive material compilation");
 
   struct Oracle {
     std::string_view name;

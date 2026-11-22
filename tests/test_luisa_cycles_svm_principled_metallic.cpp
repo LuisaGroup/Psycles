@@ -188,18 +188,18 @@ inline constexpr std::uint32_t meta_stride = 10u;
   }};
 }
 
-[[nodiscard]] bool near(float actual, float expected,
+[[nodiscard]] bool is_near(float actual, float expected,
                         float tolerance = 5.0e-5f) noexcept {
   return std::isfinite(actual) &&
          std::abs(actual - expected) <=
              tolerance * std::max(1.0f, std::abs(expected));
 }
 
-[[nodiscard]] bool near(luisa::float3 actual, luisa::float3 expected,
+[[nodiscard]] bool is_near(luisa::float3 actual, luisa::float3 expected,
                         float tolerance = 5.0e-5f) noexcept {
-  return near(actual.x, expected.x, tolerance) &&
-         near(actual.y, expected.y, tolerance) &&
-         near(actual.z, expected.z, tolerance);
+  return is_near(actual.x, expected.x, tolerance) &&
+         is_near(actual.y, expected.y, tolerance) &&
+         is_near(actual.z, expected.z, tolerance);
 }
 
 [[nodiscard]] bool run(std::string_view backend, char **argv) {
@@ -239,33 +239,33 @@ inline constexpr std::uint32_t meta_stride = 10u;
   const auto up = luisa::float3{0.0f, 0.0f, 1.0f};
   const auto zero = luisa::float3{0.0f};
   auto valid =
-      near(actual[reflective + 0u].xyz(), luisa::float3{transparent_weight}) &&
-      near(actual[reflective + 0u].w, transparent_weight) &&
-      near(actual[reflective + 1u].xyz(),
+      is_near(actual[reflective + 0u].xyz(), luisa::float3{transparent_weight}) &&
+      is_near(actual[reflective + 0u].w, transparent_weight) &&
+      is_near(actual[reflective + 1u].xyz(),
            luisa::float3{0.4725275338f, 0.4821479917f, 0.4927247167f}) &&
-      near(actual[reflective + 1u].w, 0.2328373790f) &&
-      near(actual[reflective + 2u].xyz(),
+      is_near(actual[reflective + 1u].w, 0.2328373790f) &&
+      is_near(actual[reflective + 2u].xyz(),
            luisa::float3{0.2634941339f, 0.2633501291f, 0.2635681629f}) &&
-      near(actual[reflective + 2u].w, 0.0085809864f) &&
-      near(actual[reflective + 3u].xyz(),
+      is_near(actual[reflective + 2u].w, 0.0085809864f) &&
+      is_near(actual[reflective + 3u].xyz(),
            luisa::float3{0.0478230119f, 0.1461258680f, 0.2178603709f}) &&
-      near(actual[reflective + 3u].w, 0.1372697651f) &&
-      near(actual[reflective + 4u].xyz(), up) &&
-      near(actual[reflective + 5u].x, 0.2723220289f) &&
-      near(actual[reflective + 5u].y, 0.1791878939f) &&
-      near(actual[reflective + 5u].z, 1.0f) &&
+      is_near(actual[reflective + 3u].w, 0.1372697651f) &&
+      is_near(actual[reflective + 4u].xyz(), up) &&
+      is_near(actual[reflective + 5u].x, 0.2723220289f) &&
+      is_near(actual[reflective + 5u].y, 0.1791878939f) &&
+      is_near(actual[reflective + 5u].z, 1.0f) &&
       std::isfinite(actual[reflective + 5u].w) &&
       actual[reflective + 5u].w >= 1.0f &&
-      near(actual[reflective + 6u].xyz(),
+      is_near(actual[reflective + 6u].xyz(),
            luisa::float3{0.2486899495f, 0.9685831666f, 0.0f}) &&
-      near(actual[reflective + 7u].x, 360.0f) &&
-      near(actual[reflective + 7u].y, 1.52f) &&
-      near(actual[reflective + 8u].xyz(), luisa::float3{0.18f, 0.55f, 0.82f}) &&
-      near(actual[reflective + 9u].xyz(),
+      is_near(actual[reflective + 7u].x, 360.0f) &&
+      is_near(actual[reflective + 7u].y, 1.52f) &&
+      is_near(actual[reflective + 8u].xyz(), luisa::float3{0.18f, 0.55f, 0.82f}) &&
+      is_near(actual[reflective + 9u].xyz(),
            luisa::float3{2.76469636f, 8.69911861f, 1.43497205f}) &&
-      near(actual[reflective + 10u].xyz(),
+      is_near(actual[reflective + 10u].xyz(),
            luisa::float3{0.2144999951f, 0.0682499930f, 0.4679999650f}) &&
-      near(actual[reflective + 10u].w, transparent_weight) &&
+      is_near(actual[reflective + 10u].w, transparent_weight) &&
       actual_meta[reflective_meta + 0u] == 4u &&
       actual_meta[reflective_meta + 1u] == 2u &&
       actual_meta[reflective_meta + 2u] == expected_flags &&
@@ -286,12 +286,12 @@ inline constexpr std::uint32_t meta_stride = 10u;
   /* Cycles attenuates lower BSDF components even when reflective caustics
    * suppress both reflective allocations. Emission precedes Metallic and is
    * therefore unchanged. */
-  valid &= near(actual[disabled + 1u].xyz(), zero) &&
-           near(actual[disabled + 2u].xyz(), zero) &&
-           near(actual[disabled + 3u].xyz(),
+  valid &= is_near(actual[disabled + 1u].xyz(), zero) &&
+           is_near(actual[disabled + 2u].xyz(), zero) &&
+           is_near(actual[disabled + 3u].xyz(),
                 luisa::float3{0.050544f, 0.15444f, 0.230256f}) &&
-           near(actual[disabled + 3u].w, 0.14508f) &&
-           near(actual[disabled + 10u].xyz(),
+           is_near(actual[disabled + 3u].w, 0.14508f) &&
+           is_near(actual[disabled + 10u].xyz(),
                 luisa::float3{0.2145f, 0.06825f, 0.468f}) &&
            actual_meta[disabled_meta + 0u] == 2u &&
            actual_meta[disabled_meta + 1u] == 6u &&

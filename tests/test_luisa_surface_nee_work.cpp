@@ -53,14 +53,7 @@ bool run(const char *program, const char *backend) {
                        unbound<LightTreePdfCallable>(),
                        unbound<LightTreeForwardPdfCallable>(),
                        unbound<LightTreeTriangleEmitterCallable>()},
-        .surfaces = {nullptr, unbound<SurfacePreparationCallable>(),
-                     unbound<SurfaceEvaluateLightCallable>(),
-                     unbound<SurfaceConstantEmissionCallable>(),
-                     unbound<SurfaceEmissionCallable>(),
-                     unbound<SurfaceSampleCallable>(),
-                     unbound<SurfaceClosureTraceCallable>(),
-                     unbound<SurfaceSampleTraceCallable>(),
-                     unbound<SurfaceBssrdfNormalCallable>()},
+        .surfaces = {},
         .shade_shadow_surface = unbound<EvaluateShadowSurfaceCallable>(),
         .trace_shadow = unbound<TraceShadowCallable>()};
     // Only count discrete-selection invocations; do not implement another

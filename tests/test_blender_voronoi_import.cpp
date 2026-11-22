@@ -1,7 +1,6 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/cycles_svm_compiler.h>
-#include <psycles/compiler/surface_program.h>
 
 #include <chrono>
 #include <cstdint>
@@ -159,19 +158,6 @@ void test_multi_output_voronoi_is_shared() {
   ShaderCompiler frontend{make_core_node_registry()};
   const auto shader = frontend.compile(material->shader);
   require(shader.ok(), "Voronoi multi-output graph did not validate");
-
-  const auto legacy = compile_surface_program(*shader.program);
-  require(legacy.ok(), "Voronoi multi-output graph broke transitional lowering");
-  std::size_t distance_count{};
-  std::size_t color_count{};
-  for (const auto &instruction : legacy.program->value_instructions()) {
-    distance_count +=
-        instruction.operation == ValueOperation::voronoi_distance ? 1u : 0u;
-    color_count +=
-        instruction.operation == ValueOperation::voronoi_color ? 1u : 0u;
-  }
-  require(distance_count == 1u && color_count == 1u,
-          "Voronoi live outputs were lost in transitional lowering");
 
   AttributeIDMap attributes;
   ImageIDMap images;
