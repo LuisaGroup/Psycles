@@ -449,9 +449,6 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           context.rng_hash ^ 0xb4bc3953u,
           context.rng_offset,
           context.sample_index);
-      const bool has_object_motion =
-          (_scene->cycles_svm->kernel_features &
-           svm::kernel_feature_object_motion) != 0u;
       const auto identity = make_float4x4(1.0f);
       _shader_data = std::make_unique<svm::ShaderData>(
           context.point.position,
@@ -476,10 +473,8 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           context.point.barycentric_dy.y,
           context.point.dpdu,
           context.point.dpdv,
-          has_object_motion ? context.object_to_world
-                            : Expr<luisa::float4x4>{identity},
-          has_object_motion ? context.world_to_object
-                            : Expr<luisa::float4x4>{identity},
+          identity,
+          identity,
           lcg_state,
           _closures.get());
       /* KernelShader::flags contains only Cycles SD_SHADER_FLAGS; runtime
@@ -500,29 +495,22 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
       };
       const auto scene_ref = _scene;
       const auto obj_idx = context.cycles_object_index;
-      svm::TransformState transform_state =
-          context.lazy_cycles_transforms
-              ? svm::TransformState{
-                    context.parameters.camera_transform,
-                    context.parameters.camera_inverse_transform,
-                    [scene_ref, obj_idx, unpack_tfm]() noexcept {
-                      return unpack_tfm(
-                          scene_ref->cycles_svm->objects->object_buffer
-                              ->read(obj_idx)
-                              .tfm);
-                    },
-                    [scene_ref, obj_idx, unpack_tfm]() noexcept {
-                      return unpack_tfm(
-                          scene_ref->cycles_svm->objects->object_buffer
-                              ->read(obj_idx)
-                              .itfm);
-                    }}
-              : svm::TransformState{context.parameters.camera_transform,
-                                    context.parameters.camera_inverse_transform,
-                                    context.object_to_world,
-                                    context.world_to_object};
-      if (context.lazy_cycles_transforms && scene_ref &&
-          scene_ref->cycles_svm && scene_ref->cycles_svm->objects) {
+      svm::TransformState transform_state{
+          context.parameters.camera_transform,
+          context.parameters.camera_inverse_transform,
+          [scene_ref, obj_idx, unpack_tfm]() noexcept {
+            return unpack_tfm(
+                scene_ref->cycles_svm->objects->object_buffer
+                    ->read(obj_idx)
+                    .tfm);
+          },
+          [scene_ref, obj_idx, unpack_tfm]() noexcept {
+            return unpack_tfm(
+                scene_ref->cycles_svm->objects->object_buffer
+                    ->read(obj_idx)
+                    .itfm);
+          }};
+      if (scene_ref && scene_ref->cycles_svm && scene_ref->cycles_svm->objects) {
         transform_state.lazy_object_buffer =
             &scene_ref->cycles_svm->objects->object_buffer;
       }
@@ -766,6 +754,11 @@ make_cycles_svm_surface_population_component(
     CyclesSvmSurfaceBucketSpecialization bucket) noexcept {
   return std::make_shared<CyclesSvmSurfacePopulationComponent>(
       scene, std::move(bucket));
+}
+
+SurfaceCallables make_surface_callables(
+    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+  return {make_cycles_svm_surface_population_component(scene)};
 }
 
 } // namespace psycles::luisa_backend::detail

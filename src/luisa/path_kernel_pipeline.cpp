@@ -683,8 +683,7 @@ void PathKernelPipeline::emit(
             .surface_has_volume = merged_surface_has_volume,
             .point = std::move(post_point),
             .shadow_terminator_geometry_offset =
-                merged_shadow_terminator_offset,
-            .lazy_cycles_geometry = true};
+                merged_shadow_terminator_offset};
         SurfaceShadingState post_shading{
             .cycles_surface_runtime_flags = 0u,
             .bsdf_sample = make_float3(0.0f),

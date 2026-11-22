@@ -87,7 +87,6 @@ add_library(psycles_core
     src/compiler/cycles_transform.cpp
     src/compiler/cycles_camera.cpp
     src/compiler/cycles_emission_sampling.cpp
-    src/compiler/hosek_sky.cpp
     src/compiler/shader_program.cpp
     src/contract/cycles_pointiness.cpp
     src/contract/scene.cpp

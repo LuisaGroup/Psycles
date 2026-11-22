@@ -9,20 +9,7 @@
 namespace psycles::luisa_backend::detail {
 
 struct SurfacePrimitiveGeometryContext {
-  Var<InstanceGpu> instance;
-  Float3 p0;
-  Float3 p1;
-  Float3 p2;
-  Float3 n0;
-  Float3 n1;
-  Float3 n2;
-  luisa::compute::Float4x4 object_to_world;
-  luisa::compute::Float4x4 world_to_object;
-  Float3 wp0;
-  Float3 wp1;
-  Float3 wp2;
   Float3 hit_position;
-  Float3 object_hit_position;
   Float differential_radius;
   Bool is_curve;
   UInt cycles_primitive_type;
@@ -40,7 +27,6 @@ struct SurfacePrimitiveGeometryContext {
   Bool surface_has_bssrdf_bump;
   SurfacePoint point;
   Float shadow_terminator_geometry_offset{0.0f};
-  bool lazy_cycles_geometry{false};
 };
 
 // Runtime primitive dispatch assembled at the host/JIT stage. Each dynamic

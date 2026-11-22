@@ -630,43 +630,6 @@ private:
 [[nodiscard]] Var<ShaderEvaluationStateCall>
 pack_shader_evaluation_state(
     const cycles_path_state::ShaderEvaluationState &state) noexcept;
-[[nodiscard]] cycles_path_state::ShaderEvaluationState
-unpack_shader_evaluation_state(
-    const Var<ShaderEvaluationStateCall> &state) noexcept;
-[[nodiscard]] Var<SurfacePointCall> pack_surface_point(
-    const SurfacePoint &point) noexcept;
-[[nodiscard]] SurfacePoint unpack_surface_point(
-    const Var<SurfacePointCall> &point) noexcept;
-[[nodiscard]] Var<SurfaceEvaluationCall> pack_surface_evaluation(
-    const SurfaceEvaluation &evaluation) noexcept;
-[[nodiscard]] SurfaceEvaluation unpack_surface_evaluation(
-    const Var<SurfaceEvaluationCall> &evaluation) noexcept;
-[[nodiscard]] Var<SurfaceSampleCall> pack_surface_sample(
-    const SurfaceSample &sample) noexcept;
-[[nodiscard]] SurfaceSample unpack_surface_sample(
-    const Var<SurfaceSampleCall> &sample) noexcept;
-[[nodiscard]] Var<SurfaceClosureTraceCall>
-pack_surface_closure_trace(
-    const SurfaceClosureTrace &trace) noexcept;
-[[nodiscard]] SurfaceClosureTrace
-unpack_surface_closure_trace(
-    const Var<SurfaceClosureTraceCall> &trace) noexcept;
-[[nodiscard]] Var<SurfaceSampleTraceCall>
-pack_surface_sample_trace(
-    const SurfaceSampleTrace &trace) noexcept;
-[[nodiscard]] SurfaceSampleTrace
-unpack_surface_sample_trace(
-    const Var<SurfaceSampleTraceCall> &trace) noexcept;
-[[nodiscard]] Var<SurfacePreparationQueryCall>
-pack_surface_preparation_query(
-    const SurfacePreparationQuery &query) noexcept;
-[[nodiscard]] SurfacePreparationQuery
-unpack_surface_preparation_query(
-    const Var<SurfacePreparationQueryCall> &query) noexcept;
-[[nodiscard]] Var<SurfacePreparationCall> pack_surface_preparation(
-    const SurfacePreparation &preparation) noexcept;
-[[nodiscard]] SurfacePreparation unpack_surface_preparation(
-    const Var<SurfacePreparationCall> &preparation) noexcept;
 [[nodiscard]] luisa::float3 to_luisa(Vec3f value) noexcept;
 [[nodiscard]] luisa::float2 to_luisa(Vec2f value) noexcept;
 [[nodiscard]] luisa::float4x4 to_luisa(Mat4f value) noexcept;

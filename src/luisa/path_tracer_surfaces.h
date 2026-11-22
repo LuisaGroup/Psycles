@@ -18,8 +18,6 @@ struct SurfacePopulationContext {
     Expr<luisa::float3> ray_origin;
     Expr<float> ray_position_differential;
     Expr<float> ray_direction_differential;
-    Expr<luisa::float4x4> object_to_world;
-    Expr<luisa::float4x4> world_to_object;
     Expr<std::uint32_t> path_flags;
     Expr<std::uint32_t> portal_depth = 0u;
     Expr<std::uint32_t> sample_index;
@@ -30,7 +28,6 @@ struct SurfacePopulationContext {
     const PathSurfaceAmbientOcclusionContext *ambient_occlusion;
     std::optional<Expr<std::uint32_t>> cycles_shader_flags{};
     std::optional<Expr<std::uint32_t>> cycles_object_flags{};
-    bool lazy_cycles_transforms{false};
     bool may_filter_glossy{true};
 };
 

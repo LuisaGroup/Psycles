@@ -150,7 +150,6 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_cycles_svm_curve.cpp
     src/luisa/path_kernel_surface_queue.cpp
     src/luisa/path_kernel_surface_buckets.cpp
-    src/luisa/path_kernel_surface_scatter.cpp
     src/luisa/path_kernel_cycles_svm_surface_scatter.cpp
     src/luisa/path_kernel_surface_shading.cpp
     src/luisa/path_kernel_surface_emission.cpp
@@ -200,7 +199,6 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_scene_geometry.cpp
     src/luisa/path_tracer_tangent_space.cpp
     src/luisa/path_tracer_session.cpp
-    src/luisa/path_tracer_surfaces.cpp
     src/luisa/path_tracer_volume_majorant_scene.cpp
     src/luisa/path_tracer_volume_metadata.cpp
     src/luisa/volume_guiding_filter.cpp)

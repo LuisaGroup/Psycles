@@ -152,14 +152,7 @@ public:
         (sd.flag & unsigned(abi::SD_USE_BUMP_MAP_CORRECTION)) != 0u;
 
     return {
-        .instance = Var<InstanceGpu>{},
-        .p0 = Float3{}, .p1 = Float3{}, .p2 = Float3{},
-        .n0 = Float3{}, .n1 = Float3{}, .n2 = Float3{},
-        .object_to_world = luisa::compute::Float4x4{},
-        .world_to_object = luisa::compute::Float4x4{},
-        .wp0 = Float3{}, .wp1 = Float3{}, .wp2 = Float3{},
         .hit_position = sd.P,
-        .object_hit_position = Float3{},
         .differential_radius = sd.dP,
         .is_curve = is_curve,
         .cycles_primitive_type = sd.type,
@@ -184,8 +177,7 @@ public:
             (sd.flag & unsigned(abi::SD_HAS_BSSRDF_BUMP)) != 0u,
         .point = std::move(point),
         .shadow_terminator_geometry_offset =
-            std::move(shadow_terminator_geometry_offset),
-        .lazy_cycles_geometry = true};
+            std::move(shadow_terminator_geometry_offset)};
   }
 };
 } // namespace

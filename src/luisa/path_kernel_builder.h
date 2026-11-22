@@ -545,21 +545,11 @@ struct SurfaceGeometryContext {
     // Host/JIT metadata; this field never crosses the device ABI.
     ScenePrimitiveStagePlan primitive_plan;
     UInt emission_sampling;
-    Var<InstanceGpu> instance;
-    Float3 p0;
-    Float3 p1;
-    Float3 p2;
-    Float3 n0;
-    Float3 n1;
-    Float3 n2;
-    luisa::compute::Float4x4 object_to_world;
-    luisa::compute::Float4x4 world_to_object;
     Float3 wp0;
     Float3 wp1;
     Float3 wp2;
     Float3 geometric_normal;
     Float3 hit_position;
-    Float3 object_hit_position;
     Float differential_radius;
     Bool is_curve;
     UInt cycles_primitive_type;
@@ -577,12 +567,10 @@ struct SurfaceGeometryContext {
     SurfacePoint point;
     SurfaceQuery path_surface_query;
     Float shadow_terminator_geometry_offset{0.0f};
-    bool lazy_cycles_geometry{false};
 
     // World-space triangle vertices are needed only by forward-hit emission
     // MIS. Populate them at that consumer so non-emissive triangles do not
     // pay three object-to-world transforms during every surface event.
-    void ensure_world_triangle_vertices() noexcept;
     [[nodiscard]] std::tuple<Float3, Float3, Float3>
     resolve_world_triangle_vertices() noexcept;
     [[nodiscard]] luisa::compute::Float4x4

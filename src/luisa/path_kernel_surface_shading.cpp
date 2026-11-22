@@ -111,14 +111,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                  .ray_origin = sample.ray->origin(),
                  .ray_position_differential = surface.differential_radius,
                  .ray_direction_differential = sample.ray_dD,
-                 .object_to_world =
-                     surface.lazy_cycles_geometry
-                         ? Expr<luisa::float4x4>{make_float4x4(1.0f)}
-                         : Expr<luisa::float4x4>{surface.object_to_world},
-                 .world_to_object =
-                     surface.lazy_cycles_geometry
-                         ? Expr<luisa::float4x4>{make_float4x4(1.0f)}
-                         : Expr<luisa::float4x4>{surface.world_to_object},
                  .path_flags = sample.path_flags,
                  .portal_depth = sample.portal_depth,
                  .sample_index = sample.sample_index,
@@ -137,7 +129,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                          ? std::optional<Expr<std::uint32_t>>{
                                *surface.cycles_object_flags}
                          : std::nullopt,
-                 .lazy_cycles_transforms = surface.lazy_cycles_geometry,
                  .may_filter_glossy = config.has_filter_glossy});
         }
         LUISA_ASSERT(populated_surface != nullptr,

@@ -48,33 +48,15 @@ struct SurfacePoint {
     Float3 geometric_normal;
     Float3 shading_normal;
     Float3 object_shading_normal;
-    Float3 object_tangent;
     Float tangent_sign;
-    Float3 undisplaced_position;
-    Float3 undisplaced_object_position;
-    Float3 undisplaced_shading_normal;
-    Float3 undisplaced_object_shading_normal;
-    Float3 undisplaced_object_tangent;
-    Float undisplaced_tangent_sign;
-    Float3 normal_to_world_x;
-    Float3 normal_to_world_y;
-    Float3 normal_to_world_z;
     Float3 dpdu;
     Float3 dpdv;
     Float3 dPdx;
     Float3 dPdy;
     Float3 object_dPdx;
     Float3 object_dPdy;
-    Float3 undisplaced_dPdx;
-    Float3 undisplaced_dPdy;
-    Float3 undisplaced_object_dPdx;
-    Float3 undisplaced_object_dPdy;
-    Float3 generated_dx;
-    Float3 generated_dy;
     Float3 incoming;
     Float2 uv;
-    Float2 uv_dx;
-    Float2 uv_dy;
     UInt geometry_index;
     Float2 barycentric;
     Float2 barycentric_dx;
@@ -87,11 +69,6 @@ struct SurfacePoint {
     Float random_per_island;
     Bool triangle_smooth;
     Bool is_curve;
-    Float curve_intercept;
-    Float curve_length;
-    Float curve_thickness;
-    Float3 curve_tangent_normal;
-    Float curve_random;
     UInt ray_visibility;
     UInt ray_events;
     UInt ray_depth;
@@ -158,11 +135,6 @@ enum class SurfaceBssrdfMethod : std::uint32_t {
 // Cycles kernel/types.h::MAX_CLOSURE.
 inline constexpr std::uint32_t
     maximum_surface_closure_capacity = 64u;
-
-struct SurfacePopulation {
-    Float3 emission;
-    Float3 shading_normal;
-};
 
 struct SurfacePopulationQuery {
     Expr<bool> emission_reflective_caustics;
@@ -284,16 +256,6 @@ struct SurfaceAov {
     Float3 transparency;
 };
 
-struct SurfacePreparationQuery {
-    Float3 outgoing;
-    Float glossy_filter_roughness;
-    Bool emission_reflective_caustics;
-    Bool reflective_caustics;
-    Bool refractive_caustics;
-    Bool include_runtime_flags;
-    Bool include_aov;
-};
-
 struct SurfacePreparation {
     Float3 emission;
     Float3 shading_normal;
@@ -327,5 +289,4 @@ LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceSample)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceClosureTrace)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceSampleTrace)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfaceAov)
-LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfacePreparationQuery)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(psycles::luisa_backend::SurfacePreparation)
