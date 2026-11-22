@@ -1,356 +1,183 @@
-# Building Psycles
+# Building & Running Psycles
 
-Psycles builds LuisaCompute as a CMake subdirectory. The repository pins the
-tested Luisa revision in `third_party/LuisaCompute`; a normal user build does
-not need a separate Luisa installation or a second configure step.
-The active branch pins LuisaCompute `next@db53c6b76`.
+Psycles embeds `third_party/LuisaCompute` (`next@db53c6b76`) as a CMake subdirectory so standard builds configure, compile, and test in one pass.
+
+---
 
 ## Prerequisites
 
-- Git with submodule support
-- CMake 3.26 or newer
-- A C++20 compiler
-- Ninja or another CMake generator
-- Python 3 for the versioned compatibility checks
-- OpenImageIO and OpenEXR development packages for multilayer EXR output
+- **Git** with submodule support
+- **CMake 3.26+** and **Ninja** (or another CMake generator)
+- **C++20 compiler** (`clang-cl` + `lld-link` / MSVC on Windows; GCC 13+ or Clang on Linux; Xcode Clang on macOS)
+- **OpenImageIO & OpenEXR** development packages (for full-float Cycles-compatible multilayer EXR pass output)
+- **Python 3** (required for binding/policy/source-size checks and differential tools)
 
-Official Cycles differential probes additionally require Blender. The
-comparison and triptych tools deliberately run in the host Python environment
-and use the mature OpenImageIO, NumPy, and Pillow packages declared in
-`requirements-validation.txt`; they do not depend on Blender's private Python
-environment and do not reimplement image formats or resampling locally.
-Install those packages with:
+For Blender Cycles comparison/benchmark tools (`tools/run_scene_benchmark.py`, `tools/compare_cycles.py`), install the host Python dependencies:
 
 ```bash
 python -m pip install -r requirements-validation.txt
 ```
 
-On Arch Linux, the equivalent distribution packages are:
+### Platform Toolchains
 
-```bash
-sudo pacman -S --needed \
-  blender python-cattrs python-numpy python-pillow \
-  openimageio openexr
-```
+- **Windows:**
+  - Validated with ROCm 10.1.0 (`clang-cl` / LLVM 24 + HIPRT 3.0), Windows 11 D3D12 SDK (`dxil.dll` / `dxcompiler.dll`), Vulkan API 1.4, Embree 4.4.1, and oneTBB 2023.1.0.
+- **Linux (Arch / Ubuntu 24.04+):**
+  - CPU backends (`fallback`, `simd`) require LLVM development headers, Embree 4.x, oneTBB, plus `libx11-dev` and `uuid-dev`:
 
-On Debian/Ubuntu the equivalent external-Python package is
-`python3-cattrs`. The probe tools support both Blender 4.5's direct multilayer
-EXR format selection and Blender 5.2's `MULTI_LAYER_IMAGE` media category.
-Psycles' C++ renderer links the system OpenImageIO package and writes
-full-float Cycles-compatible multilayer OpenEXR files.
+    ```bash
+    # Arch Linux
+    sudo pacman -S --needed blender python-cattrs python-numpy python-pillow openimageio openexr
 
-The host CPU backends (`fallback` and optional `simd`) additionally need LLVM,
-Embree, and (on Linux) X11 and libuuid development packages discoverable by
-CMake. Validated baselines:
+    # Ubuntu 24.04 LTS example (LLVM 22 + Embree + X11/UUID)
+    sudo apt-get update && sudo apt-get install -y \
+      cmake ninja-build wget gnupg lsb-release software-properties-common \
+      libembree-dev libx11-dev uuid-dev
+    wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh
+    sudo ./llvm.sh 22 && sudo apt-get install -y llvm-22-dev
+    ```
 
-| Component | Windows Workstation (2026-11) | Linux Portability Baseline (2026-07) |
-|---|---|---|
-| OS | Windows 11 x64 | Ubuntu 24.04 LTS (Noble) |
-| Compiler | ROCm 10.1.0 `clang-cl` + `lld-link` | GCC 13.3 |
-| CMake / Ninja | CMake 3.26+ / Ninja | CMake 3.27.7 / Ninja 1.11.1 |
-| LLVM | LLVM 24 (ROCm 10.1.0) | LLVM 22.1.8 |
-| Embree / TBB | Embree 4.4.1 / oneTBB 2023.1.0 | Embree 4.3.0 |
-| GPU Backends | HIP (ROCm 10.1.0 + HIPRT 3.0), DirectX 12, Vulkan 1.4 (`vk-xir` & `vk-dxc`) | HIP, Vulkan |
+- **macOS (Apple Silicon):**
+  - Uses Apple Clang + Metal (`PSYCLES_ENABLE_LUISA_METAL=ON`, optional `PSYCLES_ENABLE_LUISA_METAL4=ON`), OpenImageIO, and Embree/LLVM when CPU backends are enabled.
 
-Install LLVM 22 from the
-[official LLVM Debian/Ubuntu repository](https://apt.llvm.org/), then install
-the development packages required by Luisa's fallback backend:
+---
 
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-  cmake ninja-build wget gnupg lsb-release software-properties-common \
-  libembree-dev libx11-dev uuid-dev
-wget https://apt.llvm.org/llvm.sh
-chmod +x llvm.sh
-sudo ./llvm.sh 22
-sudo apt-get install -y llvm-22-dev
-```
-
-The repository disables Luisa's unused GUI component, so a headless fallback
-build does not require GLFW. Luisa's fallback module still compiles its common
-Vulkan swapchain support on Linux and therefore requires the X11 development
-headers. GPU backend prerequisites are inherited from LuisaCompute.
-
-## Clone and build
+## Clone & Configure
 
 ```bash
 git clone --recurse-submodules https://github.com/LuisaGroup/Psycles.git
 cd Psycles
 cmake -S . -B build -G Ninja
 cmake --build build --parallel 32
-ctest --test-dir build --output-on-failure -j32
 ```
 
-If the repository was cloned without submodules:
+If cloned without submodules:
 
 ```bash
 git submodule update --init --recursive
 ```
 
-CMake stops with this exact recovery command when Luisa execution is enabled
-but the bundled submodule is absent. It does not silently produce a core-only
-build.
-
-## Configuration
+### CMake Options
 
 | Option | Default | Purpose |
-|---|---:|---|
-| `PSYCLES_ENABLE_OPENIMAGEIO` | `ON` | Write Cycles-compatible multilayer OpenEXR output |
-| `PSYCLES_ENABLE_LUISA` | `ON` | Build the Luisa DSL/runtime renderer |
-| `PSYCLES_ENABLE_LUISA_FALLBACK` | `ON` | Build the LLVM/Embree scalar-per-thread CPU backend (`fallback`) |
-| `PSYCLES_ENABLE_LUISA_SIMD` | `OFF` | Build the LLVM/Embree packet-vectorized CPU backend (`simd`) |
-| `PSYCLES_ENABLE_LUISA_METAL` | `ON` on Apple | Build the Metal backend |
-| `PSYCLES_ENABLE_LUISA_METAL4` | `OFF` | Build the Metal 4 AIR backend on Apple platforms |
-| `PSYCLES_ENABLE_LUISA_HIP` | `OFF` on Apple, otherwise `ON` | Build the AMD HIP backend (`hip`) |
-| `PSYCLES_ENABLE_LUISA_VULKAN` | `OFF` on Apple, otherwise `ON` | Build the Vulkan backend (`vk`, defaults to native XIR-to-SPIR-V) |
-| `LUISA_COMPUTE_ENABLE_DX` | `ON` on Windows (Luisa default) | Build the DirectX 12 backend (`dx`) on Windows |
-| `PSYCLES_BUILD_TESTS` | `ON` | Build C++ tests and register compatibility gates |
-| `PSYCLES_BUILD_EXAMPLES` | `ON` | Build render and inspection CLIs |
-| `PSYCLES_FETCH_LUISA_NEXT` | `OFF` | Fetch `next` only when the initialized submodule is unavailable |
+| --- | --- | --- |
+| `PSYCLES_ENABLE_OPENIMAGEIO` | `ON` | Multilayer OpenEXR output support (`ViewLayer.<pass>.<component>`) |
+| `PSYCLES_ENABLE_LUISA` | `ON` | Build the LuisaCompute DSL compiler and runtime renderer (`psycles_luisa`, `psycles_luisa_runtime`) |
+| `PSYCLES_ENABLE_LUISA_FALLBACK` | `ON` | Build LLVM/Embree scalar CPU backend (`fallback`) |
+| `PSYCLES_ENABLE_LUISA_SIMD` | `OFF` | Build LLVM/Embree W8 packet-vectorized CPU backend (`simd`) |
+| `PSYCLES_ENABLE_LUISA_HIP` | `ON` *(non-Apple)* | Build AMD ROCm HIP/HIPRT backend (`hip`) |
+| `PSYCLES_ENABLE_LUISA_VULKAN` | `ON` *(non-Apple)* | Build Vulkan backend (`vk`, defaults to native XIR-to-SPIR-V) |
+| `LUISA_COMPUTE_ENABLE_DX` | `ON` on Windows | Build DirectX 12 SM 6.6+ backend (`dx`) |
+| `LUISA_COMPUTE_ENABLE_VK_XIR_SPIRV` | `ON` | Use LuisaCompute native XIR-to-SPIR-V instead of DXC for `vk` |
+| `PSYCLES_ENABLE_LUISA_METAL` | `ON` on Apple | Build Apple Metal backend |
+| `PSYCLES_ENABLE_LUISA_METAL4` | `OFF` | Build Apple Metal 4 AIR backend |
+| `PSYCLES_BUILD_TESTS` | `ON` | Build C++ test targets and register CTest gates |
+| `PSYCLES_BUILD_EXAMPLES` | `ON` | Build `psycles_luisa_render_demo`, `psycles_render_blender_scene`, `psycles_probe_nishita` |
+| `PSYCLES_FETCH_LUISA_NEXT` | `OFF` | Fetch Luisa `next` only when `third_party/LuisaCompute` is absent |
 
-For Vulkan, Psycles enables LuisaCompute's native XIR-to-SPIR-V compiler
-(`LUISA_COMPUTE_ENABLE_VK_XIR_SPIRV=ON`) by default. To validate the legacy
-HLSL/DXC Vulkan SPIR-V path (`vk-dxc`), configure a separate build directory
-with `-DLUISA_COMPUTE_ENABLE_VK_XIR_SPIRV=OFF`.
+CMake enforces strict backend postconditions: if an enabled `PSYCLES_ENABLE_LUISA_*` backend target cannot be created by LuisaCompute, configuration fails explicitly rather than silently dropping the backend.
 
-The source selection order is:
-
-1. initialized `third_party/LuisaCompute`;
-2. CMake `FetchContent` when `PSYCLES_FETCH_LUISA_NEXT=ON`;
-3. a configuration error with an actionable submodule command.
-
-To build only the dependency-free scene, graph, and compiler contracts:
+### Common Configure Presets
 
 ```bash
+# Dependency-free contract & SVM compiler core build only
 cmake -S . -B build-core -G Ninja -DPSYCLES_ENABLE_LUISA=OFF
-cmake --build build-core --parallel 32
-ctest --test-dir build-core --output-on-failure -j32
-```
 
-For a fallback build whose packages are outside the system prefix, provide
-their package directories explicitly:
+# Workstation GPU + CPU SIMD build
+cmake -S . -B build -G Ninja -DPSYCLES_ENABLE_LUISA_SIMD=ON
 
-```bash
+# Vulkan DXC control build (vk-dxc instead of default vk-xir)
+cmake -S . -B build-vk-dxc -G Ninja -DLUISA_COMPUTE_ENABLE_VK_XIR_SPIRV=OFF
+
+# Explicit LLVM/Embree prefixes
 cmake -S . -B build -G Ninja \
-  -DPSYCLES_ENABLE_LUISA_FALLBACK=ON \
-  -DPSYCLES_ENABLE_LUISA_HIP=ON \
-  -DPSYCLES_ENABLE_LUISA_VULKAN=ON \
-  -DPSYCLES_ENABLE_OPENIMAGEIO=ON \
   -DLLVM_DIR=/path/to/llvm/lib/cmake/llvm \
-  -Dembree_DIR=/path/to/embree/lib/cmake/embree-4.3.0
+  -Dembree_DIR=/path/to/embree/lib/cmake/embree
 ```
 
-With the Ubuntu packages above, the explicit equivalent is:
+---
 
-```bash
-cmake -S . -B build -G Ninja \
-  -DLLVM_DIR=/usr/lib/llvm-22/lib/cmake/llvm \
-  -Dembree_DIR=/usr/lib/x86_64-linux-gnu/cmake/embree-4.3.0
-```
+## Build Targets & Module Layout
 
-Configuration must print:
+- `psycles_core` (`Psycles::core`): scene contract (`src/contract/`), Blender scene adapter (`src/adapter/`), core node schema & native Cycles SVM IR/bytecode compiler (`src/compiler/`), pass I/O & OpenEXR writer (`src/io/`), LightTree/Sobol/pixel filter sampling (`src/sampling/`), Nishita/Hosek sky tables (`third_party/`).
+- `psycles_luisa` & `psycles_luisa_runtime`: native Cycles SVM device handlers (`src/luisa/cycles_svm*.cpp`), `DirectJitTranslator` (`src/luisa/cycles_svm_translator.cpp`), path-kernel stages (`src/luisa/path_kernel_*.cpp`), and backend session/scene runtime (`src/luisa/path_tracer_*.cpp`).
+- Examples (`examples/`):
+  - `psycles_luisa_render_demo`: self-contained demo scene renderer
+  - `psycles_render_blender_scene`: exported Blender bundle renderer & diagnostic trace CLI
+  - `psycles_probe_nishita`: Nishita sky probe utility
 
-```text
-Build with HIP backend: 7.2...
-Build with Vulkan backend
-Build with fallback backend (LLVM 22.1.8, Embree 4.3.0)
-```
+---
 
-The three backend options are strict postconditions. Configuration fails if
-Luisa does not create `luisa-compute-backend-fallback`,
-`luisa-compute-backend-hip`, or `luisa-compute-backend-vk` when the
-corresponding Psycles option is `ON`. Psycles never silently accepts a
-core-only or reduced-backend build when those execution paths were requested.
+## Render CLIs
 
-## Luisa path-tracer source layout
-
-The public backend entry point remains
-`src/luisa/path_tracer.cpp`. Its implementation is split across private
-translation units:
-
-| Source | Responsibility |
-|---|---|
-| `path_tracer_common.cpp` | Host conversions, packed callable values, pass helpers, diagnostics |
-| `path_tracer_sampling.cpp` | Pixel-filter callable |
-| `path_tracer_lighting.cpp` | MIS, contribution splitting, roulette, emissive-triangle PDFs |
-| `path_tracer_surfaces.cpp` | Surface evaluation/emission/sample/AOV dispatch |
-| `path_tracer_environment.cpp` | World graph, environment suns, Nishita sun |
-| `path_tracer_geometry.cpp` | Transparent shadow traversal and material lookup |
-| `path_tracer_light_distribution.cpp` | Luisa flat-distribution upper-bound selection |
-| `path_tracer_kernel.cpp` | Production path-state machine and shader compilation |
-| `path_tracer_session.cpp` | Sobol resources, progressive dispatch, pass readback |
-| `path_tracer_scene.cpp` | Scene compiler and GPU resource upload |
-
-All of these sources are part of `psycles_luisa_runtime`; downstream users do
-not compile or include them individually.
-
-## Render
-
-The small Luisa smoke test is:
+### Smoke Demo
 
 ```bash
 ./build/bin/psycles_luisa_render_demo output.ppm hip 640 400 256
 ```
 
-The normalized Blender-scene renderer is:
+### Blender Export Package Renderer
 
 ```bash
-./build/bin/psycles_render_blender_scene \
-  /path/to/export-package output.ppm vk 640 480 64
+./build/bin/psycles_render_blender_scene /path/to/export-package output.ppm vk 1920 1080 256
 ```
 
-Its positional arguments are export directory, output path, backend, width,
-height, and samples per pixel.
+Key positional arguments (`examples/render_blender_scene.cpp`):
 
-When `PSYCLES_ENABLE_OPENIMAGEIO=ON`, both renderer CLIs also write
-`<output-stem>.exr`. The file is one scanline-oriented, full-float OpenEXR
-part whose dotted channel names follow
-`ViewLayer.<pass>.<component>`. Individual PFM passes remain available for
-legacy diagnostics, but the Cycles differential runner compares EXR to EXR.
+1. `export_dir` — Blender export directory (`scene.json` + `geometry.bin`)
+2. `output.ppm` — base output path (writes `-combined.pfm` / per-pass PFMs and `<stem>.exr` when OpenImageIO is enabled)
+3. `backend` — `hip`, `dx`, `vk`, `metal`, `metal4`, `fallback`, or `simd`
+4. `width` *(optional)* — render width (default: scene width)
+5. `height` *(optional)* — render height (default: scene height)
+6. `samples` *(optional)* — total AA sample count (`SampleRange.total`, which keys the full Tabulated Sobol sequence)
+7. `max_samples_per_dispatch` *(optional)*
+8. `path_trace_output` *(optional, `-` to skip)*, followed by `pixel_x`, `pixel_y`, `sample_index`, `sample_first`, `sample_count`, `chunk_probe_json` (`-` to skip), `chunk_size`, `probe_full_frame`
+9. `scheduler` *(optional, position 17)* — `megakernel` *(default)*, `megakernel-per-sample`, `wavefront`, `wavefront-graph`, `wavefront-staged`, or `persistent`
+10. `wavefront_block_size` *(optional, position 18, multiple of 32 in `[32, 1024]`, default `32`)*
 
-`SampleRange.total` is the total AA sample count for the entire render, not
-the current progressive chunk size. The production Sobol sequence is derived
-from `total`; every chunk must satisfy
-`first + offset + count <= total`, and one render session may not change
-`total`. Both CLIs above set `count == total == samples per pixel`.
+When running `vk`, `psycles_render_blender_scene` enforces `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1` unless already set in the environment. On multi-GPU AMD systems (APU iGPU + discrete Radeon GPU), set `HIP_VISIBLE_DEVICES=1` before running `hip`.
 
-## Fallback shader cache
+### Shader Cache Behavior
 
-The fallback backend persists a native object and exact metadata for an
-unnamed cache-enabled kernel. A valid hit skips AST-to-XIR conversion, LLVM IR
-generation, optimization, and object generation. The key covers kernel
-structure, argument ABI, LLVM and target-machine identity, builtins, native
-includes, and code-generation options.
+LuisaCompute stores compiled kernel objects in the runtime `.cache` directory (typically `build/bin/.cache`). Kernel keys capture structure, argument ABI, backend target identity, native includes, and compiler options; runtime inputs (seed, sample range, camera transforms, dynamic resource bindings) do not invalidate cached shaders.
 
-Runtime values intentionally remain kernel arguments or resources and are not
-part of the cache identity. Changing a seed, sample range, camera value, or
-material parameter therefore reuses the compiled shader when its type and
-binding layout are unchanged.
+- Delete `build/bin/.cache` (or run with `PSYCLES_DISABLE_SHADER_CACHE=1`) to measure cold JIT compilation.
+- Keep separate build/runtime `.cache` directories when comparing `vk-xir` vs `vk-dxc`.
 
-With Luisa's default file-backed `BinaryIO`, CLI builds place cache entries in
-the runtime `.cache` directory (normally `build/bin/.cache`). Removing that
-directory forces a cold compile. Applications that supply a custom `BinaryIO`
-control cache storage themselves.
+---
 
-The historical pre-Sobol Lone Monk fallback baseline uses the same cached main
-kernel, `kernel_bb7a6886f6f75b90`, for both 64×48/1 spp and 640×480/64 spp:
-
-| Frozen-runtime measurement | Time |
-|---|---:|
-| Cold shader JIT | 327.574 s |
-| Hot shader JIT | 0.682609 s |
-| Hot main-object load | 1.8655 ms |
-| 640×480/64 spp hot shader setup | 0.789711 s |
-
-The cold and hot 64×48 runs are byte-identical across all 13 emitted linear
-passes. These figures measure cache behavior, not acceptable first-build
-latency: replacing per-material expanded AST with the shared device
-instruction executor remains an active development goal.
-
-Production Sobol originally changed the focused monolithic kernel identity to
-`kernel_70ce93bbfda41afc`. After repairing Luisa XIR local-load analysis, that
-kernel compiled successfully from a cold cache 20/20 times; a subsequent hot
-load took about 9.498 ms, and its 13 cold/hot PFM outputs were byte-identical.
-
-The private-module split introduces explicit Luisa callable boundaries, which
-legitimately migrates the focused structural key once to
-`kernel_4c0f6e0d82a53e90`. The old and new metadata both report
-`ARGUMENT_HASH cf9ee8fec3c444f6` and `ARGUMENT_COUNT 19`; runtime seed, sample,
-camera, and resource bindings therefore remain outside the structural key.
-The modular focused kernel cold-compiled in about 0.407 s and then hot-loaded
-in about 8–11 ms. Do not assign the old key through `ShaderOption.name`, and
-do not compare these small focused timings with the full-scene Lone Monk
-numbers above.
-
-## Validation
-
-The normal release gate is:
+## Testing & Verification Gates
 
 ```bash
-cmake --build build --parallel 32
-ctest --test-dir build --output-on-failure -j32
+# Run full CTest suite
+ctest --test-dir build --output-on-failure -j16
+
+# CPU-only CTest (exclude GPU targets on headless hosts)
+ctest --test-dir build --output-on-failure -j16 -E "_(hip|dx|vk|metal|metal4)$"
+
+# Repository policy & structure checks
+python tools/check_source_size.py
+python tests/test_luisa_shader_performance_policy.py
+python -m unittest discover -s tests -p "test_cycles_binding_oracle.py"
 ```
 
-This includes Luisa AST construction, Blender import, core contracts, the
-real fallback-device tabulated-Sobol bit fixture, versioned Cycles node
-inventory, integrator baselines, and analytic-light baselines. The device
-fixture is registered only when the fallback target exists; it disables
-shader caching and fast math, dispatches runtime-uniform hash/sample/path-step
-inputs, and compares device-side bitcasts rather than host-converted floats.
-When Blender is discoverable, CTest also registers
-`psycles.blender_export_geometry_cache` and
-`psycles.blender_multilayer_exr_api`. The geometry fixture exports two
-unmodified objects sharing one Mesh datablock and two objects with
-object-specific Array modifiers. It requires the first pair to share one
-exported geometry and the modified pair to retain distinct evaluated
-topology. The EXR fixture locks the Blender 4.5/5.2 API used to request
-32-bit multilayer OpenEXR output.
-
-The focused sampling gate is:
+When validating Vulkan's native XIR-to-SPIR-V path explicitly:
 
 ```bash
-cmake --build build --parallel 32 --target \
-  psycles_tabulated_sobol_tests \
-  psycles_luisa_compile_tests \
-  psycles_luisa_sobol_fallback_tests
-ctest --test-dir build \
-  -R 'psycles\.(tabulated_sobol|luisa_ast|luisa_sobol_fallback)$' \
-  --output-on-failure -j32
+LUISA_VULKAN_USE_XIR=1 \
+LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+LUISA_VULKAN_DISABLE_DXC=1 \
+ctest --test-dir build --output-on-failure --parallel 1 -R '<vulkan-test-regex>'
 ```
 
-A renderer or sampling change additionally requires an exact-revision Cycles
-linear-pass comparison and viewable triptychs. Historical Blender 4.5.10
-focused baselines are:
+Keep GPU CTest runs sequential or bounded on a single GPU to avoid device-queue contention. Note that on Windows systems with `fallback`, six pre-existing `LuisaCompute` `fallback`-only tests (`luisa_homogeneous_volume_fallback`, `luisa_volume_triangle_fallback`, `luisa_volume_environment_fallback`, `luisa_background_sampling_fallback`, `luisa_cycles_ray_portal_render_fallback`, and `luisa_cycles_svm_hair_scattering_fallback`) are tracked upstream (`simd` and GPU variants pass).
 
-- `emission_surface`, 64×64/4 spp: Combined, Emit, and Normal RMSE/max error
-  are all 0;
-- `diffuse_bsdf_matrix`, 64×64/4 spp: Combined, DiffCol, DiffDir, and Normal
-  RMSE/max error are all 0;
-- `diffuse_surface`, 64×64/16 spp: Combined RMSE `0.006317606`, mean-energy
-  ratio `0.999740158`, and zero invalid pixels.
-
-The architecture-only module gate additionally compares every emitted Psycles
-PFM against the pre-refactor output. The current result is 13/13 byte matches
-for each of `emission_surface`, `diffuse_bsdf_matrix`, and `diffuse_surface`
-(39/39 total), plus 13/13 across repeated modular `emission_surface`
-processes. This proves refactor equivalence; it does not replace the
-Psycles-versus-Cycles metrics above.
-
-LuisaCompute also carries the upstream regression
-`local_load_elim_loop_fanout_keeps_analysis_storage_stable`. It is the narrow
-ASan/UBSan gate for the XIR data-flow storage UAF; it is not evidence that the
-entire unrelated Luisa sanitizer suite is clean.
-
-A full compatibility claim additionally requires the focused official-Cycles
-linear-pass probes described in
-`docs/cycles-compatibility.md`.
-
-The current six-backend five-scene validation results, compiler pins, EXR
-metrics, timings, and unit-test gates are recorded in
-[VALIDATION.md](VALIDATION.md) and the
-[2026-11-22 six-backend benchmark report](docs/validation/2026-11-22/six-backend-benchmark/README.md).
+---
 
 ## Troubleshooting
 
-- `LuisaCompute submodule is not initialized`: run
-  `git submodule update --init --recursive`.
-- `LLVM or Embree not found`: set `LLVM_DIR` and `embree_DIR`, or disable
-  fallback with `-DPSYCLES_ENABLE_LUISA_FALLBACK=OFF` when another Luisa
-  backend is available. Do not treat a configure that omits the exact fallback
-  version line above as a passing fallback build.
-- `PSYCLES_ENABLE_LUISA_HIP=ON` or
-  `PSYCLES_ENABLE_LUISA_VULKAN=ON` reports a missing target: install the
-  backend prerequisites or explicitly disable only the backend that is not
-  part of the requested validation. Do not treat silent target omission as a
-  passing GPU build.
-- `OpenImageIOConfig.cmake` is missing: install the OpenImageIO development
-  package or set `OpenImageIO_DIR`. Disable `PSYCLES_ENABLE_OPENIMAGEIO` only
-  for a build that intentionally does not need the production EXR output.
-- `X11/Xlib.h` not found: install `libx11-dev`; disabling Luisa GUI does not
-  remove this fallback-module dependency.
-- A dependency changed but CMake retained old feature tests: re-run the CMake
-  configure command before rebuilding.
-- A generated shared library is empty or is not reported as ELF/PE/Mach-O:
-  treat it as an interrupted/corrupt build artifact and rebuild that target;
-  do not accept passing stale test executables as validation.
+- **`LuisaCompute submodule is not initialized`:** Run `git submodule update --init --recursive`.
+- **HIP selects integrated APU graphics instead of discrete Radeon GPU:** Export `HIP_VISIBLE_DEVICES=1`.
+- **LLVM / Embree / OpenImageIO not found:** Pass `-DLLVM_DIR=...`, `-Dembree_DIR=...`, or `-DOpenImageIO_DIR=...` explicitly.
+- **Linux fallback fails with missing `X11/Xlib.h`:** Install `libx11-dev` (required by Luisa's fallback/swapchain support module even when GUI is disabled).
+- **Deleted or moved CMake source files leave stale `.obj` link errors on Windows Ninja:** Clean `CMakeFiles/psycles*.dir` and `bin/psycles_*` artifacts, then reconfigure and rebuild.

@@ -1,150 +1,61 @@
-# Architecture
+# System Architecture
 
-Updated 2026-11-22. Current six-backend validation results and coverage
-boundaries belong in [cycles-compatibility.md](cycles-compatibility.md),
-[the validation index](../VALIDATION.md), and the
-[2026-11-22 six-backend report](validation/2026-11-22/six-backend-benchmark/README.md).
+Psycles translates Blender Cycles scenes into an immutable typed scene/graph contract, compiles shader networks directly into Cycles 5.2/5.3 SVM bytecode, and executes the complete renderer on LuisaCompute across GPU (`hip`, `dx`, `vk`, `metal`, `metal4`) and CPU (`fallback`, `simd`) backends.
 
-## Required execution model
+For performance strategies and verified multi-backend measurements, see [optimization.md](optimization.md). For compatibility boundaries, see [cycles-compatibility.md](cycles-compatibility.md).
 
-Cycles 5.2.1 defines both the observable material behavior and its SVM
-execution model. Psycles implements the original node word stream, typed
-payloads, stack addressing, program-counter loop, node dispatch, closure
-state, feature masks and surface/volume/displacement control flow in Luisa
-DSL. The implementation lock in [DEVELOP.md](../DEVELOP.md) forbids an
-alternative material interpreter. Cycles itself is the only rendering oracle;
-there is no independently implemented CPU reference renderer.
+---
 
-The data flow is:
+## 1. End-to-End Pipeline
 
 ```text
-Blender evaluated scene and normalized graph
-  -> typed graph / immutable scene contract
-  -> Cycles-isomorphic SVM words, shader metadata and geometry images
-  -> scene-specialized Luisa DSL and device JIT
-  -> renderer session, linear passes and original-Cycles differential
+Blender evaluated scene + node graph
+  -> Immutable scene & typed ShaderGraph contract   (src/contract/, src/adapter/)
+  -> Native Cycles SVM IR, bytecode & scene image   (src/compiler/)
+  -> Scene-specialized DirectJit / Luisa DSL kernel (src/luisa/)
+  -> Coroutine / megakernel session & EXR pass I/O  (src/luisa/, src/io/)
 ```
 
-Native SVM is the default path for ordinary surface, volume, shadow, world
-and light material evaluation. A private displacement-prepass bridge still
-uses the old evaluator. That dependency and unreachable legacy helpers are
-removal work, not a second supported architecture.
+All material evaluation consumers — **surface, background, light emission, volume, and true/bump displacement** — share this single native SVM execution pipeline. No legacy pre-SVM surface evaluator or secondary displacement bridge remains.
 
-## Graph and scene contracts
+---
 
-The pre-SVM Cycles adapter preserves socket topology, defaults, properties
-and closure composition. Canonical node/variant keys and explicit socket
-mappings make unsupported nodes a coverage diagnostic. A graph already
-marked SVM-lowered is not reconstructed into a different closure tree.
-Node-group recursion and memoization belong to normalization; host code
-does not bake or evaluate shading as a substitute for device execution.
+## 2. Scene Contract & Blender Adapter
 
-The typed ShaderGraph has surface, volume and displacement roots, with an
-internal surface-normal projection for Cycles' bump terminal. Structure and
-parameter signatures describe invalidation boundaries, not permission to
-change semantics. Values folded into SVM words or host-specialized DSL must
-invalidate the corresponding compiled program when changed.
+- **Graph Normalization (`src/adapter/`):** Preserves Blender node sockets, defaults, properties, node-group recursion/memoization, mapping transforms, and light/world trees. Unsupported nodes or sockets raise explicit diagnostics rather than host approximations.
+- **Typed `ShaderGraph` & `SceneDatabase` (`include/psycles/contract/`):**
+  - Explicit `surface`, `volume`, and `displacement` shader roots plus surface-normal bump projection.
+  - Atomic `SceneDelta` transitions into an immutable `SceneSnapshot` with stable resource IDs (never raw Luisa handles or GPU pointers).
+  - Domain-aware mesh attribute storage (`point`, `corner`, `face`) and static ribbon curve descriptors (containing-curve identity + packed segment index).
+  - Displacement and normal/tangent attribute requests drive minimal GPU buffer residency.
 
-SceneDatabase applies a SceneDelta to a candidate immutable snapshot,
-validates references, and commits atomically. Contract identifiers do not
-contain Luisa resource handles or Cycles device pointers. Mesh attributes
-retain point, corner or face domains; shared vertices are not duplicated to
-replace domain-aware interpolation. Generated affine transforms and native
-attribute requests control the data needed by admitted shaders.
+---
 
-## Native compiler and material runtime
+## 3. Native Cycles SVM Compiler & Material Runtime
 
-The native compiler performs the Cycles graph transformations and stack
-allocation, then emits typed opcode payloads. The linked image retains a
-ShaderJump table and the original surface, volume and displacement entries.
-The bump prefix falls through into surface evaluation without an intervening
-END. BOTH-displacement evaluation saves P and its derivatives, evaluates
-undisplaced geometry and the bump graph, installs the new normal, restores
-P/derivatives, then continues into the surface program. Restoring N at that
-boundary would change Cycles' state machine.
+- **Compiler (`src/compiler/`):**
+  - Performs Cycles graph transformations, constant folding, stack liveness/allocation, and emits typed SVM words + `ShaderJump` tables (`surface`, `volume`, `displacement` offsets).
+  - `BOTH` displacement shaders emit bump prefix evaluation (`P` + derivative save/restore with updated shading normal `N`) falling through cleanly into the surface SVM stream.
+  - Emits both linear word streams (for `BytecodeVmTranslator`) and structured `SvmBlockIr` (for `DirectJitTranslator`), alongside `ShaderEntryUsage` per-domain opcode/stack/noise bounds.
+- **Scene Upload & Binding (`src/luisa/path_tracer_scene*.cpp`, `src/luisa/path_tracer_cycles_svm_*.cpp`):**
+  - Translates static meshes (with true native SVM displacement prepass in `path_tracer_displacement_scene.cpp`), ribbon curves, `KernelObject` transforms/flags, `KernelShader` closure/emission metadata, and texture/attribute heap bindings.
+  - `PathCyclesSvmKernelGlobals` supplies lazy transform and triangle/curve attribute lookups directly from device buffers without eager per-hit vertex expansion.
+- **Volume Execution (`src/luisa/path_tracer_volume_*.cpp`, `src/luisa/volume_*.cpp`):**
+  - Ordered volume stack tracking up to 8 active phases sharing a unified closure allocator.
+  - Camera-dependent majorant hierarchy (`volume_majorant_hierarchy.cpp`) and native SVM density/absorption/scattering/emission evaluation for both main and shadow rays.
+- **Subsurface Scattering (`src/luisa/subsurface_random_walk_component.cpp`, `src/luisa/path_kernel_subsurface*.cpp`):**
+  - Random-walk and Burley BSSRDF continuation integrated with the staged coroutine path without repeating primary ray traversal after a subsurface exit hit.
 
-KernelShader metadata carries material capabilities, closure bounds and
-emission information. Used-shader attribute requests determine native
-geometry residency. KernelObject, triangle, curve/key and attribute images
-supply ShaderData services rather than an alternate per-node geometry model.
-Static ribbon curves use containing-curve identity plus packed segment
-indices; they are not represented as triangle identities.
+---
 
-The Luisa SVM retains one PC-loop node dispatcher. Unused cases are omitted
-during host recording; original node/scene feature masks also remove
-unreachable handlers and consumers. Stack bounds are derived from native
-compiler allocation facts, closure bounds from the finalized Cycles graph
-and scene cap. Neither is inferred from a render/profile or a scene name.
-Unknown specialization information retains a conservative bound.
+## 4. Transport & Coroutine Scheduling
 
-Surface closure initialization, allocation, setup, evaluation and sampling
-use native Cycles state. Shared incoming closure weights accumulate with
-ADD, as in Cycles' multi-closure transformation. Failed image loading remains
-distinct from an unassigned socket and follows native missing-image behavior.
-These are independently tested word/state contracts, not visual heuristics.
-
-Ordered volume evaluation retains one closure allocator across the stack.
-Per-entry phase merging precedes the final active-prefix copy of up to eight
-phases; only allocated closures contribute scattering. Main/shadow volume,
-collision, majorant and density consumers use native SVM. Camera-dependent
-background importance and density resources are built after finalizing the
-session's camera parameters.
-
-## Transport and coroutine scheduling
-
-RendererBackend compiles a scene into an opaque CompiledScene. A
-RenderSession accepts sample ranges and writes named pass tiles to an
-OutputSink. Host-stage PathKernelPipeline components assemble Luisa device
-expressions for event handling, shading, direct lighting, volume and closure
-continuation. They are AST-building interfaces, not host shading evaluators.
-
-Megakernel and staged wavefront modes execute the native material path.
-Coroutine boundaries preserve Cycles event ownership: closest-event work,
-volume handling when needed, surface shading, shadow work and subsurface
-continuation. A successful subsurface intersection proceeds to shade the
-known surface instead of repeating closest intersection. Stage presence
-depends on statically admitted scene features; a scene's stage count alone
-does not prove state-machine parity.
-
-Psycles-specific sorting/queue policy is expressed through generic Luisa
-Coro Ext/Handler facilities. Scheduler dispatch produces stream commands,
-using `stream << scheduler(...).dispatch(...)`. Persistent per-path frame
-state is separate from temporary shader-local storage and uniform arguments.
-Frames live in scheduler-owned reusable pools, not per-thread malloc paths.
-Fallback's LLVM barrier-frame arena can reuse overflow chunks beyond its
-4 MiB fast buffer; that fast buffer is not a maximum frame size.
-
-Generic Luisa analyses may eliminate provably unnecessary zero stores or
-promote transitively read-only references. Ordinary scalar/vector default
-zero initialization remains unchanged. Such compiler work must establish
-effect, alias and lifetime safety independently and validate the original
-renderer module after the minimal regression. No renderer-specific branch
-belongs in Luisa's compiler analysis.
-
-Direct-light components preserve Cycles' RNG dimensions, proposal/resampling
-relationships, PDFs, roulette, MIS, closure evaluation and pass routing.
-Deferred emission is evaluated only at its corresponding transport predicate.
-Structural alignment of every remaining work predicate is still under audit;
-component composition or matching aggregate energy is not proof of parity.
-
-## Validation and remaining boundaries
-
-Every migrated family needs original Cycles words or GPU-state fixtures and
-whole-program validation. The fallback backend executes the same Luisa DSL;
-it is not a separate correctness oracle. Full-scene comparisons use the same
-original .blend, frame, camera, settings, seed and fixed samples, with linear
-passes, invalid counts and visual inspection. Indexed per-path traces locate
-the first RNG/state/visibility divergence without consuming extra samples.
-
-Fast math stays enabled. Discrete words, state, addressing, predicates and
-sampling dimensions must align; a harmless last-bit difference does not
-justify slow software math, texture filtering or intersections. Inlining is
-left to the compiler rather than manually forced noinline boundaries.
-
-The [equal-pass HIP baseline](validation/2026-09-08/matched-pass-hip/README.md)
-separates render wall time, scene compilation, session initialization
-(JIT plus setup/baking) and coroutine frame size. It does not establish
-complete performance or path parity. Remaining
-native opcodes, legacy displacement removal, unsupported geometry/motion
-configurations and indirect-light differences are listed in the compatibility
-status. OSL and unadmitted features are not silently approximated.
+- **Entrypoints (`include/psycles/luisa/path_tracer.h`, `src/luisa/path_tracer_kernel.cpp`, `src/luisa/path_tracer_session.cpp`):**
+  - `LuisaPathTracerBackend::compile_scene` specializes scene geometry, light distribution / LightTree (`src/sampling/`), and `cycles_svm` tables into an immutable compiled scene.
+  - `create_session` initializes camera-dependent volume/background resources and compiles device kernels (`Luisa shader JIT`).
+  - `SampleRange.total` anchors Tabulated Sobol sequence hashes consistently across progressive renders and single-pixel diagnostic captures.
+- **Schedulers (`src/luisa/path_kernel_pipeline.cpp`, `src/luisa/path_kernel_executor.cpp`):**
+  - **`megakernel`:** Single monolithic path kernel loop per thread/packet (default on CPU `fallback` / `simd`).
+  - **`wavefront-staged`:** Splits path tracing into persistent pool-allocated coroutine frames (`intersect_closest`, optional volume stage, surface-sorted multi-bucket shading, and scatter + fused direct-light shadow queue `shade_light_nee -> intersect_shadow -> shade_shadow`). See [optimization.md](optimization.md) for bucket planning, refill thresholds, and shader-sorting strategy.
+- **Pass Routing & Output (`src/luisa/path_kernel_film*.cpp`, `src/io/`):**
+  - Supports Combined, Normal, Albedo, Diffuse/Glossy/Transmission direct/indirect, Emission, Background, Volume Direct/Indirect, and diagnostic 344-AOV `PsyTraceNNN` capture, writing 32-bit float multilayer OpenEXR (`ViewLayer.<pass>.<component>`) alongside diagnostic PFM outputs.

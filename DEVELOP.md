@@ -1,212 +1,71 @@
-# Psycles development status
+# Developer Guide
 
-Updated 2026-09-10. This page contains current development rules and remaining gates. “Implemented”
-does not mean “Cycles compatible”: compatibility requires an exact-revision
-Cycles render, linear-pass metrics, and visual comparison. The current
-commands, machine, reports, and triptychs are in
-[VALIDATION.md](VALIDATION.md).
+This guide documents Psycles' repository structure, semantic and performance invariants, and required verification gates.
 
-## Mandatory Cycles SVM implementation lock
+---
 
-Until the project owner gives an explicit superseding instruction, the sole
-implementation task is an isomorphic Luisa DSL implementation of Blender
-Cycles 5.2.1 SVM. This is a hard development constraint, not a design
-preference:
+## Repository Structure
 
-- reproduce Cycles' SVM node stream, typed node payloads, stack addressing,
-  program-counter loop, single node-type dispatch, closure state, feature
-  masks, and surface/volume/displacement control flow before attempting any
-  alternative architecture;
-- do not retain or extend Psycles-specific substitutes such as execution-family
-  plus semantic-subtype dispatch, independently scheduled value/closure
-  programs, or a second closure-leaf decode layer;
-- do not redesign, generalize, fuse, split, or otherwise "improve" the Cycles
-  execution model. Luisa multistage/JIT facilities may erase node cases and
-  closures that Cycles feature masks prove unreachable, but may not change the
-  observable state machine or bytecode semantics;
-- do not advance unrelated renderer features or optimizations while this SVM
-  replacement remains incomplete;
-- every migrated node family requires a field/state mapping to the exact
-  Cycles 5.2.1 source, a Cycles-oracle regression, and whole-program validation.
-
-No deviation is implied by temporary regressions or by the convenience of the
-existing implementation. Only an explicit project-owner instruction can relax
-this lock.
-
-Recording-time specialization must generalize across scenes. Use ordinary C++
-guards over immutable, finalized scene/session capabilities to omit DSL only
-when the native predicate is provably inactive. Unknown or incomplete inputs
-must retain the path, and rebuilding the owning scene/session must recompute
-the proof. Scene names, asset identities, measured hot paths, prerenders and
-benchmark-specific thresholds must never control this specialization.
-
-## Mandatory structural-parity performance lock
-
-The Cycles lock applies to the observable renderer state machine, not to an
-incidental floating-point bit pattern selected by one compiler or device. Until
-the project owner explicitly says otherwise, a non-structural one-ULP or
-last-bit difference must never justify a runtime performance cost:
-
-- do not disable fast math, emulate native math or texture filtering in
-  software, add branches or memory traffic, or replace a hardware instruction
-  solely to reproduce the final bit of one Cycles build;
-- keep structural facts exact: SVM words and cursor movement, control flow,
-  visibility/support, RNG dimensions, sampling probabilities, closure state,
-  energy, texture addressing/filter type, and finite/invalid behavior;
-- external-oracle regressions must compare structural words exactly and use a
-  documented numerical tolerance only for host/backend arithmetic whose small
-  representation difference does not alter those structural facts;
-- stricter arithmetic is permitted only with a written proof obligation, such
-  as maintaining an outward probability bound. Each exception must be narrowly
-  allowlisted and regression-tested rather than inferred from an exact-hash
-  fixture.
-
-Native texture operations are part of this lock: nearest and linear filtering
-must remain one native sample, and Cycles cubic filtering must remain its four
-native bilinear samples. A backend-specific software texel loop is not an
-acceptable way to match interpolation rounding.
-
-Vector normalization follows the same rule. Cycles' zero, fallback, and
-near-zero domain predicates remain explicit because they can change control
-flow or finite/invalid behavior; arithmetic inside the accepted domain uses
-the shared native reciprocal-square-root implementation in
-`native_vector_math.h`. Do not reintroduce scalar `sqrt` plus division merely
-to reproduce a CPU/GPU rounding sequence.
-
-## Authoritative-reference policy
-
-The version-pinned Blender Cycles 5.2.1 source and renders from the same
-`.blend`, frame, integrator settings, seed, samples, and linear passes are the
-only correctness oracle for Psycles rendering and sampling.
-
-- Do not build a CPU renderer, CPU sampling implementation, or host-side
-  “reference” evaluator for any Luisa device algorithm.
-- Host code may compile immutable scene data for device upload, but must not
-  duplicate a Luisa selection, BSDF, light-shape, transport, or MIS algorithm
-  for validation.
-- Regression tests for renderer behavior must execute the Luisa DSL/JIT path
-  on the supported backends and compare against current Cycles outputs or
-  explicitly versioned Cycles fixtures.
-- Reading Cycles source establishes both SVM semantics and, under the active
-  implementation lock above, the required SVM execution model. Luisa DSL is
-  the implementation language; it is not permission to substitute a different
-  interpreter architecture.
-
-## Current implementation and evidence
-
-Native Cycles 5.2.1 SVM is the default material execution path. Ordinary
-surface, volume, shadow, world and light consumers no longer depend on the
-legacy material evaluator. A private displacement-prepass bridge remains;
-it is removal work, not an approved alternate architecture.
-
-Use [the compatibility status](docs/cycles-compatibility.md) for current
-coverage and [the validation index](VALIDATION.md) for completed gates.
-The [equal-pass HIP campaign](docs/validation/2026-09-08/matched-pass-hip/README.md)
-records 12 paired 256 spp runs at Psycles c5bf9247 / Luisa 9ea3b720f,
-with both engines' EXRs validated against the same 15-pass contract.
-Historical progress notes and old performance results are not current gates;
-their dated reports remain under docs/validation and in Git history.
-
-## Worktree and publication discipline
-
-Verify the designated root worktree and its nested Luisa checkout before
-editing. Do not assume the shell's default directory or reuse an independent
-Luisa checkout. On the validated workstation, the active worktree is
-/home/mike/Projects/Psycles-surface-svm. Inspect both repositories' status,
-branch, remotes and diffs; preserve unrelated user changes.
-
-Publish generic Luisa corrections to origin/next before advancing the
-Psycles gitlink. Publish reviewed Psycles changes to origin/main without
-force-pushing. Stage exact task files, including a gitlink only after its
-referenced child commit is published and validated. Commit useful validated
-checkpoints promptly; do not accumulate unrelated edits into one change.
-
-Renderer-specific coroutine policies belong in generic Coro Ext/Handler
-clients, not Psycles-specific branches in Luisa compiler/scheduler facilities.
-Use stream insertion for scheduler dispatch commands. Keep frame storage in
-scheduler-owned pools; never introduce a per-thread/per-resume malloc path.
-Do not use noinline markers as a renderer optimization strategy.
-
-## Verification order
-
-Compiler/XIR work follows: formal effect/control-flow analysis, a minimal
-failing counterexample, a permanent regression, the generic correction, then
-validation of the full original module. Passing a reduced sibling is not
-evidence that the original renderer compiles or runs.
-
-Build with every hardware thread (32 on the validated workstation). Validate
-HIP first, then fallback, then strict native XIR-to-SPIR-V Vulkan canaries.
-Vulkan validation must set all three guards:
-
-```bash
-LUISA_VULKAN_USE_XIR=1 \
-LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
-LUISA_VULKAN_DISABLE_DXC=1 \
-ctest --test-dir build --output-on-failure --parallel 1 -R '<focused-native-Vulkan-tests>'
+```text
+Psycles/
+  include/psycles/
+    adapter/       Blender scene importer public API
+    compiler/      Core node registry, Cycles SVM IR & bytecode compiler, sky/camera helpers
+    contract/      Immutable SceneDatabase, ShaderGraph, pass & transport contracts
+    io/            Multilayer OpenEXR & PFM image I/O, progressive pixel probe
+    luisa/         Luisa backend API, surface/volume/sampling headers, DirectJit translator
+    sampling/      Tabulated Sobol, LightTree, background & pixel-filter builders
+  src/             Implementations matching each include module above
+  examples/        CLI executables (render_demo, render_blender_scene, probe_nishita)
+  tools/           Cycles benchmark runner, path-trace schema/decoder/comparator, policy scripts
+  tests/           C++ core/device tests, Cycles oracle fixtures, Python contract suites
+  docs/            Design manuals, optimization reference, compatibility spec, Cycles probe JSONs
+  third_party/     Pinned LuisaCompute submodule and sky lookup tables
 ```
 
-Keep device tests sequential on the single GPU. All-thread builds are still
-mandatory; concurrent JIT/device-test processes are not a build-speed setting
-and can contend or stall. Host-only tests may use all 32 threads.
+---
 
-Report configuration, compilation, focused tests, complete suites, and real
-scene canaries separately. Do not call a build successful from configuration
-alone, promote an expected failure into a pass, or conceal pre-existing
-suite failures. Keep toolchains and generated evidence in local build/temp
-directories; do not modify system packages or shell profiles for a probe.
+## Engineering & Compatibility Invariants
 
-## Static specialization and binding
+### 1. Native Cycles SVM Fidelity
 
-Preserve the original word stream and runtime predicates. Derive generated
-node cases and stack/closure bounds from compile-time graph/emission facts
-and used-scene data, never from a pre-render, profile or scene-name table.
-Both arms of dynamic branches contribute to the conservative bound. The bump
-prefix belongs to the surface ShaderJump entry and must not be discarded.
+- Blender Cycles (5.2.1 / 5.3.0) source and rendered linear passes are the sole correctness oracle. Do **not** build a separate host CPU reference renderer or duplicate device BSDF/MIS/sampling logic on the host.
+- Preserve Cycles' SVM node stream, typed word payloads, stack addressing, `ShaderJump` entrypoints (`surface`, `volume`, `displacement`, plus bump fallthrough prefix), closure allocations, feature masks, and RNG sampling dimensions.
+- Unsupported reachable nodes/features must emit explicit compiler diagnostics (`ShaderCompileDiagnostic`) rather than silent fallbacks or placeholder defaults.
+- Specialization happens only at host recording time using immutable finalized scene/session facts (active shaders, static stack high-water mark, closure bounds, attribute residency, feature masks). Never key specialization off scene names, asset hashes, or pre-render heuristics.
 
-Keep frequently changing render values in arguments/resources when the
-generated program remains valid: seed, sample range, extent, camera,
-transforms and integrator parameters. Changes that affect folded words,
-reachable cases, static array bounds or binding types require appropriate
-program/cache invalidation. Never pin an old shader cache name to hide a
-structural change. Ordinary scalar/vector default zero initialization is
-unchanged; lifetime-without-initialization is not permission to read
-uninitialized storage.
+### 2. Structural-Parity Performance Policy
 
-## Measurement and sampling gates
+- Keep native fast math enabled (`enable_fast_math = true`); never trade runtime performance for non-structural 1-ULP bit matching.
+- Never replace native hardware math or texture filtering (`nearest`, linear bilinear `1x`, Cycles bicubic `4x`) with software loops or scalar `sqrt`/division normalization where `native_vector_math.h` `rsqrt` applies.
+- Express per-shader/per-bucket specialization and surface sorting cleanly in Psycles host builders or generic Luisa `Coro` scheduler facilities; never add renderer-specific branches inside `third_party/LuisaCompute` compiler passes or runtime allocators.
+- Keep `auto`-inlining heuristics natural unless a controlled cross-scene measurement demonstrates an instruction/register win (never sprinkle `noinline` pragmas ad hoc).
 
-Use the [schema-v3 equal-pass benchmark runner](docs/scene-benchmark.md). Compare Cycles'
-original main-loop wall time with Psycles render-only wall time. Keep scene
-compilation, main JIT, whole render calls, process time and profiled GPU sums
-separate. State cache policy, exact revision/build, device, seed, frame,
-extent, samples and scheduler options. Do not overlap performance runs with
-other renders or builds.
+### 3. Source Hygiene & Submodule Discipline
 
-Repeated full-scene measurements accompany performance conclusions. Smaller
-IR, scratch, or coroutine frames alone do not prove a renderer speedup.
-Inspect per-pass absolute error, relative error, reference signal scale and
-non-finite counts; aggregate energy agreement is not same-path correctness.
+- Keep every first-party source/header file at or below 2,000 lines (`python tools/check_source_size.py`).
+- Keep CMake source lists (`CMakeLists.txt` and `cmake/*.cmake`) exact — no stale paths and no orphaned `.cpp` files.
+- Publish or pin `third_party/LuisaCompute` to a clean upstream/fork commit before advancing the submodule gitlink in `Psycles`.
+- Keep path-handling tests cross-platform (handle Windows `Path` separators and `PurePosixPath` fixture strings explicitly).
 
-The Cycles 5.2.1 sampler uses the scene's actual scrambling configuration and
-path-event dimensions. Verify random words and advancement decisions through
-the original Cycles trace, not a second host sampler. A matching subset of
-random fields or pixels is not proof of global RNG/path parity.
+---
 
-## Remaining completion gates
+## Mandatory Verification Gates
 
-- Implement the remaining native semantic opcodes with original word/state
-  oracles; unsupported reachable behavior must not silently fall back.
-- Remove the private legacy displacement bridge and unreachable old material
-  execution code, then validate displacement/bump, geometry and camera state.
-- Resolve remaining indirect-light/path structural differences and remove
-  unnecessary work at the same predicates as Cycles.
-- Keep surface/volume/displacement control flow, closure allocation, sampling,
-  scene identity and all exposed render passes faithful to the original.
-- Complete original-scene correctness and performance checks after each
-  material change, including failures and remaining uncertainty.
-- Reach the requested rendering-efficiency target across the tested scenes;
-  one faster scene or a successful showcase render does not finish the goal.
+Run the appropriate gates after every change:
 
-OSL and unadmitted geometry/motion configurations are not implicitly supported
-by the default SVM switch. Exact coverage and known backend exceptions belong
-in the current compatibility/validation records, not an obsolete node count
-or roadmap copied from an earlier Cycles version.
+1. **Repository Policy & Static Gates:**
+
+   ```bash
+   python tools/check_source_size.py
+   python tests/test_luisa_shader_performance_policy.py
+   python -m unittest discover -s tests -p "test_cycles_binding_oracle.py"
+   ```
+
+2. **Full Build & CTest Suite:**
+   - Build all targets cleanly and run CPU/GPU CTest (`ctest --test-dir build --output-on-failure`).
+   - Run GPU backend tests sequentially on single-GPU hosts to avoid queue contention.
+3. **End-to-End Scene Parity & Throughput Benchmark:**
+   - When modifying SVM handlers, path-kernel scheduling, or updating `third_party/LuisaCompute`, validate full canonical scenes via [docs/scene-benchmark.md](docs/scene-benchmark.md) against official Cycles (`hip`, `dx`, `vk-xir`, `vk-dxc`, `fallback`, `simd`) confirming `0` invalid pixels, expected Combined RMSE, and non-regressed render-only wall time.
+4. **First-Divergence Diagnosis:**
+   - When an EXR pass diverges from Cycles, capture a single-pixel/single-sample trace via [docs/cycles-path-trace.md](docs/cycles-path-trace.md) (`tools/compare_cycles_path_traces.py`) to pinpoint the exact diverging RNG word, closure, PDF, or path state transition before changing kernel logic.

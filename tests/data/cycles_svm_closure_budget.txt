@@ -1,7 +1,7 @@
 # Cycles 5.2.1 cb168525138fecc792cc393f94afc39582b0103c, HIP RX 9070 XT.
 # Read-only GDB observations of ShaderGraph::get_num_closures (probe graph)
 # and Scene::get_max_closure_count (includes default Principled), 8x8/1 spp.
-# Generator: docs/validation/2026-09-07/native-closure-budget/{probe.py,observe.gdb}
+# Captured from Cycles 5.2.1 cb168525138fecc792cc393f94afc39582b0103c.
 # case graph_closures scene_max_closures
 diffuse 1 12
 emission 0 12
