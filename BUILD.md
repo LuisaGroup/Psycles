@@ -3,7 +3,7 @@
 Psycles builds LuisaCompute as a CMake subdirectory. The repository pins the
 tested Luisa revision in `third_party/LuisaCompute`; a normal user build does
 not need a separate Luisa installation or a second configure step.
-The active branch pins LuisaCompute `next@d57720955`.
+The active branch pins LuisaCompute `next@db53c6b76`.
 
 ## Prerequisites
 
@@ -39,18 +39,18 @@ EXR format selection and Blender 5.2's `MULTI_LAYER_IMAGE` media category.
 Psycles' C++ renderer links the system OpenImageIO package and writes
 full-float Cycles-compatible multilayer OpenEXR files.
 
-The host-only `fallback` backend additionally needs LLVM, Embree, X11, and
-libuuid development packages discoverable by CMake. The historical Ubuntu
-portability baseline is:
+The host CPU backends (`fallback` and optional `simd`) additionally need LLVM,
+Embree, and (on Linux) X11 and libuuid development packages discoverable by
+CMake. Validated baselines:
 
-| Component | Version |
-|---|---:|
-| Ubuntu | 24.04 LTS (Noble) |
-| GCC | 13.3 |
-| CMake | 3.27.7 |
-| Ninja | 1.11.1 |
-| LLVM | 22.1.8 |
-| Embree | 4.3.0 |
+| Component | Windows Workstation (2026-11) | Linux Portability Baseline (2026-07) |
+|---|---|---|
+| OS | Windows 11 x64 | Ubuntu 24.04 LTS (Noble) |
+| Compiler | ROCm 10.1.0 `clang-cl` + `lld-link` | GCC 13.3 |
+| CMake / Ninja | CMake 3.26+ / Ninja | CMake 3.27.7 / Ninja 1.11.1 |
+| LLVM | LLVM 24 (ROCm 10.1.0) | LLVM 22.1.8 |
+| Embree / TBB | Embree 4.4.1 / oneTBB 2023.1.0 | Embree 4.3.0 |
+| GPU Backends | HIP (ROCm 10.1.0 + HIPRT 3.0), DirectX 12, Vulkan 1.4 (`vk-xir` & `vk-dxc`) | HIP, Vulkan |
 
 Install LLVM 22 from the
 [official LLVM Debian/Ubuntu repository](https://apt.llvm.org/), then install
@@ -98,13 +98,21 @@ build.
 |---|---:|---|
 | `PSYCLES_ENABLE_OPENIMAGEIO` | `ON` | Write Cycles-compatible multilayer OpenEXR output |
 | `PSYCLES_ENABLE_LUISA` | `ON` | Build the Luisa DSL/runtime renderer |
-| `PSYCLES_ENABLE_LUISA_FALLBACK` | `ON` | Build the LLVM/Embree host backend |
+| `PSYCLES_ENABLE_LUISA_FALLBACK` | `ON` | Build the LLVM/Embree scalar-per-thread CPU backend (`fallback`) |
+| `PSYCLES_ENABLE_LUISA_SIMD` | `OFF` | Build the LLVM/Embree packet-vectorized CPU backend (`simd`) |
 | `PSYCLES_ENABLE_LUISA_METAL` | `ON` on Apple | Build the Metal backend |
-| `PSYCLES_ENABLE_LUISA_HIP` | `OFF` on Apple, otherwise `ON` | Build the AMD HIP backend |
-| `PSYCLES_ENABLE_LUISA_VULKAN` | `OFF` on Apple, otherwise `ON` | Build the Vulkan backend |
+| `PSYCLES_ENABLE_LUISA_METAL4` | `OFF` | Build the Metal 4 AIR backend on Apple platforms |
+| `PSYCLES_ENABLE_LUISA_HIP` | `OFF` on Apple, otherwise `ON` | Build the AMD HIP backend (`hip`) |
+| `PSYCLES_ENABLE_LUISA_VULKAN` | `OFF` on Apple, otherwise `ON` | Build the Vulkan backend (`vk`, defaults to native XIR-to-SPIR-V) |
+| `LUISA_COMPUTE_ENABLE_DX` | `ON` on Windows (Luisa default) | Build the DirectX 12 backend (`dx`) on Windows |
 | `PSYCLES_BUILD_TESTS` | `ON` | Build C++ tests and register compatibility gates |
 | `PSYCLES_BUILD_EXAMPLES` | `ON` | Build render and inspection CLIs |
 | `PSYCLES_FETCH_LUISA_NEXT` | `OFF` | Fetch `next` only when the initialized submodule is unavailable |
+
+For Vulkan, Psycles enables LuisaCompute's native XIR-to-SPIR-V compiler
+(`LUISA_COMPUTE_ENABLE_VK_XIR_SPIRV=ON`) by default. To validate the legacy
+HLSL/DXC Vulkan SPIR-V path (`vk-dxc`), configure a separate build directory
+with `-DLUISA_COMPUTE_ENABLE_VK_XIR_SPIRV=OFF`.
 
 The source selection order is:
 
@@ -318,9 +326,10 @@ A full compatibility claim additionally requires the focused official-Cycles
 linear-pass probes described in
 `docs/cycles-compatibility.md`.
 
-The exact 2026-07-29 AMD three-backend commands, XIR results, EXR metrics,
-GPU timings, visual inspection, committed reports, triptychs, and limitations
-are recorded in [VALIDATION.md](VALIDATION.md).
+The current six-backend five-scene validation results, compiler pins, EXR
+metrics, timings, and unit-test gates are recorded in
+[VALIDATION.md](VALIDATION.md) and the
+[2026-11-22 six-backend benchmark report](docs/validation/2026-11-22/six-backend-benchmark/README.md).
 
 ## Troubleshooting
 

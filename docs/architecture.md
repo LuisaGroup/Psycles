@@ -1,8 +1,9 @@
 # Architecture
 
-Updated 2026-09-08. Current coverage and measured limitations belong in
-[cycles-compatibility.md](cycles-compatibility.md) and
-[the validation index](../VALIDATION.md).
+Updated 2026-11-22. Current six-backend validation results and coverage
+boundaries belong in [cycles-compatibility.md](cycles-compatibility.md),
+[the validation index](../VALIDATION.md), and the
+[2026-11-22 six-backend report](validation/2026-11-22/six-backend-benchmark/README.md).
 
 ## Required execution model
 

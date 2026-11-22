@@ -1,21 +1,29 @@
 # Canonical scene benchmark
 
-The default full-scene performance and quality matrix has five entries;
-focused HIP campaigns explicitly select only the two HIP renderers:
+The full-scene performance and quality matrix compares official Blender Cycles
+(5.2.x / 5.3.0) against Psycles across CPU and GPU Luisa backends; focused
+campaigns select a subset explicitly:
 
 | Implementation | Device path |
 |---|---|
 | Blender Cycles | CPU |
-| Blender Cycles | HIP, with an explicit device-name filter |
-| Psycles/Luisa | fallback |
-| Psycles/Luisa | HIP |
-| Psycles/Luisa | Vulkan |
+| Blender Cycles | HIP / HIPRT (or Metal on Apple), with an explicit device-name filter |
+| Psycles/Luisa | `fallback` (LLVM/Embree scalar-per-thread CPU) |
+| Psycles/Luisa | `simd` (LLVM/Embree packet-vectorized CPU, opt-in via `PSYCLES_ENABLE_LUISA_SIMD=ON`) |
+| Psycles/Luisa | `hip` (AMD ROCm / HIPRT) |
+| Psycles/Luisa | `dx` (DirectX 12 SM 6.6+, Windows) |
+| Psycles/Luisa | `vk` (Vulkan native XIR-to-SPIR-V `vk-xir` default, or HLSL/DXC `vk-dxc`) |
+| Psycles/Luisa | `metal` / `metal4` (Apple Silicon) |
 
-The fallback entry executes the production Luisa DSL/JIT program through
-LuisaCompute's LLVM/Embree backend. It is not a separate Psycles CPU reference
-renderer. Cycles remains the only rendering oracle; its CPU result is retained
-alongside HIP to expose device-dependent intersection and floating-point
-behavior.
+Both `fallback` and `simd` execute the production Luisa DSL/JIT program through
+LuisaCompute's LLVM/Embree backends. Neither is a separate Psycles CPU
+reference renderer. Cycles remains the only rendering oracle; its CPU result is
+retained alongside GPU to expose device-dependent intersection and
+floating-point behavior.
+
+For the latest validated five-scene, six-backend results (`hip`, `dx`,
+`vk-dxc`, `vk-xir`, `fallback`, `simd` vs Cycles 5.3.0), see the
+[2026-11-22 six-backend validation report](validation/2026-11-22/six-backend-benchmark/README.md).
 
 By default, `tools/run_scene_benchmark.py` renders all five entries
 sequentially with the

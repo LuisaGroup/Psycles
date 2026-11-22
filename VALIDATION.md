@@ -1,18 +1,49 @@
 # Psycles validation index
 
-Updated 2026-09-10. This is the current evidence index, not a cumulative
-roadmap. Older timing tables and legacy-executor claims have been removed
-from this page; their dated reports remain under docs/validation and in Git
-history.
+Updated 2026-11-22. This is the current evidence index, not a cumulative
+roadmap. Older timing tables and legacy-executor claims remain in their dated
+reports under `docs/validation/` and in Git history.
 
-Handoff update (2026-09-10): SDK `31721e1f6` is now published and the gitlink
-advanced at the owner's request. Its root host186 and disjoint HIP15+178 pass;
-the SDK host suite is80/81 with a diagnosed padding-sensitive test assertion.
-New-SDK fallback/native Vulkan and full-scene gates are pending. See
-[HANDOFF.md](HANDOFF.md) for exact current status; the four-scene timings below
-remain the preceding SDK5c7 capture, not measurements of SDK317.
+## Current six-backend five-scene checkpoint (`LuisaCompute next@db53c6b76`)
 
-## Apple Metal / Metal4 checkpoint
+The [2026-11-22 six-backend validation report](docs/validation/2026-11-22/six-backend-benchmark/README.md)
+validates Psycles on **LuisaCompute `next@db53c6b76`** against official
+**Blender Cycles 5.3.0** (`02f0899d78e3`) on an AMD Ryzen 9 9950X3D + AMD
+Radeon RX 9070 XT workstation across all five official scenes (`bmw27`,
+`monster`, `lone-monk`, `classroom`, `barbershop`):
+
+- **All 6 backends build cleanly and pass 37/37 host, XIR, coroutine, SPIR-V,
+  HLSL, DX, VK, and CPU (`fallback`/`simd`) unit tests.**
+- **GPU (256 spp `wavefront-staged`, 20/20 pass, 0 invalid pixels):** Every
+  scene beats Cycles 5.3.0 HIPRT on every GPU backend (`hip`: `1.09×–1.74×`,
+  `vk-dxc`: `1.43×–2.64×`, `dx`: `1.44×–3.18×`, `vk-xir`: `1.32×–3.12×`).
+  `db53c6b76` cut cold JIT by **20–63%** on `bmw27`/`monster`/`lone-monk`/
+  `classroom` and cut `barbershop` coroutine transform + warm JIT by
+  **19–35%** with matching render throughput and bit-identical RMSE.
+- **CPU (64 spp `megakernel`, 10/10 pass, 0 invalid pixels):** Safe fast-math
+  flags (removing `nnan`/`ninf` poison) resolved the `fallback` Beckmann NDF
+  `exp` overflow divergence (`bmw27`, `classroom`, `barbershop` RMSE now match
+  `simd` and GPU to 5 decimal places). Both `fallback` (`1.19×–1.43×` idle)
+  and `simd` (`1.10×–1.49×` idle; interleaved ABAB confirms identical post-opt
+  IR and `-0.2%` delta between `4a1a22ce8` and `db53c6b76`) beat Cycles 5.3.0
+  CPU on all five scenes.
+
+| Scene | Cycles 5.3.0 HIPRT (256 spp) | `hip` | `dx` | `vk-dxc` | `vk-xir` | Cycles 5.3.0 CPU (64 spp) | `fallback` (idle) | `simd` (idle) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `bmw27` | 3.238 s | 1.859 s | **1.019 s** | 1.229 s | 1.037 s | 2.894 s | 2.277 s | **2.127 s** |
+| `monster` | 13.348 s | 7.905 s | 5.827 s | 6.306 s | **5.356 s** | 12.686 s | **10.307 s** | 10.956 s |
+| `lone-monk` | 13.315 s | 11.586 s | 4.826 s | 5.384 s | **4.665 s** | 22.948 s | 16.096 s | **15.445 s** |
+| `classroom` | 17.046 s | 13.273 s | 7.538 s | 8.004 s | **7.137 s** | 24.498 s | 20.648 s | **19.814 s** |
+| `barbershop` | 24.368 s | 22.366 s | **16.912 s** | 17.091 s | 18.433 s | 37.492 s | **29.663 s** | 34.093 s |
+
+---
+
+## Historical checkpoints (2026-09)
+
+The sections below retain earlier 2026-09 Blender 5.2.1 / SDK `5c7` / `317`
+audit and baseline captures for historical provenance.
+
+### Apple Metal / Metal4 checkpoint (2026-09-09)
 
 These observations pin the source/SDK snapshots in their report; they do not
 validate subsequent HIP continuation changes described below.

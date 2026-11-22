@@ -1,11 +1,16 @@
 # Cycles compatibility status
 
-Updated 2026-09-10. This page describes the current implementation, not the
-performance or feature coverage of the legacy material executor.
+Updated 2026-11-22. This page describes the current native Cycles SVM
+implementation, not the coverage of the legacy material executor.
 
-The current SDK317 handoff and its incomplete validation gates are recorded in
-[HANDOFF.md](../HANDOFF.md). The four-scene performance capture below predates
-that SDK change; publication does not certify full correctness or efficiency.
+For the latest six-backend, five-scene validation results on **LuisaCompute
+`next@db53c6b76`** against **Blender Cycles 5.3.0** (`hip`, `dx`, `vk-dxc`,
+`vk-xir` @ 256 spp and `fallback`, `simd` @ 64 spp — all 30 scene/backend
+pairs passing with **0 invalid pixels** and beating Cycles on every scene),
+see [VALIDATION.md](../VALIDATION.md) and the
+[2026-11-22 six-backend report](validation/2026-11-22/six-backend-benchmark/README.md).
+The dated 2026-09 sections below are retained as historical provenance for the
+native SVM migration and earlier audit checkpoints.
 
 ## Default execution path
 
@@ -152,7 +157,15 @@ Cycles' containing curve plus packed segment index; they are not triangle
 indices. The current scene upload admits static ribbon curves. This does not
 claim motion geometry, other curve shapes or point-cloud rendering.
 
-## Image parity and performance
+## Historical 2026-09 image parity and performance checkpoints
+
+> **Superseded:** See the
+> [2026-11-22 six-backend validation report](validation/2026-11-22/six-backend-benchmark/README.md)
+> and [VALIDATION.md](../VALIDATION.md) for current six-backend performance
+> (`1.09×–3.18×` vs Cycles 5.3.0 HIPRT on GPU; `1.10×–1.49×` vs Cycles 5.3.0
+> CPU) and 0-invalid-pixel parity across all five scenes. The subsections below
+> preserve the earlier September 2026 Blender 5.2.1 / SDK `5c7` / `9ea`
+> checkpoints.
 
 The [current generic shading-pruning checkpoint](validation/2026-09-10/shading-terminator-pruning/README.md)
 passes complete host **186/186**, HIP **193/193**, fallback **195/195** and
