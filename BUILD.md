@@ -1,6 +1,6 @@
 # Building & Running Psycles
 
-Psycles embeds `third_party/LuisaCompute` (`next@db53c6b76`) as a CMake subdirectory so standard builds configure, compile, and test in one pass.
+Psycles embeds `third_party/LuisaCompute` (`next@2beb5a275`) as a CMake subdirectory so standard builds configure, compile, and test in one pass.
 
 ---
 

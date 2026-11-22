@@ -1,6 +1,6 @@
 # Optimization Architecture & Benchmark Reference
 
-This document details Psycles' native Cycles SVM specialization, GPU wavefront scheduling, backend-specific code generation, and verified performance across all six active backends on `LuisaCompute next@db53c6b76`.
+This document details Psycles' native Cycles SVM specialization, GPU wavefront scheduling, backend-specific code generation, and verified performance across all six active backends on `LuisaCompute next@2beb5a275`.
 
 ---
 
@@ -72,9 +72,9 @@ When running with `wavefront-staged` on GPU (`src/luisa/path_kernel_executor.cpp
 
 ---
 
-## 5. Verified Six-Backend Benchmark Reference (`db53c6b76`)
+## 5. Verified Six-Backend Benchmark Reference (`2beb5a275`)
 
-Measured on `LuisaCompute next@db53c6b76` (`db53c6b76158918007384b17735c5e2e24634211`) against official **Blender Cycles 5.3.0** (`02f0899d78e3`) using `tools/run_scene_benchmark.py` (equal 15-pass linear EXR comparison, render-only wall interval vs Cycles main-loop wall interval).
+Measured on `LuisaCompute next@2beb5a275` (`2beb5a2757fa46868da99b22be10ef571f77e443`) against official **Blender Cycles 5.3.0** (`02f0899d78e3`) using equal 15-pass linear EXR comparison (render-only wall interval vs Cycles main-loop wall interval). Static-mesh pre-transformed emissive-triangle coordinates and instance normal matrices were also repaired in Psycles, slashing `bmw27` / `monster` / `classroom` GPU Combined RMSE from `0.055–0.086` down to `0.0014–0.0079` and matching Cycles `bmw27` mean scene luminance (`0.9998×`).
 
 ### Testbed Configuration
 
@@ -88,36 +88,38 @@ Measured on `LuisaCompute next@db53c6b76` (`db53c6b76158918007384b17735c5e2e2463
 
 ### GPU Results — 256 spp (`wavefront-staged`, Warm `r1` Render Time) vs Cycles 5.3.0 HIPRT
 
-All 20 `(scene, backend)` GPU runs produced **0 invalid pixels**.
+All 20 `(scene, backend)` GPU configurations produced **0 invalid pixels**.
 
 | Scene (Resolution) | Cycles 5.3.0 HIPRT | Psycles `hip` | Psycles `dx` | Psycles `vk-dxc` | Psycles `vk-xir` | Best GPU Speedup |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `bmw27` (960×540) | 3.238 s | 1.859 s *(1.74×)* | **1.019 s** *(3.18×)* | 1.229 s *(2.64×)* | 1.037 s *(3.12×)* | **3.18× (`dx`)** |
-| `monster` (1024×1024) | 13.348 s | 7.905 s *(1.69×)* | 5.827 s *(2.29×)* | 6.306 s *(2.12×)* | **5.356 s** *(2.49×)* | **2.49× (`vk-xir`)** |
-| `lone-monk` (1440×1080) | 13.315 s | 11.586 s *(1.15×)* | 4.826 s *(2.76×)* | 5.384 s *(2.47×)* | **4.665 s** *(2.85×)* | **2.85× (`vk-xir`)** |
-| `classroom` (1920×1080) | 17.046 s | 13.273 s *(1.28×)* | 7.538 s *(2.26×)* | 8.004 s *(2.13×)* | **7.137 s** *(2.39×)* | **2.39× (`vk-xir`)** |
-| `barbershop` (2048×858) | 24.368 s | 22.366 s *(1.09×)* | **16.912 s** *(1.44×)* | 17.091 s *(1.43×)* | 18.433 s *(1.32×)* | **1.44× (`dx`)** |
+| `bmw27` (960×540) | 3.238 s | 2.418 s *(1.34×)* | 1.217 s *(2.66×)* | 1.489 s *(2.17×)* | **1.200 s** *(2.70×)* | **2.70× (`vk-xir`)** |
+| `monster` (1024×1024) | 13.348 s | 8.260 s *(1.62×)* | 6.078 s *(2.20×)* | 6.802 s *(1.96×)* | **5.665 s** *(2.36×)* | **2.36× (`vk-xir`)** |
+| `lone-monk` (1440×1080) | 13.315 s | 10.984 s *(1.21×)* | 4.847 s *(2.75×)* | 5.463 s *(2.44×)* | **4.685 s** *(2.84×)* | **2.84× (`vk-xir`)** |
+| `classroom` (1920×1080) | 17.046 s | 14.414 s *(1.18×)* | 7.583 s *(2.25×)* | 8.047 s *(2.12×)* | **7.454 s** *(2.29×)* | **2.29× (`vk-xir`)** |
+| `barbershop` (2048×858) | 24.368 s | 22.495 s *(1.08×)* | **17.031 s** *(1.43×)* | 17.042 s *(1.43×)* | 18.158 s *(1.34×)* | **1.43× (`dx`)** |
 
 #### GPU Cold `r0` / Warm `r1` Session JIT & Combined RMSE
 
 | Scene | `hip` (Cold / Warm JIT, RMSE) | `dx` (Cold / Warm JIT, RMSE) | `vk-dxc` (Cold / Warm JIT, RMSE) | `vk-xir` (Cold / Warm JIT, RMSE) |
 | --- | ---: | ---: | ---: | ---: |
-| `bmw27` | 6.59 s / 0.85 s *(0.08608)* | 3.80 s / 0.97 s *(0.08605)* | 4.66 s / 0.94 s *(0.08604)* | 3.49 s / 0.95 s *(0.08604)* |
-| `monster` | 10.62 s / 1.49 s *(0.06637)* | 12.88 s / 1.98 s *(0.06635)* | 11.87 s / 1.88 s *(0.06635)* | 9.80 s / 1.93 s *(0.06635)* |
-| `lone-monk` | 10.79 s / 1.01 s *(0.06889)* | 14.09 s / 1.37 s *(0.06863)* | 12.52 s / 1.42 s *(0.06893)* | 10.21 s / 1.46 s *(0.06891)* |
-| `classroom` | 11.36 s / 2.12 s *(0.05900)* | 9.94 s / 2.79 s *(0.05549)* | 7.50 s / 2.86 s *(0.05553)* | 11.79 s / 2.83 s *(0.05554)* |
-| `barbershop`\* | 113.06 s / 8.69 s *(0.00244)* | 107.10 s / 10.99 s *(0.00257)* | 100.84 s / 9.92 s *(0.00253)* | 103.58 s / 10.16 s *(0.00252)* |
+| `bmw27` | 7.08 s / 0.88 s *(0.00787)* | 3.54 s / 0.94 s *(0.00791)* | 4.95 s / 0.96 s *(0.00794)* | 3.43 s / 0.96 s *(0.00790)* |
+| `monster` | 10.29 s / 1.49 s *(0.00145)* | 13.33 s / 1.87 s *(0.00146)* | 11.73 s / 1.91 s *(0.00144)* | 9.92 s / 1.85 s *(0.00144)* |
+| `lone-monk` | 10.22 s / 1.05 s *(0.06870)* | 13.90 s / 1.26 s *(0.06843)* | 12.18 s / 1.47 s *(0.06872)* | 10.56 s / 1.50 s *(0.06870)* |
+| `classroom` | 11.23 s / 1.89 s *(0.00167)* | 17.75 s / 2.79 s *(0.00173)* | 14.66 s / 2.82 s *(0.00221)* | 12.03 s / 2.83 s *(0.00221)* |
+| `barbershop`\* | 118.22 s / 8.49 s *(0.00217)* | 113.16 s / 9.69 s *(0.00233)* | 99.36 s / 9.51 s *(0.00228)* | 98.00 s / 9.54 s *(0.00227)* |
 
-\* On `barbershop` `r0`, updating LuisaCompute to `db53c6b76` invalidated the AMD driver disk cache (`~68–78 s` one-time driver compile), while LuisaCompute's internal compiler stages improved substantially over `9672b97bb`: coroutine split `-26%` to `-35%`, HIP LLVM codegen `-31%`, `vk-xir` SPIR-V compile `-12%`, and warm `r1` JIT `-19%` to `-32%`.
+\* On `barbershop` `r0`, cold runs compiled from an empty local shader cache (`bin/.cache` / `bin_vk_dxc/.cache`); `barbershop hip` cold JIT `118.22 s` is from the initial cold `r0` pass, while warm JIT (`8.49 s`), render time (`22.495 s`), and parity (`rmse=0.00217`, `invalid_pixels=0`) are from the clean verified two-repeat HIP run (replacing an earlier single `r1` transient `render_failed` exit). Note also that updating `LuisaCompute` on `2beb5a275` restored SLEEF fast trig/inverse-trig minimax accuracy and duplicate switch-PHI handling while resolving all 6 prior `fallback`-only CTest exceptions (`421/421` passing).
 
 ### CPU Results — 64 spp (`megakernel`) vs Cycles 5.3.0 CPU
 
-All 10 `(scene, backend)` CPU runs produced **0 invalid pixels**, with `fallback` and `simd` matching each other within `0.00003` Combined RMSE on every scene.
+All 10 `(scene, backend)` CPU configurations produced **0 invalid pixels**, with `fallback` and `simd` matching each other within `0.00003` Combined RMSE on every scene.
 
-| Scene (Resolution) | Cycles 5.3.0 CPU | `fallback` (Idle / Daytime) | `simd` W8 (Idle / Daytime) | Best Speedup (Idle) | Cold / Warm JIT (`fallback` \| `simd`) | RMSE (`fallback` / `simd`) |
+| Scene (Resolution) | Cycles 5.3.0 CPU | `fallback` (Warm Mean) | `simd` W8 (Warm Mean) | Best Speedup | Cold / Warm JIT (`fallback` \| `simd`) | RMSE (`fallback` / `simd`) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `bmw27` (960×540) | 2.894 s | 2.277 s / 2.350 s | **2.127 s** / 2.502 s | **1.36× (`simd`)** | 1.59 s / 0.09 s \| 7.10 s / 0.07 s | 0.09270 / 0.09269 |
-| `monster` (1024×1024) | 12.686 s | **10.307 s** / 10.277 s | 10.956 s / 11.916 s | **1.23× (`fallback`)** | 4.48 s / 0.20 s \| 16.94 s / 0.15 s | 0.07099 / 0.07099 |
-| `lone-monk` (1440×1080) | 22.948 s | 16.096 s / 16.268 s | **15.445 s** / 17.246 s | **1.49× (`simd`)** | 4.10 s / 0.24 s \| 19.16 s / 0.17 s | 0.17762 / 0.17761 |
-| `classroom` (1920×1080) | 24.498 s | 20.648 s / 20.891 s | **19.814 s** / 22.101 s | **1.24× (`simd`)** | 5.30 s / 0.30 s \| 22.71 s / 0.24 s | 0.06954 / 0.06957 |
-| `barbershop` (2048×858) | 37.492 s | **29.663 s** / 30.438 s | 34.093 s / 34.868 s | **1.26× (`fallback`)** | 22.38 s / 0.69 s \| 114.30 s / 0.62 s | 0.04426 / 0.04424 |
+| `bmw27` (960×540) | 2.894 s | **2.486 s** | 2.744 s\* | **1.16× (`fallback`)** | 1.43 s / 0.08 s \| 7.66 s / 0.07 s | 0.03580 / 0.03583 |
+| `monster` (1024×1024) | 12.686 s | **10.289 s** | 11.174 s | **1.23× (`fallback`)** | 4.54 s / 0.18 s \| 18.23 s / 0.15 s | 0.03041 / 0.03041 |
+| `lone-monk` (1440×1080) | 22.948 s | 15.710 s | **15.578 s** | **1.47× (`simd`)** | 4.21 s / 0.23 s \| 18.92 s / 0.20 s | 0.17754 / 0.17753 |
+| `classroom` (1920×1080) | 24.498 s | 21.282 s | **20.405 s** | **1.20× (`simd`)** | 5.36 s / 0.29 s \| 24.16 s / 0.24 s | 0.04217 / 0.04216 |
+| `barbershop` (2048×858) | 37.492 s | **29.955 s** | 34.533 s | **1.25× (`fallback`)** | 23.50 s / 0.66 s \| 119.64 s / 0.70 s | 0.04425 / 0.04422 |
+
+\* `bmw27` `simd` warm runs recorded `r2 = 2.266 s` and a single host scheduling outlier `r3 = 3.222 s` (mean `2.744 s`).

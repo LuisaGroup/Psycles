@@ -87,34 +87,41 @@ class PathEmissiveTriangleComponent final
                 scene,
                 emitter.instance_index,
                 emitter.primitive_index);
-        const auto object_to_world =
-            scene->accel->instance_transform(
-                emitter.instance_index);
-        const auto normal_to_world =
-            transpose(
-                inverse(
-                    object_to_world));
+        const auto transform_applied =
+            triangle.primitive.instance.cycles_transform_applied != 0u;
+        const auto normal_to_world = instance_normal_to_world(
+            scene,
+            emitter.instance_index,
+            triangle.primitive.instance);
         const auto local_p0 =
             triangle.p0;
         const auto local_p1 =
             triangle.p1;
         const auto local_p2 =
             triangle.p2;
-        const auto p0 =
-            (object_to_world *
-             make_float4(
-                 local_p0, 1.0f))
-                .xyz();
-        const auto p1 =
-            (object_to_world *
-             make_float4(
-                 local_p1, 1.0f))
-                .xyz();
-        const auto p2 =
-            (object_to_world *
-             make_float4(
-                 local_p2, 1.0f))
-                .xyz();
+        Float3 p0 = triangle.cycles_intersection_p0;
+        Float3 p1 = triangle.cycles_intersection_p1;
+        Float3 p2 = triangle.cycles_intersection_p2;
+        $if(!transform_applied) {
+            const auto object_to_world =
+                scene->accel->instance_transform(
+                    emitter.instance_index);
+            p0 =
+                (object_to_world *
+                 make_float4(
+                     local_p0, 1.0f))
+                    .xyz();
+            p1 =
+                (object_to_world *
+                 make_float4(
+                     local_p1, 1.0f))
+                    .xyz();
+            p2 =
+                (object_to_world *
+                 make_float4(
+                     local_p2, 1.0f))
+                    .xyz();
+        };
         const auto local_normal =
             normalize_or(
                 cross(

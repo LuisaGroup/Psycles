@@ -63,11 +63,10 @@ class TriangleVolumeBoundaryComponentImpl final
                     p1 - p0,
                     p2 - p0));
         const auto normal_to_world =
-            transpose(
-                inverse(
-                    scene->accel
-                        ->instance_transform(
-                            instance_id)));
+            instance_normal_to_world(
+                scene,
+                instance_id,
+                primitive.instance);
         Float3 geometric_normal =
             normalize(
                 (normal_to_world *

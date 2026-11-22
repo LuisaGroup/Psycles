@@ -513,8 +513,8 @@ public:
                     scene,
                     hit_instances[index],
                     hit_primitives[index]);
-                const auto normal_to_world = transpose(inverse(
-                    scene->accel->instance_transform(hit_instances[index])));
+                const auto normal_to_world = instance_normal_to_world(
+                    scene, hit_instances[index], geometry.primitive.instance);
                 const auto object_normal = normalize(cross(
                     geometry.p1 - geometry.p0,
                     geometry.p2 - geometry.p0));

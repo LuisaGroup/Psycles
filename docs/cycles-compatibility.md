@@ -57,14 +57,11 @@ For benchmark verification across all 6 backends (`hip`, `dx`, `vk-xir`, `vk-dxc
   - Open Shading Language (OSL) custom scripts
   - OpenVDB / sparse external volume grids (volumes currently admit procedural/SVM density fields)
   - Deforming / rigid object motion blur and non-ribbon curve shapes / point clouds
-- **Known Upstream CPU `fallback`-Only Test Exceptions (6 of 421 CTest cases on Windows `LuisaCompute next@db53c6b76`):**
-  - 5 numerical ULP drift tests on LLVM `fallback` (`luisa_homogeneous_volume_fallback`, `luisa_volume_triangle_fallback`, `luisa_volume_environment_fallback`, `luisa_background_sampling_fallback`, `luisa_cycles_svm_hair_scattering_fallback`; `simd` and GPU backends pass)
-  - 1 LLVM verifier PHINode edge case on `wavefront_staged` inside `luisa_cycles_ray_portal_render_fallback` (`luisa_cycles_ray_portal_render_simd` and GPU backends pass)
 
 ---
 
 ## 4. Compatibility Verification Policy
 
-1. **External Cycles Oracles:** Node and render acceptance compares against official Blender Cycles outputs or versioned oracle fixtures (such as the Blender 4.5.10 baseline JSONs in `docs/cycles-*-4.5.10.json` and 5.2/5.3 binary/pass captures under `tests/data/`).
+1. **External Cycles Oracles:** Node and render acceptance compares against official Blender Cycles outputs or versioned oracle fixtures (such as the Blender 4.5.10 baseline JSONs in `docs/cycles-*-4.5.10.json` and 5.2/5.3 binary/pass captures under `tests/data/`). All **421/421** CPU CTest cases pass on Windows (`LuisaCompute next@2beb5a275`).
 2. **Pass-Level & Per-Path Differential Testing:** Full scenes are compared across all 15 linear EXR passes via [scene-benchmark.md](scene-benchmark.md); first-divergence path investigations use the 344-AOV per-path tracer in [cycles-path-trace.md](cycles-path-trace.md).
 3. **Structural Determinism Within Hardware Precision:** RNG hashes, bounce counters, SVM cursor transitions, visibility masks, and object/primitive identities are checked structurally; floating-point continuous values allow documented fast-math tolerances without sacrificing GPU/CPU speed.

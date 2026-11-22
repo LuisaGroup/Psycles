@@ -2,7 +2,7 @@
 
 `tools/run_scene_benchmark.py` compares official Blender Cycles (5.2.x / 5.3.0) against Psycles across CPU and GPU Luisa backends on unmodified `.blend` scenes using identical resolution, scene-owned seeds, fixed sample counts, disabled adaptive sampling, and disabled denoising.
 
-For the verified five-scene, six-backend performance results (`LuisaCompute next@db53c6b76` vs Cycles 5.3.0), see [optimization.md](optimization.md).
+For the verified five-scene, six-backend performance results (`LuisaCompute next@2beb5a275` vs Cycles 5.3.0), see [optimization.md](optimization.md).
 
 ---
 
