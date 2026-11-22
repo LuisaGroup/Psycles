@@ -3,17 +3,174 @@
 from __future__ import annotations
 
 import ctypes
+from dataclasses import dataclass
 import threading
-import time
 from typing import Any
+import weakref
 
 import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
 import numpy as np
 
-from . import bridge, scene_sync
+from . import bridge, scene_cache, scene_sync
+from ._export import cycles_hash
 from .properties import get_preferences
+
+_VP_COORD_LOCK = threading.Lock()
+_ACTIVE_VIEWPORT_STATES: set["_ViewportState"] = set()
+_RETIRING_TASKS: list["_RetiringTask"] = []
+_VP_TIMER_REGISTERED = False
+
+
+@dataclass
+class _RetiringTask:
+    task: bridge.PsyclesViewportTask
+    mode: str
+    engine: bridge.PsyclesEngine | None
+    engine_key: tuple[Any, ...] | None
+    content_hash: bytes | None
+    clear_gen: int
+    cache_entry: scene_cache.CacheEntry | None
+    leased_session: bool
+    owned_temp_session: bridge.PsyclesSession | None
+    superseded: bool
+
+
+def _finalize_finished_retiring(item: _RetiringTask) -> None:
+    cache = scene_cache.get_scene_cache()
+    try:
+        if (
+            item.mode == "compile"
+            and not item.superseded
+            and item.engine is not None
+            and item.engine_key is not None
+            and item.content_hash is not None
+        ):
+            st = item.task.poll()
+            if st.state != bridge.PSYCLES_VIEWPORT_STATE_FAILED:
+                scn = item.task.acquire_scene()
+                sess = item.task.acquire_session(scn) if scn is not None else None
+                if scn is not None and sess is not None:
+                    stored = cache.store_idle_if_fresh(
+                        "main",
+                        item.clear_gen,
+                        item.engine_key,
+                        item.content_hash,
+                        item.engine,
+                        scn,
+                        sess,
+                    )
+                    if not stored:
+                        sess.destroy()
+                        scn.destroy()
+                elif scn is not None:
+                    scn.destroy()
+    finally:
+        item.task.destroy()
+        if item.owned_temp_session is not None:
+            try:
+                item.owned_temp_session.destroy()
+            except Exception:
+                pass
+        if item.cache_entry is not None:
+            cache.release(item.cache_entry, item.leased_session)
+
+
+def _reap_retiring_tasks(*, wait: bool = False) -> bool:
+    """Reap finished retiring viewport tasks. Returns True if any remain in flight."""
+    with _VP_COORD_LOCK:
+        items = list(_RETIRING_TASKS)
+        _RETIRING_TASKS.clear()
+    still_running: list[_RetiringTask] = []
+    for item in items:
+        if wait:
+            item.task.wait()
+            _finalize_finished_retiring(item)
+        else:
+            st = item.task.poll()
+            if st.is_finished:
+                _finalize_finished_retiring(item)
+            else:
+                still_running.append(item)
+    if still_running:
+        with _VP_COORD_LOCK:
+            _RETIRING_TASKS.extend(still_running)
+        return True
+    return False
+
+
+def _viewport_timer_tick() -> float | None:
+    """Main-thread Blender timer polling native viewport tasks and reaping retiring ones."""
+    global _VP_TIMER_REGISTERED
+    any_busy = _reap_retiring_tasks(wait=False)
+    with _VP_COORD_LOCK:
+        states = list(_ACTIVE_VIEWPORT_STATES)
+    for vp_state in states:
+        try:
+            if vp_state.poll_on_main_thread(allow_tag_redraw=True):
+                any_busy = True
+        except Exception:
+            pass
+
+    if any_busy or _reap_retiring_tasks(wait=False):
+        return 0.016
+    with _VP_COORD_LOCK:
+        _VP_TIMER_REGISTERED = False
+    return None
+
+
+def _ensure_viewport_timer() -> None:
+    """Schedule the main-thread viewport poller if called on Blender's main thread."""
+    global _VP_TIMER_REGISTERED
+    if threading.current_thread() is not threading.main_thread():
+        return
+    with _VP_COORD_LOCK:
+        if _VP_TIMER_REGISTERED:
+            try:
+                if bpy.app.timers.is_registered(_viewport_timer_tick):
+                    return
+            except Exception:
+                pass
+        try:
+            bpy.app.timers.register(
+                _viewport_timer_tick, first_interval=0.016, persistent=True
+            )
+            _VP_TIMER_REGISTERED = True
+        except Exception:
+            _VP_TIMER_REGISTERED = False
+
+
+def cancel_all_viewports(*, wait: bool = False) -> None:
+    """Cancel active & retiring viewport workers (blocking only when wait=True)."""
+    with _VP_COORD_LOCK:
+        states = list(_ACTIVE_VIEWPORT_STATES)
+        _ACTIVE_VIEWPORT_STATES.clear()
+        retiring = list(_RETIRING_TASKS)
+    for item in retiring:
+        try:
+            item.superseded = True
+            item.task.cancel()
+        except Exception:
+            pass
+    for vp_state in states:
+        try:
+            vp_state.retire(superseded=True)
+            vp_state.gpu_tex = None
+        except Exception:
+            pass
+    if wait:
+        _reap_retiring_tasks(wait=True)
+        try:
+            if bpy.app.timers.is_registered(_viewport_timer_tick):
+                bpy.app.timers.unregister(_viewport_timer_tick)
+        except Exception:
+            pass
+        with _VP_COORD_LOCK:
+            global _VP_TIMER_REGISTERED
+            _VP_TIMER_REGISTERED = False
+    else:
+        _ensure_viewport_timer()
 
 
 def _collect_passes(
@@ -102,13 +259,40 @@ def _make_render_params(
     window_width: int = 0,
     window_height: int = 0,
     scene: Any | None = None,
+    view_layer: Any | None = None,
 ) -> bridge.PsyclesRenderParams:
     pixel_filter = bridge.PSYCLES_PIXEL_FILTER_FROM_SCENE
     filter_width = 0.0
-    if scene is not None and hasattr(scene, "cycles"):
-        pft = str(scene.cycles.pixel_filter_type)
-        pixel_filter = bridge.PIXEL_FILTER_MAP.get(pft, bridge.PSYCLES_PIXEL_FILTER_FROM_SCENE)
-        filter_width = 1.0 if pft == "BOX" else float(scene.cycles.filter_width)
+    seed = 0
+    override_seed = 0
+    transparent_bg = 0
+    override_transparent_bg = 0
+    alpha_thresh = 0.5
+    override_alpha_thresh = 0
+
+    if scene is not None:
+        transparent_bg = 1 if bool(getattr(scene.render, "film_transparent", False)) else 0
+        override_transparent_bg = 1
+        cycles = getattr(scene, "cycles", None)
+        if cycles is not None:
+            pft = str(cycles.pixel_filter_type)
+            pixel_filter = bridge.PIXEL_FILTER_MAP.get(
+                pft, bridge.PSYCLES_PIXEL_FILTER_FROM_SCENE
+            )
+            filter_width = 1.0 if pft == "BOX" else float(cycles.filter_width)
+            seed = cycles_hash.effective_scene_seed(
+                int(cycles.seed),
+                int(scene.frame_current),
+                float(getattr(scene, "frame_subframe", 0.0)),
+                bool(getattr(cycles, "use_animated_seed", False)),
+            )
+            override_seed = 1
+    if view_layer is not None:
+        alpha_thresh = max(
+            0.0, min(1.0, float(getattr(view_layer, "pass_alpha_threshold", 0.5)))
+        )
+        override_alpha_thresh = 1
+
     return bridge.PsyclesRenderParams(
         full_width=max(int(full_width), 1),
         full_height=max(int(full_height), 1),
@@ -116,14 +300,14 @@ def _make_render_params(
         window_y=max(int(window_y), 0),
         window_width=max(int(window_width), 0),
         window_height=max(int(window_height), 0),
-        seed=0,
-        override_seed=0,
-        transparent_background=0,
-        override_transparent_background=0,
+        seed=seed,
+        override_seed=override_seed,
+        transparent_background=transparent_bg,
+        override_transparent_background=override_transparent_bg,
         pixel_filter=pixel_filter,
         filter_width=filter_width,
-        pass_alpha_threshold=0.5,
-        override_pass_alpha_threshold=0,
+        pass_alpha_threshold=alpha_thresh,
+        override_pass_alpha_threshold=override_alpha_thresh,
         reserved=(ctypes.c_uint8 * 3)(0, 0, 0),
     )
 
@@ -147,6 +331,270 @@ def _engine_settings_from_scene(scene: Any) -> dict[str, Any]:
     }
 
 
+def _updates_are_camera_only(depsgraph: Any) -> bool:
+    updates = getattr(depsgraph, "updates", None)
+    if not updates:
+        return True
+    for u in updates:
+        uid = getattr(u, "id", None)
+        if isinstance(uid, bpy.types.Camera):
+            continue
+        if isinstance(uid, bpy.types.Object) and getattr(uid, "type", "") == "CAMERA":
+            continue
+        return False
+    return True
+
+
+class _ViewportState:
+    """Plain Python state for one viewport engine (never holds a strong RNA ref)."""
+
+    def __init__(self, engine_ref: weakref.ReferenceType[Any] | None) -> None:
+        self.engine_ref = engine_ref
+        self.task: bridge.PsyclesViewportTask | None = None
+        self.task_mode: str = ""
+        self.task_engine: bridge.PsyclesEngine | None = None
+        self.task_engine_key: tuple[Any, ...] | None = None
+        self.task_content_hash: bytes | None = None
+        self.task_clear_gen: int = 0
+        self.cache_entry: scene_cache.CacheEntry | None = None
+        self.leased_session: bool = False
+        self.owned_temp_session: bridge.PsyclesSession | None = None
+        self.engine: bridge.PsyclesEngine | None = None
+        self.engine_key: tuple[Any, ...] | None = None
+        self.camera_sig: tuple[Any, ...] | None = None
+        self.rgba: np.ndarray[Any, np.dtype[np.float32]] | None = None
+        self.rgba_size: tuple[int, int] = (0, 0)
+        self.frame_gen: int = 0
+        self.gpu_tex: Any | None = None
+        self.gpu_tex_size: tuple[int, int] = (0, 0)
+        self.gpu_tex_gen: int = 0
+        self.rendered_samples = 0
+        self.target_samples = 64
+        self.start_samples = 1
+        self.last_size: tuple[int, int] = (0, 0)
+        self.last_state = -1
+        self.status = ""
+
+    def live_engine(self) -> Any | None:
+        eng = self.engine_ref() if self.engine_ref is not None else None
+        if eng is None:
+            return None
+        try:
+            getattr(eng, "is_preview", False)
+        except ReferenceError:
+            return None
+        return eng
+
+    def _drop_dead_engine(self) -> None:
+        with _VP_COORD_LOCK:
+            _ACTIVE_VIEWPORT_STATES.discard(self)
+        self.retire(superseded=False)
+        self.gpu_tex = None
+
+    def release_cache_leases(self) -> None:
+        if self.owned_temp_session is not None:
+            try:
+                self.owned_temp_session.destroy()
+            except Exception:
+                pass
+            self.owned_temp_session = None
+        if self.cache_entry is not None:
+            scene_cache.get_scene_cache().release(
+                self.cache_entry, self.leased_session
+            )
+            self.cache_entry = None
+            self.leased_session = False
+
+    def harvest_finished(self, *, superseded: bool) -> None:
+        task = self.task
+        if task is None:
+            return
+        st = task.poll()
+        if not st.is_finished:
+            return
+        cache = scene_cache.get_scene_cache()
+        try:
+            if (
+                self.task_mode == "compile"
+                and not superseded
+                and self.cache_entry is None
+                and st.state != bridge.PSYCLES_VIEWPORT_STATE_FAILED
+                and self.task_engine is not None
+                and self.task_engine_key is not None
+                and self.task_content_hash is not None
+            ):
+                scn = task.acquire_scene()
+                sess = task.acquire_session(scn) if scn is not None else None
+                if scn is not None and sess is not None:
+                    self.cache_entry = cache.store_and_lease(
+                        "main",
+                        self.task_engine_key,
+                        self.task_content_hash,
+                        self.task_engine,
+                        scn,
+                        sess,
+                        lease_session=True,
+                        expected_clear_gen=self.task_clear_gen,
+                    )
+                    self.leased_session = True
+                elif scn is not None:
+                    scn.destroy()
+            elif (
+                self.task_mode == "scene"
+                and not superseded
+                and self.owned_temp_session is None
+                and st.state != bridge.PSYCLES_VIEWPORT_STATE_FAILED
+                and self.cache_entry is not None
+                and self.cache_entry.scene is not None
+            ):
+                sess = task.acquire_session(self.cache_entry.scene)
+                if sess is not None:
+                    self.owned_temp_session = sess
+        finally:
+            task.destroy()
+            self.task = None
+
+    def retire(self, *, superseded: bool) -> None:
+        task = self.task
+        if task is None:
+            self.release_cache_leases()
+            return
+        task.cancel()
+        st = task.poll()
+        if st.is_finished:
+            self.harvest_finished(superseded=superseded)
+            self.release_cache_leases()
+            return
+
+        item = _RetiringTask(
+            task=task,
+            mode=self.task_mode,
+            engine=self.task_engine,
+            engine_key=self.task_engine_key,
+            content_hash=self.task_content_hash,
+            clear_gen=self.task_clear_gen,
+            cache_entry=self.cache_entry,
+            leased_session=self.leased_session,
+            owned_temp_session=self.owned_temp_session,
+            superseded=superseded,
+        )
+        self.task = None
+        self.cache_entry = None
+        self.leased_session = False
+        self.owned_temp_session = None
+        with _VP_COORD_LOCK:
+            _RETIRING_TASKS.append(item)
+        _ensure_viewport_timer()
+
+    def poll_on_main_thread(self, *, allow_tag_redraw: bool) -> bool:
+        """Poll active native viewport task on Blender's main thread."""
+        eng = self.live_engine()
+        if eng is None:
+            self._drop_dead_engine()
+            return False
+        task = self.task
+        if task is None:
+            return False
+
+        st = task.poll()
+        needs_redraw = False
+        backend = self.engine.backend_name if self.engine else "none"
+
+        if st.frame_generation != self.frame_gen and st.frame_generation > 0:
+            copied = task.copy_frame(self.rgba)
+            if copied is not None:
+                buf, w, h, gen = copied
+                self.rgba = buf
+                self.rgba_size = (w, h)
+                self.frame_gen = gen
+                self.rendered_samples = st.rendered_samples
+                self.target_samples = max(st.target_samples, 1)
+                self.status = (
+                    f"Psycles ({backend}): Viewport "
+                    f"{self.rendered_samples}/{self.target_samples} spp"
+                )
+                needs_redraw = True
+
+        if st.state != self.last_state:
+            self.last_state = st.state
+            if st.state == bridge.PSYCLES_VIEWPORT_STATE_COMPILING:
+                self.status = f"Psycles ({backend}): Compiling scene & shaders..."
+                needs_redraw = True
+            elif st.state == bridge.PSYCLES_VIEWPORT_STATE_FAILED:
+                msg = st.error_message or "viewport render failed"
+                self.status = f"Psycles ({backend}): Error"
+                try:
+                    eng.report({"WARNING"}, f"Psycles viewport error: {msg}")
+                except ReferenceError:
+                    self._drop_dead_engine()
+                    return False
+                needs_redraw = True
+            elif st.state == bridge.PSYCLES_VIEWPORT_STATE_DONE:
+                self.rendered_samples = st.rendered_samples
+                self.status = (
+                    f"Psycles ({backend}): Viewport "
+                    f"{st.rendered_samples}/{st.target_samples} spp"
+                )
+                needs_redraw = True
+
+        if st.is_finished:
+            self.harvest_finished(superseded=False)
+
+        if needs_redraw and allow_tag_redraw:
+            try:
+                eng.tag_redraw()
+            except ReferenceError:
+                self._drop_dead_engine()
+                return False
+        return not st.is_finished
+
+    def apply_camera_change(
+        self,
+        capi_cam: bridge.PsyclesCameraDesc,
+        params: bridge.PsyclesRenderParams,
+        target_samples: int,
+        start_samples: int,
+    ) -> bool:
+        self.rendered_samples = 0
+        self.target_samples = target_samples
+        if self.task is not None:
+            if self.task.request_camera(
+                capi_cam, params, target_samples, start_samples
+            ):
+                _ensure_viewport_timer()
+                return True
+            st = self.task.poll()
+            if st.is_finished:
+                self.harvest_finished(superseded=False)
+            else:
+                self.retire(superseded=False)
+
+        idle_sess: bridge.PsyclesSession | None = None
+        if (
+            self.cache_entry is not None
+            and self.leased_session
+            and self.cache_entry.session is not None
+        ):
+            idle_sess = self.cache_entry.session
+        elif self.owned_temp_session is not None:
+            idle_sess = self.owned_temp_session
+
+        if idle_sess is not None and idle_sess._handle:
+            self.task = bridge.PsyclesViewportTask.start_session(
+                idle_sess,
+                capi_cam,
+                params,
+                target_samples,
+                start_samples,
+                flip_y=True,
+            )
+            self.task_mode = "session"
+            self.last_state = bridge.PSYCLES_VIEWPORT_STATE_RENDERING
+            _ensure_viewport_timer()
+            return True
+        return False
+
+
 class PsyclesRenderEngine(bpy.types.RenderEngine):
     bl_idname = "PSYCLES"
     bl_label = "Psycles"
@@ -157,33 +605,16 @@ class PsyclesRenderEngine(bpy.types.RenderEngine):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._vp_lock = threading.Lock()
-        self._vp_thread: threading.Thread | None = None
-        self._vp_stop = threading.Event()
-        self._vp_generation = 0
-        self._vp_engine: bridge.PsyclesEngine | None = None
-        self._vp_scene: bridge.PsyclesScene | None = None
-        self._vp_session: bridge.PsyclesSession | None = None
-        self._vp_camera_sig: tuple[Any, ...] | None = None
-        self._vp_engine_key: tuple[Any, ...] | None = None
-        self._vp_rgba: np.ndarray[Any, np.dtype[np.float32]] | None = None
-        self._vp_rgba_size: tuple[int, int] = (0, 0)
-        self._vp_gpu_tex: Any | None = None
-        self._vp_gpu_tex_size: tuple[int, int] = (0, 0)
-        self._vp_rendered_samples = 0
-        self._vp_target_samples = 64
+        self._vp_state = _ViewportState(weakref.ref(self))
 
     def __del__(self) -> None:
         try:
-            self._stop_viewport_worker()
-            with self._vp_lock:
-                if self._vp_session is not None:
-                    self._vp_session.destroy()
-                    self._vp_session = None
-                if self._vp_scene is not None:
-                    self._vp_scene.destroy()
-                    self._vp_scene = None
-                self._vp_gpu_tex = None
+            state = object.__getattribute__(self, "__dict__").get("_vp_state")
+            if state is not None:
+                with _VP_COORD_LOCK:
+                    _ACTIVE_VIEWPORT_STATES.discard(state)
+                state.retire(superseded=False)
+                state.gpu_tex = None
         except Exception:
             pass
 
@@ -231,23 +662,38 @@ class PsyclesRenderEngine(bpy.types.RenderEngine):
 
         self.update_stats("", "Psycles: Syncing scene")
         engine_cfg = _engine_settings_from_scene(scene)
-        compiled_scene: bridge.PsyclesScene | None = None
-        session: bridge.PsyclesSession | None = None
+        engine_key = tuple(sorted(engine_cfg.items()))
+        slot_name = "preview" if self.is_preview else "main"
+        cache = scene_cache.get_scene_cache()
+        mesh_cache = scene_cache.get_mesh_cache()
+
+        entry: scene_cache.CacheEntry | None = None
+        leased_session = False
+        temp_session: bridge.PsyclesSession | None = None
         result = None
 
         try:
             engine = bridge.get_or_create_engine(**engine_cfg)
-            json_bytes, geom_bytes, base_dir = scene_sync.export_depsgraph_memory(
-                depsgraph,
-                scene=scene,
-                view_layer=view_layer,
-                render_width=full_w,
-                render_height=full_h,
+            capi_cam = scene_sync.extract_scene_camera_capi(scene, depsgraph)
+            json_bytes, geom_bytes, base_dir, content_hash = (
+                scene_sync.export_depsgraph_with_hash(
+                    depsgraph,
+                    scene=scene,
+                    view_layer=view_layer,
+                    render_width=full_w,
+                    render_height=full_h,
+                    mesh_cache=mesh_cache,
+                )
             )
-            self.update_stats("", "Psycles: Compiling scene shaders & BVH")
-            compiled_scene, _info = engine.compile_scene_memory(
-                json_bytes, geom_bytes, base_dir
-            )
+
+            entry, leased_session = cache.acquire(slot_name, engine_key, content_hash)
+            compiled_scene: bridge.PsyclesScene | None = None
+            if entry is None:
+                cache.evict_idle(slot_name)
+                self.update_stats("", "Psycles: Compiling scene shaders & BVH")
+                compiled_scene, _info = engine.compile_scene_memory(
+                    json_bytes, geom_bytes, base_dir
+                )
 
             result = self.begin_result(0, 0, bw, bh, layer=view_layer.name)
             actual_bw = max(int(result.resolution_x), 1)
@@ -264,8 +710,35 @@ class PsyclesRenderEngine(bpy.types.RenderEngine):
                 window_width=bw if use_border else full_w,
                 window_height=bh if use_border else full_h,
                 scene=scene,
+                view_layer=view_layer,
             )
-            session = compiled_scene.create_session(params, pass_descs)
+
+            if entry is not None and leased_session and entry.session is not None:
+                self.update_stats(
+                    "", f"Psycles ({engine.backend_name}): Reusing cached scene"
+                )
+                session = entry.session
+                session.reconfigure(capi_cam, params, pass_descs)
+            elif entry is not None and entry.scene is not None:
+                self.update_stats(
+                    "",
+                    f"Psycles ({engine.backend_name}): Creating session (cached scene)",
+                )
+                temp_session = entry.scene.create_session(params, pass_descs)
+                session = temp_session
+            else:
+                assert compiled_scene is not None
+                session = compiled_scene.create_session(params, pass_descs)
+                entry = cache.store_and_lease(
+                    slot_name,
+                    engine_key,
+                    content_hash,
+                    engine,
+                    compiled_scene,
+                    session,
+                    lease_session=True,
+                )
+                leased_session = True
 
             render_layer = result.layers[0]
             rendered = 0
@@ -317,87 +790,10 @@ class PsyclesRenderEngine(bpy.types.RenderEngine):
         finally:
             if result is not None:
                 self.end_result(result)
-            if session is not None:
-                session.destroy()
-            if compiled_scene is not None:
-                compiled_scene.destroy()
-
-    def _stop_viewport_worker(self) -> None:
-        self._vp_generation += 1
-        self._vp_stop.set()
-        session = self._vp_session
-        if session is not None:
-            session.cancel()
-        thread = self._vp_thread
-        if thread is not None and thread.is_alive():
-            thread.join(timeout=5.0)
-        self._vp_thread = None
-
-    def _start_viewport_worker(
-        self,
-        session: bridge.PsyclesSession,
-        target_samples: int,
-        start_samples: int,
-        width: int,
-        height: int,
-        backend_name: str,
-    ) -> None:
-        self._vp_stop.clear()
-        generation = self._vp_generation
-
-        def _worker() -> None:
-            rendered = 0
-            step = max(1, min(start_samples, target_samples))
-            while rendered < target_samples and not self._vp_stop.is_set():
-                count = min(step, target_samples - rendered)
-                try:
-                    ok = session.render_samples(rendered, count, target_samples, flip_y=True)
-                except Exception as err:
-                    self.report({"WARNING"}, f"Psycles viewport error: {err}")
-                    break
-                if not ok or self._vp_stop.is_set():
-                    break
-                with self._vp_lock:
-                    if generation != self._vp_generation or self._vp_session is not session:
-                        break
-                    arr = session.get_pass_array(0)
-                    self._vp_rgba = np.ascontiguousarray(arr, dtype=np.float32).copy()
-                    self._vp_rgba_size = (width, height)
-                    rendered += count
-                    self._vp_rendered_samples = rendered
-                try:
-                    self.tag_redraw()
-                except Exception:
-                    break
-                step = min(max(step * 2, 1), 16)
-
-        self._vp_thread = threading.Thread(
-            target=_worker, name="PsyclesViewportWorker", daemon=True
-        )
-        self._vp_thread.start()
-
-    def _launch_viewport_camera_reset(
-        self,
-        capi_cam: bridge.PsyclesCameraDesc,
-        params: bridge.PsyclesRenderParams,
-        width: int,
-        height: int,
-        target_samples: int,
-        start_samples: int,
-    ) -> None:
-        self._stop_viewport_worker()
-        with self._vp_lock:
-            session = self._vp_session
-            engine = self._vp_engine
-        if session is None or engine is None:
-            return
-        session.update_camera(capi_cam, params)
-        with self._vp_lock:
-            self._vp_rendered_samples = 0
-            self._vp_target_samples = target_samples
-        self._start_viewport_worker(
-            session, target_samples, start_samples, width, height, engine.backend_name
-        )
+            if temp_session is not None:
+                temp_session.destroy()
+            if entry is not None:
+                cache.release(entry, leased_session)
 
     def view_update(self, context: Any, depsgraph: Any) -> None:
         region = context.region
@@ -420,58 +816,135 @@ class PsyclesRenderEngine(bpy.types.RenderEngine):
         )
         engine_cfg = _engine_settings_from_scene(scene)
         engine_key = tuple(sorted(engine_cfg.items()))
-        params = _make_render_params(full_width=width, full_height=height, scene=scene)
-
-        has_updates = bool(depsgraph.updates)
-        can_reuse_scene = (
-            not has_updates
-            and self._vp_session is not None
-            and self._vp_scene is not None
-            and self._vp_engine_key == engine_key
+        params = _make_render_params(
+            full_width=width, full_height=height, scene=scene, view_layer=view_layer
         )
-        if can_reuse_scene:
-            if cam_sig != self._vp_camera_sig or self._vp_target_samples != target_samples:
-                self._vp_camera_sig = cam_sig
-                self._launch_viewport_camera_reset(
-                    capi_cam, params, width, height, target_samples, start_samples
-                )
+
+        st = self._vp_state
+        with _VP_COORD_LOCK:
+            _ACTIVE_VIEWPORT_STATES.add(st)
+
+        has_live_viewport = (
+            st.engine_key == engine_key
+            and (st.cache_entry is None or not st.cache_entry.evicted)
+            and (
+                st.task is not None
+                or (st.cache_entry is not None and st.cache_entry.scene is not None)
+            )
+        )
+        if has_live_viewport and _updates_are_camera_only(depsgraph):
+            if (
+                cam_sig != st.camera_sig
+                or st.target_samples != target_samples
+                or st.start_samples != start_samples
+                or st.last_size != (width, height)
+            ):
+                st.camera_sig = cam_sig
+                st.last_size = (width, height)
+                st.start_samples = start_samples
+                st.apply_camera_change(capi_cam, params, target_samples, start_samples)
             return
 
-        self._stop_viewport_worker()
-        with self._vp_lock:
-            if self._vp_session is not None:
-                self._vp_session.destroy()
-                self._vp_session = None
-            if self._vp_scene is not None:
-                self._vp_scene.destroy()
-                self._vp_scene = None
-
+        cache = scene_cache.get_scene_cache()
+        mesh_cache = scene_cache.get_mesh_cache()
         engine = bridge.get_or_create_engine(**engine_cfg)
-        json_bytes, geom_bytes, base_dir = scene_sync.export_depsgraph_memory(
-            depsgraph,
-            scene=scene,
-            view_layer=view_layer,
-            override_camera=json_cam,
-            render_width=width,
-            render_height=height,
+        json_bytes, geom_bytes, base_dir, content_hash = (
+            scene_sync.export_depsgraph_with_hash(
+                depsgraph,
+                scene=scene,
+                view_layer=view_layer,
+                override_camera=json_cam,
+                render_width=width,
+                render_height=height,
+                mesh_cache=mesh_cache,
+            )
         )
-        compiled_scene, _info = engine.compile_scene_memory(
-            json_bytes, geom_bytes, base_dir
-        )
-        session = compiled_scene.create_session(
-            params, [(bridge.PASS_KIND_COMBINED, 4, "Combined", "")]
-        )
-        with self._vp_lock:
-            self._vp_engine = engine
-            self._vp_scene = compiled_scene
-            self._vp_session = session
-            self._vp_camera_sig = cam_sig
-            self._vp_engine_key = engine_key
-            self._vp_rendered_samples = 0
-            self._vp_target_samples = target_samples
-        self._start_viewport_worker(
-            session, target_samples, start_samples, width, height, engine.backend_name
-        )
+
+        # If content hash & engine key match what this viewport already displays,
+        # avoid full scene recompile (and keep progressing if camera/extent also match).
+        if has_live_viewport and st.task_content_hash == content_hash:
+            if (
+                cam_sig == st.camera_sig
+                and st.target_samples == target_samples
+                and st.start_samples == start_samples
+                and st.last_size == (width, height)
+                and st.last_state != bridge.PSYCLES_VIEWPORT_STATE_FAILED
+            ):
+                return
+            st.camera_sig = cam_sig
+            st.last_size = (width, height)
+            st.start_samples = start_samples
+            if st.apply_camera_change(capi_cam, params, target_samples, start_samples):
+                return
+
+        st.retire(superseded=True)
+
+        entry, leased_session = cache.acquire("main", engine_key, content_hash)
+        st.engine = engine
+        st.engine_key = engine_key
+        st.camera_sig = cam_sig
+        st.last_size = (width, height)
+        st.rendered_samples = 0
+        st.target_samples = target_samples
+        st.start_samples = start_samples
+        st.task_engine = engine
+        st.task_engine_key = engine_key
+        st.task_content_hash = content_hash
+
+        if entry is not None and leased_session and entry.session is not None:
+            st.cache_entry = entry
+            st.leased_session = True
+            st.task_mode = "session"
+            st.last_state = bridge.PSYCLES_VIEWPORT_STATE_RENDERING
+            st.status = (
+                f"Psycles ({engine.backend_name}): Viewport 0/{target_samples} spp"
+            )
+            st.task = bridge.PsyclesViewportTask.start_session(
+                entry.session,
+                capi_cam,
+                params,
+                target_samples,
+                start_samples,
+                flip_y=True,
+            )
+        elif entry is not None and entry.scene is not None:
+            st.cache_entry = entry
+            st.leased_session = False
+            st.task_mode = "scene"
+            st.last_state = bridge.PSYCLES_VIEWPORT_STATE_COMPILING
+            st.status = (
+                f"Psycles ({engine.backend_name}): Initializing viewport..."
+            )
+            st.task = bridge.PsyclesViewportTask.start_scene(
+                entry.scene,
+                capi_cam,
+                params,
+                target_samples,
+                start_samples,
+                flip_y=True,
+            )
+        else:
+            clear_gen = cache.current_clear_gen()
+            cache.evict_idle("main")
+            st.task_clear_gen = clear_gen
+            st.task_mode = "compile"
+            st.last_state = bridge.PSYCLES_VIEWPORT_STATE_COMPILING
+            st.status = (
+                f"Psycles ({engine.backend_name}): Compiling scene & shaders..."
+            )
+            st.task = bridge.PsyclesViewportTask.start_compile(
+                engine,
+                json_bytes,
+                geom_bytes,
+                base_dir,
+                capi_cam,
+                params,
+                target_samples,
+                start_samples,
+                flip_y=True,
+            )
+
+        _ensure_viewport_timer()
 
     def view_draw(self, context: Any, depsgraph: Any) -> None:
         region = context.region
@@ -480,6 +953,7 @@ class PsyclesRenderEngine(bpy.types.RenderEngine):
         if region is None or v3d is None or rv3d is None:
             return
         scene = depsgraph.scene
+        view_layer = depsgraph.view_layer
         ps = getattr(scene, "psycles", None)
         width = max(int(region.width), 1)
         height = max(int(region.height), 1)
@@ -488,46 +962,41 @@ class PsyclesRenderEngine(bpy.types.RenderEngine):
             max(1, int(ps.viewport_start_samples)) if ps is not None else 1
         )
 
+        st = self._vp_state
+        st.poll_on_main_thread(allow_tag_redraw=False)
+
         _json_cam, capi_cam, cam_sig = scene_sync.extract_viewport_camera(
             region, v3d, rv3d, scene, depsgraph
         )
-        if self._vp_session is not None and cam_sig != self._vp_camera_sig:
-            self._vp_camera_sig = cam_sig
-            params = _make_render_params(full_width=width, full_height=height, scene=scene)
-            self._launch_viewport_camera_reset(
-                capi_cam, params, width, height, target_samples, start_samples
+        if (
+            cam_sig != st.camera_sig or st.last_size != (width, height)
+        ) and (st.task is not None or st.cache_entry is not None):
+            st.camera_sig = cam_sig
+            st.last_size = (width, height)
+            params = _make_render_params(
+                full_width=width, full_height=height, scene=scene, view_layer=view_layer
             )
+            st.apply_camera_change(capi_cam, params, target_samples, start_samples)
 
-        with self._vp_lock:
-            rgba = self._vp_rgba
-            tex_w, tex_h = self._vp_rgba_size
-            rendered = self._vp_rendered_samples
-            total = self._vp_target_samples
-            backend_name = self._vp_engine.backend_name if self._vp_engine else "none"
+        if st.status:
+            self.update_stats("", st.status)
 
-        if total > 0:
-            self.update_stats(
-                "", f"Psycles ({backend_name}): Viewport {rendered}/{total} spp"
-            )
-
+        rgba = st.rgba
+        tex_w, tex_h = st.rgba_size
         if rgba is None or tex_w <= 0 or tex_h <= 0:
             return
 
         if (
-            self._vp_gpu_tex is None
-            or self._vp_gpu_tex_size != (tex_w, tex_h)
+            st.gpu_tex is None
+            or st.gpu_tex_size != (tex_w, tex_h)
+            or st.gpu_tex_gen != st.frame_gen
         ):
             buf = gpu.types.Buffer("FLOAT", tex_w * tex_h * 4, rgba.ravel())
-            self._vp_gpu_tex = gpu.types.GPUTexture(
+            st.gpu_tex = gpu.types.GPUTexture(
                 (tex_w, tex_h), format="RGBA32F", data=buf
             )
-            self._vp_gpu_tex_size = (tex_w, tex_h)
-        else:
-            # Recreate buffer/texture cleanly across Blender 4.2-5.x GPU backends.
-            buf = gpu.types.Buffer("FLOAT", tex_w * tex_h * 4, rgba.ravel())
-            self._vp_gpu_tex = gpu.types.GPUTexture(
-                (tex_w, tex_h), format="RGBA32F", data=buf
-            )
+            st.gpu_tex_size = (tex_w, tex_h)
+            st.gpu_tex_gen = st.frame_gen
 
         self.bind_display_space_shader(scene)
         try:
@@ -541,7 +1010,7 @@ class PsyclesRenderEngine(bpy.types.RenderEngine):
                 },
             )
             shader.bind()
-            shader.uniform_sampler("image", self._vp_gpu_tex)
+            shader.uniform_sampler("image", st.gpu_tex)
             batch.draw(shader)
         finally:
             self.unbind_display_space_shader()
@@ -552,4 +1021,5 @@ def register() -> None:
 
 
 def unregister() -> None:
+    cancel_all_viewports(wait=True)
     bpy.utils.unregister_class(PsyclesRenderEngine)

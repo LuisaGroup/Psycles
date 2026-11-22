@@ -11,10 +11,13 @@ import argparse
 import ctypes
 import importlib
 import math
+import os
 import pathlib
 import sys
+import threading
 import time
 from typing import Any
+import weakref
 
 import addon_utils
 import bpy
@@ -300,6 +303,10 @@ def _build_synthetic_scene() -> None:
     scene.render.resolution_x = 64
     scene.render.resolution_y = 48
     scene.render.resolution_percentage = 100
+    scene.render.use_border = False
+    scene.render.use_crop_to_border = False
+    if hasattr(scene.render.image_settings, "media_type"):
+        scene.render.image_settings.media_type = "IMAGE"
     scene.cycles.samples = 8
     scene.cycles.use_adaptive_sampling = False
     scene.cycles.use_denoising = False
@@ -524,6 +531,193 @@ def test_synthetic_multipass_and_border(mod: Any, out_dir: pathlib.Path) -> None
         print(f"[PASS] Synthetic multipass + orientation + border renders on {backend_name}")
 
 
+def _read_png_rgba(path: pathlib.Path, width: int, height: int) -> np.ndarray:
+    img = bpy.data.images.load(str(path))
+    try:
+        px = np.empty(width * height * 4, dtype=np.float32)
+        img.pixels.foreach_get(px)
+        return px.reshape(height, width, 4).copy()
+    finally:
+        bpy.data.images.remove(img)
+
+
+def test_scene_cache_and_invalidation(mod: Any, out_dir: pathlib.Path) -> None:
+    _build_synthetic_scene()
+    scene = bpy.context.scene
+    backends = mod.bridge.probe_backends()
+    backend = "vk" if "vk" in backends else "fallback"
+    scene.psycles.backend = backend
+    scene.psycles.scheduler = "AUTO"
+
+    mod.scene_cache.clear_all()
+    mod.scene_cache.reset_stats()
+
+    # 1) Cold F12 render -> cache miss
+    scene.cycles.samples = 4
+    p1 = out_dir / "cache_1.png"
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.image_settings.color_mode = "RGBA"
+    scene.render.filepath = str(p1)
+    bpy.ops.render.render(write_still=True)
+    st1 = mod.scene_cache.stats()
+    assert st1["misses"] >= 1 and st1["hits"] == 0, f"Expected initial miss, got {st1}"
+    img1 = _read_png_rgba(p1, 64, 48)
+    assert float(img1[:, :, :3].mean()) > 0.02
+
+    # 2) Change samples, enable Normal pass, move camera away -> cache hit + reconfigure
+    scene.cycles.samples = 8
+    bpy.context.view_layer.use_pass_normal = True
+    scene.camera.location.x = 50.0
+    p2 = out_dir / "cache_2_moved.png"
+    scene.render.filepath = str(p2)
+    bpy.ops.render.render(write_still=True)
+    st2 = mod.scene_cache.stats()
+    assert st2["hits"] == 1 and st2["misses"] == st1["misses"], (
+        f"Expected cache hit on camera/samples/pass change, got {st2}"
+    )
+    img2 = _read_png_rgba(p2, 64, 48)
+    assert float(np.abs(img2[:, :, :3] - img1[:, :, :3]).max()) > 0.4 and float(
+        img2[:, :, :3].max()
+    ) < 0.55 < float(img1[:, :, :3].max()), (
+        "Moved camera reconfigure did not update rendered output"
+    )
+
+    # 3) Modify material emission -> cache miss + updated render
+    scene.camera.location.x = 0.0
+    bpy.context.view_layer.use_pass_normal = False
+    mat = bpy.data.materials.get("TopRed_Mat")
+    assert mat is not None and mat.use_nodes
+    bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    bsdf.inputs["Base Color"].default_value = (0.05, 0.95, 0.05, 1.0)
+    bsdf.inputs["Emission Color"].default_value = (0.05, 1.0, 0.05, 1.0)
+    p3 = out_dir / "cache_3_recolor.png"
+    scene.render.filepath = str(p3)
+    bpy.ops.render.render(write_still=True)
+    st3 = mod.scene_cache.stats()
+    assert st3["misses"] == st1["misses"] + 1, f"Expected miss after material edit, got {st3}"
+    img3 = _read_png_rgba(p3, 64, 48)
+    assert float(img3[32:44, 28:36, 1].mean()) > float(img3[32:44, 28:36, 0].mean()) * 1.5, (
+        "Expected updated green cube after material edit invalidation"
+    )
+
+    # 4) File open / reset triggers load_pre cache eviction
+    bpy.ops.wm.read_homefile(use_empty=True)
+    assert len(mod.scene_cache.get_scene_cache()._slots) == 0, "Expected load_pre to clear cache"
+    print(f"[PASS] SceneSessionCache hit/reconfigure/invalidation/load_pre verified ({backend})")
+
+
+def test_viewport_delayed_cancel_and_main_thread_delivery(mod: Any) -> None:
+    _build_synthetic_scene()
+    scene = bpy.context.scene
+    scene.psycles.backend = "fallback"
+    scene.psycles.scheduler = "AUTO"
+    scene.cycles.samples = 4
+    mod.scene_cache.clear_all()
+    mod.scene_cache.reset_stats()
+    bpy.ops.render.render(write_still=False)
+
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    view_layer = bpy.context.view_layer
+    engine_cfg = mod.engine._engine_settings_from_scene(scene)
+    engine_key = tuple(sorted(engine_cfg.items()))
+    engine = mod.bridge.get_or_create_engine(**engine_cfg)
+    _jb, _gb, _bd, content_hash = mod.scene_sync.export_depsgraph_with_hash(
+        depsgraph, scene=scene, view_layer=view_layer, render_width=64, render_height=48
+    )
+    capi_cam = mod.scene_sync.extract_scene_camera_capi(scene, depsgraph)
+    params = mod.engine._make_render_params(
+        full_width=64, full_height=48, scene=scene, view_layer=view_layer
+    )
+
+    cache = mod.scene_cache.get_scene_cache()
+    entry, leased = cache.acquire("main", engine_key, content_hash)
+    assert entry is not None and leased and entry.session is not None
+
+    prev_delay = os.environ.get("PSYCLES_TEST_VIEWPORT_STEP_DELAY_MS")
+    os.environ["PSYCLES_TEST_VIEWPORT_STEP_DELAY_MS"] = "200"
+
+    redraw_threads: list[bool] = []
+    report_calls: list[tuple[Any, str, bool]] = []
+
+    class _ViewportHarness:
+        def __init__(self) -> None:
+            self.is_preview = False
+
+        def tag_redraw(self) -> None:
+            redraw_threads.append(threading.current_thread() is threading.main_thread())
+
+        def report(self, kind: Any, msg: str) -> None:
+            report_calls.append(
+                (kind, msg, threading.current_thread() is threading.main_thread())
+            )
+
+    try:
+        task = mod.bridge.PsyclesViewportTask.start_session(
+            entry.session, capi_cam, params, target_samples=8, start_samples=2, flip_y=True
+        )
+        harness = _ViewportHarness()
+        vp_state = mod.engine._ViewportState(weakref.ref(harness))
+        vp_state.task = task
+        vp_state.task_mode = "session"
+        vp_state.task_engine = engine
+        vp_state.task_engine_key = engine_key
+        vp_state.task_content_hash = content_hash
+        vp_state.task_clear_gen = cache.current_clear_gen()
+        vp_state.cache_entry = entry
+        vp_state.leased_session = True
+        vp_state.engine = engine
+        vp_state.engine_key = engine_key
+        vp_state.target_samples = 8
+        with mod.engine._VP_COORD_LOCK:
+            mod.engine._ACTIVE_VIEWPORT_STATES.add(vp_state)
+
+        deadline = time.perf_counter() + 5.0
+        while vp_state.frame_gen < 1 and time.perf_counter() < deadline:
+            mod.engine._viewport_timer_tick()
+            time.sleep(0.02)
+        assert vp_state.frame_gen >= 1, "Expected first progressive viewport frame"
+        assert redraw_threads and all(redraw_threads), "tag_redraw called off main thread!"
+        assert all(on_main for _k, _m, on_main in report_calls), "report called off main thread!"
+
+        # Retire while next step is inside its 200ms delayed window.
+        time.sleep(0.02)
+        t_ret0 = time.perf_counter()
+        vp_state.retire(superseded=False)
+        retire_s = time.perf_counter() - t_ret0
+        assert retire_s < 0.05, f"Viewport task retire blocked UI thread ({retire_s:.3f}s)"
+
+        with mod.engine._VP_COORD_LOCK:
+            mod.engine._ACTIVE_VIEWPORT_STATES.discard(vp_state)
+            retiring_now = len(mod.engine._RETIRING_TASKS)
+        if retiring_now > 0:
+            e_busy, leased_busy = cache.acquire("main", engine_key, content_hash)
+            assert e_busy is entry and not leased_busy, (
+                "Busy retiring session must not be handed out concurrently!"
+            )
+            cache.release(e_busy, leased_busy)
+
+        reap_deadline = time.perf_counter() + 5.0
+        while time.perf_counter() < reap_deadline:
+            still_busy = mod.engine._reap_retiring_tasks(wait=False)
+            if not still_busy:
+                break
+            time.sleep(0.02)
+        assert not mod.engine._reap_retiring_tasks(wait=False), "Retiring task did not finish"
+
+        e_idle, leased_idle = cache.acquire("main", engine_key, content_hash)
+        assert e_idle is entry and leased_idle, (
+            "Expected cache session lease to become idle once retiring worker finished"
+        )
+        cache.release(e_idle, leased_idle)
+        print(f"[PASS] Delayed viewport cancel (retire={retire_s*1e3:.1f}ms), lease exclusion, and main-thread delivery verified")
+    finally:
+        mod.engine.cancel_all_viewports(wait=True)
+        if prev_delay is None:
+            os.environ.pop("PSYCLES_TEST_VIEWPORT_STEP_DELAY_MS", None)
+        else:
+            os.environ["PSYCLES_TEST_VIEWPORT_STEP_DELAY_MS"] = prev_delay
+
+
 def test_unregister(mod: Any) -> None:
     addon_utils.disable(_EXT_MODULE, default_set=False)
     cls = _find_panel("CYCLES_MATERIAL_PT_surface")
@@ -609,6 +803,8 @@ def main() -> int:
             test_viewport_camera_projection(mod)
             test_fast_update_camera(mod)
             test_synthetic_multipass_and_border(mod, args.out_dir)
+            test_scene_cache_and_invalidation(mod, args.out_dir)
+            test_viewport_delayed_cancel_and_main_thread_delivery(mod)
         if args.suite in ("all", "b"):
             assert args.bmw27 is not None, "--bmw27 required for suite b"
             test_bmw27_render(mod, args.bmw27, args.out_dir, args.samples)

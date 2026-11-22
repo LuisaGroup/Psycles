@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import io
 import json
 import math
+import os
 import pathlib
 import struct
 from typing import Any
@@ -369,6 +371,135 @@ def _camera_from_scene(
     }
 
 
+def extract_scene_camera_capi(
+    scene: Any,
+    depsgraph: Any,
+    source_camera: Any | None = None,
+) -> bridge.PsyclesCameraDesc | None:
+    cam_obj = source_camera if source_camera is not None else scene.camera
+    if cam_obj is None:
+        return None
+    camera = cam_obj.evaluated_get(depsgraph)
+    cam_data = camera.data
+    cam_type = str(cam_data.type)
+    if cam_type == "ORTHO":
+        capi_proj = bridge.PSYCLES_PROJECTION_ORTHOGRAPHIC
+    elif cam_type == "PANO":
+        capi_proj = bridge.PSYCLES_PROJECTION_PANORAMA
+    else:
+        capi_proj = bridge.PSYCLES_PROJECTION_PERSPECTIVE
+
+    fit_name = str(cam_data.sensor_fit)
+    if fit_name == "HORIZONTAL":
+        sensor_fit = bridge.PSYCLES_SENSOR_FIT_HORIZONTAL
+    elif fit_name == "VERTICAL":
+        sensor_fit = bridge.PSYCLES_SENSOR_FIT_VERTICAL
+    else:
+        sensor_fit = bridge.PSYCLES_SENSOR_FIT_AUTO
+
+    xform = column_major(normalized_transform(camera.matrix_world))
+    dof = cam_data.dof
+    dof_enabled = bool(dof.use_dof)
+    lens_mm = float(cam_data.lens)
+    sensor_w = float(cam_data.sensor_width)
+    sensor_h = float(cam_data.sensor_height)
+    f_stop = max(float(dof.aperture_fstop), 1.0e-5)
+    if not dof_enabled:
+        aperture_radius = 0.0
+    elif cam_type == "ORTHO":
+        aperture_radius = 1.0 / (2.0 * f_stop)
+    else:
+        aperture_radius = lens_mm * 1.0e-3 / (2.0 * f_stop)
+
+    has_sensor = 1 if (lens_mm > 0.0 and sensor_w > 0.0 and sensor_h > 0.0) else 0
+    return bridge.PsyclesCameraDesc(
+        projection=capi_proj,
+        sensor_fit=sensor_fit,
+        transform=(ctypes.c_float * 16)(*xform),
+        field_of_view=float(cam_data.angle_y),
+        horizontal_field_of_view=float(cam_data.angle_x),
+        orthographic_scale=float(cam_data.ortho_scale),
+        lens_shift_x=float(cam_data.shift_x),
+        lens_shift_y=float(cam_data.shift_y),
+        near_clip=max(float(cam_data.clip_start), 1.0e-4),
+        far_clip=max(float(cam_data.clip_end), 1.0e-3),
+        aperture_radius=aperture_radius,
+        focal_distance=camera_focus_distance(camera, depsgraph),
+        aperture_blades=int(dof.aperture_blades),
+        aperture_rotation=float(dof.aperture_rotation),
+        aperture_ratio=max(float(dof.aperture_ratio), 1.0e-5),
+        has_sensor=has_sensor,
+        reserved=(ctypes.c_uint8 * 3)(0, 0, 0),
+        sensor_width_mm=sensor_w if has_sensor else 0.0,
+        sensor_height_mm=sensor_h if has_sensor else 0.0,
+        sensor_lens_mm=lens_mm if has_sensor else 0.0,
+        pixel_aspect_x=max(float(scene.render.pixel_aspect_x), 1.0e-5),
+        pixel_aspect_y=max(float(scene.render.pixel_aspect_y), 1.0e-5),
+    )
+
+
+def compute_scene_content_hash(
+    payload: dict[str, Any],
+    geom_bytes: bytes | bytearray | memoryview,
+) -> bytes:
+    """Hash scene contents excluding dynamic camera & RenderSettings-only fields."""
+    render_src = payload.get("render") or {}
+    cycles_src = render_src.get("cycles") or {}
+    cycles_stripped = {
+        k: v
+        for k, v in cycles_src.items()
+        if k
+        not in {
+            "samples",
+            "preview_samples",
+            "seed",
+            "effective_seed",
+            "seed_frame",
+            "seed_subframe",
+        }
+    }
+    cm_src = render_src.get("color_management") or {}
+    canonical = {
+        "schema": payload.get("schema"),
+        "cycles_sync": payload.get("cycles_sync"),
+        "source": payload.get("source"),
+        "blender_build": payload.get("blender_build"),
+        "render": {
+            "color_management": {
+                "shader_transforms": cm_src.get("shader_transforms"),
+            },
+            "cycles": cycles_stripped,
+        },
+        "geometries": payload.get("geometries"),
+        "curve_geometries": payload.get("curve_geometries"),
+        "instances": payload.get("instances"),
+        "materials": payload.get("materials"),
+        "lights": payload.get("lights"),
+        "world": payload.get("world"),
+        "world_environment": payload.get("world_environment"),
+        "node_groups": payload.get("node_groups"),
+        "images": payload.get("images"),
+    }
+    ext_stats: list[tuple[str, int | None, int | None]] = []
+    for img in payload.get("images") or ():
+        path_str = img.get("path")
+        if path_str:
+            try:
+                st = os.stat(path_str)
+                ext_stats.append((path_str, int(st.st_mtime_ns), int(st.st_size)))
+            except OSError:
+                ext_stats.append((path_str, None, None))
+
+    h = hashlib.blake2b(digest_size=16)
+    h.update(json.dumps(canonical, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    if ext_stats:
+        h.update(
+            json.dumps(ext_stats, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        )
+    h.update(memoryview(geom_bytes))
+    return h.digest()
+
+
 def export_depsgraph_memory(
     depsgraph: Any,
     scene: Any | None = None,
@@ -378,8 +509,33 @@ def export_depsgraph_memory(
     render_width: int | None = None,
     render_height: int | None = None,
 ) -> tuple[bytes, bytearray, str]:
+    json_bytes, geom_bytes, asset_base_dir, _hash = export_depsgraph_with_hash(
+        depsgraph,
+        scene=scene,
+        view_layer=view_layer,
+        source_camera=source_camera,
+        override_camera=override_camera,
+        render_width=render_width,
+        render_height=render_height,
+    )
+    return json_bytes, geom_bytes, asset_base_dir
+
+
+def export_depsgraph_with_hash(
+    depsgraph: Any,
+    scene: Any | None = None,
+    view_layer: Any | None = None,
+    source_camera: Any | None = None,
+    override_camera: dict[str, Any] | None = None,
+    render_width: int | None = None,
+    render_height: int | None = None,
+    mesh_cache: Any = None,
+) -> tuple[bytes, bytearray, str, bytes]:
     scene = scene if scene is not None else depsgraph.scene
     view_layer = view_layer if view_layer is not None else depsgraph.view_layer
+    if mesh_cache is not None:
+        mesh_cache.prepare_for_scene(scene)
+        mesh_cache.invalidate_from_depsgraph(depsgraph)
     mode = str(getattr(depsgraph, "mode", "RENDER"))
     is_viewport = mode == "VIEWPORT"
     if mode not in {"RENDER", "VIEWPORT"}:
@@ -481,6 +637,8 @@ def export_depsgraph_memory(
                     rec709_to_rgb,
                     is_viewport=is_viewport,
                     pointiness_cache=pointiness_cache,
+                    mesh_cache=mesh_cache,
+                    scene=scene,
                 )
                 if geometry_data is not None:
                     geometry_data["cycles_sync"] = {
@@ -718,9 +876,10 @@ def export_depsgraph_memory(
     }
     json_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     geom_bytes = bytearray(stream.getvalue())
+    content_hash = compute_scene_content_hash(payload, geom_bytes)
     asset_base_dir = (
         str(pathlib.Path(bpy.data.filepath).resolve().parent)
         if bpy.data.filepath
         else str(pathlib.Path.cwd())
     )
-    return json_bytes, geom_bytes, asset_base_dir
+    return json_bytes, geom_bytes, asset_base_dir, content_hash

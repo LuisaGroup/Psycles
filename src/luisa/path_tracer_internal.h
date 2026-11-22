@@ -561,10 +561,34 @@ using FilmPassResolveShader = luisa::compute::Shader1D<
     std::uint32_t,
     float>;
 
+using FilmClearShader = luisa::compute::Shader1D<
+    luisa::compute::Buffer<luisa::float4>,
+    luisa::compute::Buffer<luisa::float4>,
+    luisa::compute::Buffer<luisa::float4>,
+    luisa::compute::Buffer<luisa::float4>,
+    luisa::compute::Buffer<luisa::uint>,
+    luisa::compute::Buffer<luisa::float4>,
+    luisa::compute::Buffer<luisa::uint>,
+    luisa::compute::Buffer<luisa::uint>,
+    luisa::compute::Buffer<luisa::float4>,
+    std::uint32_t,
+    std::uint32_t>;
+
 struct FilmPassAccessorGpu {
     FilmSampleVerifyShader verify_sample_count;
     FilmPassResolveShader resolve_pass;
+    FilmClearShader clear_film;
 };
+
+[[nodiscard]] std::shared_ptr<const FilmPassAccessorGpu>
+get_or_compile_film_pass_accessor(
+    luisa::compute::Device &device,
+    std::shared_ptr<const FilmPassAccessorGpu> &slot);
+
+void attach_scene_film_pass_accessor(
+    luisa::compute::Device &device,
+    std::shared_ptr<const FilmPassAccessorGpu> &device_cache,
+    std::shared_ptr<const FilmPassAccessorGpu> &scene_slot);
 
 struct SessionKernelSignature {
     CameraProjection camera_projection{CameraProjection::perspective};

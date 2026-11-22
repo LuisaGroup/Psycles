@@ -37,6 +37,13 @@ PSYCLES_PIXEL_FILTER_GAUSSIAN = 1
 PSYCLES_PIXEL_FILTER_BLACKMAN_HARRIS = 2
 PSYCLES_PIXEL_FILTER_FROM_SCENE = 255
 
+PSYCLES_VIEWPORT_STATE_IDLE = 0
+PSYCLES_VIEWPORT_STATE_COMPILING = 1
+PSYCLES_VIEWPORT_STATE_RENDERING = 2
+PSYCLES_VIEWPORT_STATE_DONE = 3
+PSYCLES_VIEWPORT_STATE_CANCELLED = 4
+PSYCLES_VIEWPORT_STATE_FAILED = 5
+
 # Matches psycles::contract::PassKind in include/psycles/contract/render.h.
 PASS_KIND_COMBINED = 0
 PASS_KIND_DEPTH = 1
@@ -163,6 +170,21 @@ class PsyclesRenderParams(ctypes.Structure):
         ("pass_alpha_threshold", ctypes.c_float),
         ("override_pass_alpha_threshold", ctypes.c_uint8),
         ("reserved", ctypes.c_uint8 * 3),
+    ]
+
+
+class PsyclesViewportStatus(ctypes.Structure):
+    _fields_ = [
+        ("state", ctypes.c_uint32),
+        ("rendered_samples", ctypes.c_uint32),
+        ("target_samples", ctypes.c_uint32),
+        ("width", ctypes.c_uint32),
+        ("height", ctypes.c_uint32),
+        ("frame_generation", ctypes.c_uint64),
+        ("is_finished", ctypes.c_uint8),
+        ("has_compiled_scene", ctypes.c_uint8),
+        ("has_session", ctypes.c_uint8),
+        ("reserved", ctypes.c_uint8),
     ]
 
 
@@ -297,6 +319,17 @@ def _load_library(runtime_dir: pathlib.Path) -> ctypes.CDLL:
         ]
         lib.psycles_session_update_camera.restype = ctypes.c_int
 
+        lib.psycles_session_reconfigure.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(PsyclesCameraDesc),
+            ctypes.POINTER(PsyclesRenderParams),
+            ctypes.POINTER(PsyclesPassDesc),
+            ctypes.c_size_t,
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+        ]
+        lib.psycles_session_reconfigure.restype = ctypes.c_int
+
         lib.psycles_session_render_samples.argtypes = [
             ctypes.c_void_p,
             ctypes.c_uint32,
@@ -331,6 +364,93 @@ def _load_library(runtime_dir: pathlib.Path) -> ctypes.CDLL:
 
         lib.psycles_session_destroy.argtypes = [ctypes.c_void_p]
         lib.psycles_session_destroy.restype = None
+
+        lib.psycles_viewport_task_start_compile.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.c_char_p,
+            ctypes.POINTER(PsyclesCameraDesc),
+            ctypes.POINTER(PsyclesRenderParams),
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_uint8,
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+        ]
+        lib.psycles_viewport_task_start_compile.restype = ctypes.c_void_p
+
+        lib.psycles_viewport_task_start_scene.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.POINTER(PsyclesCameraDesc),
+            ctypes.POINTER(PsyclesRenderParams),
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_uint8,
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+        ]
+        lib.psycles_viewport_task_start_scene.restype = ctypes.c_void_p
+
+        lib.psycles_viewport_task_start_session.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(PsyclesCameraDesc),
+            ctypes.POINTER(PsyclesRenderParams),
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_uint8,
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+        ]
+        lib.psycles_viewport_task_start_session.restype = ctypes.c_void_p
+
+        lib.psycles_viewport_task_request_camera.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(PsyclesCameraDesc),
+            ctypes.POINTER(PsyclesRenderParams),
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+        ]
+        lib.psycles_viewport_task_request_camera.restype = ctypes.c_int
+
+        lib.psycles_viewport_task_cancel.argtypes = [ctypes.c_void_p]
+        lib.psycles_viewport_task_cancel.restype = None
+
+        lib.psycles_viewport_task_poll.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(PsyclesViewportStatus),
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+        ]
+        lib.psycles_viewport_task_poll.restype = ctypes.c_int
+
+        lib.psycles_viewport_task_copy_frame.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_uint64),
+        ]
+        lib.psycles_viewport_task_copy_frame.restype = ctypes.c_int
+
+        lib.psycles_viewport_task_acquire_scene.argtypes = [ctypes.c_void_p]
+        lib.psycles_viewport_task_acquire_scene.restype = ctypes.c_void_p
+
+        lib.psycles_viewport_task_acquire_session.argtypes = [ctypes.c_void_p]
+        lib.psycles_viewport_task_acquire_session.restype = ctypes.c_void_p
+
+        lib.psycles_viewport_task_wait.argtypes = [ctypes.c_void_p]
+        lib.psycles_viewport_task_wait.restype = None
+
+        lib.psycles_viewport_task_destroy.argtypes = [ctypes.c_void_p]
+        lib.psycles_viewport_task_destroy.restype = None
+
+        lib.psycles_shutdown_runtime.argtypes = []
+        lib.psycles_shutdown_runtime.restype = None
 
         ver = int(lib.psycles_capi_version())
         if ver != PSYCLES_CAPI_VERSION:
@@ -376,6 +496,56 @@ class RenderTimings:
     render_call_s: float
 
 
+@dataclass(frozen=True)
+class ViewportPollResult:
+    state: int
+    rendered_samples: int
+    target_samples: int
+    width: int
+    height: int
+    frame_generation: int
+    is_finished: bool
+    has_compiled_scene: bool
+    has_session: bool
+    error_message: str
+
+
+def _geometry_buffer_arg(
+    geometry_bin: bytes | bytearray | memoryview,
+) -> tuple[Any, int, Any]:
+    if isinstance(geometry_bin, (bytearray, memoryview)):
+        mv = memoryview(geometry_bin)
+        if mv.readonly:
+            raw = bytes(mv)
+            return ctypes.cast(ctypes.c_char_p(raw), ctypes.c_void_p), len(mv), raw
+        geom_arr = (ctypes.c_ubyte * len(mv)).from_buffer(mv)
+        return ctypes.cast(geom_arr, ctypes.c_void_p), len(mv), geom_arr
+    return (
+        ctypes.cast(ctypes.c_char_p(geometry_bin), ctypes.c_void_p),
+        len(geometry_bin),
+        geometry_bin,
+    )
+
+
+def _pack_passes(
+    passes: list[tuple[int, int, str, str]],
+) -> tuple[Any, list[bytes]]:
+    keepalive: list[bytes] = []
+    pass_arr = (PsyclesPassDesc * len(passes))()
+    for idx, (kind, channels, name, light_group) in enumerate(passes):
+        name_b = name.encode("utf-8")
+        keepalive.append(name_b)
+        lg_b = light_group.encode("utf-8") if light_group else b""
+        if lg_b:
+            keepalive.append(lg_b)
+        pass_arr[idx].kind = kind
+        pass_arr[idx].reserved = 0
+        pass_arr[idx].channels = channels
+        pass_arr[idx].name = name_b
+        pass_arr[idx].light_group = lg_b if lg_b else None
+    return pass_arr, keepalive
+
+
 class PsyclesEngine:
     def __init__(
         self,
@@ -409,21 +579,7 @@ class PsyclesEngine:
     ) -> tuple["PsyclesScene", PsyclesSceneInfo]:
         if not self._handle:
             raise RuntimeError("PsyclesEngine has been destroyed")
-        if isinstance(geometry_bin, (bytearray, memoryview)):
-            mv = memoryview(geometry_bin)
-            if mv.readonly:
-                geom_arg: Any = ctypes.cast(
-                    ctypes.c_char_p(bytes(mv)), ctypes.c_void_p
-                )
-            else:
-                geom_arr = (ctypes.c_ubyte * len(mv)).from_buffer(mv)
-                geom_arg = ctypes.cast(geom_arr, ctypes.c_void_p)
-            geom_len = len(mv)
-        else:
-            geom_arg = ctypes.cast(
-                ctypes.c_char_p(geometry_bin), ctypes.c_void_p
-            )
-            geom_len = len(geometry_bin)
+        geom_arg, geom_len, _keepalive = _geometry_buffer_arg(geometry_bin)
         info = PsyclesSceneInfo()
         err = ctypes.create_string_buffer(2048)
         ptr = self._lib.psycles_scene_compile_memory(
@@ -467,19 +623,7 @@ class PsyclesScene:
     ) -> "PsyclesSession":
         if not self._handle or not self._engine._handle:
             raise RuntimeError("PsyclesScene or PsyclesEngine has been destroyed")
-        keepalive: list[bytes] = []
-        pass_arr = (PsyclesPassDesc * len(passes))()
-        for idx, (kind, channels, name, light_group) in enumerate(passes):
-            name_b = name.encode("utf-8")
-            keepalive.append(name_b)
-            lg_b = light_group.encode("utf-8") if light_group else b""
-            if lg_b:
-                keepalive.append(lg_b)
-            pass_arr[idx].kind = kind
-            pass_arr[idx].reserved = 0
-            pass_arr[idx].channels = channels
-            pass_arr[idx].name = name_b
-            pass_arr[idx].light_group = lg_b if lg_b else None
+        pass_arr, _keepalive = _pack_passes(passes)
         err = ctypes.create_string_buffer(2048)
         ptr = self._lib.psycles_session_create(
             self._engine._handle,
@@ -524,21 +668,39 @@ class PsyclesSession:
         camera: PsyclesCameraDesc,
         params: PsyclesRenderParams,
     ) -> None:
+        self.reconfigure(camera, params)
+
+    def reconfigure(
+        self,
+        camera: PsyclesCameraDesc | None,
+        params: PsyclesRenderParams,
+        passes: list[tuple[int, int, str, str]] | None = None,
+    ) -> None:
         if not self._handle:
             raise RuntimeError("PsyclesSession has been destroyed")
+        pass_arr = None
+        pass_count = 0
+        _keepalive: list[bytes] = []
+        if passes is not None and len(passes) > 0:
+            pass_arr, _keepalive = _pack_passes(passes)
+            pass_count = len(passes)
         err = ctypes.create_string_buffer(2048)
-        rc = self._lib.psycles_session_update_camera(
+        rc = self._lib.psycles_session_reconfigure(
             self._handle,
-            ctypes.byref(camera),
+            ctypes.byref(camera) if camera is not None else None,
             ctypes.byref(params),
+            pass_arr,
+            pass_count,
             err,
             len(err),
         )
         if rc != 1:
             raise RuntimeError(
                 err.value.decode("utf-8", errors="replace")
-                or "Session update_camera failed"
+                or "Session reconfigure failed"
             )
+        if pass_count > 0:
+            self._pass_count = pass_count
 
     def render_samples(
         self,
@@ -626,6 +788,244 @@ class PsyclesSession:
         self.destroy()
 
 
+class PsyclesViewportTask:
+    def __init__(self, engine: PsyclesEngine, handle: ctypes.c_void_p) -> None:
+        self._engine = engine
+        self._lib = engine._lib
+        self._handle: ctypes.c_void_p | None = handle
+
+    @classmethod
+    def start_compile(
+        cls,
+        engine: PsyclesEngine,
+        scene_json: bytes,
+        geometry_bin: bytes | bytearray | memoryview,
+        asset_base_dir: str,
+        camera: PsyclesCameraDesc | None,
+        params: PsyclesRenderParams,
+        target_samples: int,
+        start_samples: int,
+        *,
+        flip_y: bool = True,
+    ) -> "PsyclesViewportTask":
+        if not engine._handle:
+            raise RuntimeError("PsyclesEngine has been destroyed")
+        geom_arg, geom_len, _keepalive = _geometry_buffer_arg(geometry_bin)
+        err = ctypes.create_string_buffer(2048)
+        ptr = engine._lib.psycles_viewport_task_start_compile(
+            engine._handle,
+            scene_json,
+            len(scene_json),
+            geom_arg,
+            geom_len,
+            asset_base_dir.encode("utf-8"),
+            ctypes.byref(camera) if camera is not None else None,
+            ctypes.byref(params),
+            max(int(target_samples), 1),
+            max(int(start_samples), 1),
+            1 if flip_y else 0,
+            err,
+            len(err),
+        )
+        if not ptr:
+            raise RuntimeError(
+                err.value.decode("utf-8", errors="replace")
+                or "Failed to start viewport compile task"
+            )
+        return cls(engine, ctypes.c_void_p(ptr))
+
+    @classmethod
+    def start_scene(
+        cls,
+        scene: PsyclesScene,
+        camera: PsyclesCameraDesc | None,
+        params: PsyclesRenderParams,
+        target_samples: int,
+        start_samples: int,
+        *,
+        flip_y: bool = True,
+    ) -> "PsyclesViewportTask":
+        if not scene._handle or not scene._engine._handle:
+            raise RuntimeError("PsyclesScene or PsyclesEngine has been destroyed")
+        err = ctypes.create_string_buffer(2048)
+        ptr = scene._lib.psycles_viewport_task_start_scene(
+            scene._engine._handle,
+            scene._handle,
+            ctypes.byref(camera) if camera is not None else None,
+            ctypes.byref(params),
+            max(int(target_samples), 1),
+            max(int(start_samples), 1),
+            1 if flip_y else 0,
+            err,
+            len(err),
+        )
+        if not ptr:
+            raise RuntimeError(
+                err.value.decode("utf-8", errors="replace")
+                or "Failed to start viewport scene task"
+            )
+        return cls(scene._engine, ctypes.c_void_p(ptr))
+
+    @classmethod
+    def start_session(
+        cls,
+        session: PsyclesSession,
+        camera: PsyclesCameraDesc | None,
+        params: PsyclesRenderParams,
+        target_samples: int,
+        start_samples: int,
+        *,
+        flip_y: bool = True,
+    ) -> "PsyclesViewportTask":
+        if not session._handle or not session._scene._handle:
+            raise RuntimeError("PsyclesSession has been destroyed")
+        err = ctypes.create_string_buffer(2048)
+        ptr = session._lib.psycles_viewport_task_start_session(
+            session._handle,
+            ctypes.byref(camera) if camera is not None else None,
+            ctypes.byref(params),
+            max(int(target_samples), 1),
+            max(int(start_samples), 1),
+            1 if flip_y else 0,
+            err,
+            len(err),
+        )
+        if not ptr:
+            raise RuntimeError(
+                err.value.decode("utf-8", errors="replace")
+                or "Failed to start viewport session task"
+            )
+        return cls(session._scene._engine, ctypes.c_void_p(ptr))
+
+    def request_camera(
+        self,
+        camera: PsyclesCameraDesc,
+        params: PsyclesRenderParams,
+        target_samples: int,
+        start_samples: int,
+    ) -> bool:
+        if not self._handle:
+            return False
+        rc = self._lib.psycles_viewport_task_request_camera(
+            self._handle,
+            ctypes.byref(camera),
+            ctypes.byref(params),
+            max(int(target_samples), 1),
+            max(int(start_samples), 1),
+        )
+        return rc == 1
+
+    def cancel(self) -> None:
+        handle = getattr(self, "_handle", None)
+        if handle:
+            self._lib.psycles_viewport_task_cancel(handle)
+
+    def poll(self) -> ViewportPollResult:
+        if not self._handle:
+            return ViewportPollResult(
+                state=PSYCLES_VIEWPORT_STATE_CANCELLED,
+                rendered_samples=0,
+                target_samples=0,
+                width=0,
+                height=0,
+                frame_generation=0,
+                is_finished=True,
+                has_compiled_scene=False,
+                has_session=False,
+                error_message="",
+            )
+        status = PsyclesViewportStatus()
+        err = ctypes.create_string_buffer(2048)
+        self._lib.psycles_viewport_task_poll(
+            self._handle, ctypes.byref(status), err, len(err)
+        )
+        return ViewportPollResult(
+            state=int(status.state),
+            rendered_samples=int(status.rendered_samples),
+            target_samples=int(status.target_samples),
+            width=int(status.width),
+            height=int(status.height),
+            frame_generation=int(status.frame_generation),
+            is_finished=bool(status.is_finished),
+            has_compiled_scene=bool(status.has_compiled_scene),
+            has_session=bool(status.has_session),
+            error_message=err.value.decode("utf-8", errors="replace"),
+        )
+
+    def copy_frame(
+        self,
+        out_rgba: np.ndarray[Any, np.dtype[np.float32]] | None = None,
+    ) -> tuple[np.ndarray[Any, np.dtype[np.float32]], int, int, int] | None:
+        if not self._handle:
+            return None
+        w = ctypes.c_uint32()
+        h = ctypes.c_uint32()
+        gen = ctypes.c_uint64()
+        buf = out_rgba
+        if buf is not None and buf.dtype == np.float32 and buf.flags["C_CONTIGUOUS"]:
+            ptr = buf.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            cap = int(buf.size)
+        else:
+            ptr = None
+            cap = 0
+        rc = self._lib.psycles_viewport_task_copy_frame(
+            self._handle,
+            ptr,
+            cap,
+            ctypes.byref(w),
+            ctypes.byref(h),
+            ctypes.byref(gen),
+        )
+        if rc == 0:
+            return None
+        width = int(w.value)
+        height = int(h.value)
+        if rc == -1:
+            buf = np.empty((height, width, 4), dtype=np.float32)
+            rc = self._lib.psycles_viewport_task_copy_frame(
+                self._handle,
+                buf.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                int(buf.size),
+                ctypes.byref(w),
+                ctypes.byref(h),
+                ctypes.byref(gen),
+            )
+            if rc != 1:
+                return None
+        assert buf is not None
+        return buf.reshape((height, width, 4)), width, height, int(gen.value)
+
+    def acquire_scene(self) -> PsyclesScene | None:
+        if not self._handle:
+            return None
+        ptr = self._lib.psycles_viewport_task_acquire_scene(self._handle)
+        if not ptr:
+            return None
+        return PsyclesScene(self._engine, ctypes.c_void_p(ptr))
+
+    def acquire_session(self, scene: PsyclesScene) -> PsyclesSession | None:
+        if not self._handle:
+            return None
+        ptr = self._lib.psycles_viewport_task_acquire_session(self._handle)
+        if not ptr:
+            return None
+        return PsyclesSession(scene, ctypes.c_void_p(ptr), 1)
+
+    def wait(self) -> None:
+        handle = getattr(self, "_handle", None)
+        if handle:
+            self._lib.psycles_viewport_task_wait(handle)
+
+    def destroy(self) -> None:
+        handle = getattr(self, "_handle", None)
+        if handle:
+            self._lib.psycles_viewport_task_destroy(handle)
+            self._handle = None
+
+    def __del__(self) -> None:
+        self.destroy()
+
+
 def get_or_create_engine(
     *,
     prefs_dir: str = "",
@@ -673,10 +1073,27 @@ def get_or_create_engine(
 
 
 def shutdown_all() -> None:
+    try:
+        from . import engine as _engine
+
+        _engine.cancel_all_viewports(wait=True)
+    except Exception:
+        pass
+    try:
+        from . import scene_cache as _scene_cache
+
+        _scene_cache.clear_all()
+    except Exception:
+        pass
     with _LIB_LOCK:
         for engine in list(_ENGINE_CACHE.values()):
             engine.destroy()
         _ENGINE_CACHE.clear()
+        for lib in _LOADED_LIBS.values():
+            try:
+                lib.psycles_shutdown_runtime()
+            except Exception:
+                pass
 
 
 atexit.register(shutdown_all)

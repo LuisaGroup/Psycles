@@ -21,6 +21,10 @@
 
 namespace psycles::luisa_backend {
 
+namespace detail {
+struct FilmPassAccessorGpu;
+} // namespace detail
+
 inline constexpr auto luisa_wavefront_auto_tail_threshold =
     std::numeric_limits<std::uint32_t>::max();
 
@@ -274,6 +278,7 @@ class LuisaPathTracerBackend final : public contract::RendererBackend {
 private:
   luisa::compute::Device _device;
   LuisaPathTracerOptions _options;
+  std::shared_ptr<const detail::FilmPassAccessorGpu> _film_pass_accessor;
 
 public:
   explicit LuisaPathTracerBackend(luisa::compute::Device device,

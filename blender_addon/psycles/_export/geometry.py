@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import array
+import copy
+import io
 import sys
 from typing import Any
 
@@ -34,31 +36,6 @@ from .shader_nodes import (
 )
 
 
-def _cycles_color_attribute_value(
-    attribute: Any,
-    index: int,
-    rec709_to_rgb: tuple[tuple[float, float, float], ...],
-) -> tuple[float, float, float, float]:
-    value = tuple(float(component) for component in attribute.data[index].color)
-    if attribute.data_type != "BYTE_COLOR" or attribute.domain != "CORNER":
-        return value
-    rgb = value[:3]
-    return tuple(
-        sum(row[channel] * rgb[channel] for channel in range(3))
-        for row in rec709_to_rgb
-    ) + (value[3],)
-
-
-def _cycles_corner_byte_color_value(
-    attribute: Any,
-    index: int,
-) -> tuple[int, int, int, int]:
-    return tuple(
-        max(0, min(255, int(float(component) * 255.0 + 0.5)))
-        for component in attribute.data[index].color_srgb
-    )
-
-
 def _cycles_uint_to_float(value: int) -> float:
     return float(cycles_hash.u32(value)) / float(cycles_hash.UINT32_MASK)
 
@@ -78,6 +55,57 @@ def write_array(stream: Any, values: array.array[Any]) -> dict[str, int]:
             f"short geometry write: expected {len(payload)} bytes, wrote {written}"
         )
     return {"offset": offset, "bytes": written}
+
+
+def write_ndarray(stream: Any, arr: np.ndarray[Any, Any]) -> dict[str, int]:
+    contiguous = np.ascontiguousarray(arr)
+    if sys.byteorder != "little" and contiguous.dtype.itemsize > 1:
+        contiguous = contiguous.astype(
+            contiguous.dtype.newbyteorder("<"), copy=False
+        )
+    offset = stream.tell()
+    payload = memoryview(contiguous).cast("B")
+    written = stream.write(payload)
+    if written != len(payload):
+        raise OSError(
+            f"short geometry write: expected {len(payload)} bytes, wrote {written}"
+        )
+    return {"offset": offset, "bytes": written}
+
+
+def _rebase_section(section: dict[str, int] | None, delta: int) -> None:
+    if section is not None:
+        section["offset"] += delta
+
+
+def rebase_geometry_sections(mesh_dict: dict[str, Any], base_offset: int) -> dict[str, Any]:
+    if base_offset != 0:
+        for key in (
+            "positions",
+            "normals",
+            "uv",
+            "uv_tangents",
+            "generated",
+            "indices",
+            "triangle_material_slots",
+            "triangle_smooth",
+            "triangle_random_per_island",
+        ):
+            _rebase_section(mesh_dict.get(key), base_offset)
+        psrc = mesh_dict.get("pointiness_source")
+        if psrc is not None:
+            _rebase_section(psrc.get("point_normals"), base_offset)
+            _rebase_section(psrc.get("edges"), base_offset)
+        iedges = mesh_dict.get("island_edges")
+        if iedges is not None:
+            _rebase_section(iedges.get("edges"), base_offset)
+        for layer in mesh_dict.get("uv_layers", ()):
+            _rebase_section(layer.get("values"), base_offset)
+            _rebase_section(layer.get("tangents"), base_offset)
+        for attr in mesh_dict.get("color_attributes", ()):
+            _rebase_section(attr.get("values"), base_offset)
+            _rebase_section(attr.get("byte_values"), base_offset)
+    return mesh_dict
 
 
 def geometry_cache_key(
@@ -115,15 +143,14 @@ def _cycles_uses_adaptive_subdivision(
     )
 
 
-def extract_mesh_geometry(
+def _extract_mesh_geometry_to_local_stream(
     obj: Any,
     depsgraph: Any,
-    stream: Any,
     rec709_to_rgb: tuple[tuple[float, float, float], ...],
     *,
-    is_viewport: bool = False,
-    pointiness_cache: dict[int, bool] | None = None,
-) -> dict[str, Any] | None:
+    is_viewport: bool,
+    pointiness_cache: dict[int, bool] | None,
+) -> tuple[dict[str, Any], bytes] | None:
     evaluated = obj.evaluated_get(depsgraph)
     try:
         mesh = evaluated.to_mesh(
@@ -134,69 +161,24 @@ def extract_mesh_geometry(
         return None
     if mesh is None:
         return None
+    local_stream = io.BytesIO()
     try:
+        mesh.calc_loop_triangles()
+        n_tris = len(mesh.loop_triangles)
+        if n_tris == 0:
+            return None
+        n_verts = len(mesh.vertices)
+        n_edges = len(mesh.edges)
+        n_loops = len(mesh.loops)
+        n_corners = n_tris * 3
+
         needs_pointiness = any(
             material_uses_pointiness(slot.material, pointiness_cache)
             for slot in obj.material_slots
         )
-        pointiness_normals = array.array("f")
-        pointiness_edges = array.array("I")
-        if needs_pointiness:
-            pointiness_normals.extend(
-                component
-                for vertex in mesh.vertices
-                for component in vertex.normal
-            )
-            pointiness_edges.extend(
-                int(vertex)
-                for edge in mesh.edges
-                for vertex in edge.vertices
-            )
-        mesh.calc_loop_triangles()
-        if not mesh.loop_triangles:
-            return None
-        uv_layer_names = [layer.name for layer in mesh.uv_layers]
-        default_uv_name = (
-            mesh.uv_layers.active_render.name
-            if mesh.uv_layers.active_render is not None
-            else None
-        )
-        uv_by_layer: dict[str, list[tuple[float, float]]] = {}
-        tangent_by_layer: dict[str, list[tuple[float, float, float, float]]] = {}
-        for uv_layer_name in uv_layer_names:
-            uv_layer = mesh.uv_layers.get(uv_layer_name)
-            if uv_layer is None:
-                continue
-            uv_by_layer[uv_layer_name] = [
-                tuple(float(value) for value in item.uv)
-                for item in uv_layer.data
-            ]
-            tangent_by_layer[uv_layer_name] = [
-                (0.0, 0.0, 0.0, 0.0) for _loop in mesh.loops
-            ]
-        positions = array.array("f")
-        normals = array.array("f")
-        uvs = array.array("f")
-        uv_tangents = array.array("f")
-        uv_layer_values = {name: array.array("f") for name in uv_by_layer}
-        uv_tangent_values = {name: array.array("f") for name in uv_by_layer}
-        generated = array.array("f")
-        color_layers = [
-            attribute
-            for attribute in mesh.color_attributes
-            if attribute.data_type in {"BYTE_COLOR", "FLOAT_COLOR"}
-            and attribute.domain in {"CORNER", "POINT"}
-        ]
-        color_values = {attribute.name: array.array("f") for attribute in color_layers}
-        byte_color_values = {
-            attribute.name: array.array("B")
-            for attribute in color_layers
-            if attribute.data_type == "BYTE_COLOR" and attribute.domain == "CORNER"
-        }
-        indices = array.array("I")
-        materials = array.array("I")
-        smooth = array.array("I")
-        random_per_island = array.array("f")
+
+        positions = np.empty(n_verts * 3, dtype=np.float32)
+        mesh.vertices.foreach_get("co", positions)
 
         texspace_location = mesh.texspace_location
         texspace_size = mesh.texspace_size
@@ -214,178 +196,305 @@ def extract_mesh_geometry(
             0.0, 0.0, generated_scale[2], 0.0,
             -generated_location[0], -generated_location[1], -generated_location[2], 1.0,
         ]
-        generated_by_vertex = [
-            tuple(
-                float(vertex.co[axis]) * generated_scale[axis] - generated_location[axis]
-                for axis in range(3)
-            )
-            for vertex in mesh.vertices
-        ]
-        positions.extend(
-            component for vertex in mesh.vertices for component in vertex.co
-        )
-        generated.extend(
-            component for value in generated_by_vertex for component in value
-        )
+        scale64 = np.asarray(generated_scale, dtype=np.float64)
+        loc64 = np.asarray(generated_location, dtype=np.float64)
+        generated = (
+            positions.reshape(n_verts, 3).astype(np.float64) * scale64 - loc64
+        ).astype(np.float32)
+
         blender_normal_domain = str(getattr(mesh, "normals_domain", "CORNER"))
         use_corner_normals = blender_normal_domain == "CORNER"
-        sharp_face_attribute = mesh.attributes.get("sharp_face")
-        if use_corner_normals:
-            smooth_by_polygon = None
-            smooth_without_attribute = True
-        elif sharp_face_attribute is not None:
-            smooth_by_polygon = tuple(
-                not bool(item.value) for item in sharp_face_attribute.data
-            )
-            smooth_without_attribute = False
-        else:
-            smooth_by_polygon = None
-            smooth_without_attribute = blender_normal_domain != "FACE"
         normal_domain = "CORNER" if use_corner_normals else "POINT"
-        if normal_domain == "POINT":
-            normals.extend(
-                component for vertex in mesh.vertices for component in vertex.normal
+
+        point_normals: np.ndarray[Any, np.dtype[np.float32]] | None = None
+        if needs_pointiness or normal_domain == "POINT":
+            point_normals = np.empty(n_verts * 3, dtype=np.float32)
+            mesh.vertices.foreach_get("normal", point_normals)
+
+        edges_i32 = np.empty(n_edges * 2, dtype=np.int32)
+        mesh.edges.foreach_get("vertices", edges_i32)
+        edges_u32 = np.ascontiguousarray(edges_i32.view(np.uint32))
+
+        tri_loops_i32 = np.empty(n_corners, dtype=np.int32)
+        mesh.loop_triangles.foreach_get("loops", tri_loops_i32)
+        tri_loops = tri_loops_i32
+
+        tri_mats_i32 = np.empty(n_tris, dtype=np.int32)
+        mesh.loop_triangles.foreach_get("material_index", tri_mats_i32)
+        materials = np.maximum(tri_mats_i32, 0).astype(np.uint32, copy=False)
+
+        loop_vidx_i32 = np.empty(n_loops, dtype=np.int32)
+        mesh.loops.foreach_get("vertex_index", loop_vidx_i32)
+        indices = np.ascontiguousarray(
+            loop_vidx_i32[tri_loops], dtype=np.uint32
+        )
+
+        if normal_domain == "CORNER":
+            loop_normals = np.empty(n_loops * 3, dtype=np.float32)
+            mesh.loops.foreach_get("normal", loop_normals)
+            normals = np.ascontiguousarray(
+                loop_normals.reshape(n_loops, 3)[tri_loops], dtype=np.float32
             )
-        for attribute in color_layers:
-            if attribute.domain != "POINT":
-                continue
-            for vertex in mesh.vertices:
-                color_values[attribute.name].extend(
-                    _cycles_color_attribute_value(attribute, vertex.index, rec709_to_rgb)
-                )
+            smooth = np.ones(n_tris, dtype=np.uint32)
+        else:
+            assert point_normals is not None
+            normals = point_normals
+            sharp_face_attribute = mesh.attributes.get("sharp_face")
+            if sharp_face_attribute is not None:
+                n_sharp = len(sharp_face_attribute.data)
+                sharp = np.empty(n_sharp, dtype=bool)
+                sharp_face_attribute.data.foreach_get("value", sharp)
+                tri_polys = np.empty(n_tris, dtype=np.int32)
+                mesh.loop_triangles.foreach_get("polygon_index", tri_polys)
+                smooth = (~sharp[tri_polys]).astype(np.uint32)
+            else:
+                smooth_val = 1 if blender_normal_domain != "FACE" else 0
+                smooth = np.full(n_tris, smooth_val, dtype=np.uint32)
 
-        parents = list(range(len(mesh.vertices)))
-        ranks = [0] * len(mesh.vertices)
+        positions_sec = write_ndarray(local_stream, positions)
+        normals_sec = write_ndarray(local_stream, normals)
+        generated_sec = write_ndarray(local_stream, generated)
+        edges_sec = write_ndarray(local_stream, edges_u32)
+        indices_sec = write_ndarray(local_stream, indices)
+        materials_sec = write_ndarray(local_stream, materials)
+        smooth_sec = write_ndarray(local_stream, smooth)
 
-        def find_root(vertex_index: int) -> int:
-            root = vertex_index
-            while parents[root] != root:
-                root = parents[root]
-            while parents[vertex_index] != root:
-                parent = parents[vertex_index]
-                parents[vertex_index] = root
-                vertex_index = parent
-            return root
-
-        def join_vertices(first: int, second: int) -> None:
-            root_first = find_root(first)
-            root_second = find_root(second)
-            if root_first == root_second:
-                return
-            if ranks[root_first] < ranks[root_second]:
-                root_first, root_second = root_second, root_first
-            parents[root_second] = root_first
-            if ranks[root_first] == ranks[root_second]:
-                ranks[root_first] += 1
-
-        for edge in mesh.edges:
-            join_vertices(int(edge.vertices[0]), int(edge.vertices[1]))
-
-        for triangle in mesh.loop_triangles:
-            for loop_index in triangle.loops:
-                loop = mesh.loops[loop_index]
-                if normal_domain == "CORNER":
-                    normals.extend(float(value) for value in loop.normal)
-                for attribute in color_layers:
-                    if attribute.domain != "CORNER":
-                        continue
-                    color_values[attribute.name].extend(
-                        _cycles_color_attribute_value(attribute, loop_index, rec709_to_rgb)
-                    )
-                    if attribute.name in byte_color_values:
-                        byte_color_values[attribute.name].extend(
-                            _cycles_corner_byte_color_value(attribute, loop_index)
-                        )
-                if default_uv_name not in uv_by_layer:
-                    uvs.extend((0.0, 0.0))
-                else:
-                    uvs.extend(uv_by_layer[default_uv_name][loop_index])
-                if default_uv_name not in tangent_by_layer:
-                    uv_tangents.extend((0.0, 0.0, 0.0, 0.0))
-                else:
-                    uv_tangents.extend(tangent_by_layer[default_uv_name][loop_index])
-                for layer_name, values in uv_by_layer.items():
-                    uv_layer_values[layer_name].extend(values[loop_index])
-                    uv_tangent_values[layer_name].extend(
-                        tangent_by_layer[layer_name][loop_index]
-                    )
-                indices.append(int(loop.vertex_index))
-            materials.append(int(triangle.material_index))
-            smooth.append(
-                int(
-                    smooth_without_attribute
-                    if smooth_by_polygon is None
-                    else smooth_by_polygon[triangle.polygon_index]
-                )
-            )
-            first_vertex = mesh.loops[triangle.loops[0]].vertex_index
-            random_per_island.append(
-                _cycles_uint_to_float(cycles_hash.hash_uint(find_root(first_vertex)))
-            )
         pointiness_source = None
         if needs_pointiness:
+            assert point_normals is not None
             pointiness_source = {
-                "point_normals": write_array(stream, pointiness_normals),
-                "edge_count": len(pointiness_edges) // 2,
-                "edges": write_array(stream, pointiness_edges),
+                "point_normals": write_ndarray(local_stream, point_normals),
+                "edge_count": n_edges,
+                "edges": dict(edges_sec),
             }
-        return {
+
+        uv_layer_names = [layer.name for layer in mesh.uv_layers]
+        default_uv_name = (
+            mesh.uv_layers.active_render.name
+            if mesh.uv_layers.active_render is not None
+            else None
+        )
+        uv_sections: dict[str, dict[str, int]] = {}
+        for uv_layer_name in uv_layer_names:
+            uv_layer = mesh.uv_layers.get(uv_layer_name)
+            if uv_layer is None:
+                continue
+            raw_uv = np.empty(n_loops * 2, dtype=np.float32)
+            uv_layer.data.foreach_get("uv", raw_uv)
+            corner_uv = np.ascontiguousarray(
+                raw_uv.reshape(n_loops, 2)[tri_loops], dtype=np.float32
+            )
+            uv_sections[uv_layer_name] = write_ndarray(local_stream, corner_uv)
+
+        default_uv_available = default_uv_name in uv_sections
+        if default_uv_available and default_uv_name is not None:
+            uv_sec = dict(uv_sections[default_uv_name])
+        else:
+            uv_sec = write_ndarray(
+                local_stream, np.zeros((n_corners, 2), dtype=np.float32)
+            )
+
+        color_layers = [
+            attribute
+            for attribute in mesh.color_attributes
+            if attribute.data_type in {"BYTE_COLOR", "FLOAT_COLOR"}
+            and attribute.domain in {"CORNER", "POINT"}
+        ]
+        mat_rec709_T = np.asarray(rec709_to_rgb, dtype=np.float64).T
+        color_attr_entries: list[dict[str, Any]] = []
+        for attribute in color_layers:
+            if attribute.domain == "POINT":
+                raw_c = np.empty(n_verts * 4, dtype=np.float32)
+                attribute.data.foreach_get("color", raw_c)
+                values_sec = write_ndarray(local_stream, raw_c)
+                byte_sec = None
+            else:
+                raw_c = np.empty(n_loops * 4, dtype=np.float32)
+                attribute.data.foreach_get("color", raw_c)
+                c_tri = np.ascontiguousarray(
+                    raw_c.reshape(n_loops, 4)[tri_loops], dtype=np.float32
+                )
+                if attribute.data_type == "BYTE_COLOR":
+                    rgb = (
+                        c_tri[:, :3].astype(np.float64) @ mat_rec709_T
+                    ).astype(np.float32)
+                    c_out = np.empty((n_corners, 4), dtype=np.float32)
+                    c_out[:, :3] = rgb
+                    c_out[:, 3] = c_tri[:, 3]
+                    values_sec = write_ndarray(local_stream, c_out)
+
+                    raw_srgb = np.empty(n_loops * 4, dtype=np.float32)
+                    attribute.data.foreach_get("color_srgb", raw_srgb)
+                    srgb_tri = raw_srgb.reshape(n_loops, 4)[tri_loops]
+                    byte_vals = np.clip(
+                        np.floor(srgb_tri.astype(np.float64) * 255.0 + 0.5),
+                        0.0,
+                        255.0,
+                    ).astype(np.uint8)
+                    byte_sec = write_ndarray(local_stream, byte_vals)
+                else:
+                    values_sec = write_ndarray(local_stream, c_tri)
+                    byte_sec = None
+            color_attr_entries.append({
+                "name": attribute.name,
+                "domain": attribute.domain,
+                "data_type": attribute.data_type,
+                "values": values_sec,
+                "byte_values": byte_sec,
+            })
+
+        mesh_dict = {
             "name": obj.name,
             "uses_adaptive_subdivision": _cycles_uses_adaptive_subdivision(
                 obj, is_viewport=is_viewport
             ),
-            "point_count": len(mesh.vertices),
-            "corner_count": len(mesh.loop_triangles) * 3,
-            "triangle_count": len(mesh.loop_triangles),
-            "positions": write_array(stream, positions),
+            "point_count": n_verts,
+            "corner_count": n_corners,
+            "triangle_count": n_tris,
+            "positions": positions_sec,
             "normal_domain": normal_domain,
-            "normals": write_array(stream, normals),
+            "normals": normals_sec,
             "uv_domain": "CORNER",
-            "default_uv_available": default_uv_name in uv_by_layer,
-            "uv": write_array(stream, uvs),
+            "default_uv_available": default_uv_available,
+            "uv": uv_sec,
             "uv_tangent_domain": "CORNER",
-            "uv_tangents": write_array(stream, uv_tangents),
             "uv_layers": [
                 {
                     "name": name,
                     "domain": "CORNER",
-                    "values": write_array(stream, uv_layer_values[name]),
-                    "tangents": write_array(stream, uv_tangent_values[name]),
+                    "values": sec,
                 }
-                for name in uv_layer_values
+                for name, sec in uv_sections.items()
             ],
             "generated_domain": "POINT",
-            "generated": write_array(stream, generated),
+            "generated": generated_sec,
             "generated_transform": generated_transform,
             "default_color_attribute": (
                 mesh.color_attributes.default_color_name or None
             ),
-            "color_attributes": [
-                {
-                    "name": attribute.name,
-                    "domain": attribute.domain,
-                    "data_type": attribute.data_type,
-                    "values": write_array(stream, color_values[attribute.name]),
-                    "byte_values": (
-                        write_array(stream, byte_color_values[attribute.name])
-                        if attribute.name in byte_color_values
-                        else None
-                    ),
-                }
-                for attribute in color_layers
-            ],
+            "color_attributes": color_attr_entries,
             "pointiness_source": pointiness_source,
-            "indices": write_array(stream, indices),
-            "triangle_material_slots": write_array(stream, materials),
-            "triangle_smooth": write_array(stream, smooth),
-            "triangle_random_per_island": write_array(stream, random_per_island),
+            "island_edges": {
+                "edge_count": n_edges,
+                "edges": dict(edges_sec),
+            },
+            "indices": indices_sec,
+            "triangle_material_slots": materials_sec,
+            "triangle_smooth": smooth_sec,
             "material_slots": [
                 slot.material.name if slot.material else None
                 for slot in obj.material_slots
             ],
         }
+        return mesh_dict, local_stream.getvalue()
     finally:
         evaluated.to_mesh_clear()
+
+
+def extract_mesh_geometry(
+    obj: Any,
+    depsgraph: Any,
+    stream: Any,
+    rec709_to_rgb: tuple[tuple[float, float, float], ...],
+    *,
+    is_viewport: bool = False,
+    pointiness_cache: dict[int, bool] | None = None,
+    mesh_cache: Any = None,
+    scene: Any = None,
+) -> dict[str, Any] | None:
+    if mesh_cache is not None and scene is not None and obj.type == "MESH" and obj.data is not None:
+        settings_mode = "PREVIEW" if is_viewport else "RENDER"
+        needs_pointiness = any(
+            material_uses_pointiness(slot.material, pointiness_cache)
+            for slot in obj.material_slots
+        )
+        material_names = tuple(
+            slot.material.name if slot.material is not None else None
+            for slot in obj.material_slots
+        )
+        mesh_ptr = (
+            obj.data.original.as_pointer()
+            if getattr(obj.data, "original", None)
+            else obj.data.as_pointer()
+        )
+        adaptive_subdiv = _cycles_uses_adaptive_subdivision(obj, is_viewport=is_viewport)
+        if not obj.is_modified(scene, settings_mode):
+            cache_key: tuple[Any, ...] = (
+                "mesh",
+                mesh_ptr,
+                settings_mode,
+                needs_pointiness,
+                rec709_to_rgb,
+                material_names,
+                adaptive_subdiv,
+            )
+        else:
+            obj_ptr = (
+                obj.original.as_pointer()
+                if getattr(obj, "original", None)
+                else obj.as_pointer()
+            )
+            mod_sig = tuple(
+                (
+                    m.type,
+                    m.name,
+                    bool(m.show_viewport if is_viewport else m.show_render),
+                    int(getattr(m, "levels", 0))
+                    if is_viewport
+                    else int(getattr(m, "render_levels", 0)),
+                )
+                for m in obj.modifiers
+            )
+            cache_key = (
+                "object",
+                obj_ptr,
+                mesh_ptr,
+                settings_mode,
+                needs_pointiness,
+                rec709_to_rgb,
+                material_names,
+                adaptive_subdiv,
+                mod_sig,
+            )
+
+        cached = mesh_cache.get(cache_key)
+        if cached is not None:
+            template_dict, raw_bytes = cached
+            mesh_dict = copy.deepcopy(template_dict)
+            mesh_dict["name"] = obj.name
+            base_offset = stream.tell()
+            stream.write(raw_bytes)
+            return rebase_geometry_sections(mesh_dict, base_offset)
+
+        extracted = _extract_mesh_geometry_to_local_stream(
+            obj,
+            depsgraph,
+            rec709_to_rgb,
+            is_viewport=is_viewport,
+            pointiness_cache=pointiness_cache,
+        )
+        if extracted is None:
+            return None
+        template_dict, raw_bytes = extracted
+        mesh_cache.put(cache_key, template_dict, raw_bytes)
+        mesh_dict = copy.deepcopy(template_dict)
+        base_offset = stream.tell()
+        stream.write(raw_bytes)
+        return rebase_geometry_sections(mesh_dict, base_offset)
+
+    extracted = _extract_mesh_geometry_to_local_stream(
+        obj,
+        depsgraph,
+        rec709_to_rgb,
+        is_viewport=is_viewport,
+        pointiness_cache=pointiness_cache,
+    )
+    if extracted is None:
+        return None
+    mesh_dict, raw_bytes = extracted
+    base_offset = stream.tell()
+    stream.write(raw_bytes)
+    return rebase_geometry_sections(mesh_dict, base_offset)
 
 
 def object_has_particle_hair(

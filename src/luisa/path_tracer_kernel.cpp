@@ -96,28 +96,24 @@ void LuisaRenderSession::prepare_film_buffers(
         _allocated_filter_width = settings.filter_width;
     }
 
-    luisa::vector<luisa::float4> zeros_float(count);
-    luisa::vector<luisa::float4> zeros_light_passes(
-        count * light_pass_buffer_count);
-    luisa::vector<luisa::uint> zeros_uint(count);
-    luisa::vector<luisa::float4> zeros_volume_guiding_raw(
-        count * volume_guiding::raw_pixel_stride);
-    luisa::vector<luisa::uint> zeros_volume_guiding_denoised(
-        count * volume_guiding::denoised_pixel_stride);
-    luisa::vector<luisa::float4> zeros_path_trace(
-        diagnostic_layout.allocation_slot_count);
-    _stream << _combined.copy_from(luisa::span{zeros_float})
-            << _normal.copy_from(luisa::span{zeros_float})
-            << _albedo.copy_from(luisa::span{zeros_float})
-            << _light_passes.copy_from(luisa::span{zeros_light_passes})
-            << _sample_count.copy_from(luisa::span{zeros_uint})
-            << _volume_guiding_raw.copy_from(
-                   luisa::span{zeros_volume_guiding_raw})
-            << _volume_guiding_denoised.copy_from(
-                   luisa::span{zeros_volume_guiding_denoised})
-            << _volume_guiding_intermediate.copy_from(
-                   luisa::span{zeros_volume_guiding_denoised})
-            << _path_trace.copy_from(luisa::span{zeros_path_trace})
+    prepare_film_pass_accessor();
+    const auto clear_count = std::max<std::size_t>(
+        count, diagnostic_layout.allocation_slot_count);
+    _stream << _scene->film_pass_accessor
+                   ->clear_film(
+                       _combined,
+                       _normal,
+                       _albedo,
+                       _light_passes,
+                       _sample_count,
+                       _volume_guiding_raw,
+                       _volume_guiding_denoised,
+                       _volume_guiding_intermediate,
+                       _path_trace,
+                       static_cast<std::uint32_t>(count),
+                       static_cast<std::uint32_t>(
+                           diagnostic_layout.allocation_slot_count))
+                   .dispatch(clear_count)
             << synchronize();
     if (_scene->volume_metadata.has_volumes()) {
         if (!_volume_guiding_filter) {
@@ -127,7 +123,6 @@ void LuisaRenderSession::prepare_film_buffers(
     } else {
         _volume_guiding_filter.reset();
     }
-    prepare_film_pass_accessor();
 }
 
 SessionKernelSignature

@@ -53,7 +53,7 @@ To force the GPU `wavefront-staged` scheduler directly from the CLI, pass the tr
 
 ### Blender Extension (Blender 4.2+ / 5.x)
 
-Psycles ships as a first-class Blender Extension (`blender_addon/psycles/`) backed by an in-process shared C ABI library (`psycles_blender`) with zero-disk scene sync, Cycles Shader Editor & material/world/light/pass panel compatibility, progressive F12 + render-border execution, and fast camera-only (`update_camera`) 3D viewport navigation:
+Psycles ships as a first-class Blender Extension (`blender_addon/psycles/`) backed by an in-process shared C ABI library (`psycles_blender`) with zero-disk vectorized scene sync, multi-threaded host scene/shader preparation, mesh and compiled-session caching across F12 and viewport renders, Cycles Shader Editor & material/world/light/pass panel compatibility, progressive F12 + render-border execution, and non-blocking native 3D viewport rendering with fast camera-only (`update_camera`) navigation:
 
 ```bash
 cmake --build build --target psycles_blender --parallel 32

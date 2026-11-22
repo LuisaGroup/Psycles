@@ -128,6 +128,8 @@ LuisaPathTracerBackend::create_session(
             return nullptr;
         }
     }
+    attach_scene_film_pass_accessor(
+        _device, _film_pass_accessor, compiled.data()->film_pass_accessor);
     return std::make_unique<LuisaRenderSession>(
         compiled.data(), _options, settings);
 }

@@ -1,4 +1,7 @@
+#include "blender_scene_geometry.h"
 #include "blender_scene_internal.h"
+
+#include <psycles/core/parallel.h>
 
 #include <algorithm>
 #include <array>
@@ -66,74 +69,11 @@ using detail::normalized_material_graph;
 using detail::number;
 using detail::optional_unsigned_number;
 using detail::ray_visibility_mask;
+using detail::read_packed_values;
+using detail::section_offset;
 using detail::signed_number;
 using detail::text;
 using detail::unsigned_number;
-
-[[nodiscard]] std::uint64_t section_offset(
-    yyjson_val *geometry,
-    const char *name) noexcept {
-    return unsigned_number(member(member(geometry, name), "offset"));
-}
-
-[[nodiscard]] MeshAttributeDomain mesh_attribute_domain(
-    yyjson_val *value,
-    MeshAttributeDomain fallback =
-        MeshAttributeDomain::point) {
-    const auto name = text(value);
-    if (name.empty()) {
-        return fallback;
-    }
-    if (name == "POINT") {
-        return MeshAttributeDomain::point;
-    }
-    if (name == "CORNER") {
-        return MeshAttributeDomain::corner;
-    }
-    if (name == "FACE") {
-        return MeshAttributeDomain::face;
-    }
-    throw std::runtime_error(
-        "unsupported mesh attribute domain '" + name + "'");
-}
-
-[[nodiscard]] CurveShape curve_shape(yyjson_val *value) {
-    const auto name = text(value);
-    if (name == "RIBBON" || name == "RIBBONS") {
-        return CurveShape::ribbon;
-    }
-    if (name == "THICK") {
-        return CurveShape::thick;
-    }
-    if (name == "THICK_LINEAR") {
-        return CurveShape::thick_linear;
-    }
-    throw std::runtime_error(
-        "unsupported Cycles curve shape '" + name + "'");
-}
-
-template<typename T>
-[[nodiscard]] std::vector<T> read_values(
-    std::span<const std::byte> binary,
-    std::uint64_t offset,
-    std::size_t count) {
-    if (count > std::numeric_limits<std::size_t>::max() / sizeof(T)) {
-        throw std::runtime_error("binary scene section is too large");
-    }
-    const auto byte_count = count * sizeof(T);
-    if (offset > binary.size() ||
-        byte_count > binary.size() - static_cast<std::size_t>(offset)) {
-        throw std::runtime_error("geometry binary section exceeds buffer");
-    }
-    std::vector<T> result(count);
-    if (byte_count > 0u) {
-        std::memcpy(
-            result.data(),
-            binary.data() + static_cast<std::size_t>(offset),
-            byte_count);
-    }
-    return result;
-}
 
 [[nodiscard]] ImageColorSpace image_color_space(
     std::string_view name) noexcept {
@@ -400,75 +340,79 @@ template<typename T>
                 .cycles_shader_index = std::nullopt});
 
         auto *materials = member(root, "materials");
-        yyjson_arr_iter material_iterator =
-            yyjson_arr_iter_with(materials);
+        std::vector<yyjson_val *> material_vals;
+        {
+            yyjson_arr_iter material_iterator =
+                yyjson_arr_iter_with(materials);
+            while (auto *material =
+                       yyjson_arr_iter_next(&material_iterator)) {
+                material_vals.push_back(material);
+            }
+        }
         std::uint64_t material_index = 2u;
-        while (auto *material =
-                   yyjson_arr_iter_next(&material_iterator)) {
+        for (auto *material : material_vals) {
             const auto id = MaterialId{material_index++};
-            const auto name = text(member(material, "name"));
-            auto *cycles_sync =
-                member(material, "cycles_sync");
+            material_ids.emplace(text(member(material, "name")), id);
+        }
+        std::vector<MaterialDesc> parsed_materials(material_vals.size());
+        std::vector<std::vector<BlenderSceneDiagnostic>> material_diags(
+            material_vals.size());
+        psycles::parallel_for(material_vals.size(), [&](std::size_t i) {
+            auto *material = material_vals[i];
+            auto *cycles_sync = member(material, "cycles_sync");
             const auto authored_displacement_method =
                 displacement_method(text(
                     member(material, "displacement_method"),
                     "BUMP"));
-            material_ids.emplace(name, id);
+            parsed_materials[i] = MaterialDesc{
+                .name = text(member(material, "name")),
+                .shader = normalized_material_graph(
+                    material,
+                    image_ids,
+                    image_color_spaces,
+                    image_alpha_types,
+                    node_groups,
+                    material_diags[i]),
+                .use_transparent_shadow =
+                    boolean(member(material, "use_transparent_shadow"), true),
+                .use_bump_map_correction =
+                    boolean(member(material, "use_bump_map_correction"), true),
+                .emission_sampling =
+                    emission_sampling(text(
+                        member(material, "emission_sampling"), "AUTO")),
+                .volume_sampling =
+                    volume_sampling(text(
+                        member(material, "volume_sampling"),
+                        "MULTIPLE_IMPORTANCE")),
+                .volume_interpolation =
+                    volume_interpolation(text(
+                        member(material, "volume_interpolation"), "LINEAR")),
+                .displacement_method = authored_displacement_method,
+                .cycles_shader_index =
+                    optional_unsigned_number(
+                        member(cycles_sync, "shader_index")),
+                .cycles_pass_id = static_cast<std::int32_t>(
+                    signed_number(member(cycles_sync, "pass_id"), 0))};
+        });
+        for (std::size_t i = 0u; i < parsed_materials.size(); ++i) {
+            for (auto &diag : material_diags[i]) {
+                result.diagnostics.emplace_back(std::move(diag));
+            }
             scene.materials.emplace(
-                id,
-                MaterialDesc{
-                    .name = name,
-                    .shader = normalized_material_graph(
-                        material,
-                        image_ids,
-                        image_color_spaces,
-                        image_alpha_types,
-                        node_groups,
-                        result.diagnostics),
-                    .use_transparent_shadow =
-                        boolean(member(
-                                    material,
-                                    "use_transparent_shadow"),
-                                true),
-                    .use_bump_map_correction =
-                        boolean(member(
-                                    material,
-                                    "use_bump_map_correction"),
-                            true),
-                    .emission_sampling =
-                        emission_sampling(text(
-                            member(
-                                material,
-                                "emission_sampling"),
-                            "AUTO")),
-                    .volume_sampling =
-                        volume_sampling(text(
-                            member(
-                                material,
-                                "volume_sampling"),
-                            "MULTIPLE_IMPORTANCE")),
-                    .volume_interpolation =
-                        volume_interpolation(text(
-                            member(
-                                material,
-                                "volume_interpolation"),
-                            "LINEAR")),
-                    .displacement_method =
-                        authored_displacement_method,
-                    .cycles_shader_index =
-                        optional_unsigned_number(member(
-                            cycles_sync,
-                            "shader_index")),
-                    .cycles_pass_id = static_cast<std::int32_t>(
-                        signed_number(
-                            member(cycles_sync, "pass_id"), 0))});
+                MaterialId{2u + static_cast<std::uint64_t>(i)},
+                std::move(parsed_materials[i]));
         }
 
-        yyjson_arr_iter image_iterator =
-            yyjson_arr_iter_with(images);
-        std::uint64_t image_index = 1u;
-        while (auto *image =
-                   yyjson_arr_iter_next(&image_iterator)) {
+        std::vector<yyjson_val *> image_vals;
+        {
+            yyjson_arr_iter image_iterator = yyjson_arr_iter_with(images);
+            while (auto *image = yyjson_arr_iter_next(&image_iterator)) {
+                image_vals.push_back(image);
+            }
+        }
+        std::vector<ImageDesc> parsed_images(image_vals.size());
+        psycles::parallel_for(image_vals.size(), [&](std::size_t i) {
+            auto *image = image_vals[i];
             const auto load_failed = boolean(member(image, "load_failed"));
             auto *binary_section = member(image, "binary");
             const auto has_binary =
@@ -479,7 +423,7 @@ template<typename T>
             if (!load_failed && has_binary) {
                 const auto byte_count = static_cast<std::size_t>(
                     unsigned_number(member(binary_section, "bytes")));
-                encoded_data = read_values<std::uint8_t>(
+                encoded_data = read_packed_values<std::uint8_t>(
                     geometry_bin, section_offset(image, "binary"), byte_count);
                 source_format = text(member(image, "source_format"), ".png");
             } else if (!load_failed) {
@@ -493,23 +437,24 @@ template<typename T>
             } else {
                 source_format = text(member(image, "source_format"));
             }
+            parsed_images[i] = ImageDesc{
+                .name = text(member(image, "name")),
+                .source_format = std::move(source_format),
+                .color_space = image_color_space(
+                    text(member(image, "colorspace"))),
+                .alpha_type = image_alpha_type(
+                    text(member(image, "alpha_mode"))),
+                .width = static_cast<std::uint32_t>(
+                    unsigned_number(member(image, "width"))),
+                .height = static_cast<std::uint32_t>(
+                    unsigned_number(member(image, "height"))),
+                .encoded_data = std::move(encoded_data),
+                .load_failed = load_failed};
+        });
+        for (std::size_t i = 0u; i < parsed_images.size(); ++i) {
             scene.images.emplace(
-                ImageId{image_index++},
-                ImageDesc{
-                    .name = text(member(image, "name")),
-                    .source_format = std::move(source_format),
-                    .color_space = image_color_space(
-                        text(member(image, "colorspace"))),
-                    .alpha_type = image_alpha_type(
-                        text(member(image, "alpha_mode"))),
-                    .width = static_cast<std::uint32_t>(
-                        unsigned_number(
-                            member(image, "width"))),
-                    .height = static_cast<std::uint32_t>(
-                        unsigned_number(
-                            member(image, "height"))),
-                    .encoded_data = std::move(encoded_data),
-                    .load_failed = load_failed});
+                ImageId{1u + static_cast<std::uint64_t>(i)},
+                std::move(parsed_images[i]));
         }
 
         auto *render = member(root, "render");
@@ -876,581 +821,56 @@ template<typename T>
         }
 
         auto *geometries = member(root, "geometries");
-        yyjson_arr_iter geometry_iterator =
-            yyjson_arr_iter_with(geometries);
+        std::vector<yyjson_val *> mesh_vals;
+        {
+            yyjson_arr_iter geometry_iterator =
+                yyjson_arr_iter_with(geometries);
+            while (auto *geometry =
+                       yyjson_arr_iter_next(&geometry_iterator)) {
+                mesh_vals.push_back(geometry);
+            }
+        }
+        std::vector<TriangleMeshDesc> parsed_meshes(mesh_vals.size());
+        psycles::parallel_for(mesh_vals.size(), [&](std::size_t i) {
+            parsed_meshes[i] = detail::parse_blender_triangle_mesh(
+                mesh_vals[i],
+                geometry_bin,
+                compact_geometry,
+                material_ids,
+                default_material);
+        });
         std::uint64_t geometry_index = 1u;
-        while (auto *geometry =
-                   yyjson_arr_iter_next(&geometry_iterator)) {
-            const auto triangle_count = static_cast<std::size_t>(
-                unsigned_number(
-                    member(geometry, "triangle_count")));
-            const auto point_count = static_cast<std::size_t>(
-                unsigned_number(
-                    member(
-                        geometry,
-                        compact_geometry
-                            ? "point_count"
-                            : "vertex_count")));
-            const auto corner_count = triangle_count * 3u;
-            if (compact_geometry &&
-                static_cast<std::size_t>(
-                    unsigned_number(
-                        member(geometry, "corner_count"))) !=
-                    corner_count) {
-                throw std::runtime_error(
-                    "compact geometry has an invalid corner count");
-            }
-            const auto domain_count =
-                [&](MeshAttributeDomain domain) noexcept {
-                    switch (domain) {
-                        case MeshAttributeDomain::point:
-                            return point_count;
-                        case MeshAttributeDomain::corner:
-                            return corner_count;
-                        case MeshAttributeDomain::face:
-                            return triangle_count;
-                    }
-                    return std::size_t{0u};
-                };
-            const auto normal_domain =
-                compact_geometry
-                    ? mesh_attribute_domain(
-                          member(geometry, "normal_domain"))
-                    : MeshAttributeDomain::point;
-            const auto uv_domain =
-                compact_geometry
-                    ? mesh_attribute_domain(
-                          member(geometry, "uv_domain"))
-                    : MeshAttributeDomain::point;
-            const auto uv_tangent_domain =
-                compact_geometry
-                    ? mesh_attribute_domain(
-                          member(
-                              geometry,
-                              "uv_tangent_domain"))
-                    : MeshAttributeDomain::point;
-            const auto generated_domain =
-                compact_geometry
-                    ? mesh_attribute_domain(
-                          member(
-                              geometry,
-                              "generated_domain"))
-                    : MeshAttributeDomain::point;
-            const auto normal_count =
-                domain_count(normal_domain);
-            const auto uv_count = domain_count(uv_domain);
-            const auto uv_tangent_count =
-                domain_count(uv_tangent_domain);
-            const auto generated_count =
-                domain_count(generated_domain);
-            auto position_values = read_values<float>(
-                geometry_bin,
-                section_offset(geometry, "positions"),
-                point_count * 3u);
-            auto normal_values = read_values<float>(
-                geometry_bin,
-                section_offset(geometry, "normals"),
-                normal_count * 3u);
-            auto uv_values = read_values<float>(
-                geometry_bin,
-                section_offset(geometry, "uv"),
-                uv_count * 2u);
-            std::vector<float> uv_tangent_values;
-            if (member(geometry, "uv_tangents") != nullptr) {
-                uv_tangent_values = read_values<float>(
-                    geometry_bin,
-                    section_offset(geometry, "uv_tangents"),
-                    uv_tangent_count * 4u);
-            }
-            auto generated_values = read_values<float>(
-                geometry_bin,
-                section_offset(geometry, "generated"),
-                generated_count * 3u);
-            auto index_values = read_values<std::uint32_t>(
-                geometry_bin,
-                section_offset(geometry, "indices"),
-                triangle_count * 3u);
-            auto material_values =
-                read_values<std::uint32_t>(
-                    geometry_bin,
-                    section_offset(
-                        geometry,
-                        "triangle_material_slots"),
-                    triangle_count);
-            std::vector<std::uint32_t> smooth_values(
-                triangle_count, 0u);
-            if (member(geometry, "triangle_smooth") != nullptr) {
-                smooth_values =
-                    read_values<std::uint32_t>(
-                        geometry_bin,
-                        section_offset(
-                            geometry,
-                            "triangle_smooth"),
-                        triangle_count);
-            }
-            auto random_per_island_values =
-                read_values<float>(
-                    geometry_bin,
-                    section_offset(
-                        geometry,
-                        "triangle_random_per_island"),
-                    triangle_count);
-            std::vector<float> pointiness_normal_values;
-            std::vector<std::uint32_t> pointiness_edge_values;
-            auto *pointiness_source =
-                member(geometry, "pointiness_source");
-            const auto has_pointiness_source =
-                pointiness_source != nullptr &&
-                !yyjson_is_null(pointiness_source);
-            if (has_pointiness_source) {
-                const auto edge_count =
-                    static_cast<std::size_t>(unsigned_number(
-                        member(pointiness_source, "edge_count")));
-                pointiness_normal_values = read_values<float>(
-                    geometry_bin,
-                    section_offset(
-                        pointiness_source, "point_normals"),
-                    point_count * 3u);
-                pointiness_edge_values =
-                    read_values<std::uint32_t>(
-                        geometry_bin,
-                        section_offset(pointiness_source, "edges"),
-                        edge_count * 2u);
-            }
-
-            TriangleMeshDesc mesh;
-            mesh.name = text(member(geometry, "name"));
-            mesh.positions.reserve(point_count);
-            for (std::size_t i = 0u; i < point_count; ++i) {
-                mesh.positions.emplace_back(Vec3f{
-                    position_values[i * 3u],
-                    position_values[i * 3u + 1u],
-                    position_values[i * 3u + 2u]});
-            }
-            mesh.normals.domain = normal_domain;
-            mesh.normals.values.reserve(normal_count);
-            for (std::size_t i = 0u; i < normal_count; ++i) {
-                mesh.normals.values.emplace_back(Vec3f{
-                    normal_values[i * 3u],
-                    normal_values[i * 3u + 1u],
-                    normal_values[i * 3u + 2u]});
-            }
-            mesh.uv.domain = uv_domain;
-            if (member(geometry, "default_uv_available") != nullptr) {
-                mesh.default_uv_available = boolean(
-                    member(geometry, "default_uv_available"),
-                    false);
-            } else if (auto *layers = member(geometry, "uv_layers");
-                       layers != nullptr && yyjson_is_arr(layers)) {
-                // Compatibility with bundles exported before the explicit
-                // availability bit: Blender writes one entry per real UV
-                // layer, while the standard UV byte range may be all-zero
-                // placeholder storage.
-                mesh.default_uv_available =
-                    yyjson_arr_size(layers) != 0u;
-            }
-            mesh.uv.values.reserve(uv_count);
-            for (std::size_t i = 0u; i < uv_count; ++i) {
-                mesh.uv.values.emplace_back(Vec2f{
-                    uv_values[i * 2u],
-                    uv_values[i * 2u + 1u]});
-            }
-            mesh.uv_tangents.domain = uv_tangent_domain;
-            mesh.uv_tangents.values.reserve(
-                uv_tangent_count);
-            for (std::size_t i = 0u;
-                 i < uv_tangent_count;
-                 ++i) {
-                mesh.uv_tangents.values.emplace_back(
-                    uv_tangent_values.size() ==
-                            uv_tangent_count * 4u
-                        ? Vec4f{
-                              uv_tangent_values[i * 4u],
-                              uv_tangent_values[i * 4u + 1u],
-                              uv_tangent_values[i * 4u + 2u],
-                              uv_tangent_values[i * 4u + 3u]}
-                        : Vec4f{});
-            }
-            mesh.generated.domain = generated_domain;
-            mesh.generated.values.reserve(generated_count);
-            for (std::size_t i = 0u;
-                 i < generated_count;
-                 ++i) {
-                mesh.generated.values.emplace_back(Vec3f{
-                    generated_values[i * 3u],
-                    generated_values[i * 3u + 1u],
-                    generated_values[i * 3u + 2u]});
-            }
-            if (member(
-                    geometry,
-                    "generated_transform") != nullptr) {
-                mesh.generated_transform =
-                    matrix(member(
-                        geometry,
-                        "generated_transform"));
-            }
-            if (has_pointiness_source) {
-                auto &source = mesh.pointiness_source.emplace();
-                source.point_normals.reserve(point_count);
-                for (std::size_t i = 0u; i < point_count; ++i) {
-                    source.point_normals.emplace_back(Vec3f{
-                        pointiness_normal_values[i * 3u],
-                        pointiness_normal_values[i * 3u + 1u],
-                        pointiness_normal_values[i * 3u + 2u]});
-                }
-                source.edges.reserve(
-                    pointiness_edge_values.size() / 2u);
-                for (std::size_t i = 0u;
-                     i < pointiness_edge_values.size();
-                     i += 2u) {
-                    source.edges.emplace_back(
-                        std::array<std::uint32_t, 2u>{
-                            pointiness_edge_values[i],
-                            pointiness_edge_values[i + 1u]});
-                }
-            }
-            auto *uv_layers = member(geometry, "uv_layers");
-            if (uv_layers != nullptr &&
-                yyjson_is_arr(uv_layers)) {
-                yyjson_arr_iter uv_layer_iterator =
-                    yyjson_arr_iter_with(uv_layers);
-                while (auto *uv_layer =
-                           yyjson_arr_iter_next(
-                               &uv_layer_iterator)) {
-                    const auto name =
-                        text(member(uv_layer, "name"));
-                    const auto domain =
-                        compact_geometry
-                            ? mesh_attribute_domain(
-                                  member(uv_layer, "domain"),
-                                  MeshAttributeDomain::corner)
-                            : MeshAttributeDomain::point;
-                    const auto value_count =
-                        domain_count(domain);
-                    auto values = read_values<float>(
-                        geometry_bin,
-                        section_offset(uv_layer, "values"),
-                        value_count * 2u);
-                    auto tangents = read_values<float>(
-                        geometry_bin,
-                        section_offset(uv_layer, "tangents"),
-                        value_count * 4u);
-                    auto &uv_destination =
-                        mesh.uv_layers[name];
-                    auto &tangent_destination =
-                        mesh.uv_tangent_layers[name];
-                    uv_destination.domain = domain;
-                    tangent_destination.domain = domain;
-                    uv_destination.values.reserve(value_count);
-                    tangent_destination.values.reserve(
-                        value_count);
-                    for (std::size_t i = 0u;
-                         i < value_count;
-                         ++i) {
-                        uv_destination.values.emplace_back(Vec2f{
-                            values[i * 2u],
-                            values[i * 2u + 1u]});
-                        tangent_destination.values.emplace_back(
-                            Vec4f{
-                                tangents[i * 4u],
-                                tangents[i * 4u + 1u],
-                                tangents[i * 4u + 2u],
-                                tangents[i * 4u + 3u]});
-                    }
-                }
-            }
-            auto *color_attributes =
-                member(geometry, "color_attributes");
-            if (auto *default_color =
-                    member(geometry, "default_color_attribute");
-                default_color != nullptr && yyjson_is_str(default_color)) {
-                mesh.default_color_attribute = text(default_color);
-            }
-            if (color_attributes != nullptr &&
-                yyjson_is_arr(color_attributes)) {
-                yyjson_arr_iter attribute_iterator =
-                    yyjson_arr_iter_with(color_attributes);
-                while (auto *attribute =
-                           yyjson_arr_iter_next(
-                               &attribute_iterator)) {
-                    const auto name =
-                        text(member(attribute, "name"));
-                    const auto domain =
-                        compact_geometry
-                            ? mesh_attribute_domain(
-                                  member(attribute, "domain"))
-                            : MeshAttributeDomain::point;
-                    const auto value_count =
-                        domain_count(domain);
-                    auto values = read_values<float>(
-                        geometry_bin,
-                        section_offset(attribute, "values"),
-                        value_count * 4u);
-                    auto &destination =
-                        mesh.color_attributes[name];
-                    destination.domain = domain;
-                    destination.values.reserve(value_count);
-                    for (std::size_t i = 0u;
-                         i < value_count;
-                         ++i) {
-                        destination.values.emplace_back(
-                            Vec4f{
-                                values[i * 4u],
-                                values[i * 4u + 1u],
-                                values[i * 4u + 2u],
-                                values[i * 4u + 3u]});
-                    }
-                    if (text(member(attribute, "data_type")) ==
-                            "BYTE_COLOR" &&
-                        domain == MeshAttributeDomain::corner) {
-                        auto *byte_section =
-                            member(attribute, "byte_values");
-                        if (byte_section != nullptr &&
-                            !yyjson_is_null(byte_section)) {
-                            auto bytes = read_values<std::uint8_t>(
-                                geometry_bin,
-                                section_offset(
-                                    attribute, "byte_values"),
-                                value_count * 4u);
-                            auto &raw =
-                                mesh.cycles_byte_color_attributes[name];
-                            raw.domain = domain;
-                            raw.values.reserve(value_count);
-                            for (std::size_t i = 0u;
-                                 i < value_count;
-                                 ++i) {
-                                raw.values.emplace_back(
-                                    std::array<std::uint8_t, 4u>{
-                                        bytes[i * 4u],
-                                        bytes[i * 4u + 1u],
-                                        bytes[i * 4u + 2u],
-                                        bytes[i * 4u + 3u]});
-                            }
-                        }
-                    }
-                }
-            }
-            mesh.triangles.reserve(triangle_count);
-            for (std::size_t i = 0u;
-                 i < triangle_count;
-                 ++i) {
-                mesh.triangles.emplace_back(
-                    std::array<std::uint32_t, 3u>{
-                        index_values[i * 3u],
-                        index_values[i * 3u + 1u],
-                        index_values[i * 3u + 2u]});
-            }
-            mesh.triangle_material_slots =
-                std::move(material_values);
-            mesh.triangle_smooth.reserve(triangle_count);
-            for (const auto smooth : smooth_values) {
-                mesh.triangle_smooth.emplace_back(
-                    static_cast<std::uint8_t>(smooth != 0u));
-            }
-            mesh.triangle_random_per_island =
-                std::move(random_per_island_values);
-            mesh.cycles_primitive_offset =
-                optional_unsigned_number(member(
-                    member(geometry, "cycles_sync"),
-                    "primitive_offset"));
-            mesh.uses_adaptive_subdivision = boolean(
-                member(geometry, "uses_adaptive_subdivision"),
-                false);
-
-            auto *slots = member(geometry, "material_slots");
-            yyjson_arr_iter slot_iterator =
-                yyjson_arr_iter_with(slots);
-            while (auto *slot =
-                       yyjson_arr_iter_next(&slot_iterator)) {
-                if (yyjson_is_null(slot)) {
-                    mesh.material_slots.emplace_back(
-                        default_material);
-                    continue;
-                }
-                const auto iter =
-                    material_ids.find(text(slot));
-                mesh.material_slots.emplace_back(
-                    iter == material_ids.end()
-                        ? default_material
-                        : iter->second);
-            }
-            if (mesh.material_slots.empty()) {
-                mesh.material_slots.emplace_back(
-                    default_material);
-            }
+        for (std::size_t i = 0u; i < parsed_meshes.size(); ++i) {
             scene.geometries.emplace(
                 GeometryId{geometry_index++},
-                std::move(mesh));
+                std::move(parsed_meshes[i]));
         }
 
         const auto mesh_geometry_count = geometry_index - 1u;
         auto *curve_geometries = member(root, "curve_geometries");
         if (curve_geometries != nullptr &&
             yyjson_is_arr(curve_geometries)) {
-            yyjson_arr_iter curve_geometry_iterator =
-                yyjson_arr_iter_with(curve_geometries);
-            while (auto *geometry = yyjson_arr_iter_next(
-                       &curve_geometry_iterator)) {
-                const auto key_count = static_cast<std::size_t>(
-                    unsigned_number(member(geometry, "key_count")));
-                const auto curve_count = static_cast<std::size_t>(
-                    unsigned_number(member(geometry, "curve_count")));
-                auto key_values = read_values<float>(
+            std::vector<yyjson_val *> curve_vals;
+            {
+                yyjson_arr_iter curve_geometry_iterator =
+                    yyjson_arr_iter_with(curve_geometries);
+                while (auto *geometry = yyjson_arr_iter_next(
+                           &curve_geometry_iterator)) {
+                    curve_vals.push_back(geometry);
+                }
+            }
+            std::vector<CurveGeometryDesc> parsed_curves(curve_vals.size());
+            psycles::parallel_for(curve_vals.size(), [&](std::size_t i) {
+                parsed_curves[i] = detail::parse_blender_curve_geometry(
+                    curve_vals[i],
                     geometry_bin,
-                    section_offset(geometry, "keys"),
-                    key_count * 4u);
-                auto first_key_values = read_values<std::uint32_t>(
-                    geometry_bin,
-                    section_offset(geometry, "curve_first_key"),
-                    curve_count);
-                auto material_values = read_values<std::uint32_t>(
-                    geometry_bin,
-                    section_offset(
-                        geometry, "curve_material_slots"),
-                    curve_count);
-                auto intercept_values = read_values<float>(
-                    geometry_bin,
-                    section_offset(geometry, "intercept"),
-                    key_count);
-                auto length_values = read_values<float>(
-                    geometry_bin,
-                    section_offset(geometry, "length"),
-                    curve_count);
-                auto random_values = read_values<float>(
-                    geometry_bin,
-                    section_offset(geometry, "random"),
-                    curve_count);
-
-                CurveGeometryDesc curves;
-                curves.name = text(member(geometry, "name"));
-                curves.shape = curve_shape(
-                    member(geometry, "shape"));
-                curves.subdivisions =
-                    static_cast<std::uint32_t>(unsigned_number(
-                        member(geometry, "subdivisions"), 2u));
-                curves.keys.reserve(key_count);
-                for (std::size_t i = 0u; i < key_count; ++i) {
-                    curves.keys.emplace_back(Vec4f{
-                        key_values[i * 4u],
-                        key_values[i * 4u + 1u],
-                        key_values[i * 4u + 2u],
-                        key_values[i * 4u + 3u]});
-                }
-                curves.curve_first_key =
-                    std::move(first_key_values);
-                curves.curve_material_slots =
-                    std::move(material_values);
-                if (auto *default_uv =
-                        member(geometry, "default_uv_layer");
-                    default_uv != nullptr && yyjson_is_str(default_uv)) {
-                    curves.default_uv_layer = text(default_uv);
-                }
-                if (auto *uv_layers = member(geometry, "uv_layers");
-                    uv_layers != nullptr && yyjson_is_arr(uv_layers)) {
-                    yyjson_arr_iter uv_iterator =
-                        yyjson_arr_iter_with(uv_layers);
-                    while (auto *layer =
-                               yyjson_arr_iter_next(&uv_iterator)) {
-                        const auto name = text(member(layer, "name"));
-                        auto packed = read_values<float>(
-                            geometry_bin,
-                            section_offset(layer, "values"),
-                            curve_count * 2u);
-                        auto &values = curves.uv_layers[name];
-                        values.reserve(curve_count);
-                        for (std::size_t i = 0u; i < curve_count; ++i) {
-                            values.emplace_back(Vec2f{
-                                packed[i * 2u], packed[i * 2u + 1u]});
-                        }
-                    }
-                }
-                if (auto *color_attributes =
-                        member(geometry, "color_attributes");
-                    color_attributes != nullptr &&
-                    yyjson_is_arr(color_attributes)) {
-                    yyjson_arr_iter color_iterator =
-                        yyjson_arr_iter_with(color_attributes);
-                    while (auto *attribute =
-                               yyjson_arr_iter_next(&color_iterator)) {
-                        const auto name =
-                            text(member(attribute, "name"));
-                        auto packed = read_values<float>(
-                            geometry_bin,
-                            section_offset(attribute, "values"),
-                            curve_count * 4u);
-                        auto &values = curves.color_attributes[name];
-                        values.reserve(curve_count);
-                        for (std::size_t i = 0u; i < curve_count; ++i) {
-                            values.emplace_back(Vec4f{
-                                packed[i * 4u],
-                                packed[i * 4u + 1u],
-                                packed[i * 4u + 2u],
-                                packed[i * 4u + 3u]});
-                        }
-                    }
-                }
-                curves.intercept = std::move(intercept_values);
-                curves.length = std::move(length_values);
-                curves.random = std::move(random_values);
-                curves.cycles_curve_offset =
-                    optional_unsigned_number(member(
-                        member(geometry, "cycles_sync"),
-                        "curve_offset"));
-                curves.cycles_segment_offset =
-                    optional_unsigned_number(member(
-                        member(geometry, "cycles_sync"),
-                        "segment_offset"));
-
-                auto *slots = member(geometry, "material_slots");
-                yyjson_arr_iter slot_iterator =
-                    yyjson_arr_iter_with(slots);
-                while (auto *slot =
-                           yyjson_arr_iter_next(&slot_iterator)) {
-                    if (yyjson_is_null(slot)) {
-                        curves.material_slots.emplace_back(
-                            default_material);
-                        continue;
-                    }
-                    const auto iter =
-                        material_ids.find(text(slot));
-                    curves.material_slots.emplace_back(
-                        iter == material_ids.end()
-                            ? default_material
-                            : iter->second);
-                }
-                if (curves.material_slots.empty()) {
-                    curves.material_slots.emplace_back(
-                        default_material);
-                }
-
-                std::size_t segment_count = 0u;
-                for (std::size_t curve = 0u;
-                     curve < curves.curve_first_key.size();
-                     ++curve) {
-                    const auto begin = static_cast<std::size_t>(
-                        curves.curve_first_key[curve]);
-                    const auto end =
-                        curve + 1u <
-                                curves.curve_first_key.size()
-                            ? static_cast<std::size_t>(
-                                  curves.curve_first_key[
-                                      curve + 1u])
-                            : curves.keys.size();
-                    if (end > begin) {
-                        segment_count += end - begin - 1u;
-                    }
-                }
-                if (segment_count != static_cast<std::size_t>(
-                                         unsigned_number(
-                                             member(
-                                                 geometry,
-                                                 "segment_count")))) {
-                    throw std::runtime_error(
-                        "curve geometry has an invalid segment count");
-                }
+                    material_ids,
+                    default_material);
+            });
+            for (std::size_t i = 0u; i < parsed_curves.size(); ++i) {
                 scene.curve_geometries.emplace(
                     GeometryId{geometry_index++},
-                    std::move(curves));
+                    std::move(parsed_curves[i]));
             }
         }
 

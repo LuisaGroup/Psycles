@@ -20,6 +20,7 @@
 #include <psycles/compiler/cycles_emission_sampling.h>
 #include <psycles/compiler/cycles_nishita.h>
 #include <psycles/contract/cycles_pointiness.h>
+#include <psycles/core/parallel.h>
 #include <psycles/luisa/cycles_nishita.h>
 
 #include <cstdlib>
@@ -365,87 +366,113 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
     };
 
+    struct DecodedImageSlot {
+        contract::ImageId id{};
+        bool skip{false};
+        std::string diagnostic;
+        bool is_unorm8{false};
+        std::uint32_t width{};
+        std::uint32_t height{};
+        luisa::vector<std::byte> byte_pixels;
+        luisa::vector<luisa::float4> float_pixels;
+    };
+    std::vector<std::pair<contract::ImageId, const contract::ImageDesc *>>
+        image_entries;
+    image_entries.reserve(snapshot.images.size());
     for (const auto &[image_id, image] : snapshot.images) {
+        image_entries.emplace_back(image_id, &image);
+    }
+    std::vector<DecodedImageSlot> decoded_images(image_entries.size());
+    psycles::parallel_for(image_entries.size(), [&](std::size_t i) {
+        const auto [image_id, image_ptr] = image_entries[i];
+        const auto &image = *image_ptr;
+        auto &slot = decoded_images[i];
+        slot.id = image_id;
         if (image.load_failed) {
-            // The native binding carries failed-image state; no GPU texture
-            // is allocated or sampled for this retained ImageManager handle.
-            continue;
+            slot.skip = true;
+            return;
         }
         if (image.encoded_data.empty() ||
             image.encoded_data.size() >
-                static_cast<std::size_t>(
-                    std::numeric_limits<int>::max())) {
-            diagnose(
-                result.diagnostics,
-                "Image '" + image.name +
-                    "' has no decodable payload.");
-            continue;
+                static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+            slot.diagnostic =
+                "Image '" + image.name + "' has no decodable payload.";
+            return;
         }
-        auto decoded = decode_scene_image(
-            image.encoded_data, image.name);
+        auto decoded = decode_scene_image(image.encoded_data, image.name);
         if (!decoded) {
-            diagnose(
-                result.diagnostics,
-                "Failed to decode image '" + image.name + "'.");
+            slot.diagnostic =
+                "Failed to decode image '" + image.name + "'.";
+            return;
+        }
+        apply_scene_image_alpha(*decoded, image.alpha_type, image.color_space);
+        slot.width = decoded->width;
+        slot.height = decoded->height;
+        if (decoded->storage == io::DecodedImageStorage::unorm8) {
+            slot.is_unorm8 = true;
+            const auto pixel_bytes = decoded->unorm8_pixels.size();
+            slot.byte_pixels.resize(pixel_bytes);
+            if (pixel_bytes > 0u) {
+                std::memcpy(
+                    slot.byte_pixels.data(),
+                    decoded->unorm8_pixels.data(),
+                    pixel_bytes);
+            }
+        } else {
+            slot.is_unorm8 = false;
+            const auto pixel_count = decoded->float_pixels.size() / 4u;
+            slot.float_pixels.reserve(pixel_count);
+            for (std::size_t pixel = 0u; pixel < pixel_count; ++pixel) {
+                const auto offset = pixel * 4u;
+                slot.float_pixels.emplace_back(luisa::make_float4(
+                    decoded->float_pixels[offset],
+                    decoded->float_pixels[offset + 1u],
+                    decoded->float_pixels[offset + 2u],
+                    decoded->float_pixels[offset + 3u]));
+            }
+        }
+    });
+    for (auto &slot : decoded_images) {
+        if (slot.skip) {
             continue;
         }
-        apply_scene_image_alpha(
-            *decoded,
-            image.alpha_type,
-            image.color_space);
-        if (decoded->storage ==
-            io::DecodedImageStorage::unorm8) {
-            const auto pixel_bytes =
-                decoded->unorm8_pixels.size();
-            auto &pixels =
-                texture_uploads.emplace_back(pixel_bytes);
-            std::memcpy(
-                pixels.data(),
-                decoded->unorm8_pixels.data(),
-                pixel_bytes);
+        if (!slot.diagnostic.empty()) {
+            diagnose(result.diagnostics, std::move(slot.diagnostic));
+            continue;
+        }
+        if (slot.is_unorm8) {
+            auto &pixels = texture_uploads.emplace_back(std::move(slot.byte_pixels));
             auto &resource = data->images.emplace_back(
                 data->device.create_image<float>(
                     luisa::compute::PixelStorage::BYTE4,
-                    decoded->width,
-                    decoded->height));
-            bind_scene_image(image_id, resource);
-            stream << resource.copy_from(
-                luisa::span{pixels});
+                    slot.width,
+                    slot.height));
+            bind_scene_image(slot.id, resource);
+            stream << resource.copy_from(luisa::span{pixels});
         } else {
-            const auto pixel_count =
-                decoded->float_pixels.size() / 4u;
             auto &pixels =
-                float_texture_uploads.emplace_back();
-            pixels.reserve(pixel_count);
-            for (std::size_t pixel = 0u;
-                 pixel < pixel_count;
-                 ++pixel) {
-                const auto offset = pixel * 4u;
-                pixels.emplace_back(
-                    luisa::make_float4(
-                        decoded->float_pixels[offset],
-                        decoded->float_pixels[offset + 1u],
-                        decoded->float_pixels[offset + 2u],
-                        decoded->float_pixels[offset + 3u]));
-            }
+                float_texture_uploads.emplace_back(std::move(slot.float_pixels));
             auto &resource = data->images.emplace_back(
                 data->device.create_image<float>(
                     luisa::compute::PixelStorage::FLOAT4,
-                    decoded->width,
-                    decoded->height));
-            bind_scene_image(image_id, resource);
-            stream << resource.copy_from(
-                luisa::span{pixels});
+                    slot.width,
+                    slot.height));
+            bind_scene_image(slot.id, resource);
+            stream << resource.copy_from(luisa::span{pixels});
         }
     }
-    for (const auto &binding : data->cycles_svm->nishita_images) {
-        const auto source =
-            compiler::cycles_svm::precompute_nishita_texture(
-                binding.parameters);
+
+    const auto &nishita_bindings = data->cycles_svm->nishita_images;
+    std::vector<luisa::vector<luisa::float4>> nishita_uploads(
+        nishita_bindings.size());
+    psycles::parallel_for(nishita_bindings.size(), [&](std::size_t i) {
+        const auto &binding = nishita_bindings[i];
+        const auto source = compiler::cycles_svm::precompute_nishita_texture(
+            binding.parameters);
         const auto pixel_count =
             compiler::cycles_svm::nishita_texture_width *
             compiler::cycles_svm::nishita_texture_height;
-        auto &pixels = float_texture_uploads.emplace_back();
+        auto &pixels = nishita_uploads[i];
         pixels.reserve(pixel_count);
         for (std::size_t pixel = 0u; pixel < pixel_count; ++pixel) {
             const auto offset =
@@ -456,6 +483,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 source[offset + 2u],
                 source[offset + 3u]));
         }
+    });
+    for (std::size_t i = 0u; i < nishita_bindings.size(); ++i) {
+        const auto &binding = nishita_bindings[i];
+        auto &pixels = float_texture_uploads.emplace_back(
+            std::move(nishita_uploads[i]));
         auto &resource = data->images.emplace_back(
             data->device.create_image<float>(
                 luisa::compute::PixelStorage::FLOAT4,
@@ -612,18 +644,52 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         return true;
     }();
 
-    for (const auto &[geometry_id, geometry] :
-         snapshot.geometries) {
-        const auto &geometry_attribute_residency =
-            attribute_residency.geometry(geometry_id);
-        if (geometry.positions.empty() ||
-            geometry.triangles.empty()) {
+    struct MeshPrepEntry {
+        contract::GeometryId id{};
+        const contract::TriangleMeshDesc *geometry{};
+        std::uint32_t primitive_offset{};
+    };
+    std::vector<MeshPrepEntry> mesh_entries;
+    mesh_entries.reserve(snapshot.geometries.size());
+    for (const auto &[geometry_id, geometry] : snapshot.geometries) {
+        if (geometry.positions.empty() || geometry.triangles.empty()) {
+            diagnose(
+                result.diagnostics,
+                "Geometry '" + geometry.name + "' has no triangles.");
+            continue;
+        }
+        const auto cycles_primitive_interval =
+            cycles_primitive_intervals.resolve(
+                geometry.triangles.size(), geometry.cycles_primitive_offset);
+        if (!cycles_primitive_interval.offset) {
             diagnose(
                 result.diagnostics,
                 "Geometry '" + geometry.name +
-                    "' has no triangles.");
+                    "' has an overlapping or out-of-range Cycles "
+                    "primitive interval.");
             continue;
         }
+        cycles_primitive_offsets.emplace(
+            geometry_id, *cycles_primitive_interval.offset);
+        mesh_entries.push_back(MeshPrepEntry{
+            .id = geometry_id,
+            .geometry = &geometry,
+            .primitive_offset = *cycles_primitive_interval.offset});
+    }
+    if (!result.diagnostics.empty()) {
+        return result;
+    }
+
+    uploads.resize(mesh_entries.size());
+    std::vector<std::vector<std::string>> mesh_diags(mesh_entries.size());
+    psycles::parallel_for(mesh_entries.size(), [&](std::size_t i) {
+        const auto &entry = mesh_entries[i];
+        const auto geometry_id = entry.id;
+        const auto &geometry = *entry.geometry;
+        auto &diags = mesh_diags[i];
+        const auto &geometry_attribute_residency =
+            attribute_residency.geometry(geometry_id);
+
         std::vector<float> pointiness_values;
         if (geometry.pointiness_source &&
             geometry_attribute_residency.contains(
@@ -635,46 +701,26 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         geometry.pointiness_source->point_normals,
                         geometry.pointiness_source->edges);
             } catch (const std::invalid_argument &error) {
-                diagnose(
-                    result.diagnostics,
+                diags.emplace_back(
                     "Geometry '" + geometry.name +
-                        "' has an invalid Cycles Pointiness source: " +
-                        error.what() + ".");
-                continue;
+                    "' has an invalid Cycles Pointiness source: " +
+                    error.what() + ".");
+                return;
             }
         }
-        const auto cycles_primitive_interval =
-            cycles_primitive_intervals.resolve(
-                geometry.triangles.size(),
-                geometry.cycles_primitive_offset);
-        if (!cycles_primitive_interval.offset) {
-            diagnose(
-                result.diagnostics,
-                "Geometry '" + geometry.name +
-                    "' has an overlapping or out-of-range Cycles "
-                    "primitive interval.");
-            continue;
-        }
-        cycles_primitive_offsets.emplace(
-            geometry_id,
-            *cycles_primitive_interval.offset);
-        auto &upload = uploads.emplace_back();
+
+        auto &upload = uploads[i];
         upload.positions.reserve(geometry.positions.size());
         const auto generated_mapping =
-            make_generated_coordinate_mapping(
-                geometry);
+            make_generated_coordinate_mapping(geometry);
         upload.generated_transform =
-            to_luisa(
-                generated_mapping
-                    .object_to_generated);
+            to_luisa(generated_mapping.object_to_generated);
         for (const auto position : geometry.positions) {
-            upload.positions.emplace_back(
-                to_luisa(position));
+            upload.positions.emplace_back(to_luisa(position));
         }
         if (const auto transform_iter =
                 cycles_static_transform_by_geometry.find(geometry_id);
-            transform_iter !=
-            cycles_static_transform_by_geometry.end()) {
+            transform_iter != cycles_static_transform_by_geometry.end()) {
             upload.cycles_intersection_positions.reserve(
                 geometry.positions.size());
             for (const auto position : geometry.positions) {
@@ -684,19 +730,14 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             }
         }
         const auto require_vertex_or_corner =
-            [&](std::string_view name,
-                contract::MeshAttributeDomain domain) {
-                if (domain !=
-                        contract::MeshAttributeDomain::point &&
-                    domain !=
-                        contract::MeshAttributeDomain::corner) {
-                    diagnose(
-                        result.diagnostics,
+            [&](std::string_view name, contract::MeshAttributeDomain domain) {
+                if (domain != contract::MeshAttributeDomain::point &&
+                    domain != contract::MeshAttributeDomain::corner) {
+                    diags.emplace_back(
                         "Geometry '" + geometry.name +
-                            "' uses unsupported " +
-                            std::string{name} +
-                            " domain. Cycles primary triangle "
-                            "attributes must be point or corner.");
+                        "' uses unsupported " + std::string{name} +
+                        " domain. Cycles primary triangle attributes must "
+                        "be point or corner.");
                     return false;
                 }
                 return true;
@@ -710,8 +751,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 ? contract::MeshAttributeDomain::point
                 : geometry.uv.domain;
         upload.default_uv_available =
-            geometry.default_uv_available.value_or(
-                !geometry.uv.values.empty());
+            geometry.default_uv_available.value_or(!geometry.uv.values.empty());
         const auto uv_tangent_domain =
             geometry.uv_tangents.values.empty()
                 ? contract::MeshAttributeDomain::point
@@ -720,49 +760,37 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             geometry.generated.values.empty()
                 ? contract::MeshAttributeDomain::point
                 : geometry.generated.domain;
-        if (!require_vertex_or_corner(
-                "normal", normal_domain) ||
+        if (!require_vertex_or_corner("normal", normal_domain) ||
             !require_vertex_or_corner("UV", uv_domain) ||
-            !require_vertex_or_corner(
-                "UV tangent", uv_tangent_domain) ||
-            !require_vertex_or_corner(
-                "Generated", generated_domain)) {
-            continue;
+            !require_vertex_or_corner("UV tangent", uv_tangent_domain) ||
+            !require_vertex_or_corner("Generated", generated_domain)) {
+            return;
         }
         upload.attribute_domains =
-            (normal_domain ==
-                     contract::MeshAttributeDomain::corner
+            (normal_domain == contract::MeshAttributeDomain::corner
                  ? geometry_normal_corner
                  : 0u) |
-            (uv_domain ==
-                     contract::MeshAttributeDomain::corner
+            (uv_domain == contract::MeshAttributeDomain::corner
                  ? geometry_uv_corner
                  : 0u) |
-            (uv_tangent_domain ==
-                     contract::MeshAttributeDomain::corner
+            (uv_tangent_domain == contract::MeshAttributeDomain::corner
                  ? geometry_uv_tangent_corner
                  : 0u) |
-            (generated_domain ==
-                     contract::MeshAttributeDomain::corner
+            (generated_domain == contract::MeshAttributeDomain::corner
                  ? geometry_generated_corner
                  : 0u);
         if (geometry.normals.values.empty()) {
             upload.normals.assign(
-                geometry.positions.size(),
-                luisa::make_float3(0.0f));
+                geometry.positions.size(), luisa::make_float3(0.0f));
         } else {
-            upload.normals.reserve(
-                geometry.normals.values.size());
-            for (const auto value :
-                 geometry.normals.values) {
-                upload.normals.emplace_back(
-                    to_luisa(value));
+            upload.normals.reserve(geometry.normals.values.size());
+            for (const auto value : geometry.normals.values) {
+                upload.normals.emplace_back(to_luisa(value));
             }
         }
         if (geometry.uv.values.empty()) {
             upload.uv.assign(
-                geometry.positions.size(),
-                luisa::make_float2(0.0f));
+                geometry.positions.size(), luisa::make_float2(0.0f));
         } else {
             upload.uv.reserve(geometry.uv.values.size());
             for (const auto value : geometry.uv.values) {
@@ -771,38 +799,24 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         if (geometry.uv_tangents.values.empty()) {
             upload.uv_tangents.assign(
-                geometry.positions.size(),
-                luisa::make_float4(0.0f));
+                geometry.positions.size(), luisa::make_float4(0.0f));
         } else {
-            upload.uv_tangents.reserve(
-                geometry.uv_tangents.values.size());
-            for (const auto value :
-                 geometry.uv_tangents.values) {
-                upload.uv_tangents.emplace_back(
-                    luisa::make_float4(
-                        value.x,
-                        value.y,
-                        value.z,
-                        value.w));
+            upload.uv_tangents.reserve(geometry.uv_tangents.values.size());
+            for (const auto value : geometry.uv_tangents.values) {
+                upload.uv_tangents.emplace_back(luisa::make_float4(
+                    value.x, value.y, value.z, value.w));
             }
         }
         if (geometry.generated.values.empty()) {
-            upload.generated.reserve(
-                geometry.positions.size());
-            for (const auto position :
-                 geometry.positions) {
+            upload.generated.reserve(geometry.positions.size());
+            for (const auto position : geometry.positions) {
                 upload.generated.emplace_back(
-                    to_luisa(
-                        generated_mapping.apply(
-                            position)));
+                    to_luisa(generated_mapping.apply(position)));
             }
         } else {
-            upload.generated.reserve(
-                geometry.generated.values.size());
-            for (const auto value :
-                 geometry.generated.values) {
-                upload.generated.emplace_back(
-                    to_luisa(value));
+            upload.generated.reserve(geometry.generated.values.size());
+            for (const auto value : geometry.generated.values) {
+                upload.generated.emplace_back(to_luisa(value));
             }
         }
         upload.attributes.reserve(
@@ -812,8 +826,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             (pointiness_values.empty() ? 0u : 1u));
         if (!pointiness_values.empty()) {
             auto &attribute = upload.attributes.emplace_back();
-            attribute.id =
-                contract::cycles_pointiness_attribute_id;
+            attribute.id = contract::cycles_pointiness_attribute_id;
             attribute.domain = attribute_domain_point;
             attribute.values.reserve(pointiness_values.size());
             for (const auto value : pointiness_values) {
@@ -821,142 +834,125 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     luisa::make_float4(value, 0.0f, 0.0f, 0.0f));
             }
         }
-        for (const auto &[name, source] :
-             geometry.color_attributes) {
+        for (const auto &[name, source] : geometry.color_attributes) {
             const auto id = contract::attribute_id(name);
             if (!geometry_attribute_residency.contains(id)) {
                 continue;
             }
-            auto &attribute =
-                upload.attributes.emplace_back();
+            auto &attribute = upload.attributes.emplace_back();
             attribute.id = id;
-            attribute.domain =
-                encode_attribute_domain(source.domain);
+            attribute.domain = encode_attribute_domain(source.domain);
             attribute.values.reserve(source.values.size());
             for (const auto value : source.values) {
-                attribute.values.emplace_back(
-                    luisa::make_float4(
-                        value.x,
-                        value.y,
-                        value.z,
-                        value.w));
+                attribute.values.emplace_back(luisa::make_float4(
+                    value.x, value.y, value.z, value.w));
             }
         }
-        std::map<std::string, std::size_t, std::less<>>
-            uv_attribute_indices;
-        for (const auto &[name, source] :
-             geometry.uv_layers) {
+        std::map<std::string, std::size_t, std::less<>> uv_attribute_indices;
+        for (const auto &[name, source] : geometry.uv_layers) {
             const auto id = contract::uv_attribute_id(name);
             if (!geometry_attribute_residency.contains(id)) {
                 continue;
             }
-            uv_attribute_indices.emplace(
-                name, upload.attributes.size());
-            auto &attribute =
-                upload.attributes.emplace_back();
+            uv_attribute_indices.emplace(name, upload.attributes.size());
+            auto &attribute = upload.attributes.emplace_back();
             attribute.id = id;
-            attribute.domain =
-                encode_attribute_domain(source.domain);
+            attribute.domain = encode_attribute_domain(source.domain);
             attribute.values.reserve(source.values.size());
             for (const auto value : source.values) {
                 attribute.values.emplace_back(
-                    luisa::make_float4(
-                        value.x, value.y, 0.0f, 0.0f));
+                    luisa::make_float4(value.x, value.y, 0.0f, 0.0f));
             }
         }
-        for (const auto &[name, source] :
-             geometry.uv_tangent_layers) {
-            const auto tangent_id =
-                contract::uv_tangent_attribute_id(name);
+        for (const auto &[name, source] : geometry.uv_tangent_layers) {
+            const auto tangent_id = contract::uv_tangent_attribute_id(name);
             const auto undisplaced_tangent_id =
                 contract::uv_undisplaced_tangent_attribute_id(name);
             const auto retain_tangent =
                 geometry_attribute_residency.contains(tangent_id);
             const auto retain_undisplaced =
-                geometry_attribute_residency.contains(
-                    undisplaced_tangent_id);
+                geometry_attribute_residency.contains(undisplaced_tangent_id);
             if (!retain_tangent && !retain_undisplaced) {
                 continue;
             }
             const auto uv = uv_attribute_indices.find(name);
             if (uv == uv_attribute_indices.end()) {
-                diagnose(
-                    result.diagnostics,
+                diags.emplace_back(
                     "Geometry '" + geometry.name +
-                        "' has a named tangent layer without its UV layer.");
+                    "' has a named tangent layer without its UV layer.");
                 break;
             }
             std::optional<std::size_t> tangent_index;
             if (retain_tangent) {
                 tangent_index = upload.attributes.size();
-                auto &attribute =
-                    upload.attributes.emplace_back();
+                auto &attribute = upload.attributes.emplace_back();
                 attribute.id = tangent_id;
-                attribute.domain =
-                    encode_attribute_domain(source.domain);
+                attribute.domain = encode_attribute_domain(source.domain);
             }
             std::optional<std::size_t> undisplaced_index;
             if (retain_undisplaced) {
                 undisplaced_index = upload.attributes.size();
-                auto &undisplaced =
-                    upload.attributes.emplace_back();
+                auto &undisplaced = upload.attributes.emplace_back();
                 undisplaced.id = undisplaced_tangent_id;
-                undisplaced.domain =
-                    encode_attribute_domain(source.domain);
+                undisplaced.domain = encode_attribute_domain(source.domain);
             }
-            upload.uv_tangent_layers.emplace_back(
-                UvTangentLayerUpload{
-                    .uv_attribute_index = uv->second,
-                    .tangent_attribute_index = tangent_index,
-                    .undisplaced_tangent_attribute_index =
-                        undisplaced_index});
+            upload.uv_tangent_layers.emplace_back(UvTangentLayerUpload{
+                .uv_attribute_index = uv->second,
+                .tangent_attribute_index = tangent_index,
+                .undisplaced_tangent_attribute_index = undisplaced_index});
         }
         upload.triangles.reserve(geometry.triangles.size());
-        upload.triangle_material_slots.reserve(
-            geometry.triangles.size());
-        upload.triangle_random_per_island.reserve(
-            geometry.triangles.size());
-        upload.triangle_smooth.reserve(
-            geometry.triangles.size());
-        for (std::size_t i = 0u;
-             i < geometry.triangles.size();
-             ++i) {
-            const auto triangle = geometry.triangles[i];
+        upload.triangle_material_slots.reserve(geometry.triangles.size());
+        upload.triangle_random_per_island.reserve(geometry.triangles.size());
+        upload.triangle_smooth.reserve(geometry.triangles.size());
+        for (std::size_t tri_idx = 0u;
+             tri_idx < geometry.triangles.size();
+             ++tri_idx) {
+            const auto triangle = geometry.triangles[tri_idx];
             if (triangle[0u] >= geometry.positions.size() ||
                 triangle[1u] >= geometry.positions.size() ||
                 triangle[2u] >= geometry.positions.size()) {
-                diagnose(
-                    result.diagnostics,
+                diags.emplace_back(
                     "Geometry '" + geometry.name +
-                        "' contains an out-of-range index.");
+                    "' contains an out-of-range index.");
                 break;
             }
-            upload.triangles.emplace_back(Triangle{
-                triangle[0u],
-                triangle[1u],
-                triangle[2u]});
+            upload.triangles.emplace_back(
+                Triangle{triangle[0u], triangle[1u], triangle[2u]});
             upload.triangle_material_slots.emplace_back(
-                i < geometry.triangle_material_slots.size()
-                    ? geometry.triangle_material_slots[i]
+                tri_idx < geometry.triangle_material_slots.size()
+                    ? geometry.triangle_material_slots[tri_idx]
                     : 0u);
             upload.triangle_random_per_island.emplace_back(
-                i <
-                        geometry.triangle_random_per_island
-                            .size()
-                    ? geometry
-                          .triangle_random_per_island[i]
+                tri_idx < geometry.triangle_random_per_island.size()
+                    ? geometry.triangle_random_per_island[tri_idx]
                     : 0.0f);
             upload.triangle_smooth.emplace_back(
-                i < geometry.triangle_smooth.size() &&
-                        geometry.triangle_smooth[i] != 0u
+                tri_idx < geometry.triangle_smooth.size() &&
+                        geometry.triangle_smooth[tri_idx] != 0u
                     ? 1u
                     : 0u);
         }
-        if (!result.diagnostics.empty()) {
-            continue;
+        if (!diags.empty()) {
+            return;
         }
         recompute_cycles_tangent_space(upload);
         initialize_cycles_undisplaced_tangent_space(upload);
+    });
+    for (auto &diags : mesh_diags) {
+        for (auto &msg : diags) {
+            diagnose(result.diagnostics, std::move(msg));
+        }
+    }
+    if (!result.diagnostics.empty()) {
+        return result;
+    }
+
+    for (std::size_t i = 0u; i < mesh_entries.size(); ++i) {
+        const auto &entry = mesh_entries[i];
+        const auto geometry_id = entry.id;
+        const auto &geometry = *entry.geometry;
+        auto &upload = uploads[i];
         const auto index =
             static_cast<std::uint32_t>(
                 data->geometries.size());

@@ -6,8 +6,11 @@
 #include "path_kernel_surface_buckets.h"
 #include "path_kernel_transitions.h"
 
+#include <psycles/core/parallel.h>
+
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -20,6 +23,10 @@ namespace psycles::luisa_backend::detail {
 namespace {
 
 using DirectLightConsumerShader = luisa::compute::Shader1D<
+    luisa::compute::Buffer<luisa::float4>, luisa::compute::Buffer<luisa::float4>,
+    luisa::compute::Buffer<luisa::float4>, RenderKernelParameters, std::uint32_t,
+    std::uint32_t>;
+using DirectLightConsumerKernel = luisa::compute::Kernel1D<
     luisa::compute::Buffer<luisa::float4>, luisa::compute::Buffer<luisa::float4>,
     luisa::compute::Buffer<luisa::float4>, RenderKernelParameters, std::uint32_t,
     std::uint32_t>;
@@ -146,7 +153,7 @@ public:
     }
     LUISA_ASSERT(execution_block_size != 0u,
                  "Direct-light consumer block size must be positive.");
-    luisa::compute::Kernel1D initialize = [this](UInt capacity) {
+    luisa::compute::Kernel1D<luisa::uint> initialize = [this](UInt capacity) {
       const auto x = dispatch_x();
       $if(x < capacity) { _tokens->write(x, 0u); };
       $if(x < 4u) {
@@ -157,25 +164,25 @@ public:
         _relocation_counts->write(x, 0u);
       };
     };
-    _initialize = device.compile(initialize, shader_option);
-    luisa::compute::Kernel1D set_extent_and_clear_reloc =
-        [this](UInt new_extent, UInt write_extent, UInt clear_reloc) {
-          const auto x = dispatch_x();
-          $if((x == 0u) & (write_extent != 0u)) {
-            _count->write(3u, new_extent);
-          };
-          $if((x < 2u) & (clear_reloc != 0u)) {
-            _relocation_counts->write(x, 0u);
-          };
-        };
-    _set_extent_and_clear_reloc =
-        device.compile(set_extent_and_clear_reloc, shader_option);
+    luisa::compute::Kernel1D<luisa::uint, luisa::uint, luisa::uint>
+        set_extent_and_clear_reloc =
+            [this](UInt new_extent, UInt write_extent, UInt clear_reloc) {
+              const auto x = dispatch_x();
+              $if((x == 0u) & (write_extent != 0u)) {
+                _count->write(3u, new_extent);
+              };
+              $if((x < 2u) & (clear_reloc != 0u)) {
+                _relocation_counts->write(x, 0u);
+              };
+            };
     // Enumerate exactly the selected stage. Consumers dispatch the queue
     // count, not the whole pool.
+    std::optional<luisa::compute::Kernel1D<luisa::uint, luisa::uint, luisa::uint,
+                                           luisa::uint>>
+        gather_kernel;
     if (device.compute_warp_size() == 32u) {
-      luisa::compute::Kernel1D gather = [this](UInt token, UInt extent,
-                                               UInt scratch_slot,
-                                               UInt clear_stage_count) {
+      gather_kernel.emplace([this](UInt token, UInt extent, UInt scratch_slot,
+                                   UInt clear_stage_count) {
         luisa::compute::set_block_size(256u);
         luisa::compute::set_warp_size(32u);
         luisa::compute::Shared<luisa::uint> warp_totals{8u};
@@ -217,12 +224,10 @@ public:
           const auto index = block_base[0u] + warp_totals[warp_id] + lane_prefix;
           _indices->write(index, slot);
         };
-      };
-      _gather = device.compile(gather, shader_option);
+      });
     } else {
-      luisa::compute::Kernel1D gather = [this](UInt token, UInt extent,
-                                               UInt scratch_slot,
-                                               UInt clear_stage_count) {
+      gather_kernel.emplace([this](UInt token, UInt extent, UInt scratch_slot,
+                                   UInt clear_stage_count) {
         const auto slot = dispatch_x();
         $if(slot == 0u) {
           _scratch_count->write(scratch_slot ^ 1u, 0u);
@@ -237,15 +242,16 @@ public:
             _indices->write(index, slot);
           };
         };
-      };
-      _gather = device.compile(gather, shader_option);
+      });
     }
     // Cycles' compact_paths stores source indices at 0 and hole indices at
     // live. If H slots below live are empty, exactly H live sources remain
     // above it. Thus H <= min(live, extent-live), and live+H <= extent:
     // both lists fit in the existing index allocation without overlapping.
+    std::optional<luisa::compute::Kernel1D<luisa::uint, luisa::uint>>
+        collect_kernel;
     if (device.compute_warp_size() == 32u) {
-      luisa::compute::Kernel1D collect_relocations = [this](UInt live, UInt extent) {
+      collect_kernel.emplace([this](UInt live, UInt extent) {
         luisa::compute::set_block_size(256u);
         luisa::compute::set_warp_size(32u);
         const auto slot = dispatch_x();
@@ -277,12 +283,9 @@ public:
         $if(is_src) {
           _indices->write(src_base + src_prefix, slot);
         };
-      };
-      LUISA_INFO("Psycles shadow relocation: name='collect' kernel_{:016x}.",
-                 collect_relocations.function()->function().hash());
-      _collect_relocations = device.compile(collect_relocations, shader_option);
+      });
     } else {
-      luisa::compute::Kernel1D collect_relocations = [this](UInt live, UInt extent) {
+      collect_kernel.emplace([this](UInt live, UInt extent) {
         const auto slot = dispatch_x();
         $if(slot < extent) {
           const auto token = _tokens->read(slot);
@@ -297,74 +300,75 @@ public:
             _indices->write(index, slot);
           };
         };
-      };
-      LUISA_INFO("Psycles shadow relocation: name='collect' kernel_{:016x}.",
-                 collect_relocations.function()->function().hash());
-      _collect_relocations = device.compile(collect_relocations, shader_option);
+      });
     }
+    LUISA_INFO("Psycles shadow relocation: name='collect' kernel_{:016x}.",
+               (*collect_kernel).function()->function().hash());
     // Only the dense relocation list reaches the payload-copy kernel. The
     // sources [live, extent) and holes [0, live) are disjoint, so the move is
     // in-place without a second payload allocation or inter-thread barriers.
-    luisa::compute::Kernel1D compact = [this](UInt capacity, UInt live) {
-      const auto index = dispatch_x();
-      $if(index < _relocation_counts->read(1u)) {
-        const auto source = _indices->read(index);
-        const auto destination = _indices->read(live + index);
-        const auto token = _tokens->read(source);
-        const auto buf = Expr<luisa::compute::ByteBuffer>{_task_buffer};
-        const auto copy_chunk = [&]<typename T>(std::uint32_t prefix_stride) {
-          buf.write(slot_byte_offset<T>(capacity, prefix_stride, destination),
-                    buf.read<T>(slot_byte_offset<T>(capacity, prefix_stride, source)));
-        };
-        copy_chunk.operator()<luisa::float4>(k_stride_ray_origin_tmin);
-        copy_chunk.operator()<luisa::float4>(k_stride_ray_dir_tmax);
-        copy_chunk.operator()<luisa::uint4>(k_stride_ray_ids);
-        copy_chunk.operator()<luisa::float4>(k_stride_throughput_and_term);
-        copy_chunk.operator()<luisa::float4>(k_stride_diffuse_glossy_0);
-        copy_chunk.operator()<luisa::uint4>(k_stride_film_meta);
-        copy_chunk.operator()<luisa::float2>(stride_glossy_yz());
-        copy_chunk.operator()<luisa::uint>(stride_transp_and_vol());
-        const auto copy_shader_context = [&] {
-          copy_chunk.operator()<luisa::float4>(k_stride_diff_time_flags);
-          copy_chunk.operator()<luisa::uint4>(k_stride_rng_and_depths);
-          copy_chunk.operator()<luisa::uint>(stride_transm_and_portal());
-        };
-        if (_may_have_shade_shadow) {
-          copy_shader_context();
-        }
-        $if(token == 1u) {
-          if (!_may_have_shade_shadow) {
-            copy_shader_context();
-          }
-          copy_chunk.operator()<luisa::float4>(k_stride_nee_throughput);
-          if (_has_fallback_light_shader) {
-            copy_chunk.operator()<luisa::float4>(k_stride_fallback_light);
-          }
-        };
-        // Only this edge owns a traversal batch. Never read the scratch
-        // fields of a task at NEE or INTERSECT_SHADOW.
-        if (_may_have_shade_shadow) {
-          $if(token == 3u) {
-            _shadow_storage->relocate(source, destination, capacity);
+    luisa::compute::Kernel1D<luisa::uint, luisa::uint> compact =
+        [this](UInt capacity, UInt live) {
+          const auto index = dispatch_x();
+          $if(index < _relocation_counts->read(1u)) {
+            const auto source = _indices->read(index);
+            const auto destination = _indices->read(live + index);
+            const auto token = _tokens->read(source);
+            const auto buf = Expr<luisa::compute::ByteBuffer>{_task_buffer};
+            const auto copy_chunk = [&]<typename T>(std::uint32_t prefix_stride) {
+              buf.write(slot_byte_offset<T>(capacity, prefix_stride, destination),
+                        buf.read<T>(slot_byte_offset<T>(capacity, prefix_stride, source)));
+            };
+            copy_chunk.operator()<luisa::float4>(k_stride_ray_origin_tmin);
+            copy_chunk.operator()<luisa::float4>(k_stride_ray_dir_tmax);
+            copy_chunk.operator()<luisa::uint4>(k_stride_ray_ids);
+            copy_chunk.operator()<luisa::float4>(k_stride_throughput_and_term);
+            copy_chunk.operator()<luisa::float4>(k_stride_diffuse_glossy_0);
+            copy_chunk.operator()<luisa::uint4>(k_stride_film_meta);
+            copy_chunk.operator()<luisa::float2>(stride_glossy_yz());
+            copy_chunk.operator()<luisa::uint>(stride_transp_and_vol());
+            const auto copy_shader_context = [&] {
+              copy_chunk.operator()<luisa::float4>(k_stride_diff_time_flags);
+              copy_chunk.operator()<luisa::uint4>(k_stride_rng_and_depths);
+              copy_chunk.operator()<luisa::uint>(stride_transm_and_portal());
+            };
+            if (_may_have_shade_shadow) {
+              copy_shader_context();
+            }
+            $if(token == 1u) {
+              if (!_may_have_shade_shadow) {
+                copy_shader_context();
+              }
+              copy_chunk.operator()<luisa::float4>(k_stride_nee_throughput);
+              if (_has_fallback_light_shader) {
+                copy_chunk.operator()<luisa::float4>(k_stride_fallback_light);
+              }
+            };
+            // Only this edge owns a traversal batch. Never read the scratch
+            // fields of a task at NEE or INTERSECT_SHADOW.
+            if (_may_have_shade_shadow) {
+              $if(token == 3u) {
+                _shadow_storage->relocate(source, destination, capacity);
+              };
+            }
+            _tokens->write(destination, token);
+            _tokens->write(source, 0u);
           };
-        }
-        _tokens->write(destination, token);
-        _tokens->write(source, 0u);
-      };
-    };
+        };
     LUISA_INFO("Psycles shadow relocation: name='copy' kernel_{:016x}.",
                compact.function()->function().hash());
-    _compact = device.compile(compact, shader_option);
     const auto active_stages = _may_have_shade_shadow ? 3u : 2u;
+    std::array<std::optional<DirectLightConsumerKernel>, 3u> consumer_kernels;
+    std::array<luisa::compute::ShaderOption, 3u> consumer_options;
     for (auto stage = 0u; stage < active_stages; ++stage) {
-      luisa::compute::Kernel1D consume = [this, evaluator, execution_block_size,
-                                          stage, fuse_unoccluded_shadow](
-                                             BufferFloat4 combined,
-                                             BufferFloat4 light_passes,
-                                             BufferFloat4 volume_guiding_raw,
-                                             Var<RenderKernelParameters> parameters,
-                                             UInt count,
-                                             UInt chain_mode) noexcept {
+      consumer_kernels[stage].emplace([this, evaluator, execution_block_size,
+                                       stage, fuse_unoccluded_shadow](
+                                          BufferFloat4 combined,
+                                          BufferFloat4 light_passes,
+                                          BufferFloat4 volume_guiding_raw,
+                                          Var<RenderKernelParameters> parameters,
+                                          UInt count,
+                                          UInt chain_mode) noexcept {
         set_block_size(execution_block_size);
         if (_warp_size == 32u) {
           luisa::compute::set_warp_size(32u);
@@ -806,16 +810,43 @@ public:
             };
           };
         }
-      };
+      });
       const auto label =
           luisa::string{"wavefront_aux_"} + luisa::string{stage_name(stage)};
       LUISA_INFO("Psycles shadow stage: name='{}' kernel_{:016x} block_size={}.",
-                 stage_name(stage), consume.function()->function().hash(),
+                 stage_name(stage),
+                 (*consumer_kernels[stage]).function()->function().hash(),
                  execution_block_size);
-      _consumers[stage] = device.compile(
-          consume, luisa::compute::coro::detail::coro_scheduler_shader_option(
-                       shader_option, label));
+      consumer_options[stage] =
+          luisa::compute::coro::detail::coro_scheduler_shader_option(
+              shader_option, label);
     }
+    psycles::parallel_for(5u + active_stages, [&](std::size_t idx) {
+      switch (idx) {
+        case 0u:
+          _initialize = device.compile(initialize, shader_option);
+          break;
+        case 1u:
+          _set_extent_and_clear_reloc =
+              device.compile(set_extent_and_clear_reloc, shader_option);
+          break;
+        case 2u:
+          _gather = device.compile(*gather_kernel, shader_option);
+          break;
+        case 3u:
+          _collect_relocations = device.compile(*collect_kernel, shader_option);
+          break;
+        case 4u:
+          _compact = device.compile(compact, shader_option);
+          break;
+        default: {
+          const auto stage = idx - 5u;
+          _consumers[stage] = device.compile(
+              *consumer_kernels[stage], consumer_options[stage]);
+          break;
+        }
+      }
+    });
   }
 
   [[nodiscard]] luisa::string_view name() const noexcept override {

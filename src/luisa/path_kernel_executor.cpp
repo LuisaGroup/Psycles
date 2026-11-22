@@ -481,7 +481,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
             scheduler_config.execution_block_size =
                 config.wavefront_execution_block_size;
     scheduler_config.shader_compile_threads =
-        std::clamp<std::uint32_t>(std::thread::hardware_concurrency(), 1u, 8u);
+        std::clamp<std::uint32_t>(std::thread::hardware_concurrency(), 1u, 16u);
     if (const auto *override_threads =
             std::getenv("PSYCLES_SHADER_COMPILE_THREADS")) {
         const auto parsed = static_cast<std::uint32_t>(
@@ -648,7 +648,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
                     std::strtoul(override_refill, nullptr, 10));
             }
     scheduler_config.shader_compile_threads =
-        std::clamp<std::uint32_t>(std::thread::hardware_concurrency(), 1u, 8u);
+        std::clamp<std::uint32_t>(std::thread::hardware_concurrency(), 1u, 16u);
     if (const auto *override_threads =
             std::getenv("PSYCLES_SHADER_COMPILE_THREADS")) {
         const auto parsed = static_cast<std::uint32_t>(

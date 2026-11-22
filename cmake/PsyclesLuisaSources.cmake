@@ -109,6 +109,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/adapter/blender_graph_normalizer.cpp
     src/adapter/blender_graph_texture_mapping.cpp
     src/adapter/blender_scene.cpp
+    src/adapter/blender_scene_geometry.cpp
     src/adapter/blender_scene_json.cpp
     src/luisa/path_tracer.cpp
     src/luisa/path_tracer_analytic_light_scene.cpp

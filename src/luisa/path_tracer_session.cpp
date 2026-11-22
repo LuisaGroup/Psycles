@@ -1,6 +1,7 @@
 #include "path_tracer_internal.h"
 #include "sample_dispatch_partition.h"
 
+#include <psycles/core/parallel.h>
 #include <psycles/luisa/volume_guiding.h>
 
 #include <algorithm>
@@ -212,16 +213,61 @@ compile_film_pass_accessor(luisa::compute::Device &device) {
         };
       };
 
+  Kernel1D clear_film_kernel =
+      [](BufferFloat4 combined,
+         BufferFloat4 normal,
+         BufferFloat4 albedo,
+         BufferFloat4 light_passes,
+         BufferUInt sample_count,
+         BufferFloat4 volume_guiding_raw,
+         BufferUInt volume_guiding_denoised,
+         BufferUInt volume_guiding_intermediate,
+         BufferFloat4 path_trace,
+         UInt pixel_count,
+         UInt path_trace_count) noexcept {
+        set_block_size(256u);
+        const auto i = dispatch_x();
+        const auto zero4 = make_float4(0.0f);
+        $if (i < pixel_count) {
+          combined.write(i, zero4);
+          normal.write(i, zero4);
+          albedo.write(i, zero4);
+          sample_count.write(i, 0u);
+          const auto light_base = i * light_pass_buffer_count;
+          for (std::uint32_t k = 0u; k < light_pass_buffer_count; ++k) {
+            light_passes.write(light_base + k, zero4);
+          }
+          const auto raw_base = i * volume_guiding::raw_pixel_stride;
+          for (std::uint32_t k = 0u;
+               k < volume_guiding::raw_pixel_stride; ++k) {
+            volume_guiding_raw.write(raw_base + k, zero4);
+          }
+          const auto denoised_base =
+              i * volume_guiding::denoised_pixel_stride;
+          for (std::uint32_t k = 0u;
+               k < volume_guiding::denoised_pixel_stride; ++k) {
+            volume_guiding_denoised.write(denoised_base + k, 0u);
+            volume_guiding_intermediate.write(denoised_base + k, 0u);
+          }
+        };
+        $if (i < path_trace_count) {
+          path_trace.write(i, zero4);
+        };
+      };
+
   const auto enable_cache = film_shader_cache_enabled();
-  return std::make_shared<FilmPassAccessorGpu>(FilmPassAccessorGpu{
-      .verify_sample_count = device.compile(
-          verify_kernel,
-          luisa::compute::ShaderOption{
-              .enable_cache = enable_cache}),
-      .resolve_pass = device.compile(
-          resolve_kernel,
-          luisa::compute::ShaderOption{
-              .enable_cache = enable_cache})});
+  const luisa::compute::ShaderOption option{.enable_cache = enable_cache};
+  auto accessor = std::make_shared<FilmPassAccessorGpu>();
+  psycles::parallel_for(3u, [&](std::size_t stage) {
+    if (stage == 0u) {
+      accessor->verify_sample_count = device.compile(verify_kernel, option);
+    } else if (stage == 1u) {
+      accessor->resolve_pass = device.compile(resolve_kernel, option);
+    } else {
+      accessor->clear_film = device.compile(clear_film_kernel, option);
+    }
+  });
+  return accessor;
 }
 
 std::mutex &film_pass_accessor_mutex() noexcept {
@@ -230,6 +276,30 @@ std::mutex &film_pass_accessor_mutex() noexcept {
 }
 
 } // namespace
+
+std::shared_ptr<const FilmPassAccessorGpu>
+get_or_compile_film_pass_accessor(
+    luisa::compute::Device &device,
+    std::shared_ptr<const FilmPassAccessorGpu> &slot) {
+  std::scoped_lock lock{film_pass_accessor_mutex()};
+  if (!slot) {
+    slot = compile_film_pass_accessor(device);
+  }
+  return slot;
+}
+
+void attach_scene_film_pass_accessor(
+    luisa::compute::Device &device,
+    std::shared_ptr<const FilmPassAccessorGpu> &device_cache,
+    std::shared_ptr<const FilmPassAccessorGpu> &scene_slot) {
+  std::scoped_lock lock{film_pass_accessor_mutex()};
+  if (!device_cache) {
+    device_cache = compile_film_pass_accessor(device);
+  }
+  if (!scene_slot) {
+    scene_slot = device_cache;
+  }
+}
 
 PathDiagnosticBufferLayout path_diagnostic_buffer_layout(
     const LuisaPathTracerOptions &options) noexcept {
@@ -336,12 +406,8 @@ void LuisaRenderSession::prepare_sobol_table(std::uint32_t total_samples) {
 }
 
 void LuisaRenderSession::prepare_film_pass_accessor() {
-  {
-    std::scoped_lock lock{film_pass_accessor_mutex()};
-    if (!_scene->film_pass_accessor) {
-      _scene->film_pass_accessor = compile_film_pass_accessor(_scene->device);
-    }
-  }
+  static_cast<void>(get_or_compile_film_pass_accessor(
+      _scene->device, _scene->film_pass_accessor));
   std::uint32_t max_channels = 4u;
   for (const auto &pass : _settings.passes) {
     if (supported_pass(pass.kind)) {

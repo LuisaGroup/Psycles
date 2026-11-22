@@ -4,6 +4,7 @@
 #include "cycles_surface_sort.h"
 #include "path_kernel_primitive_material.h"
 
+#include <psycles/core/parallel.h>
 #include <psycles/luisa/cycles_svm.h>
 
 #include <limits>
@@ -306,18 +307,34 @@ public:
             indices_out.write(rank, indices_in.read(slot));
           };
 
-      _fused_bucket_shader =
-          context.device.compile(fused_bucket_kernel, context.shader_option);
-      _fused_prefix_shader =
-          context.device.compile(fused_prefix_kernel, context.shader_option);
-      _fused_scatter_shader =
-          context.device.compile(fused_scatter_kernel, context.shader_option);
-      _bucket_clear_shader =
-          context.device.compile(clear_kernel, context.shader_option);
-      _bucket_hist_shader =
-          context.device.compile(hist_kernel, context.shader_option);
-      _bucket_scatter_shader =
-          context.device.compile(scatter_kernel, context.shader_option);
+      psycles::parallel_for(6u, [&](std::size_t idx) {
+        switch (idx) {
+          case 0u:
+            _fused_bucket_shader =
+                context.device.compile(fused_bucket_kernel, context.shader_option);
+            break;
+          case 1u:
+            _fused_prefix_shader =
+                context.device.compile(fused_prefix_kernel, context.shader_option);
+            break;
+          case 2u:
+            _fused_scatter_shader =
+                context.device.compile(fused_scatter_kernel, context.shader_option);
+            break;
+          case 3u:
+            _bucket_clear_shader =
+                context.device.compile(clear_kernel, context.shader_option);
+            break;
+          case 4u:
+            _bucket_hist_shader =
+                context.device.compile(hist_kernel, context.shader_option);
+            break;
+          default:
+            _bucket_scatter_shader =
+                context.device.compile(scatter_kernel, context.shader_option);
+            break;
+        }
+      });
       _fused_bucket_shader.set_name("psycles_fused_surface_bucket");
       _fused_prefix_shader.set_name("psycles_fused_surface_prefix");
       _fused_scatter_shader.set_name("psycles_fused_surface_scatter");

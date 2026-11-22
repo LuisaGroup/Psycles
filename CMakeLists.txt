@@ -1802,7 +1802,8 @@ if(PSYCLES_ENABLE_LUISA)
 
         if(PSYCLES_BUILD_BLENDER_PLUGIN)
             add_library(psycles_blender SHARED
-                src/blender_bridge/psycles_blender_capi.cpp)
+                src/blender_bridge/psycles_blender_capi.cpp
+                src/blender_bridge/psycles_blender_viewport.cpp)
             add_library(Psycles::blender ALIAS psycles_blender)
             target_compile_definitions(psycles_blender
                 PRIVATE PSYCLES_BLENDER_BUILD=1)
@@ -1844,6 +1845,8 @@ if(PSYCLES_ENABLE_LUISA)
             if(PSYCLES_BUILD_TESTS)
                 add_executable(psycles_blender_capi_tests
                     tests/test_blender_capi.cpp)
+                target_include_directories(psycles_blender_capi_tests
+                    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
                 target_link_libraries(psycles_blender_capi_tests
                     PRIVATE Psycles::blender)
                 target_compile_features(psycles_blender_capi_tests
