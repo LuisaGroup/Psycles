@@ -7,6 +7,7 @@
 #include "path_kernel_transitions.h"
 #include "cycles_surface_sort.h"
 #include "sample_dispatch_partition.h"
+#include "virtual_texture_cache.h"
 
 #include <algorithm>
 #include <array>
@@ -61,16 +62,52 @@ void log_coroutine_frame_if_requested(
 }
 
 [[nodiscard]] PathKernelConfig make_local_shadow_path(
-    const PathKernelConfig &path) {
+    const PathKernelConfig &path, bool enable_vt = false) {
     auto scheduled_path = path;
     // The traversal returns a complete bounded batch. Coro lowering owns its
     // cross-stage lifetime; no second invocation-indexed hit buffer is needed.
     auto shadow = make_shadow_trace_callables(
-        scheduled_path.scene, scheduled_path.light_transport.safe_normalize);
+        scheduled_path.scene, scheduled_path.light_transport.safe_normalize, {},
+        enable_vt);
     scheduled_path.intersect_shadow = std::move(shadow.intersect);
     scheduled_path.shade_shadow_surface = std::move(shadow.shade_surface);
     scheduled_path.trace_shadow = std::move(shadow.trace);
     return scheduled_path;
+}
+
+void validate_vt_extension_abi(const RenderCoroutine &coroutine) noexcept {
+    const auto *tex_node =
+        coroutine.graph().node_by_name(path_transition::texture_cache);
+    if (tex_node == nullptr) {
+        return;
+    }
+    bool matched = false;
+    for (const auto &boundary : coroutine.graph().boundaries()) {
+        if (boundary.to_index != tex_node->index) {
+            continue;
+        }
+        for (const auto &ext : boundary.extensions) {
+            if (!ext || ext->schema() != vt_extension_schema) {
+                continue;
+            }
+            for (const auto &desc : ext->bindings()) {
+                if (desc.name == vt_extension_binding &&
+                    desc.index < boundary.bindings.size()) {
+                    const auto &binding = boundary.bindings[desc.index];
+                    LUISA_ASSERT(
+                        binding.type() ==
+                                luisa::compute::Type::of<luisa::uint>() &&
+                            binding.readable(),
+                        "Invalid VT cache extension '{}' binding '{}'.",
+                        vt_extension_schema, vt_extension_binding);
+                    matched = true;
+                }
+            }
+        }
+    }
+    LUISA_ASSERT(matched,
+                 "VT texture_cache continuation did not bind '{}' '{}'.",
+                 vt_extension_schema, vt_extension_binding);
 }
 
 template<typename Program>
@@ -431,6 +468,19 @@ PathKernelExecutor
 build_path_kernel_executor(luisa::compute::Device &device,
     const PathKernelConfig &path,
     const PathKernelExecutorConfig &config) {
+    const bool vt_supported_scheduler =
+        config.scheduler == LuisaPathScheduler::wavefront ||
+        config.scheduler == LuisaPathScheduler::wavefront_staged;
+    const bool vt_active =
+        vt_supported_scheduler && path.scene &&
+        path.scene->virtual_texture_cache &&
+        path.scene->virtual_texture_cache->has_virtual_images();
+    if (!vt_supported_scheduler && path.scene &&
+        path.scene->virtual_texture_cache &&
+        path.scene->virtual_texture_cache->has_virtual_images()) {
+        path.scene->virtual_texture_cache->ensure_eager_direct_textures_uploaded(
+            *path.scene);
+    }
     switch (config.scheduler) {
         case LuisaPathScheduler::megakernel: {
             std::optional<luisa::compute::Buffer<luisa::ulong>> profile_buffer;
@@ -466,9 +516,13 @@ build_path_kernel_executor(luisa::compute::Device &device,
         case LuisaPathScheduler::wavefront: {
     LUISA_ASSERT(config.wavefront_frame_capacity != 0u,
                 "Wavefront frame capacity must be positive.");
-    auto shadow_path = make_local_shadow_path(path);
+    auto shadow_path = make_local_shadow_path(path, vt_active);
+    shadow_path.enable_virtual_texture_cache = vt_active;
     auto coroutine =
         build_cycles_stage_coroutine(shadow_path, config.scheduler);
+    if (vt_active) {
+        validate_vt_extension_abi(coroutine);
+    }
     log_coroutine_frame_if_requested(coroutine);
     LUISA_INFO("Psycles wavefront path coroutine: subroutines={} "
                 "frame_fields={} frame_bytes={} capacity={}.",
@@ -493,6 +547,14 @@ build_path_kernel_executor(luisa::compute::Device &device,
     scheduler_config.shader_option = config.shader_option;
     auto scheduler = std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);
+    if (vt_active) {
+        auto preparation_stream = device.create_stream();
+        scheduler->register_extension_handler(
+            preparation_stream,
+            shadow_path.scene->virtual_texture_cache
+                ->make_wavefront_extension_handler());
+        preparation_stream << luisa::compute::synchronize();
+    }
     return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
         config.scheduler, std::move(scheduler))};
         }
@@ -559,8 +621,9 @@ build_path_kernel_executor(luisa::compute::Device &device,
         case LuisaPathScheduler::wavefront_staged: {
     LUISA_ASSERT(config.wavefront_frame_capacity != 0u,
                 "Staged wavefront frame capacity must be positive.");
-    auto staged_path = make_local_shadow_path(path);
+    auto staged_path = make_local_shadow_path(path, vt_active);
     staged_path.staged_surface_sort_annotation = true;
+    staged_path.enable_virtual_texture_cache = vt_active;
     DirectLightTaskQueueBinding direct_light_queue;
     const auto stage_plan = make_path_kernel_scene_stage_plan(
         path.next_event_estimation,
@@ -577,6 +640,9 @@ build_path_kernel_executor(luisa::compute::Device &device,
     }
             auto coroutine =
                 build_cycles_stage_coroutine(staged_path, config.scheduler);
+            if (vt_active) {
+              validate_vt_extension_abi(coroutine);
+            }
             log_coroutine_frame_if_requested(coroutine);
     LUISA_INFO("Psycles staged wavefront path coroutine: "
                 "subroutines={} frame_fields={} frame_bytes={} capacity={}.",
@@ -662,6 +728,12 @@ build_path_kernel_executor(luisa::compute::Device &device,
                     device, coroutine, scheduler_config);
     auto preparation_stream = device.create_stream();
     scheduler->register_extension_handler(preparation_stream, make_surface_sort_handler);
+    if (vt_active) {
+      scheduler->register_extension_handler(
+          preparation_stream,
+          staged_path.scene->virtual_texture_cache
+              ->make_wavefront_extension_handler());
+    }
     preparation_stream << luisa::compute::synchronize();
     if (direct_light_queue.work) {
       scheduler->register_auxiliary_work(direct_light_queue.work);

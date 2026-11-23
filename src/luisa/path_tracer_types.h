@@ -403,6 +403,7 @@ struct ShadowSurfaceEvaluationCall {
     luisa::uint primitive{};
     luisa::uint kind{};
     luisa::uint volume_boundary{};
+    luisa::uint vt_miss_page{0xffffffffu};
 };
 
 struct ShadowTraceResultCall {
@@ -416,6 +417,7 @@ struct ShadowTraceResultCall {
     luisa::uint first_kind{};
     float first_distance{};
     luisa::float2 first_barycentric{};
+    luisa::uint vt_miss_page{0xffffffffu};
 };
 
 struct RenderKernelParameters {
@@ -634,7 +636,8 @@ LUISA_STRUCT(psycles::luisa_backend::detail::ShadowIntersectionBatchCall, hits,
 LUISA_STRUCT(psycles::luisa_backend::detail::CompactTriangleShadowState, inst,
              prim, dist, bx, by, packed_state, max_dist){};
 LUISA_STRUCT(psycles::luisa_backend::detail::ShadowSurfaceEvaluationCall,
-             transmittance, object, primitive, kind, volume_boundary){};
+             transmittance, object, primitive, kind, volume_boundary,
+             vt_miss_page){};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::ShadowTraceResultCall,
     transmittance,
@@ -644,7 +647,8 @@ LUISA_STRUCT(
     first_primitive,
     first_kind,
     first_distance,
-    first_barycentric) {};
+    first_barycentric,
+    vt_miss_page) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::RenderKernelParameters,
     window_x,

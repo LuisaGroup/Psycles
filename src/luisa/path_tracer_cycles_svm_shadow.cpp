@@ -3,6 +3,7 @@
 #include "cycles_svm_internal.h"
 #include "path_tracer_cycles_svm_curve.h"
 #include "path_tracer_cycles_svm_kernel_globals.h"
+#include "virtual_texture_cache.h"
 #include "path_tracer_cycles_svm_shader_data.h"
 
 #include <psycles/luisa/cycles_noise.h>
@@ -139,27 +140,31 @@ CyclesSvmShadowShaderData setup_cycles_svm_shadow_shader_data(
 }
 
 EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
-    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    const std::shared_ptr<LuisaSceneData> &scene,
+    bool enable_vt) noexcept {
   LUISA_ASSERT(
       scene->cycles_svm && scene->cycles_svm->geometry &&
           scene->cycles_svm->objects,
       "Native Cycles shadow setup requires the native geometry image.");
-  return [scene](Var<luisa::compute::Ray> ray,
-                 Var<ShadowIntersectionCall> intersection, Float ray_dP,
-                 Float ray_dD, Var<ShadowShaderContextCall> context,
-                 Var<RenderKernelParameters> parameters) noexcept {
+  return [scene, enable_vt](Var<luisa::compute::Ray> ray,
+                            Var<ShadowIntersectionCall> intersection,
+                            Float ray_dP, Float ray_dD,
+                            Var<ShadowShaderContextCall> context,
+                            Var<RenderKernelParameters> parameters) noexcept {
     const auto backend_name = scene->device.backend_name();
     const bool is_simd = backend_name == "simd";
     const bool is_simd_wide = is_simd && scene->device.compute_warp_size() > 1u;
     const bool cpu_backend = backend_name == "fallback" || is_simd;
     Var<ShadowSurfaceEvaluationCall> surface;
+    surface.vt_miss_page = vt_invalid_page;
     $outline_when_with_name(is_simd_wide, "simd_eval_shadow_surface") {
       // Caustic suppression is conditioned on diffuse visibility in Cycles.
       // SURFACE_SHADOW has no diffuse visibility bit, so both configurations
       // have the same effective behavior here.
       const PathCyclesSvmKernelGlobals kg{
           scene, parameters, scene->camera.projection, true, true,
-          PathCyclesSvmShaderDomain::shadow_surface};
+          PathCyclesSvmShaderDomain::shadow_surface, {}, false,
+          enable_vt ? &surface.vt_miss_page : nullptr};
       auto setup = setup_cycles_svm_shadow_shader_data(
           scene, kg, ray, intersection, ray_dP, ray_dD, context, parameters);
       auto &sd = setup.shader_data;

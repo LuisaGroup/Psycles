@@ -108,7 +108,8 @@ inline constexpr luisa::uint shadow_volume_bounds_max = 1024u;
 
 [[nodiscard]] TraceShadowCallable make_fused_shadow_trace_callable(
     std::shared_ptr<const ShadowIntersectionComponent> intersection,
-    EvaluateShadowSurfaceCallable evaluate_shadow_surface) noexcept;
+    EvaluateShadowSurfaceCallable evaluate_shadow_surface,
+    bool enable_vt = false) noexcept;
 
 struct ShadowTraceCallables {
     std::shared_ptr<const ShadowIntersectionComponent> intersect;
@@ -133,6 +134,7 @@ make_shadow_intersection_component(
 [[nodiscard]] ShadowTraceCallables make_shadow_trace_callables(
     const std::shared_ptr<LuisaSceneData> &scene,
     const SafeNormalizeCallable &safe_normalize,
-    std::shared_ptr<const ShadowIntersectionBatchStorage> storage = {}) noexcept;
+    std::shared_ptr<const ShadowIntersectionBatchStorage> storage = {},
+    bool enable_vt = false) noexcept;
 
 }// namespace psycles::luisa_backend::detail

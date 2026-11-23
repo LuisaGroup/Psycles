@@ -114,6 +114,7 @@ struct PathKernelConfig {
     TraceShadowCallable trace_shadow;
     const luisa::compute::Buffer<luisa::ulong> *megakernel_stage_profile_buffer{
         nullptr};
+    bool enable_virtual_texture_cache{false};
 };
 
 struct MegakernelStageProfileState {
@@ -412,6 +413,8 @@ struct PathSampleContext {
     // the hit identity at shared edges and would not match Cycles.
     Bool pending_subsurface_exit;
     PendingSubsurfaceHit pending_subsurface_hit;
+    UInt *vt_miss_page{nullptr};
+    std::function<void(luisa::compute::Expr<luisa::uint>)> vt_wait_resident;
 
     // Traversal visibility is a pure projection of the canonical Cycles path
     // visibility. Re-materializing it at each use prevents a duplicate frame

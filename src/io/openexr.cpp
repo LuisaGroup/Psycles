@@ -118,6 +118,53 @@ void expand_rgba(
 
 }// namespace
 
+bool probe_image_info(
+    std::span<const std::uint8_t> encoded,
+    std::string_view filename_hint,
+    ProbedImageInfo &info,
+    std::string *error) {
+    info = {};
+    if (error != nullptr) {
+        error->clear();
+    }
+    if (encoded.empty()) {
+        return fail("the encoded image payload is empty", error);
+    }
+
+    OIIO::Filesystem::IOMemReader reader{
+        encoded.data(), encoded.size()};
+    auto input = OIIO::ImageInput::open(
+        std::string{filename_hint}, nullptr, &reader);
+    if (!input) {
+        return fail(
+            "OpenImageIO could not identify the encoded image",
+            error);
+    }
+    const auto specification = input->spec();
+    if (specification.width <= 0 ||
+        specification.height <= 0 ||
+        specification.nchannels <= 0) {
+        return fail("the encoded image has an invalid extent", error);
+    }
+    const auto width =
+        static_cast<std::size_t>(specification.width);
+    const auto height =
+        static_cast<std::size_t>(specification.height);
+    if (width > std::numeric_limits<std::size_t>::max() / height ||
+        width * height >
+            std::numeric_limits<std::size_t>::max() / 4u) {
+        return fail("the encoded image is too large", error);
+    }
+    const auto source_channels =
+        std::min(specification.nchannels, 4);
+    info.width = static_cast<std::uint32_t>(width);
+    info.height = static_cast<std::uint32_t>(height);
+    info.storage = source_is_uint8(specification, source_channels)
+                       ? DecodedImageStorage::unorm8
+                       : DecodedImageStorage::float32;
+    return true;
+}
+
 bool decode_image_rgba(
     std::span<const std::uint8_t> encoded,
     std::string_view filename_hint,

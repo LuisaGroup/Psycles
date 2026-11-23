@@ -360,6 +360,7 @@ struct CyclesSvmRuntime {
 };
 
 struct VolumeMajorantScenePlan;
+class VirtualTextureCache;
 struct VolumeMajorantRuntime {
     Buffer<VolumeMajorantNodeGpu> node_buffer;
     Buffer<VolumeMajorantRootGpu> root_buffer;
@@ -396,6 +397,7 @@ struct LuisaSceneData {
     std::vector<CurveGeometryResource> curve_geometries;
     std::vector<Image<float>> images;
     BindlessArray texture_heap;
+    std::shared_ptr<VirtualTextureCache> virtual_texture_cache;
     // The scene image upload below has one closed set of storage choices:
     // decoded UNORM8 images become BYTE4 and wider/HDR images become FLOAT4.
     // Keep the default conservative so any future/imported storage path still

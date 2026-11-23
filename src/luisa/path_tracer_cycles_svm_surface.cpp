@@ -391,7 +391,8 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           _point{context.point},
           _kernel_globals{
               _scene, context,
-              std::span<const std::uint8_t>{bucket.active_shader_mask}},
+              std::span<const std::uint8_t>{bucket.active_shader_mask},
+              false, context.vt_miss_page},
           _closures{std::make_unique<svm::ClosurePool>(
               std::clamp<std::size_t>(
                   bucket.max_surface_closures != 0u

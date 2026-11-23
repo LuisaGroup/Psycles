@@ -1,6 +1,7 @@
 #include "path_tracer_cycles_svm_light.h"
 #include "path_tracer_cycles_svm_background.h"
 #include "path_tracer_cycles_svm_shader_data.h"
+#include "virtual_texture_cache.h"
 
 #include "cycles_svm_internal.h"
 #include "path_tracer_cycles_svm_kernel_globals.h"
@@ -235,16 +236,20 @@ public:
 
   [[nodiscard]] Float3 evaluate(
       const Var<DirectLightTaskCall> &task,
-      const Var<RenderKernelParameters> &parameters) const noexcept override {
+      const Var<RenderKernelParameters> &parameters,
+      UInt *vt_miss_page = nullptr) const noexcept override {
     const auto backend_name = _scene->device.backend_name();
     const bool is_simd = backend_name == "simd";
     const bool is_simd_wide = is_simd && _scene->device.compute_warp_size() > 1u;
     const bool cpu_backend = backend_name == "fallback" || is_simd;
     Float3 emission = make_float3(0.0f);
+    UInt local_vt_miss = vt_invalid_page;
+    UInt *local_vt_ptr = vt_miss_page != nullptr ? &local_vt_miss : nullptr;
     $outline_when_with_name(is_simd_wide, "simd_eval_light_nee") {
       const PathCyclesSvmKernelGlobals kg{
           _scene, parameters, _camera_projection, Bool{_reflective_caustics},
-          Bool{_refractive_caustics}, PathCyclesSvmShaderDomain::light_emission};
+          Bool{_refractive_caustics}, PathCyclesSvmShaderDomain::light_emission,
+          {}, false, local_vt_ptr};
       auto setup =
           setup_cycles_svm_light_shader_data(_scene, kg, task, parameters);
       auto &sd = setup.shader_data;
@@ -296,6 +301,10 @@ public:
             select(make_float3(0.0f), sd.closure_emission_background, evaluable);
       };
     };
+    if (vt_miss_page != nullptr) {
+      *vt_miss_page =
+          ite(*vt_miss_page == vt_invalid_page, local_vt_miss, *vt_miss_page);
+    }
     return emission;
   }
 };

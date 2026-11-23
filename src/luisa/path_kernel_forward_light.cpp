@@ -1,5 +1,6 @@
 #include "cycles_light_visibility.h"
 #include "path_kernel_builder.h"
+#include "virtual_texture_cache.h"
 
 #include <psycles/luisa/surface_ray.h>
 
@@ -31,27 +32,31 @@ public:
         config.light_transport.forward_light_weight;
 
     Var<LightGpu> light = scene->light_buffer->read(event.light_index);
-    // Cycles' committed intersection becomes the next ray.self identity.
-    // Retaining the earlier surface would change self rejection and the
-    // object-specific AO traversal limit after this transparent endpoint.
-    sample.ray_source_object = light.cycles_object_index;
-    sample.ray_source_primitive = event.light_index;
-    // Intersection and emission eligibility are different state-machine
-    // edges in Cycles. Advance every geometric lamp hit, including empty
-    // spread/spot evaluations and indirect visibility exclusions.
-    ray = make_ray(ray->origin(), ray->direction(),
-                   surface_ray::intersection_t_offset(
-                       max(ray->t_min(), event.distance)),
-                   ray->t_max());
     const auto visible = cycles_light_shader_visible(
         light.cycles_shader_flags, sample.cycles_path_visibility, path_flags);
-    $if((event.light_evaluation_factor != 0.0f) & visible) {
-      auto light_radiance =
+    const auto evaluate_emission = (event.light_evaluation_factor != 0.0f) & visible;
+    Float3 light_radiance = make_float3(0.0f);
+    $if(evaluate_emission) {
+      light_radiance =
           light.color * (light.power * event.light_evaluation_factor);
       light_radiance *= sample.analytic_light_shader(
           light, event.light_index, event.light_position, event.light_normal,
           event.light_uv, -ray->direction(), event.distance);
-      $if(any(light_radiance != make_float3(0.0f))) {
+    };
+    const auto commit_hit = [&]() noexcept {
+      // Cycles' committed intersection becomes the next ray.self identity.
+      // Retaining the earlier surface would change self rejection and the
+      // object-specific AO traversal limit after this transparent endpoint.
+      sample.ray_source_object = light.cycles_object_index;
+      sample.ray_source_primitive = event.light_index;
+      // Intersection and emission eligibility are different state-machine
+      // edges in Cycles. Advance every geometric lamp hit, including empty
+      // spread/spot evaluations and indirect visibility exclusions.
+      ray = make_ray(ray->origin(), ray->direction(),
+                     surface_ray::intersection_t_offset(
+                         max(ray->t_min(), event.distance)),
+                     ray->t_max());
+      $if(evaluate_emission & any(light_radiance != make_float3(0.0f))) {
         Float selection_pdf = scene->light_selection_pdf;
         if (config.use_light_tree) {
           const auto emitter_id =
@@ -71,9 +76,16 @@ public:
         sample.accumulate_emission_or_background(contribution,
                                                   LightPassBuffer::emission);
       };
-    };
 
-    transparent_depth += 1u;
+      transparent_depth += 1u;
+    };
+    if (sample.vt_miss_page != nullptr) {
+      $if(*sample.vt_miss_page == vt_invalid_page) {
+        commit_hit();
+      };
+    } else {
+      commit_hit();
+    }
     return transparent_depth >= kernel_parameters.transparent_max_bounces;
   }
 };

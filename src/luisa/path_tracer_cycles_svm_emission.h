@@ -19,6 +19,7 @@ namespace psycles::luisa_backend::detail {
     const Var<RenderKernelParameters> &parameters,
     UInt shader, UInt object, UInt primitive,
     Float3 position, Float3 normal, Float3 incoming, Float2 uv,
-    Float distance, Float time, const cycles_svm::PathState &state) noexcept;
+    Float distance, Float time, const cycles_svm::PathState &state,
+    UInt *vt_miss_page = nullptr) noexcept;
 
 } // namespace psycles::luisa_backend::detail

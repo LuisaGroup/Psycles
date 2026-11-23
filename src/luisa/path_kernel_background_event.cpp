@@ -1,5 +1,6 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_environment_light.h"
+#include "virtual_texture_cache.h"
 
 #include <utility>
 
@@ -104,51 +105,61 @@ class BackgroundEventStageImpl final
                     CyclesSvmBackgroundEvaluation::forward);
             }
         };
-        if (_ambient_occlusion_bounce_approximation) {
-            const auto ambient_occlusion_bounce =
-                cycles_path_state::ambient_occlusion_bounce(
-                    path_depth,
-                    transmission_depth,
-                    glossy_depth,
-                    invocation.parameters.ambient_occlusion_bounces);
-            environment_radiance *= select(
-                1.0f,
-                invocation.parameters.ambient_occlusion_factor,
-                ambient_occlusion_bounce);
-        }
-        Float3 environment_contribution =
-            invocation
-                .clamp_emission_contribution(
-                    throughput *
-                        environment_radiance *
-                        environment_weight,
-                    path_depth);
-        environment_contribution =
-            select(
-                make_float3(0.0f),
+        const auto commit_background = [&]() noexcept {
+            if (_ambient_occlusion_bounce_approximation) {
+                const auto ambient_occlusion_bounce =
+                    cycles_path_state::ambient_occlusion_bounce(
+                        path_depth,
+                        transmission_depth,
+                        glossy_depth,
+                        invocation.parameters.ambient_occlusion_bounces);
+                environment_radiance *= select(
+                    1.0f,
+                    invocation.parameters.ambient_occlusion_factor,
+                    ambient_occlusion_bounce);
+            }
+            Float3 environment_contribution =
+                invocation
+                    .clamp_emission_contribution(
+                        throughput *
+                            environment_radiance *
+                            environment_weight,
+                        path_depth);
+            environment_contribution =
+                select(
+                    make_float3(0.0f),
+                    environment_contribution,
+                    world_visible);
+            const auto transparent_background_ray =
+                (invocation.parameters
+                     .transparent_background !=
+                 0u) &
+                ((path_flags &
+                  cycles_path_state::
+                      flag_transparent_background) !=
+                 0u);
+            $if(transparent_background_ray) {
+                sample.accumulate_transparency(
+                    (throughput.x +
+                     throughput.y +
+                     throughput.z) *
+                    (1.0f / 3.0f));
+            }
+            $else {
+                sample.accumulate_radiance(
+                    environment_contribution);
+            };
+            sample.accumulate_emission_or_background(
                 environment_contribution,
-                world_visible);
-        const auto transparent_background_ray =
-            (invocation.parameters
-                 .transparent_background !=
-             0u) &
-            ((path_flags &
-              cycles_path_state::
-                  flag_transparent_background) !=
-             0u);
-        $if(transparent_background_ray) {
-            sample.accumulate_transparency(
-                (throughput.x +
-                 throughput.y +
-                 throughput.z) *
-                (1.0f / 3.0f));
-        }
-        $else {
-            sample.accumulate_radiance(
-                environment_contribution);
+                LightPassBuffer::environment);
         };
-        sample.accumulate_emission_or_background(environment_contribution,
-                                                  LightPassBuffer::environment);
+        if (sample.vt_miss_page != nullptr) {
+            $if(*sample.vt_miss_page == vt_invalid_page) {
+                commit_background();
+            };
+        } else {
+            commit_background();
+        }
     }
 };
 

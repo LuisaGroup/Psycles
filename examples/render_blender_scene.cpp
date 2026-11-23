@@ -232,6 +232,69 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
 int main(int argc, char **argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
+    psycles::luisa_backend::LuisaVirtualTextureCacheOptions vt_options{};
+    std::vector<char *> positional_argv;
+    positional_argv.reserve(static_cast<std::size_t>(argc));
+    if (argc > 0) {
+        positional_argv.push_back(argv[0]);
+    }
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view arg{argv[i]};
+        if (arg == "--virtual-texture-cache") {
+            vt_options.enabled = true;
+            continue;
+        }
+        if (arg == "--no-virtual-texture-cache") {
+            vt_options.enabled = false;
+            continue;
+        }
+        if (arg == "--vt-stats") {
+            vt_options.report_stats = true;
+            continue;
+        }
+        if (arg == "--vt-cache-mb") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-cache-mb requires a value\n";
+                return EXIT_FAILURE;
+            }
+            const auto mb = parse_unsigned<std::uint64_t>(argv[++i]);
+            if (!mb || *mb == 0ull) {
+                std::cerr << "error: invalid --vt-cache-mb value\n";
+                return EXIT_FAILURE;
+            }
+            vt_options.gpu_cache_budget_bytes = *mb * 1024ull * 1024ull;
+            continue;
+        }
+        if (arg == "--vt-tile-size") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-tile-size requires a value (64 or 128)\n";
+                return EXIT_FAILURE;
+            }
+            const auto ts = parse_unsigned<std::uint32_t>(argv[++i]);
+            if (!ts || !psycles::luisa_backend::valid_luisa_virtual_texture_tile_size(*ts)) {
+                std::cerr << "error: --vt-tile-size must be 64 or 128\n";
+                return EXIT_FAILURE;
+            }
+            vt_options.physical_tile_size = *ts;
+            continue;
+        }
+        if (arg == "--vt-host-cache-mb") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-host-cache-mb requires a value\n";
+                return EXIT_FAILURE;
+            }
+            const auto mb = parse_unsigned<std::uint64_t>(argv[++i]);
+            if (!mb) {
+                std::cerr << "error: invalid --vt-host-cache-mb value\n";
+                return EXIT_FAILURE;
+            }
+            vt_options.host_decoded_cache_budget_bytes = *mb * 1024ull * 1024ull;
+            continue;
+        }
+        positional_argv.push_back(argv[i]);
+    }
+    argc = static_cast<int>(positional_argv.size());
+    argv = positional_argv.data();
     const auto program_begin = std::chrono::steady_clock::now();
     auto emit_phase = [&](std::string_view phase,
                           const std::string &detail = {}) {
@@ -662,7 +725,8 @@ int main(int argc, char **argv) {
          .max_samples_per_dispatch = max_samples_per_dispatch,
          .path_trace = path_trace_request,
          .surface_closure_count_histogram =
-             surface_closure_count_histogram_request}};
+             surface_closure_count_histogram_request,
+         .virtual_texture_cache = vt_options}};
     const auto compile_begin = std::chrono::steady_clock::now();
     auto compilation = renderer.compile_scene(*imported.scene);
     if (!compilation.ok()) {

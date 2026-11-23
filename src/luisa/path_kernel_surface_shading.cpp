@@ -2,6 +2,7 @@
 #include "path_kernel_emissive_triangle.h"
 #include "path_kernel_surface_emission.h"
 #include "cycles_svm_surface_shader.h"
+#include "virtual_texture_cache.h"
 
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/cycles_svm.h>
@@ -129,10 +130,15 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                          ? std::optional<Expr<std::uint32_t>>{
                                *surface.cycles_object_flags}
                          : std::nullopt,
-                 .may_filter_glossy = config.has_filter_glossy});
+                 .may_filter_glossy = config.has_filter_glossy,
+                 .vt_miss_page = sample.vt_miss_page});
         }
         LUISA_ASSERT(populated_surface != nullptr,
                      "Native surface population returned null.");
+        UInt cycles_surface_runtime_flags = 0u;
+        Float3 bsdf_sample = make_float3(0.0f);
+        Float3 final_shading_normal = point.shading_normal;
+        const auto commit_surface_post_populate = [&]() noexcept {
         {
             namespace abi = compiler::cycles_svm;
             bool scene_may_have_holdout = true;
@@ -176,9 +182,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 };
             }
         }
-        UInt cycles_surface_runtime_flags = 0u;
-        Float3 bsdf_sample = make_float3(0.0f);
-        Float3 final_shading_normal = point.shading_normal;
         const auto emit_post_holdout = [&]() noexcept {
         const auto preparation = populated_surface->preparation();
         final_shading_normal = preparation.shading_normal;
@@ -391,6 +394,14 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             $if(!*sample_terminated_out) {
                 emit_post_holdout();
             };
+        }
+        };
+        if (sample.vt_miss_page != nullptr) {
+            $if(*sample.vt_miss_page == vt_invalid_page) {
+                commit_surface_post_populate();
+            };
+        } else {
+            commit_surface_post_populate();
         }
 
         return {std::move(cycles_surface_runtime_flags),

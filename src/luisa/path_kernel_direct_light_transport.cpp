@@ -3,6 +3,7 @@
 #include "cycles_shader_identity.h"
 #include "path_kernel_direct_light_task.h"
 #include "path_kernel_direct_light_trace.h"
+#include "virtual_texture_cache.h"
 #include "path_kernel_transitions.h"
 
 #include <psycles/luisa/cycles_ray_differential.h>
@@ -255,9 +256,23 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 // These are disjoint graph edges, so their branch-local frame
                 // values do not interfere.
                 $if(task.constant_light_shader == 0u) {
-                    $suspend(path_transition::shade_light_nee);
-                    active = _evaluator.shade_light_nee(
-                        task, invocation.parameters);
+                    if (sample.vt_wait_resident) {
+                        $loop {
+                            $suspend(path_transition::shade_light_nee);
+                            UInt vt_miss = vt_invalid_page;
+                            active = _evaluator.shade_light_nee(
+                                task, invocation.parameters, &vt_miss);
+                            $if(vt_miss != vt_invalid_page) {
+                                sample.vt_wait_resident(vt_miss);
+                                $continue;
+                            };
+                            $break;
+                        };
+                    } else {
+                        $suspend(path_transition::shade_light_nee);
+                        active = _evaluator.shade_light_nee(
+                            task, invocation.parameters);
+                    }
                 }
                 $else {
                     active = any(task.unshadowed_contribution != 0.0f);
@@ -267,7 +282,8 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                              .unshadowed = task.unshadowed_contribution});
 
                 _evaluator.trace_staged(
-                    task, invocation.parameters, active, visible);
+                    task, invocation.parameters, active, visible,
+                    sample.vt_wait_resident);
 
                 $if(visible) {
                     const auto unclamped_contribution = task.shadow_throughput;
@@ -282,10 +298,25 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 };
             } else {
                 Bool active = true;
-                $if(task.constant_light_shader == 0u) {
-                    active = _evaluator.shade_light_nee(
-                        task, invocation.parameters);
-                };
+                if (sample.vt_wait_resident) {
+                    $loop {
+                        UInt vt_miss = vt_invalid_page;
+                        $if(task.constant_light_shader == 0u) {
+                            active = _evaluator.shade_light_nee(
+                                task, invocation.parameters, &vt_miss);
+                        };
+                        $if(vt_miss != vt_invalid_page) {
+                            sample.vt_wait_resident(vt_miss);
+                            $continue;
+                        };
+                        $break;
+                    };
+                } else {
+                    $if(task.constant_light_shader == 0u) {
+                        active = _evaluator.shade_light_nee(
+                            task, invocation.parameters);
+                    };
+                }
                 _trace->record_transport(
                     bounce, {.light_shader = task.light_shader,
                              .unshadowed = task.unshadowed_contribution});
@@ -295,8 +326,22 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                         invocation.stage_profile->enter(
                             MegakernelStageProfileState::stage_shadow_trace);
                     }
-                    const auto shadow_result =
-                        _evaluator.trace(task, invocation.parameters);
+                    Var<ShadowTraceResultCall> shadow_result;
+                    if (sample.vt_wait_resident) {
+                        $loop {
+                            shadow_result =
+                                _evaluator.trace(task, invocation.parameters);
+                            $if(shadow_result->vt_miss_page != vt_invalid_page) {
+                                sample.vt_wait_resident(
+                                    shadow_result->vt_miss_page);
+                                $continue;
+                            };
+                            $break;
+                        };
+                    } else {
+                        shadow_result =
+                            _evaluator.trace(task, invocation.parameters);
+                    }
                     const auto transmittance = shadow_result->transmittance;
                     _trace->record_shadow(
                         bounce,

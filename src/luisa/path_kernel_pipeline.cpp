@@ -7,6 +7,7 @@
 #include "path_kernel_surface_queue.h"
 #include "path_kernel_transitions.h"
 #include "path_tracer_cycles_svm_surface.h"
+#include "virtual_texture_cache.h"
 
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_svm.h>
@@ -144,6 +145,29 @@ void PathKernelPipeline::emit(
   auto *const prof = cut_policy == PathCoroutineCutPolicy::none
                          ? sample.invocation.stage_profile.get()
                          : nullptr;
+  const auto &pipeline_config = sample.invocation.config;
+  const auto pipeline_vt =
+      (cut_policy == PathCoroutineCutPolicy::cycles_wavefront &&
+       pipeline_config.enable_virtual_texture_cache &&
+       pipeline_config.scene &&
+       pipeline_config.scene->virtual_texture_cache &&
+       pipeline_config.scene->virtual_texture_cache->has_virtual_images())
+          ? pipeline_config.scene->virtual_texture_cache
+          : std::shared_ptr<VirtualTextureCache>{};
+  if (pipeline_vt) {
+    sample.vt_wait_resident =
+        [vt = pipeline_vt](Expr<luisa::uint> page_id) noexcept {
+          UInt missed_page = page_id;
+          $loop {
+            $suspend(path_transition::texture_cache,
+                     luisa::compute::coro_stage(
+                         luisa::string{vt_extension_schema})
+                         .read(luisa::string{vt_extension_binding},
+                               missed_page));
+            $if(vt->is_resident(missed_page)) { $break; };
+          };
+        };
+  }
   // Cycles schedules until a native transition terminates the path. Regular,
   // transparent/portal and volume-boundary counters are independent; BSSRDF
   // entry and exit are separate scheduled events. An additional aggregate
@@ -225,33 +249,60 @@ void PathKernelPipeline::emit(
         search_events = search_events & !volume.scattered & !volume.terminated;
       }
       $if(search_events & !path_terminated) {
-        if (_impl->forward_light) {
-          $if(event.analytic_light) {
-            if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
-              $suspend(path_transition::shade_light_forward);
-            }
-            path_terminated = _impl->forward_light->emit(event);
-            previous_analytic_light = event.light_index;
-          }
-          $else {
-            search_events = false;
-            $if(event.background) {
+        auto emit_background_stage = [&]() noexcept {
+          search_events = false;
+          $if(event.background) {
+            if (sample.vt_wait_resident) {
+              $loop {
+                $suspend(path_transition::shade_background);
+                UInt vt_miss = vt_invalid_page;
+                sample.vt_miss_page = &vt_miss;
+                _impl->background->emit(event);
+                sample.vt_miss_page = nullptr;
+                $if(vt_miss != vt_invalid_page) {
+                  sample.vt_wait_resident(vt_miss);
+                  $continue;
+                };
+                $break;
+              };
+            } else {
               if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
                 $suspend(path_transition::shade_background);
               }
               _impl->background->emit(event);
-              path_terminated = true;
-            };
-          };
-        } else {
-          search_events = false;
-          $if(event.background) {
-            if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
-              $suspend(path_transition::shade_background);
             }
-            _impl->background->emit(event);
             path_terminated = true;
           };
+        };
+        if (_impl->forward_light) {
+          $if(event.analytic_light) {
+            if (sample.vt_wait_resident) {
+              $loop {
+                $suspend(path_transition::shade_light_forward);
+                UInt vt_miss = vt_invalid_page;
+                sample.vt_miss_page = &vt_miss;
+                const auto lamp_term = _impl->forward_light->emit(event);
+                sample.vt_miss_page = nullptr;
+                $if(vt_miss != vt_invalid_page) {
+                  sample.vt_wait_resident(vt_miss);
+                  $continue;
+                };
+                path_terminated = lamp_term;
+                $break;
+              };
+            } else {
+              if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
+                $suspend(path_transition::shade_light_forward);
+              }
+              path_terminated = _impl->forward_light->emit(event);
+            }
+            previous_analytic_light = event.light_index;
+          }
+          $else {
+            emit_background_stage();
+          };
+        } else {
+          emit_background_stage();
         }
       };
     };
@@ -301,7 +352,9 @@ void PathKernelPipeline::emit(
           fast_post_closure && bucket_plan.post_closure_substage;
 
       const auto emit_volume_only_skip =
-          [&](SurfaceGeometryContext &surface) noexcept {
+          [&](SurfaceGeometryContext &surface,
+              Bool *outer_break = nullptr,
+              Bool *outer_continue = nullptr) noexcept {
             if (config.volume_state) {
               namespace abi = compiler::cycles_svm;
               const UInt shader_flags =
@@ -322,23 +375,36 @@ void PathKernelPipeline::emit(
                 sample.volume_bounds_bounce = next.bounds_bounce;
                 sample.cycles_rng_offset = next.rng_offset;
                 if (!on_sample_complete) {
-                  $if(!next.valid) { $break; };
-                  sample.ray =
-                      make_ray(sample.ray->origin(), sample.ray->direction(),
-                               next.ray_tmin, sample.ray->t_max());
-                  // Traversal already replaced Cycles' isect with this volume
-                  // boundary hit, which becomes the next ray.self identity.
-                  // Explicit self-exclusion is required in addition to t_min
-                  // advancement because hardware RayQuery (DXR/Vulkan) may
-                  // re-accept the same triangle within 1 ULP of CommittedRayT.
-                  sample.ray_source_object = surface.cycles_object_index;
-                  sample.ray_source_primitive = surface.cycles_primitive_index;
-                  config.volume_state->cross_surface(
-                      sample.volume, surface.volume_stack_entry,
-                      surface.point.back_facing, surface.surface_has_volume,
-                      cycles_closure::label_transmit |
-                          cycles_closure::label_transparent);
-                  $continue;
+                  auto commit_volume_continue = [&]() noexcept {
+                    sample.ray =
+                        make_ray(sample.ray->origin(), sample.ray->direction(),
+                                 next.ray_tmin, sample.ray->t_max());
+                    // Traversal already replaced Cycles' isect with this volume
+                    // boundary hit, which becomes the next ray.self identity.
+                    // Explicit self-exclusion is required in addition to t_min
+                    // advancement because hardware RayQuery (DXR/Vulkan) may
+                    // re-accept the same triangle within 1 ULP of CommittedRayT.
+                    sample.ray_source_object = surface.cycles_object_index;
+                    sample.ray_source_primitive = surface.cycles_primitive_index;
+                    config.volume_state->cross_surface(
+                        sample.volume, surface.volume_stack_entry,
+                        surface.point.back_facing, surface.surface_has_volume,
+                        cycles_closure::label_transmit |
+                            cycles_closure::label_transparent);
+                  };
+                  if (outer_break != nullptr && outer_continue != nullptr) {
+                    $if(!next.valid) {
+                      *outer_break = true;
+                    }
+                    $else {
+                      commit_volume_continue();
+                      *outer_continue = true;
+                    };
+                  } else {
+                    $if(!next.valid) { $break; };
+                    commit_volume_continue();
+                    $continue;
+                  }
                 } else {
                   *volume_only_skipped = true;
                   $if(!next.valid) {
@@ -452,11 +518,112 @@ void PathKernelPipeline::emit(
         return transport;
       };
 
+      const auto emit_scatter_and_subsurface_exit =
+          [&](const SurfaceScatterStage::Result &scatter,
+              const std::optional<SubsurfaceTransportPreparation>
+                  &subsurface_preparation,
+              bool may_have_bssrdf,
+              bool outline_subsurface,
+              Bool *outer_break,
+              Bool *outer_continue) noexcept {
+            const bool has_subsurface =
+                may_have_bssrdf && _impl->subsurface_transport != nullptr;
+            if (on_sample_complete) {
+              $if(!scatter.valid) {
+                *sample_done = true;
+              }
+              $else {
+                if (has_subsurface) {
+                  $if(scatter.subsurface) {
+                    $if(!subsurface_preparation->valid) {
+                      *sample_done = true;
+                    }
+                    $else {
+                      if (prof != nullptr) {
+                        prof->enter(
+                            MegakernelStageProfileState::stage_subsurface_trace);
+                        prof->bump(
+                            MegakernelStageProfileState::count_subsurface_traces);
+                      }
+                      Bool transported = false;
+                      $outline_when_with_name(outline_subsurface,
+                                              "path_subsurface_transport") {
+                        transported = _impl->subsurface_transport->emit(
+                            sample, subsurface_preparation->state);
+                      };
+                      $if(!transported) { *sample_done = true; };
+                    };
+                  };
+                }
+              };
+              return;
+            }
+            if (outer_break != nullptr && outer_continue != nullptr) {
+              $if(!scatter.valid) {
+                *outer_break = true;
+              }
+              $else {
+                if (has_subsurface) {
+                  $if(scatter.subsurface) {
+                    $if(!subsurface_preparation->valid) {
+                      *outer_break = true;
+                    }
+                    $else {
+                      if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
+                        $suspend(path_transition::intersect_subsurface);
+                      }
+                      if (prof != nullptr) {
+                        prof->enter(
+                            MegakernelStageProfileState::stage_subsurface_trace);
+                        prof->bump(
+                            MegakernelStageProfileState::count_subsurface_traces);
+                      }
+                      Bool transported = false;
+                      $outline_when_with_name(outline_subsurface,
+                                              "path_subsurface_transport") {
+                        transported = _impl->subsurface_transport->emit(
+                            sample, subsurface_preparation->state);
+                      };
+                      $if(transported) { *outer_continue = true; }
+                      $else { *outer_break = true; };
+                    };
+                  };
+                }
+              };
+              return;
+            }
+            $if(!scatter.valid) { $break; };
+            if (has_subsurface) {
+              $if(scatter.subsurface) {
+                $if(!subsurface_preparation->valid) { $break; };
+                if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
+                  $suspend(path_transition::intersect_subsurface);
+                }
+                if (prof != nullptr) {
+                  prof->enter(
+                      MegakernelStageProfileState::stage_subsurface_trace);
+                  prof->bump(
+                      MegakernelStageProfileState::count_subsurface_traces);
+                }
+                Bool transported = false;
+                $outline_when_with_name(outline_subsurface,
+                                        "path_subsurface_transport") {
+                  transported = _impl->subsurface_transport->emit(
+                      sample, subsurface_preparation->state);
+                };
+                $if(transported) { $continue; }
+                $else { $break; };
+              };
+            }
+          };
+
       const auto emit_post_closure_tail =
           [&](DirectLightingContext &lighting,
               const DirectLightTransportState &transport,
               const PreparedCyclesSvmSurfaceScatter &prepared_scatter,
-              bool may_have_bssrdf) noexcept {
+              bool may_have_bssrdf,
+              Bool *outer_break = nullptr,
+              Bool *outer_continue = nullptr) noexcept {
 
             std::optional<DirectLightTransportPreparation>
                 direct_light_preparation;
@@ -502,51 +669,9 @@ void PathKernelPipeline::emit(
                   bounce, std::move(*direct_light_preparation), cut_policy);
             }
 
-            if (!on_sample_complete) {
-              $if(!scatter.valid) { $break; };
-
-              if (bucket_subsurface) {
-                $if(scatter.subsurface) {
-                  $if(!subsurface_preparation->valid) { $break; };
-                  if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
-                    $suspend(path_transition::intersect_subsurface);
-                  }
-                  if (prof != nullptr) {
-                    prof->enter(MegakernelStageProfileState::stage_subsurface_trace);
-                    prof->bump(MegakernelStageProfileState::count_subsurface_traces);
-                  }
-                  const auto transported = _impl->subsurface_transport->emit(
-                      sample, subsurface_preparation->state);
-                  $if(transported) { $continue; }
-                  $else { $break; };
-                };
-              }
-            } else {
-              $if(!scatter.valid) {
-                *sample_done = true;
-              }
-              $else {
-                if (bucket_subsurface) {
-                  $if(scatter.subsurface) {
-                    $if(!subsurface_preparation->valid) {
-                      *sample_done = true;
-                    }
-                    $else {
-                      if (prof != nullptr) {
-                        prof->enter(
-                            MegakernelStageProfileState::stage_subsurface_trace);
-                        prof->bump(
-                            MegakernelStageProfileState::count_subsurface_traces);
-                      }
-                      const auto transported =
-                          _impl->subsurface_transport->emit(
-                              sample, subsurface_preparation->state);
-                      $if(!transported) { *sample_done = true; };
-                    };
-                  };
-                }
-              };
-            }
+            emit_scatter_and_subsurface_exit(
+                scatter, subsurface_preparation, may_have_bssrdf, false,
+                outer_break, outer_continue);
           };
 
       if (use_post_substage) {
@@ -569,11 +694,12 @@ void PathKernelPipeline::emit(
         auto merged_transport = DirectLightTransportState::empty();
         auto merged_scatter = PreparedCyclesSvmSurfaceScatter::empty();
 
-        const auto run_bucket_phase_a = [&](std::size_t b) noexcept {
+        Bool vt_outer_break = false;
+        Bool vt_outer_continue = false;
+        const auto commit_bucket_phase_a =
+            [&](std::size_t b, SurfaceGeometryContext &surface,
+                SurfaceShadingState &shading) noexcept {
           const auto &spec = bucket_plan.buckets[b];
-          auto surface = _impl->surface_geometry->emit(bounce);
-          emit_volume_only_skip(surface);
-          auto shading = _impl->bucket_surface_shading[b]->emit(surface);
           DirectLightingContext lighting{
               .bounce = bounce, .surface = surface, .shading = shading};
           const auto local_transport = emit_nee_closure_eval(lighting);
@@ -607,18 +733,55 @@ void PathKernelPipeline::emit(
           merged_scatter.accept(local_scatter, any_bssrdf);
         };
 
+        const auto run_phase_a_with_vt =
+            [&](std::size_t b, auto &&emit_suspend) noexcept {
+          if (sample.vt_wait_resident) {
+            $loop {
+              emit_suspend();
+              vt_outer_break = false;
+              vt_outer_continue = false;
+              auto surface = _impl->surface_geometry->emit(bounce);
+              emit_volume_only_skip(surface, &vt_outer_break,
+                                    &vt_outer_continue);
+              $if(!vt_outer_break & !vt_outer_continue) {
+                UInt vt_miss = vt_invalid_page;
+                sample.vt_miss_page = &vt_miss;
+                auto shading = _impl->bucket_surface_shading[b]->emit(
+                    surface, &vt_outer_break);
+                sample.vt_miss_page = nullptr;
+                $if(vt_miss != vt_invalid_page) {
+                  vt_outer_break = false;
+                  sample.vt_wait_resident(vt_miss);
+                  $continue;
+                };
+                $if(!vt_outer_break) {
+                  commit_bucket_phase_a(b, surface, shading);
+                };
+              };
+              $break;
+            };
+          } else {
+            emit_suspend();
+            auto surface = _impl->surface_geometry->emit(bounce);
+            emit_volume_only_skip(surface);
+            auto shading = _impl->bucket_surface_shading[b]->emit(surface);
+            commit_bucket_phase_a(b, surface, shading);
+          }
+        };
+
         if (use_multi_bucket) {
           const auto shader_id =
               _impl->surface_queue_key->emit(scene, bounce.hit);
           const auto bucket_idx = bucket_plan.emit_bucket_index(shader_id);
           const auto suspend_bucket = [&](std::size_t b) noexcept {
-            const auto &spec = bucket_plan.buckets[b];
-            const auto dense_key =
-                bucket_plan.emit_dense_sort_key(b, shader_id);
-            $suspend(spec.continuation_name,
-                     make_surface_sort_annotation(dense_key, spec.key_count,
-                                                  true));
-            run_bucket_phase_a(b);
+            run_phase_a_with_vt(b, [&]() noexcept {
+              const auto &spec = bucket_plan.buckets[b];
+              const auto dense_key =
+                  bucket_plan.emit_dense_sort_key(b, shader_id);
+              $suspend(spec.continuation_name,
+                       make_surface_sort_annotation(dense_key, spec.key_count,
+                                                    true));
+            });
           };
           const auto dispatch_bucket_range =
               [&](auto &&self, std::size_t lo, std::size_t hi) noexcept -> void {
@@ -637,23 +800,28 @@ void PathKernelPipeline::emit(
           dispatch_bucket_range(dispatch_bucket_range, 0u,
                                 bucket_plan.buckets.size());
         } else {
-          if (_impl->surface_queue_key) {
-            const auto surface_queue_key =
-                _impl->surface_queue_key->emit(scene, bounce.hit);
-            if (config.staged_surface_sort_annotation) {
-              $suspend(path_transition::shade_surface,
-                       make_surface_sort_annotation(
-                           surface_queue_key, surface_queue_key_range(*scene),
-                           true));
+          run_phase_a_with_vt(0u, [&]() noexcept {
+            if (_impl->surface_queue_key) {
+              const auto surface_queue_key =
+                  _impl->surface_queue_key->emit(scene, bounce.hit);
+              if (config.staged_surface_sort_annotation) {
+                $suspend(path_transition::shade_surface,
+                         make_surface_sort_annotation(
+                             surface_queue_key, surface_queue_key_range(*scene),
+                             true));
+              } else {
+                $suspend(path_transition::shade_surface,
+                         coro_frame_export(path_transition::scheduler_hint,
+                                           surface_queue_key));
+              }
             } else {
-              $suspend(path_transition::shade_surface,
-                       coro_frame_export(path_transition::scheduler_hint,
-                                         surface_queue_key));
+              $suspend(path_transition::shade_surface);
             }
-          } else {
-            $suspend(path_transition::shade_surface);
-          }
-          run_bucket_phase_a(0u);
+          });
+        }
+        if (sample.vt_wait_resident) {
+          $if(vt_outer_break) { $break; };
+          $if(vt_outer_continue) { $continue; };
         }
 
         $suspend(path_transition::shade_surface_post);
@@ -697,15 +865,13 @@ void PathKernelPipeline::emit(
         const auto shader_id =
             _impl->surface_queue_key->emit(scene, bounce.hit);
         const auto bucket_idx = bucket_plan.emit_bucket_index(shader_id);
-        const auto run_complete_bucket = [&](std::size_t b) noexcept {
+        Bool vt_outer_break = false;
+        Bool vt_outer_continue = false;
+        const auto commit_complete_bucket =
+            [&](std::size_t b, SurfaceGeometryContext &surface,
+                SurfaceShadingState &shading, Bool *outer_break,
+                Bool *outer_continue) noexcept {
           const auto &spec = bucket_plan.buckets[b];
-          const auto dense_key = bucket_plan.emit_dense_sort_key(b, shader_id);
-          $suspend(
-              spec.continuation_name,
-              make_surface_sort_annotation(dense_key, spec.key_count, true));
-          auto surface = _impl->surface_geometry->emit(bounce);
-          emit_volume_only_skip(surface);
-          auto shading = _impl->bucket_surface_shading[b]->emit(surface);
           DirectLightingContext lighting{
               .bounce = bounce, .surface = surface, .shading = shading};
           if (fast_post_closure &&
@@ -719,7 +885,8 @@ void PathKernelPipeline::emit(
                 lighting, *native_state, spec.may_have_bssrdf);
             shading.populated_surface.reset();
             emit_post_closure_tail(lighting, transport, prepared_scatter,
-                                   spec.may_have_bssrdf);
+                                   spec.may_have_bssrdf, outer_break,
+                                   outer_continue);
           } else {
             const auto transport = emit_nee_closure_eval(lighting);
             std::optional<DirectLightTransportPreparation>
@@ -752,17 +919,52 @@ void PathKernelPipeline::emit(
               _impl->direct_light_transport->emit(
                   bounce, std::move(*direct_light_preparation), cut_policy);
             }
-            $if(!scatter.valid) { $break; };
-            if (bucket_subsurface) {
-              $if(scatter.subsurface) {
-                $if(!subsurface_preparation->valid) { $break; };
-                $suspend(path_transition::intersect_subsurface);
-                const auto transported = _impl->subsurface_transport->emit(
-                    sample, subsurface_preparation->state);
-                $if(transported) { $continue; }
-                $else { $break; };
+            emit_scatter_and_subsurface_exit(
+                scatter, subsurface_preparation, spec.may_have_bssrdf, false,
+                outer_break, outer_continue);
+          }
+        };
+        const auto run_complete_bucket = [&](std::size_t b) noexcept {
+          auto emit_bucket_suspend = [&]() noexcept {
+            const auto &spec = bucket_plan.buckets[b];
+            const auto dense_key =
+                bucket_plan.emit_dense_sort_key(b, shader_id);
+            $suspend(
+                spec.continuation_name,
+                make_surface_sort_annotation(dense_key, spec.key_count, true));
+          };
+          if (sample.vt_wait_resident) {
+            $loop {
+              emit_bucket_suspend();
+              vt_outer_break = false;
+              vt_outer_continue = false;
+              auto surface = _impl->surface_geometry->emit(bounce);
+              emit_volume_only_skip(surface, &vt_outer_break,
+                                    &vt_outer_continue);
+              $if(!vt_outer_break & !vt_outer_continue) {
+                UInt vt_miss = vt_invalid_page;
+                sample.vt_miss_page = &vt_miss;
+                auto shading = _impl->bucket_surface_shading[b]->emit(
+                    surface, &vt_outer_break);
+                sample.vt_miss_page = nullptr;
+                $if(vt_miss != vt_invalid_page) {
+                  vt_outer_break = false;
+                  sample.vt_wait_resident(vt_miss);
+                  $continue;
+                };
+                $if(!vt_outer_break) {
+                  commit_complete_bucket(b, surface, shading, &vt_outer_break,
+                                         &vt_outer_continue);
+                };
               };
-            }
+              $break;
+            };
+          } else {
+            emit_bucket_suspend();
+            auto surface = _impl->surface_geometry->emit(bounce);
+            emit_volume_only_skip(surface);
+            auto shading = _impl->bucket_surface_shading[b]->emit(surface);
+            commit_complete_bucket(b, surface, shading, nullptr, nullptr);
           }
         };
         const auto dispatch_bucket_range =
@@ -781,41 +983,35 @@ void PathKernelPipeline::emit(
         };
         dispatch_bucket_range(dispatch_bucket_range, 0u,
                               bucket_plan.buckets.size());
-      } else {
-        if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
-          if (_impl->surface_queue_key) {
-            const auto surface_queue_key =
-                _impl->surface_queue_key->emit(scene, bounce.hit);
-            if (config.staged_surface_sort_annotation) {
-              $suspend(path_transition::shade_surface,
-                       make_surface_sort_annotation(
-                           surface_queue_key, surface_queue_key_range(*scene),
-                           true));
-            } else {
-              $suspend(path_transition::shade_surface,
-                       coro_frame_export(path_transition::scheduler_hint,
-                                         surface_queue_key));
-            }
-          } else {
-            $suspend(path_transition::shade_surface);
-          }
+        if (sample.vt_wait_resident) {
+          $if(vt_outer_break) { $break; };
+          $if(vt_outer_continue) { $continue; };
         }
-        const auto emit_megakernel_surface = [&]() noexcept {
-          if (prof != nullptr) {
-            prof->enter(MegakernelStageProfileState::stage_surface_geometry);
-          }
-          auto surface = _impl->surface_geometry->emit(bounce);
-          emit_volume_only_skip(surface);
-          const auto emit_after_volume_skip = [&]() noexcept {
-            const auto &spec = bucket_plan.buckets.front();
-            if (prof != nullptr) {
-              prof->enter(
-                  MegakernelStageProfileState::stage_surface_svm_shading);
-              prof->bump(MegakernelStageProfileState::count_surface_shades);
+      } else {
+        auto emit_single_surface_suspend = [&]() noexcept {
+          if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
+            if (_impl->surface_queue_key) {
+              const auto surface_queue_key =
+                  _impl->surface_queue_key->emit(scene, bounce.hit);
+              if (config.staged_surface_sort_annotation) {
+                $suspend(path_transition::shade_surface,
+                         make_surface_sort_annotation(
+                             surface_queue_key, surface_queue_key_range(*scene),
+                             true));
+              } else {
+                $suspend(path_transition::shade_surface,
+                         coro_frame_export(path_transition::scheduler_hint,
+                                           surface_queue_key));
+              }
+            } else {
+              $suspend(path_transition::shade_surface);
             }
-            auto shading = _impl->bucket_surface_shading.front()->emit(
-                surface, on_sample_complete ? &(*sample_done) : nullptr);
-            const auto emit_post_surface_shading = [&]() noexcept {
+          }
+        };
+        const auto emit_post_surface_shading_body =
+            [&](SurfaceGeometryContext &surface, SurfaceShadingState &shading,
+                Bool *outer_break, Bool *outer_continue) noexcept {
+              const auto &spec = bucket_plan.buckets.front();
               DirectLightingContext lighting{
                   .bounce = bounce, .surface = surface, .shading = shading};
               if (fast_post_closure &&
@@ -833,7 +1029,8 @@ void PathKernelPipeline::emit(
                         lighting, *native_state, spec.may_have_bssrdf);
                 shading.populated_surface.reset();
                 emit_post_closure_tail(lighting, transport, prepared_scatter,
-                                       spec.may_have_bssrdf);
+                                       spec.may_have_bssrdf, outer_break,
+                                       outer_continue);
               } else {
                 std::optional<DirectLightTransportPreparation>
                     direct_light_preparation;
@@ -882,80 +1079,81 @@ void PathKernelPipeline::emit(
                     scene != nullptr && static_cast<bool>(scene->device) &&
                     scene->device.backend_name() == "simd" &&
                     scene->device.compute_warp_size() > 1u;
-                if (!on_sample_complete) {
-                  $if(!scatter.valid) { $break; };
-
-                  if (_impl->subsurface_transport) {
-                    $if(scatter.subsurface) {
-                      $if(!subsurface_preparation->valid) { $break; };
-                      if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
-                        $suspend(path_transition::intersect_subsurface);
-                      }
-                      if (prof != nullptr) {
-                        prof->enter(
-                            MegakernelStageProfileState::stage_subsurface_trace);
-                        prof->bump(
-                            MegakernelStageProfileState::count_subsurface_traces);
-                      }
-                      Bool transported = false;
-                      $outline_when_with_name(outline_subsurface,
-                                              "path_subsurface_transport") {
-                        transported = _impl->subsurface_transport->emit(
-                            sample, subsurface_preparation->state);
-                      };
-                      $if(transported) { $continue; }
-                      $else { $break; };
-                    };
-                  }
-                } else {
-                  $if(!scatter.valid) {
-                    *sample_done = true;
-                  }
-                  $else {
-                    if (_impl->subsurface_transport) {
-                      $if(scatter.subsurface) {
-                        $if(!subsurface_preparation->valid) {
-                          *sample_done = true;
-                        }
-                        $else {
-                          if (prof != nullptr) {
-                            prof->enter(MegakernelStageProfileState::
-                                            stage_subsurface_trace);
-                            prof->bump(MegakernelStageProfileState::
-                                           count_subsurface_traces);
-                          }
-                          Bool transported = false;
-                          $outline_when_with_name(outline_subsurface,
-                                                  "path_subsurface_transport") {
-                            transported = _impl->subsurface_transport->emit(
-                                sample, subsurface_preparation->state);
-                          };
-                          $if(!transported) { *sample_done = true; };
-                        };
-                      };
-                    }
-                  };
-                }
+                emit_scatter_and_subsurface_exit(
+                    scatter, subsurface_preparation,
+                    _impl->subsurface_transport != nullptr, outline_subsurface,
+                    outer_break, outer_continue);
+              }
+            };
+        if (sample.vt_wait_resident) {
+          Bool vt_outer_break = false;
+          Bool vt_outer_continue = false;
+          $loop {
+            emit_single_surface_suspend();
+            vt_outer_break = false;
+            vt_outer_continue = false;
+            auto surface = _impl->surface_geometry->emit(bounce);
+            emit_volume_only_skip(surface, &vt_outer_break,
+                                  &vt_outer_continue);
+            $if(!vt_outer_break & !vt_outer_continue) {
+              UInt vt_miss = vt_invalid_page;
+              sample.vt_miss_page = &vt_miss;
+              auto shading = _impl->bucket_surface_shading.front()->emit(
+                  surface, &vt_outer_break);
+              sample.vt_miss_page = nullptr;
+              $if(vt_miss != vt_invalid_page) {
+                vt_outer_break = false;
+                sample.vt_wait_resident(vt_miss);
+                $continue;
+              };
+              $if(!vt_outer_break) {
+                emit_post_surface_shading_body(
+                    surface, shading, &vt_outer_break, &vt_outer_continue);
+              };
+            };
+            $break;
+          };
+          $if(vt_outer_break) { $break; };
+          $if(vt_outer_continue) { $continue; };
+        } else {
+          emit_single_surface_suspend();
+          const auto emit_megakernel_surface = [&]() noexcept {
+            if (prof != nullptr) {
+              prof->enter(MegakernelStageProfileState::stage_surface_geometry);
+            }
+            auto surface = _impl->surface_geometry->emit(bounce);
+            emit_volume_only_skip(surface);
+            const auto emit_after_volume_skip = [&]() noexcept {
+              if (prof != nullptr) {
+                prof->enter(
+                    MegakernelStageProfileState::stage_surface_svm_shading);
+                prof->bump(MegakernelStageProfileState::count_surface_shades);
+              }
+              auto shading = _impl->bucket_surface_shading.front()->emit(
+                  surface, on_sample_complete ? &(*sample_done) : nullptr);
+              if (!on_sample_complete) {
+                emit_post_surface_shading_body(surface, shading, nullptr,
+                                               nullptr);
+              } else {
+                $if(!*sample_done) {
+                  emit_post_surface_shading_body(surface, shading, nullptr,
+                                                 nullptr);
+                };
               }
             };
             if (!on_sample_complete) {
-              emit_post_surface_shading();
+              emit_after_volume_skip();
             } else {
-              $if(!*sample_done) { emit_post_surface_shading(); };
+              $if(!*volume_only_skipped) { emit_after_volume_skip(); };
             }
           };
           if (!on_sample_complete) {
-            emit_after_volume_skip();
-          } else {
-            $if(!*volume_only_skipped) { emit_after_volume_skip(); };
-          }
-        };
-        if (!on_sample_complete) {
-          emit_megakernel_surface();
-        } else {
-          $if(!*sample_done & !volume_scattered) {
             emit_megakernel_surface();
-          };
+          } else {
+            $if(!*sample_done & !volume_scattered) {
+              emit_megakernel_surface();
+            };
+          }
         }
       }
     }
@@ -967,6 +1165,7 @@ void PathKernelPipeline::emit(
       $if(all_samples_done) { $break; };
     }
   };
+  sample.vt_wait_resident = {};
 }
 
 namespace {
@@ -1119,15 +1318,50 @@ void emit_per_sample_path_program(
     const UInt &sample_first, const BufferFloat4 &sobol_table,
     const BufferFloat &filter_table,
     const Var<RenderKernelParameters> &parameters) noexcept {
-  const auto pixel =
-      luisa::compute::dispatch_y() * luisa::compute::dispatch_size().x +
-      dispatch_x();
+  UInt pixel;
+  UInt sub_spp_index;
+  if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront &&
+      config.enable_virtual_texture_cache && !config.path_trace_enabled) {
+    // 128x128 serpentine screen-tile ordering keeps active wavefront samples
+    // spatially coherent to shrink the simultaneous virtual-texture working set.
+    const auto w = luisa::compute::dispatch_size().x;
+    const auto h = luisa::compute::dispatch_size().y;
+    const auto s = luisa::compute::dispatch_size().z;
+    const auto linear =
+        dispatch_x() + luisa::compute::dispatch_y() * w +
+        luisa::compute::dispatch_z() * (w * h);
+    const auto tile_h_nom = min(UInt(128u), h);
+    const auto tile_w_nom = min(UInt(128u), w);
+    const auto band_size = w * tile_h_nom * s;
+    const auto band = linear / band_size;
+    const auto rem = linear - band * band_size;
+    const auto y0 = band * tile_h_nom;
+    const auto bh = min(tile_h_nom, h - y0);
+    const auto col_tile_size = tile_w_nom * bh * s;
+    const auto tx_raw = rem / col_tile_size;
+    const auto rem2 = rem - tx_raw * col_tile_size;
+    const auto x0 = tx_raw * tile_w_nom;
+    const auto tw = min(tile_w_nom, w - x0);
+    const auto tile_pixels = tw * bh;
+    const auto sub_spp = rem2 / tile_pixels;
+    const auto p_in_tile = rem2 - sub_spp * tile_pixels;
+    const auto ly = p_in_tile / tw;
+    const auto lx = p_in_tile - ly * tw;
+    const auto px_raw = x0 + lx;
+    const auto px = ite((band & 1u) != 0u, (w - 1u) - px_raw, px_raw);
+    const auto py = y0 + ly;
+    pixel = py * w + px;
+    sub_spp_index = sub_spp;
+  } else {
+    pixel = luisa::compute::dispatch_y() * luisa::compute::dispatch_size().x +
+            dispatch_x();
+    sub_spp_index = luisa::compute::dispatch_z();
+  }
   auto invocation = make_path_invocation(
       config, PathFilmAccumulation::atomic, pixel, combined, normal, albedo,
       light_passes, sample_count, volume_guiding_raw, volume_guiding_denoised,
       path_trace, sample_first, sobol_table, filter_table, parameters);
-  emit_path_sample(pipeline, invocation, luisa::compute::dispatch_z(),
-                   cut_policy);
+  emit_path_sample(pipeline, invocation, sub_spp_index, cut_policy);
   invocation.write_film();
 }
 

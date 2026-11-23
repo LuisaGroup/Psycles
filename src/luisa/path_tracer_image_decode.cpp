@@ -7,6 +7,51 @@
 
 namespace psycles::luisa_backend::detail {
 
+std::optional<io::ProbedImageInfo>
+probe_scene_image_info(
+    std::span<const std::uint8_t> encoded,
+    std::string_view filename_hint) {
+    if (encoded.empty() ||
+        encoded.size() > static_cast<std::size_t>(
+                             std::numeric_limits<int>::max())) {
+        return std::nullopt;
+    }
+
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    const int encoded_size = static_cast<int>(encoded.size());
+    if (stbi_info_from_memory(
+            encoded.data(), encoded_size, &width, &height, &channels) != 0 &&
+        width > 0 && height > 0) {
+        const auto w = static_cast<std::size_t>(width);
+        const auto h = static_cast<std::size_t>(height);
+        if (w > std::numeric_limits<std::size_t>::max() / h ||
+            w * h > std::numeric_limits<std::size_t>::max() / 4u) {
+            return std::nullopt;
+        }
+        const auto is_hdr =
+            stbi_is_hdr_from_memory(encoded.data(), encoded_size) != 0;
+        const auto is_sixteen_bit =
+            stbi_is_16_bit_from_memory(encoded.data(), encoded_size) != 0;
+        return io::ProbedImageInfo{
+            .width = static_cast<std::uint32_t>(width),
+            .height = static_cast<std::uint32_t>(height),
+            .storage = (is_hdr || is_sixteen_bit)
+                           ? io::DecodedImageStorage::float32
+                           : io::DecodedImageStorage::unorm8};
+    }
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+    io::ProbedImageInfo info;
+    if (io::probe_image_info(encoded, filename_hint, info)) {
+        return info;
+    }
+#else
+    static_cast<void>(filename_hint);
+#endif
+    return std::nullopt;
+}
+
 std::optional<io::DecodedImageRgba>
 decode_scene_image(
     std::span<const std::uint8_t> encoded,

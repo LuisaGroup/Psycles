@@ -10,6 +10,11 @@
 
 namespace psycles::luisa_backend::detail {
 
+[[nodiscard]] std::optional<io::ProbedImageInfo>
+probe_scene_image_info(
+    std::span<const std::uint8_t> encoded,
+    std::string_view filename_hint);
+
 [[nodiscard]] std::optional<io::DecodedImageRgba>
 decode_scene_image(
     std::span<const std::uint8_t> encoded,

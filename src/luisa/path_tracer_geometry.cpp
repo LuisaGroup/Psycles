@@ -3,6 +3,7 @@
 #include "path_kernel_scene_traversal.h"
 #include "path_kernel_shadow_storage.h"
 #include "path_tracer_cycles_svm_shadow.h"
+#include "virtual_texture_cache.h"
 
 #include <psycles/luisa/surface_ray.h>
 
@@ -112,9 +113,10 @@ namespace {
 
 [[nodiscard]] EvaluateShadowSurfaceCallable
 make_evaluate_shadow_surface_callable(
-    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    const std::shared_ptr<LuisaSceneData> &scene,
+    bool enable_vt = false) noexcept {
   if (!scene->geometries.empty() || !scene->curve_geometries.empty()) {
-    return make_cycles_svm_shadow_surface_callable(scene);
+    return make_cycles_svm_shadow_surface_callable(scene, enable_vt);
   }
   return
       [](Var<luisa::compute::Ray>, Var<ShadowIntersectionCall>, Float, Float,
@@ -123,6 +125,7 @@ make_evaluate_shadow_surface_callable(
         result.transmittance = make_float3(1.0f);
         result.object = result.primitive = result.kind =
             surface_ray::invalid_primitive;
+        result.vt_miss_page = vt_invalid_page;
         return result;
       };
 }
@@ -175,12 +178,14 @@ make_shadow_intersection_component(
 
 ShadowTraceCallables make_shadow_trace_callables(
     const std::shared_ptr<LuisaSceneData> &scene, const SafeNormalizeCallable &,
-    std::shared_ptr<const ShadowIntersectionBatchStorage> storage) noexcept {
+    std::shared_ptr<const ShadowIntersectionBatchStorage> storage,
+    bool enable_vt) noexcept {
   auto intersection =
       make_shadow_intersection_component(scene, std::move(storage));
-  auto evaluate_shadow_surface = make_evaluate_shadow_surface_callable(scene);
-  auto trace_shadow =
-      make_fused_shadow_trace_callable(intersection, evaluate_shadow_surface);
+  auto evaluate_shadow_surface =
+      make_evaluate_shadow_surface_callable(scene, enable_vt);
+  auto trace_shadow = make_fused_shadow_trace_callable(
+      intersection, evaluate_shadow_surface, enable_vt);
   return {.intersect = std::move(intersection),
           .shade_surface = std::move(evaluate_shadow_surface),
           .trace = std::move(trace_shadow)};
@@ -188,8 +193,9 @@ ShadowTraceCallables make_shadow_trace_callables(
 
 TraceShadowCallable make_fused_shadow_trace_callable(
     std::shared_ptr<const ShadowIntersectionComponent> intersection,
-    EvaluateShadowSurfaceCallable evaluate_shadow_surface) noexcept {
-  return [intersection, evaluate_shadow_surface](
+    EvaluateShadowSurfaceCallable evaluate_shadow_surface,
+    bool enable_vt) noexcept {
+  return [intersection, evaluate_shadow_surface, enable_vt](
              Var<luisa::compute::Ray> shadow_ray, Float ray_dP, Float ray_dD,
              UInt source_object, UInt source_primitive, UInt light_object,
              UInt light_primitive, UInt transparent_maximum,
@@ -198,6 +204,7 @@ TraceShadowCallable make_fused_shadow_trace_callable(
              Var<RenderKernelParameters> parameters) noexcept {
     Float3 transmittance = make_float3(1.0f);
     Bool active = true;
+    UInt vt_miss = vt_invalid_page;
     Bool first_hit = false;
     UInt first_object = surface_ray::invalid_primitive;
     UInt first_primitive = surface_ray::invalid_primitive;
@@ -230,6 +237,16 @@ TraceShadowCallable make_fused_shadow_trace_callable(
             const auto intersection = batch->hits[index];
             const auto surface = evaluate_shadow_surface(
                 shadow_ray, intersection, ray_dP, ray_dD, context, parameters);
+            if (enable_vt) {
+              $if(surface->vt_miss_page != vt_invalid_page) {
+                vt_miss = ite(vt_miss == vt_invalid_page,
+                              surface->vt_miss_page, vt_miss);
+                carries_light = false;
+                transmittance = make_float3(0.0f);
+                throughput = make_float3(0.0f);
+                $break;
+              };
+            }
             $if(!first_hit) {
               first_hit = true;
               first_object = surface->object;
@@ -273,6 +290,7 @@ TraceShadowCallable make_fused_shadow_trace_callable(
     result->first_kind = first_kind;
     result->first_distance = first_distance;
     result->first_barycentric = first_barycentric;
+    result->vt_miss_page = vt_miss;
     return result;
   };
 }

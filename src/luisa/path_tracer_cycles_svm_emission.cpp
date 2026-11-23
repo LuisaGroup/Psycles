@@ -6,6 +6,7 @@
 #include "cycles_svm_internal.h"
 #include "path_tracer_cycles_svm_kernel_globals.h"
 #include "path_tracer_cycles_svm_shader_data.h"
+#include "virtual_texture_cache.h"
 
 #include <psycles/luisa/cycles_svm_translator.h>
 
@@ -33,7 +34,8 @@ Float3 evaluate_cycles_svm_lamp_emission(
     const Var<RenderKernelParameters> &parameters,
     UInt shader, UInt object, UInt primitive,
     Float3 position, Float3 normal, Float3 incoming, Float2 uv,
-    Float distance, Float time, const svm::PathState &state) noexcept {
+    Float distance, Float time, const svm::PathState &state,
+    UInt *vt_miss_page) noexcept {
   Float3 emission = make_float3(0.0f);
   const auto constant = cycles_svm_constant_emission(*scene, shader, emission);
   const auto backend_name = scene->device.backend_name();
@@ -41,12 +43,14 @@ Float3 evaluate_cycles_svm_lamp_emission(
   const bool is_simd_wide = is_simd && scene->device.compute_warp_size() > 1u;
   const bool cpu_backend = backend_name == "fallback" || is_simd;
   $if(!constant) {
+    UInt local_vt_miss = vt_invalid_page;
+    UInt *local_vt_ptr = vt_miss_page != nullptr ? &local_vt_miss : nullptr;
     $outline_when_with_name(is_simd_wide, "simd_eval_lamp_emission") {
       // light_sample_shader_eval_forward uses visibility NONE and EMISSION.
       // Caustic suppression therefore cannot be active in this domain.
       const PathCyclesSvmKernelGlobals kg{
           scene, parameters, scene->camera.projection, true, true,
-          PathCyclesSvmShaderDomain::light_emission};
+          PathCyclesSvmShaderDomain::light_emission, {}, false, local_vt_ptr};
       const auto identity = make_float4x4(1.0f);
       svm::TransformState transforms{parameters.camera_transform,
                                      parameters.camera_inverse_transform,
@@ -108,6 +112,9 @@ Float3 evaluate_cycles_svm_lamp_emission(
         emission = sd.closure_emission_background;
       };
     };
+    if (vt_miss_page != nullptr) {
+      *vt_miss_page = ite(*vt_miss_page == vt_invalid_page, local_vt_miss, *vt_miss_page);
+    }
   };
   return emission;
 }

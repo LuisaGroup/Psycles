@@ -2,6 +2,7 @@
 
 #include "cycles_svm_image_sampling.h"
 #include "cycles_svm_internal.h"
+#include "virtual_texture_cache.h"
 
 #include <psycles/luisa/cycles_transform.h>
 
@@ -265,13 +266,17 @@ std::vector<std::uint8_t> cycles_svm_domain_shader_mask(
 PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     std::shared_ptr<LuisaSceneData> scene,
     const SurfacePopulationContext &context,
-    std::span<const std::uint8_t> explicit_shader_mask) noexcept
+    std::span<const std::uint8_t> explicit_shader_mask,
+    bool force_direct_textures,
+    UInt *vt_miss_page) noexcept
     : PathCyclesSvmKernelGlobals(
           std::move(scene), context.parameters, context.camera_projection,
           context.query.reflective_caustics,
           context.query.refractive_caustics,
           PathCyclesSvmShaderDomain::surface_only,
-          explicit_shader_mask) {}
+          explicit_shader_mask,
+          force_direct_textures,
+          vt_miss_page != nullptr ? vt_miss_page : context.vt_miss_page) {}
 
 PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     std::shared_ptr<LuisaSceneData> scene,
@@ -279,14 +284,18 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     CameraProjection camera_projection, Expr<bool> reflective_caustics,
     Expr<bool> refractive_caustics,
     PathCyclesSvmShaderDomain domain,
-    std::span<const std::uint8_t> explicit_shader_mask) noexcept
+    std::span<const std::uint8_t> explicit_shader_mask,
+    bool force_direct_textures,
+    UInt *vt_miss_page) noexcept
     : _scene{std::move(scene)},
       _parameters{parameters},
       _camera_projection{camera_projection},
       _caustics_reflective{reflective_caustics},
       _caustics_refractive{refractive_caustics},
       _camera_to_world{parameters.camera_transform},
-      _world_to_camera{parameters.camera_inverse_transform} {
+      _world_to_camera{parameters.camera_inverse_transform},
+      _force_direct_textures{force_direct_textures},
+      _vt_miss_page{vt_miss_page} {
   LUISA_ASSERT(_scene && _scene->cycles_svm &&
                    _scene->cycles_svm->geometry &&
                    _scene->cycles_svm->objects,
@@ -1007,6 +1016,10 @@ Float3 PathCyclesSvmKernelGlobals::object_inverse_position_transform(
 Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
     svm::ShaderData &, Expr<std::int32_t> image_texture_id,
     const svm::Dual2 &uv) const noexcept {
+  const auto &vt = _scene->virtual_texture_cache;
+  const bool use_vt =
+      vt && !_force_direct_textures && _vt_miss_page != nullptr &&
+      !vt->eager_fallback_active();
   if (const auto cid = svm_detail::try_const_int(image_texture_id)) {
     constexpr auto magenta = luisa::make_float4(1.0f, 0.0f, 1.0f, 1.0f);
     if (*cid < 0 ||
@@ -1019,9 +1032,12 @@ Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
     if ((b.sampler & cycles_svm_image_load_failed_flag) != 0u) {
       return make_float4(magenta);
     }
-    auto texture = _scene->texture_heap->tex2d(b.texture_slot);
     auto sample_uv = uv.val;
     sample_uv.y = 1.0f - sample_uv.y;
+    if (use_vt && vt->is_virtual_binding(*cid)) {
+      return vt->sample_2d_const(*cid, sample_uv, _vt_miss_page, false);
+    }
+    auto texture = _scene->texture_heap->tex2d(b.texture_slot);
     if ((b.sampler & cycles_svm_image_interpolation_mask) == 2u) {
       return sample_cycles_texture_2d_bicubic(
           texture, sample_uv, [&](Float u, Float v) noexcept {
@@ -1029,6 +1045,12 @@ Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
           });
     }
     return texture.sample(sample_uv);
+  }
+  if (use_vt && vt->has_virtual_images()) {
+    auto sample_uv = uv.val;
+    sample_uv.y = 1.0f - sample_uv.y;
+    return vt->sample_2d_dynamic(
+        image_texture_id, sample_uv, _scene->texture_heap, _vt_miss_page, false);
   }
   if (!_scene->cycles_svm->image_binding_buffer) {
     dsl::unreachable(

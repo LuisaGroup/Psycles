@@ -1,5 +1,8 @@
 #include "path_tracer_internal.h"
 #include "sample_dispatch_partition.h"
+#include "virtual_texture_cache.h"
+
+#include <luisa/core/logging.h>
 
 #include <psycles/core/parallel.h>
 #include <psycles/luisa/volume_guiding.h>
@@ -643,6 +646,11 @@ bool LuisaRenderSession::render_samples(const SampleRange &samples,
               .count(),
       .render_call_seconds =
           std::chrono::duration<double>(call_end - call_begin).count()};
+  if (_options.virtual_texture_cache.report_stats &&
+      _scene && _scene->virtual_texture_cache) {
+    LUISA_INFO("PSYCLES_VT_CACHE_STATS_JSON={}",
+               _scene->virtual_texture_cache->stats_json());
+  }
   return true;
 }
 

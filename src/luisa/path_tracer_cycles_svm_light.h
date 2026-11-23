@@ -28,7 +28,8 @@ public:
   virtual ~DirectLightEmissionComponent() noexcept = default;
   [[nodiscard]] virtual Float3
   evaluate(const Var<DirectLightTaskCall> &task,
-           const Var<RenderKernelParameters> &parameters) const noexcept = 0;
+           const Var<RenderKernelParameters> &parameters,
+           UInt *vt_miss_page = nullptr) const noexcept = 0;
 };
 
 [[nodiscard]] std::shared_ptr<const DirectLightEmissionComponent>

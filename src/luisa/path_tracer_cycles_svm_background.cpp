@@ -75,7 +75,9 @@ Float3 evaluate_cycles_svm_background_emission(
     const Var<RenderKernelParameters> &parameters,
     Float3 origin, Float3 direction, Float differential, Float time,
     const svm::PathState &state, UInt lcg_state,
-    CyclesSvmBackgroundEvaluation evaluation) noexcept {
+    CyclesSvmBackgroundEvaluation evaluation,
+    UInt *vt_miss_page,
+    bool force_direct_textures) noexcept {
   Float3 emission = make_float3(0.0f);
   Bool constant = false;
   const bool has_domain_meta = cycles_svm_has_domain_metadata(*scene);
@@ -104,7 +106,8 @@ Float3 evaluate_cycles_svm_background_emission(
   $if(!constant) {
     const PathCyclesSvmKernelGlobals kg{
         scene, parameters, scene->camera.projection, true, true,
-        PathCyclesSvmShaderDomain::background};
+        PathCyclesSvmShaderDomain::background, {},
+        force_direct_textures, vt_miss_page};
     auto sd = setup_cycles_svm_background_shader_data(
         *scene, origin, direction, differential, time, state.visibility, evaluation);
     sd.lcg_state = lcg_state;

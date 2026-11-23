@@ -73,6 +73,8 @@ class PathCyclesSvmKernelGlobals final
     bool _contiguous_texture_slots{false};
     std::uint32_t _base_texture_slot{};
     std::uint32_t _image_binding_count{};
+    bool _force_direct_textures{false};
+    UInt *_vt_miss_page{nullptr};
     Bool _caustics_reflective;
     Bool _caustics_refractive;
     luisa::compute::Float4x4 _camera_to_world;
@@ -87,11 +89,15 @@ class PathCyclesSvmKernelGlobals final
         Expr<bool> refractive_caustics,
         PathCyclesSvmShaderDomain domain =
             PathCyclesSvmShaderDomain::all_shaders,
-        std::span<const std::uint8_t> explicit_shader_mask = {}) noexcept;
+        std::span<const std::uint8_t> explicit_shader_mask = {},
+        bool force_direct_textures = false,
+        UInt *vt_miss_page = nullptr) noexcept;
     PathCyclesSvmKernelGlobals(
         std::shared_ptr<LuisaSceneData> scene,
         const SurfacePopulationContext &context,
-        std::span<const std::uint8_t> explicit_shader_mask = {}) noexcept;
+        std::span<const std::uint8_t> explicit_shader_mask = {},
+        bool force_direct_textures = false,
+        UInt *vt_miss_page = nullptr) noexcept;
 
     [[nodiscard]] Bool caustics_reflective() const noexcept override;
     [[nodiscard]] Bool caustics_refractive() const noexcept override;

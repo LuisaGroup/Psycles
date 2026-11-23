@@ -29,6 +29,7 @@ struct SurfacePopulationContext {
     std::optional<Expr<std::uint32_t>> cycles_shader_flags{};
     std::optional<Expr<std::uint32_t>> cycles_object_flags{};
     bool may_filter_glossy{true};
+    UInt *vt_miss_page{nullptr};
 };
 
 // Host/JIT object whose device-local storage is populated exactly once for a

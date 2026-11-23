@@ -16,6 +16,7 @@
 #include "path_tracer_attribute_residency.h"
 #include "path_tracer_tangent_space.h"
 #include "path_tracer_volume_majorant_scene.h"
+#include "virtual_texture_cache.h"
 
 #include <psycles/compiler/cycles_emission_sampling.h>
 #include <psycles/compiler/cycles_nishita.h>
@@ -366,6 +367,22 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
     };
 
+    const bool use_vt =
+        _options.virtual_texture_cache.enabled && !snapshot.images.empty();
+    std::set<contract::ImageId> vt_force_direct_ids;
+    if (use_vt && data->cycles_svm) {
+        const auto shader_count =
+            static_cast<std::uint32_t>(data->cycles_svm->compilation.table.ir.shaders.size());
+        std::vector<std::uint32_t> all_shaders(shader_count);
+        for (std::uint32_t s = 0u; s < shader_count; ++s) {
+            all_shaders[s] = s;
+        }
+        vt_force_direct_ids = collect_shader_routine_image_ids(
+            data->cycles_svm->compilation,
+            all_shaders,
+            compiler::cycles_svm::SHADER_TYPE_VOLUME);
+    }
+
     struct DecodedImageSlot {
         contract::ImageId id{};
         bool skip{false};
@@ -375,6 +392,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         std::uint32_t height{};
         luisa::vector<std::byte> byte_pixels;
         luisa::vector<luisa::float4> float_pixels;
+        bool is_virtual{false};
+        VtProbedSceneImage vt_probed{};
     };
     std::vector<std::pair<contract::ImageId, const contract::ImageDesc *>>
         image_entries;
@@ -390,6 +409,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         slot.id = image_id;
         if (image.load_failed) {
             slot.skip = true;
+            if (use_vt) {
+                slot.vt_probed.id = image_id;
+                slot.vt_probed.name = image.name;
+                slot.vt_probed.load_failed = true;
+            }
             return;
         }
         if (image.encoded_data.empty() ||
@@ -398,6 +422,29 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             slot.diagnostic =
                 "Image '" + image.name + "' has no decodable payload.";
             return;
+        }
+        const bool force_direct =
+            !use_vt || vt_force_direct_ids.contains(image_id);
+        if (use_vt) {
+            auto probed = probe_scene_image_info(image.encoded_data, image.name);
+            if (!probed) {
+                slot.diagnostic =
+                    "Failed to probe image '" + image.name + "'.";
+                return;
+            }
+            slot.vt_probed = VtProbedSceneImage{
+                .id = image_id,
+                .name = image.name,
+                .encoded_data = image.encoded_data,
+                .alpha_type = image.alpha_type,
+                .color_space = image.color_space,
+                .load_failed = false,
+                .force_direct = force_direct,
+                .probed = *probed};
+            if (!force_direct) {
+                slot.is_virtual = true;
+                return;
+            }
         }
         auto decoded = decode_scene_image(image.encoded_data, image.name);
         if (!decoded) {
@@ -432,13 +479,28 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             }
         }
     });
+    std::vector<VtProbedSceneImage> vt_entries;
+    if (use_vt) {
+        vt_entries.reserve(decoded_images.size());
+    }
     for (auto &slot : decoded_images) {
-        if (slot.skip) {
-            continue;
-        }
         if (!slot.diagnostic.empty()) {
             diagnose(result.diagnostics, std::move(slot.diagnostic));
             continue;
+        }
+        if (slot.skip) {
+            if (use_vt) {
+                vt_entries.push_back(std::move(slot.vt_probed));
+            }
+            continue;
+        }
+        if (use_vt && slot.is_virtual) {
+            bind_scene_image(slot.id, dummy_image);
+            vt_entries.push_back(std::move(slot.vt_probed));
+            continue;
+        }
+        if (use_vt) {
+            vt_entries.push_back(std::move(slot.vt_probed));
         }
         if (slot.is_unorm8) {
             auto &pixels = texture_uploads.emplace_back(std::move(slot.byte_pixels));
@@ -460,6 +522,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             bind_scene_image(slot.id, resource);
             stream << resource.copy_from(luisa::span{pixels});
         }
+    }
+    if (use_vt && result.diagnostics.empty()) {
+        data->virtual_texture_cache = VirtualTextureCache::create(
+            data->device,
+            stream,
+            _options.virtual_texture_cache,
+            vt_entries,
+            data->cycles_svm->compilation.images,
+            data->cycles_svm->image_bindings,
+            &data->cycles_svm->compilation);
     }
 
     const auto &nishita_bindings = data->cycles_svm->nishita_images;

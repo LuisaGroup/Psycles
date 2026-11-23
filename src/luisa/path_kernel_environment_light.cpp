@@ -250,7 +250,8 @@ class PathEnvironmentLightComponent final
         // when shuttertime == -1. Do not substitute a lens RNG dimension.
         return evaluate_environment_emission(
             sample.invocation.config.scene, sample.invocation.parameters,
-            origin, direction, differential, 0.5f, state, lcg_state, evaluation);
+            origin, direction, differential, 0.5f, state, lcg_state, evaluation,
+            sample.vt_miss_page);
     }
 
     Float3 evaluate_constant_emission(

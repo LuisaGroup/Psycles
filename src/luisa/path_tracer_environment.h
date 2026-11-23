@@ -18,7 +18,9 @@ struct BackgroundSamplingDistribution {
     const Var<RenderKernelParameters> &parameters,
     Float3 origin, Float3 direction, Float differential, Float time,
     const cycles_svm::PathState &state, UInt lcg_state,
-    CyclesSvmBackgroundEvaluation evaluation) noexcept;
+    CyclesSvmBackgroundEvaluation evaluation,
+    UInt *vt_miss_page = nullptr,
+    bool force_direct_textures = false) noexcept;
 [[nodiscard]] Float3 evaluate_background_importance(
     const std::shared_ptr<LuisaSceneData> &scene,
     const Var<RenderKernelParameters> &parameters, Float u, Float v) noexcept;

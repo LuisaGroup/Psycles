@@ -1660,6 +1660,40 @@ if(PSYCLES_ENABLE_LUISA)
                     luisa_curve_path
                 LIBRARIES Psycles::luisa_runtime)
 
+            psycles_add_luisa_backend_test(
+                TARGET
+                    psycles_luisa_virtual_texture_cache_tests
+                SOURCE
+                    tests/test_luisa_virtual_texture_cache.cpp
+                TEST_STEM
+                    luisa_virtual_texture_cache
+                LIBRARIES Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_luisa_virtual_texture_cache_tests
+                PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+            if(PSYCLES_ENABLE_OPENIMAGEIO)
+                target_link_libraries(
+                    psycles_luisa_virtual_texture_cache_tests
+                    PRIVATE OpenImageIO::OpenImageIO)
+            endif()
+            if(TARGET luisa-compute-backend-dx)
+                add_dependencies(
+                    psycles_luisa_virtual_texture_cache_tests
+                    luisa-compute-backend-dx)
+                add_test(
+                    NAME psycles.luisa_virtual_texture_cache_dx
+                    COMMAND
+                        psycles_luisa_virtual_texture_cache_tests
+                        dx)
+            endif()
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx)
+                if(TEST "psycles.luisa_virtual_texture_cache_${_backend}")
+                    set_tests_properties(
+                        "psycles.luisa_virtual_texture_cache_${_backend}"
+                        PROPERTIES TIMEOUT 300)
+                endif()
+            endforeach()
+
             add_executable(
                 psycles_sample_dispatch_partition_tests
                 tests/test_sample_dispatch_partition.cpp)

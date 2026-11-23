@@ -37,6 +37,7 @@ struct CyclesSvmShadowShaderData {
 
 [[nodiscard]] EvaluateShadowSurfaceCallable
 make_cycles_svm_shadow_surface_callable(
-    const std::shared_ptr<LuisaSceneData> &scene) noexcept;
+    const std::shared_ptr<LuisaSceneData> &scene,
+    bool enable_vt = false) noexcept;
 
 } // namespace psycles::luisa_backend::detail

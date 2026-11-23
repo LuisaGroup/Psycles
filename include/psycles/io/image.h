@@ -71,6 +71,14 @@ struct DecodedImageRgba {
     std::vector<float> float_pixels;
 };
 
+// Lightweight header-only probe describing extent and pixel storage without
+// decoding pixel payloads.
+struct ProbedImageInfo {
+    std::uint32_t width{};
+    std::uint32_t height{};
+    DecodedImageStorage storage{DecodedImageStorage::unorm8};
+};
+
 [[nodiscard]] bool write_ppm(
     const PassImage &image,
     const std::filesystem::path &path,
@@ -83,6 +91,14 @@ struct DecodedImageRgba {
     const std::filesystem::path &path);
 
 #if defined(PSYCLES_WITH_OPENIMAGEIO)
+// Probes image dimensions and native channel storage from encoded memory
+// without decoding pixel payloads.
+[[nodiscard]] bool probe_image_info(
+    std::span<const std::uint8_t> encoded,
+    std::string_view filename_hint,
+    ProbedImageInfo &info,
+    std::string *error = nullptr);
+
 // Decodes an encoded image from memory without reducing its native numeric
 // domain. UINT8 sources use RGBA8; all wider integer and floating-point
 // sources use RGBA32F. The filename is a format hint only.

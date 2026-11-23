@@ -2,6 +2,7 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_film.h"
 #include "path_kernel_transitions.h"
+#include "virtual_texture_cache.h"
 #include "path_tracer_cycles_svm_light.h"
 
 #include <psycles/luisa/surface_ray.h>
@@ -45,7 +46,9 @@ Var<ShadowTraceResultCall> DirectLightTaskEvaluator::trace(
 void DirectLightTaskEvaluator::trace_staged(
     Var<DirectLightTaskCall> &task,
     const Var<RenderKernelParameters> &parameters, Bool &active,
-    Bool &visible) const noexcept {
+    Bool &visible,
+    const std::function<void(Expr<luisa::uint>)> &vt_wait_resident)
+    const noexcept {
   $while(active) {
     $suspend(path_transition::intersect_shadow);
     const auto shadow_batch = intersect(task, parameters);
@@ -53,27 +56,56 @@ void DirectLightTaskEvaluator::trace_staged(
     // empty, unblocked batch still needs SHADE_SHADOW for film output.
     $if(shadow_batch.blocked != 0u) { active = false; }
     $else {
-      $suspend(path_transition::shade_shadow);
-      const auto step = shade_shadow(task, shadow_batch, parameters);
-      active = step.continue_shadow;
-      visible |= step.visible;
+      if (vt_wait_resident) {
+        $loop {
+          $suspend(path_transition::shade_shadow);
+          UInt vt_miss = vt_invalid_page;
+          const auto step =
+              shade_shadow(task, shadow_batch, parameters, &vt_miss);
+          $if(vt_miss != vt_invalid_page) {
+            vt_wait_resident(vt_miss);
+            $continue;
+          };
+          active = step.continue_shadow;
+          visible |= step.visible;
+          $break;
+        };
+      } else {
+        $suspend(path_transition::shade_shadow);
+        const auto step = shade_shadow(task, shadow_batch, parameters);
+        active = step.continue_shadow;
+        visible |= step.visible;
+      }
     };
   };
 }
 
 Bool DirectLightTaskEvaluator::shade_light_nee(
     Var<DirectLightTaskCall> &task,
-    const Var<RenderKernelParameters> &parameters) const noexcept {
+    const Var<RenderKernelParameters> &parameters,
+    UInt *vt_miss_page) const noexcept {
+  Float3 evaluated_shader = task.light_shader;
   if (light_emission) {
-    task.light_shader = light_emission->evaluate(task, parameters);
+    evaluated_shader = light_emission->evaluate(task, parameters, vt_miss_page);
   }
-  const auto local_unshadowed =
-      task.unshadowed_contribution * task.light_shader;
-  task.unshadowed_contribution = finalize_direct_light_sample(
-      light_sample_roulette, local_unshadowed, task.nee_path_throughput,
-      task.light_terminate_sample, parameters.light_inv_rr_threshold);
-  task.shadow_throughput = task.unshadowed_contribution;
-  return any(task.unshadowed_contribution != 0.0f);
+  const auto commit_nee = [&]() noexcept {
+    task.light_shader = evaluated_shader;
+    const auto local_unshadowed =
+        task.unshadowed_contribution * task.light_shader;
+    task.unshadowed_contribution = finalize_direct_light_sample(
+        light_sample_roulette, local_unshadowed, task.nee_path_throughput,
+        task.light_terminate_sample, parameters.light_inv_rr_threshold);
+    task.shadow_throughput = task.unshadowed_contribution;
+    return any(task.unshadowed_contribution != 0.0f);
+  };
+  if (vt_miss_page != nullptr) {
+    Bool active = false;
+    $if(*vt_miss_page == vt_invalid_page) {
+      active = commit_nee();
+    };
+    return active;
+  }
+  return commit_nee();
 }
 
 Var<ShadowIntersectionBatchCall> DirectLightTaskEvaluator::intersect(
@@ -95,9 +127,11 @@ Var<ShadowIntersectionBatchCall> DirectLightTaskEvaluator::intersect(
 DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
     Var<DirectLightTaskCall> &task,
     const Var<ShadowIntersectionBatchCall> &shadow_batch,
-    const Var<RenderKernelParameters> &parameters) const noexcept {
+    const Var<RenderKernelParameters> &parameters,
+    UInt *vt_miss_page) const noexcept {
   Bool continue_shadow = false;
   Bool visible = false;
+  Bool vt_missed = false;
 
   $if(shadow_batch.blocked == 0u) {
     auto ordered_batch = def(shadow_batch);
@@ -119,27 +153,47 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
       const auto hit = ordered_batch->hits[index];
       const auto surface = shade_shadow_surface(
           ray, hit, task.ray_dP, task.ray_dD, context, parameters);
+      if (vt_miss_page != nullptr) {
+        $if(surface->vt_miss_page != vt_invalid_page) {
+          *vt_miss_page = ite(*vt_miss_page == vt_invalid_page,
+                              surface->vt_miss_page, *vt_miss_page);
+          vt_missed = true;
+          carries_light = false;
+          $break;
+        };
+      }
       carries_light =
           advance_shadow_surface_state(context, throughput, surface);
       $if(carries_light) {
         last_distance = max(last_distance, hit.distance);
       };
     };
-    task.shadow_throughput = throughput;
-    task.transparent_depth = context.path.transparent_depth.cast<std::uint16_t>();
-    task.rng_offset = context.rng_offset;
-    task.volume_bounds_bounce = context.volume_bounds_bounce;
-    carries_light &= context.volume_bounds_bounce <= shadow_volume_bounds_max;
-    $if(carries_light) {
-      const auto has_remaining =
-          ordered_batch->count ==
-          static_cast<luisa::uint>(shadow_intersection_batch_capacity);
-      $if(has_remaining) {
-        task.ray_minimum = surface_ray::intersection_t_offset(last_distance);
-        continue_shadow = true;
-      }
-      $else { visible = true; };
+    const auto commit_shadow = [&]() noexcept {
+      task.shadow_throughput = throughput;
+      task.transparent_depth =
+          context.path.transparent_depth.cast<std::uint16_t>();
+      task.rng_offset = context.rng_offset;
+      task.volume_bounds_bounce = context.volume_bounds_bounce;
+      carries_light &= context.volume_bounds_bounce <= shadow_volume_bounds_max;
+      $if(carries_light) {
+        const auto has_remaining =
+            ordered_batch->count ==
+            static_cast<luisa::uint>(shadow_intersection_batch_capacity);
+        $if(has_remaining) {
+          task.ray_minimum =
+              surface_ray::intersection_t_offset(last_distance);
+          continue_shadow = true;
+        }
+        $else { visible = true; };
+      };
     };
+    if (vt_miss_page != nullptr) {
+      $if(!vt_missed) {
+        commit_shadow();
+      };
+    } else {
+      commit_shadow();
+    }
   };
   return {.continue_shadow = std::move(continue_shadow),
           .visible = std::move(visible)};

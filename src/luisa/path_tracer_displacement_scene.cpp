@@ -5,6 +5,7 @@
 #include "path_tracer_cycles_svm_scene.h"
 #include "path_tracer_cycles_svm_shader_data.h"
 #include "path_tracer_tangent_space.h"
+#include "virtual_texture_cache.h"
 
 #include <psycles/compiler/cycles_camera.h>
 #include <psycles/compiler/cycles_transform.h>
@@ -365,6 +366,31 @@ MeshDisplacementSceneComponent::build(
         const bool cpu_backend =
             backend_name == "fallback" || backend_name == "simd";
 
+        std::vector<std::uint32_t> displacement_shader_indices;
+        if (scene->virtual_texture_cache) {
+            for (const auto &work : work_items) {
+                for (const auto &evaluation : work.plan.evaluations) {
+                    if (const auto shader_iter =
+                            scene->cycles_svm->material_shader_indices.find(
+                                evaluation.material);
+                        shader_iter !=
+                            scene->cycles_svm->material_shader_indices.end() &&
+                        shader_iter->second < shader_count) {
+                        displacement_shader_indices.push_back(shader_iter->second);
+                    }
+                }
+            }
+        }
+        TemporaryDirectTextureScope vt_temp_direct_textures{
+            scene,
+            stream,
+            scene->virtual_texture_cache && !displacement_shader_indices.empty()
+                ? collect_shader_routine_image_ids(
+                      scene->cycles_svm->compilation,
+                      displacement_shader_indices,
+                      compiler::cycles_svm::SHADER_TYPE_DISPLACEMENT)
+                : std::set<contract::ImageId>{}};
+
         for (auto &work : work_items) {
             auto &upload = uploads[work.geometry_index];
             luisa::vector<luisa::uint4> evaluations;
@@ -430,7 +456,8 @@ MeshDisplacementSceneComponent::build(
                         Bool{true},
                         Bool{true},
                         PathCyclesSvmShaderDomain::all_shaders,
-                        active_shader_mask};
+                        active_shader_mask,
+                        true};
                     const auto world_to_object = inverse(object_to_world);
                     const svm::TransformState transforms{
                         camera_transform,

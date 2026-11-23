@@ -1,6 +1,10 @@
 #include "path_tracer_environment.h"
 
 #include "path_tracer_cycles_svm_emission.h"
+#include "virtual_texture_cache.h"
+#include "cycles_shader_identity.h"
+
+#include <array>
 
 #include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/cycles_nishita.h>
@@ -46,14 +50,16 @@ Float3 evaluate_environment_emission(
     const Var<RenderKernelParameters> &parameters,
     Float3 origin, Float3 direction, Float differential, Float time,
     const cycles_svm::PathState &state, UInt lcg_state,
-    CyclesSvmBackgroundEvaluation evaluation) noexcept {
+    CyclesSvmBackgroundEvaluation evaluation,
+    UInt *vt_miss_page,
+    bool force_direct_textures) noexcept {
     if (scene->cycles_background_shader_id != ~0u) {
         // The authored world graph is authoritative, including environment
         // textures and Nishita solar discs. Sampling metadata must never
         // replace it or add a second copy of its sun.
         return parameters.background + evaluate_cycles_svm_background_emission(
             scene, parameters, origin, direction, differential, time, state,
-            lcg_state, evaluation);
+            lcg_state, evaluation, vt_miss_page, force_direct_textures);
     }
 
     // Standalone contract panoramas have no world shader graph. Retain this
@@ -113,7 +119,8 @@ Float3 evaluate_background_importance(
         0u, cycles_svm::path_ray_emission | cycles_svm::path_ray_importance_bake};
     const auto value = evaluate_environment_emission(
         scene, parameters, make_float3(0.0f), ray.direction, ray.differential,
-        0.5f, state, 0u, CyclesSvmBackgroundEvaluation::importance_bake);
+        0.5f, state, 0u, CyclesSvmBackgroundEvaluation::importance_bake,
+        nullptr, true);
     const auto not_nan = select(value, make_float3(0.0f), luisa::compute::dsl::isnan(value));
     return select(not_nan, make_float3(0.0f), luisa::compute::dsl::isinf(value));
 }
@@ -200,6 +207,19 @@ std::shared_ptr<const BackgroundSamplingDistribution>
 build_background_sampling_distribution(
     const std::shared_ptr<LuisaSceneData> &data,
     Stream &stream, const RenderKernelParameters &parameters) {
+    std::set<contract::ImageId> env_image_ids;
+    if (data->virtual_texture_cache && data->world_surface &&
+        data->cycles_svm &&
+        data->world_surface->cycles_shader_index !=
+            cycles_shader_identity::invalid_index) {
+        const std::array<std::uint32_t, 1u> world_shaders{
+            data->world_surface->cycles_shader_index};
+        env_image_ids = collect_shader_routine_image_ids(
+            data->cycles_svm->compilation,
+            world_shaders,
+            compiler::cycles_svm::SHADER_TYPE_SURFACE);
+    }
+    TemporaryDirectTextureScope vt_temp_direct_textures{data, stream, env_image_ids};
     std::vector<Vec3f> radiance;
     if (data->background_map_weight > 0.0f) {
         const auto pixel_count =

@@ -795,7 +795,7 @@ PathSampleContext::analytic_light_shader(Var<LightGpu> light,
             invocation.config.scene, invocation.parameters,
             light.cycles_shader_id, light.cycles_object_index, light_index,
             light_position, light_normal, incoming, light_uv, light_distance,
-            0.0f, state);
+            0.0f, state, vt_miss_page);
     };
     return result;
 }

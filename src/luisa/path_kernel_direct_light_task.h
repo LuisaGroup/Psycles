@@ -2,6 +2,7 @@
 
 #include "path_tracer_geometry.h"
 
+#include <functional>
 #include <type_traits>
 
 namespace psycles::luisa_backend::detail {
@@ -115,17 +116,21 @@ struct DirectLightTaskEvaluator {
   void
   trace_staged(Var<DirectLightTaskCall> &task,
                const Var<RenderKernelParameters> &parameters, Bool &active,
-               Bool &visible) const noexcept;
+               Bool &visible,
+               const std::function<void(Expr<luisa::uint>)> &vt_wait_resident =
+                   {}) const noexcept;
   [[nodiscard]] Bool
   shade_light_nee(Var<DirectLightTaskCall> &task,
-                  const Var<RenderKernelParameters> &parameters) const noexcept;
+                  const Var<RenderKernelParameters> &parameters,
+                  UInt *vt_miss_page = nullptr) const noexcept;
   [[nodiscard]] Var<ShadowIntersectionBatchCall>
   intersect(const Var<DirectLightTaskCall> &task,
             const Var<RenderKernelParameters> &parameters) const noexcept;
   [[nodiscard]] DirectLightShadowStep
   shade_shadow(Var<DirectLightTaskCall> &task,
                const Var<ShadowIntersectionBatchCall> &shadow_batch,
-               const Var<RenderKernelParameters> &parameters) const noexcept;
+               const Var<RenderKernelParameters> &parameters,
+               UInt *vt_miss_page = nullptr) const noexcept;
   [[nodiscard]] Float3
   contribution(const Var<DirectLightTaskCall> &task, Float3 throughput,
                const Var<RenderKernelParameters> &parameters) const noexcept;

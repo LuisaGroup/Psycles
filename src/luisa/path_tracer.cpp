@@ -26,8 +26,75 @@ env_max_pixel_samples_per_dispatch() noexcept {
     return val;
 }
 
+[[nodiscard]] std::optional<bool>
+env_bool_override(const char *name) noexcept {
+    const auto *raw = std::getenv(name);
+    if (raw == nullptr || *raw == '\0') {
+        return std::nullopt;
+    }
+    const std::string_view sv{raw};
+    if (sv == "1" || sv == "true" || sv == "on") {
+        return true;
+    }
+    if (sv == "0" || sv == "false" || sv == "off") {
+        return false;
+    }
+    return std::nullopt;
+}
+
+template<typename T>
+[[nodiscard]] std::optional<T>
+env_unsigned_override(const char *name) noexcept {
+    const auto *raw = std::getenv(name);
+    if (raw == nullptr || *raw == '\0') {
+        return std::nullopt;
+    }
+    const std::string_view sv{raw};
+    T val{};
+    const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), val);
+    if (ec != std::errc{} || ptr != sv.data() + sv.size()) {
+        return std::nullopt;
+    }
+    return val;
+}
+
+void apply_virtual_texture_env_overrides(
+    LuisaVirtualTextureCacheOptions &vt) noexcept {
+    if (const auto enabled = env_bool_override("PSYCLES_VIRTUAL_TEXTURE_CACHE")) {
+        vt.enabled = *enabled;
+    }
+    if (const auto budget_mb =
+            env_unsigned_override<std::uint64_t>("PSYCLES_VIRTUAL_TEXTURE_CACHE_MB");
+        budget_mb && *budget_mb > 0ull) {
+        vt.gpu_cache_budget_bytes = *budget_mb * 1024ull * 1024ull;
+    }
+    if (const auto budget_bytes =
+            env_unsigned_override<std::uint64_t>("PSYCLES_VIRTUAL_TEXTURE_CACHE_BYTES");
+        budget_bytes && *budget_bytes > 0ull) {
+        vt.gpu_cache_budget_bytes = *budget_bytes;
+    }
+    if (const auto tile_size =
+            env_unsigned_override<std::uint32_t>("PSYCLES_VIRTUAL_TEXTURE_TILE_SIZE");
+        tile_size && valid_luisa_virtual_texture_tile_size(*tile_size)) {
+        vt.physical_tile_size = *tile_size;
+    }
+    if (const auto host_mb =
+            env_unsigned_override<std::uint64_t>("PSYCLES_VIRTUAL_TEXTURE_HOST_CACHE_MB")) {
+        vt.host_decoded_cache_budget_bytes = *host_mb * 1024ull * 1024ull;
+    }
+    if (const auto stats = env_bool_override("PSYCLES_VIRTUAL_TEXTURE_STATS")) {
+        vt.report_stats = *stats;
+    }
+}
+
 [[nodiscard]] bool valid_scheduler_options(
     const LuisaPathTracerOptions &options) noexcept {
+    if (options.virtual_texture_cache.enabled &&
+        (!valid_luisa_virtual_texture_tile_size(
+             options.virtual_texture_cache.physical_tile_size) ||
+         options.virtual_texture_cache.gpu_cache_budget_bytes < 64ull * 1024ull)) {
+        return false;
+    }
     switch (options.scheduler) {
         case LuisaPathScheduler::megakernel:
         case LuisaPathScheduler::megakernel_per_sample:
@@ -74,6 +141,7 @@ LuisaPathTracerBackend::LuisaPathTracerBackend(
         _options.max_pixel_samples_per_dispatch =
             std::min(_options.max_pixel_samples_per_dispatch, *env_limit);
     }
+    apply_virtual_texture_env_overrides(_options.virtual_texture_cache);
 }
 
 std::unique_ptr<contract::RenderSession>

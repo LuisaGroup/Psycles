@@ -182,6 +182,25 @@ struct LuisaSurfaceClosureCountHistogramRequest {
   std::shared_ptr<LuisaSurfaceClosureCountHistogramSink> sink;
 };
 
+// Bounded-VRAM tiled virtual texture cache and on-demand texture streaming for
+// wavefront schedulers. When enabled, scene images are only header-probed at
+// compile_scene() time and decoded/uploaded on demand at tile granularity via
+// the wavefront extension stage protocol.
+struct LuisaVirtualTextureCacheOptions {
+  bool enabled{false};
+  std::uint64_t gpu_cache_budget_bytes{256ull * 1024ull * 1024ull};
+  // Physical tile dimension P in texels (including a 2-texel border per side so
+  // closest, linear, and cubic B-spline filtering never sample outside a tile).
+  // Supported values are 64 (60x60 logical interior) and 128 (124x124 interior).
+  std::uint32_t physical_tile_size{64u};
+  std::uint64_t host_decoded_cache_budget_bytes{1024ull * 1024ull * 1024ull};
+  bool report_stats{false};
+};
+
+[[nodiscard]] constexpr bool
+valid_luisa_virtual_texture_tile_size(std::uint32_t tile_size) noexcept {
+  return tile_size == 64u || tile_size == 128u;
+}
 
 struct LuisaPathTracerOptions {
   bool next_event_estimation{true};
@@ -271,6 +290,7 @@ struct LuisaPathTracerOptions {
   // counts after each completed render_samples() call.
   std::optional<LuisaSurfaceClosureCountHistogramRequest>
       surface_closure_count_histogram;
+  LuisaVirtualTextureCacheOptions virtual_texture_cache{};
 };
 
 class LuisaPathTracerBackend final : public contract::RendererBackend {

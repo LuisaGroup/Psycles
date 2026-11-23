@@ -5,6 +5,7 @@
 #include "path_kernel_shadow_storage.h"
 #include "path_kernel_surface_buckets.h"
 #include "path_kernel_transitions.h"
+#include "virtual_texture_cache.h"
 
 #include <psycles/core/parallel.h>
 
@@ -42,16 +43,19 @@ private:
   luisa::compute::Buffer<luisa::uint> _chained_indices;
   luisa::compute::Buffer<luisa::uint> _scratch_count;
   luisa::compute::Buffer<luisa::uint> _relocation_counts;
-  // Counts 0..2 are live stages; count 3 is the append allocation extent.
+  // Counts 0..2 are live stages; count 3 is the append allocation extent;
+  // count 4 signals pending virtual texture cache misses from stage 0 or 2.
   luisa::compute::Buffer<luisa::uint> _count;
   std::array<DirectLightConsumerShader, 3u> _consumers;
   luisa::compute::Shader1D<luisa::uint> _initialize;
+  luisa::compute::Shader1D<luisa::uint> _clear_count_slot;
   luisa::compute::Shader1D<luisa::uint, luisa::uint, luisa::uint, luisa::uint> _gather;
   luisa::compute::Shader1D<luisa::uint, luisa::uint, luisa::uint>
       _set_extent_and_clear_reloc;
   luisa::compute::Shader1D<luisa::uint, luisa::uint> _collect_relocations;
   luisa::compute::Shader1D<luisa::uint, luisa::uint> _compact;
   luisa::vector<luisa::compute::coro::WavefrontCoroAuxiliaryProducer> _producers;
+  std::shared_ptr<VirtualTextureCache> _vt_cache;
   std::uint32_t _capacity{};
   std::uint32_t _execution_block_size{};
   std::uint32_t _warp_size{};
@@ -61,7 +65,7 @@ private:
   bool _may_have_shade_shadow{true};
   bool _may_continue_shadow{true};
   bool _has_fallback_light_shader{false};
-  std::array<std::uint32_t, 4u> _host_counts{};
+  std::array<std::uint32_t, 5u> _host_counts{};
 
   static constexpr std::uint32_t k_stride_ray_origin_tmin = 0u;
   static constexpr std::uint32_t k_stride_ray_dir_tmax = 16u;
@@ -115,7 +119,8 @@ public:
       std::shared_ptr<const ShadowIntersectionBatchStorage> shadow_storage = {},
       bool may_have_shade_shadow = true,
       bool may_continue_shadow = true,
-      std::span<const std::string_view> producer_continuations = {}) noexcept
+      std::span<const std::string_view> producer_continuations = {},
+      std::shared_ptr<VirtualTextureCache> vt_cache = {}) noexcept
       : _task_buffer{device.create_byte_buffer(
             static_cast<std::size_t>(evaluator.light_emission == nullptr ? 176u
                                                                          : 160u) *
@@ -131,8 +136,9 @@ public:
                              : luisa::compute::Buffer<luisa::uint>{}},
         _scratch_count{device.create_buffer<luisa::uint>(4u)},
         _relocation_counts{device.create_buffer<luisa::uint>(2u)},
-        _count{device.create_buffer<luisa::uint>(4u)},
+        _count{device.create_buffer<luisa::uint>(5u)},
         _producers{},
+        _vt_cache{std::move(vt_cache)},
         _capacity{capacity}, _execution_block_size{execution_block_size},
         _warp_size{static_cast<std::uint32_t>(device.compute_warp_size())},
         _fuse_unoccluded_shadow{fuse_unoccluded_shadow},
@@ -157,13 +163,18 @@ public:
       const auto x = dispatch_x();
       $if(x < capacity) { _tokens->write(x, 0u); };
       $if(x < 4u) {
-        _count->write(x, 0u);
         _scratch_count->write(x, 0u);
+      };
+      $if(x < 5u) {
+        _count->write(x, 0u);
       };
       $if(x < 2u) {
         _relocation_counts->write(x, 0u);
       };
     };
+    luisa::compute::Kernel1D<luisa::uint> clear_count_slot =
+        [this](UInt slot) { _count->write(slot, 0u); };
+    _clear_count_slot = device.compile(clear_count_slot, shader_option);
     luisa::compute::Kernel1D<luisa::uint, luisa::uint, luisa::uint>
         set_extent_and_clear_reloc =
             [this](UInt new_extent, UInt write_extent, UInt clear_reloc) {
@@ -358,11 +369,13 @@ public:
     LUISA_INFO("Psycles shadow relocation: name='copy' kernel_{:016x}.",
                compact.function()->function().hash());
     const auto active_stages = _may_have_shade_shadow ? 3u : 2u;
+    const bool vt_enabled = _vt_cache != nullptr;
     std::array<std::optional<DirectLightConsumerKernel>, 3u> consumer_kernels;
     std::array<luisa::compute::ShaderOption, 3u> consumer_options;
     for (auto stage = 0u; stage < active_stages; ++stage) {
       consumer_kernels[stage].emplace([this, evaluator, execution_block_size,
-                                       stage, fuse_unoccluded_shadow](
+                                       stage, fuse_unoccluded_shadow,
+                                       vt_enabled](
                                           BufferFloat4 combined,
                                           BufferFloat4 light_passes,
                                           BufferFloat4 volume_guiding_raw,
@@ -455,12 +468,23 @@ public:
               task.light_shader =
                   read_chunk.operator()<luisa::float4>(k_stride_fallback_light).xyz();
             }
-            $if(evaluator.shade_light_nee(task, parameters)) {
+            UInt vt_miss = vt_invalid_page;
+            $if(evaluator.shade_light_nee(
+                    task, parameters, vt_enabled ? &vt_miss : nullptr)) {
               write_chunk.operator()<luisa::float4>(
                   k_stride_throughput_and_term,
                   def(luisa::compute::make_float4(task.shadow_throughput, 0.0f)));
               next = 2u;
             };
+            if (vt_enabled) {
+              $if(vt_miss != vt_invalid_page) {
+                next = 1u;
+                _vt_cache->record_aux_miss(vt_miss);
+                $if(_count->read(4u) == 0u) {
+                  _count->atomic(4u).fetch_add(1u);
+                };
+              };
+            }
           } else if (stage == 1u) {
             Var<DirectLightTaskCall> task;
             const auto orig_tmin =
@@ -667,57 +691,72 @@ public:
                   batch = _shadow_storage->read_batch(
                       slot, parameters.wavefront_frame_capacity);
                 }
-                const auto step = evaluator.shade_shadow(task, batch, parameters);
-                if (_may_continue_shadow) {
-                  $if(step.continue_shadow) {
-                    write_chunk.operator()<luisa::float4>(
-                        k_stride_ray_origin_tmin,
-                        def(luisa::compute::make_float4(task.ray_origin,
-                                                        task.ray_minimum)));
-                    write_chunk.operator()<luisa::float4>(
-                        k_stride_throughput_and_term,
-                        def(luisa::compute::make_float4(task.shadow_throughput,
-                                                        0.0f)));
-                    write_chunk.operator()<luisa::uint>(
-                        stride_transp_and_vol(),
-                        def((task.transparent_depth.cast<luisa::uint>() &
-                             0xffffu) |
-                            (luisa::compute::min(task.volume_bounds_bounce,
-                                                 0xffffu)
-                             << 16u)));
-                    write_chunk.operator()<luisa::uint4>(
-                        k_stride_rng_and_depths,
-                        def(luisa::compute::make_uint4(
-                            task.sample_index, task.rng_hash, task.rng_offset,
-                            rng_d.w)));
-                    next = 2u;
-                  }
-                  $elif(step.visible) {
-                    const auto value = evaluator.contribution(
-                        task, task.shadow_throughput, parameters);
-                    atomic_accumulate_radiance(
-                        combined, volume_guiding_raw, task.pixel,
-                        task.pixel * volume_guiding::raw_pixel_stride,
-                        evaluator.volume_guiding, task.path_flags,
-                        task.path_visibility, task.path_depth, value);
-                    evaluator.accumulate_passes_atomic(
-                        light_passes, task.pixel * light_pass_buffer_count,
-                        task, value);
-                  };
-                } else {
-                  $if(step.visible) {
-                    const auto value = evaluator.contribution(
-                        task, task.shadow_throughput, parameters);
-                    atomic_accumulate_radiance(
-                        combined, volume_guiding_raw, task.pixel,
-                        task.pixel * volume_guiding::raw_pixel_stride,
-                        evaluator.volume_guiding, task.path_flags,
-                        task.path_visibility, task.path_depth, value);
-                    evaluator.accumulate_passes_atomic(
-                        light_passes, task.pixel * light_pass_buffer_count,
-                        task, value);
+                UInt vt_miss = vt_invalid_page;
+                const auto step = evaluator.shade_shadow(
+                    task, batch, parameters, vt_enabled ? &vt_miss : nullptr);
+                Bool row_vt_missed = false;
+                if (vt_enabled) {
+                  row_vt_missed = (vt_miss != vt_invalid_page);
+                  $if(row_vt_missed) {
+                    next = 3u;
+                    _vt_cache->record_aux_miss(vt_miss);
+                    $if(_count->read(4u) == 0u) {
+                      _count->atomic(4u).fetch_add(1u);
+                    };
                   };
                 }
+                $if(!row_vt_missed) {
+                  if (_may_continue_shadow) {
+                    $if(step.continue_shadow) {
+                      write_chunk.operator()<luisa::float4>(
+                          k_stride_ray_origin_tmin,
+                          def(luisa::compute::make_float4(task.ray_origin,
+                                                          task.ray_minimum)));
+                      write_chunk.operator()<luisa::float4>(
+                          k_stride_throughput_and_term,
+                          def(luisa::compute::make_float4(task.shadow_throughput,
+                                                          0.0f)));
+                      write_chunk.operator()<luisa::uint>(
+                          stride_transp_and_vol(),
+                          def((task.transparent_depth.cast<luisa::uint>() &
+                               0xffffu) |
+                              (luisa::compute::min(task.volume_bounds_bounce,
+                                                   0xffffu)
+                               << 16u)));
+                      write_chunk.operator()<luisa::uint4>(
+                          k_stride_rng_and_depths,
+                          def(luisa::compute::make_uint4(
+                              task.sample_index, task.rng_hash, task.rng_offset,
+                              rng_d.w)));
+                      next = 2u;
+                    }
+                    $elif(step.visible) {
+                      const auto value = evaluator.contribution(
+                          task, task.shadow_throughput, parameters);
+                      atomic_accumulate_radiance(
+                          combined, volume_guiding_raw, task.pixel,
+                          task.pixel * volume_guiding::raw_pixel_stride,
+                          evaluator.volume_guiding, task.path_flags,
+                          task.path_visibility, task.path_depth, value);
+                      evaluator.accumulate_passes_atomic(
+                          light_passes, task.pixel * light_pass_buffer_count,
+                          task, value);
+                    };
+                  } else {
+                    $if(step.visible) {
+                      const auto value = evaluator.contribution(
+                          task, task.shadow_throughput, parameters);
+                      atomic_accumulate_radiance(
+                          combined, volume_guiding_raw, task.pixel,
+                          task.pixel * volume_guiding::raw_pixel_stride,
+                          evaluator.volume_guiding, task.path_flags,
+                          task.path_visibility, task.path_depth, value);
+                      evaluator.accumulate_passes_atomic(
+                          light_passes, task.pixel * light_pass_buffer_count,
+                          task, value);
+                    };
+                  }
+                };
               };
             };
           }
@@ -730,7 +769,7 @@ public:
             } else {
               $if(x == 0u) { _count->atomic(stage).fetch_sub(active_count); };
             }
-            if (!(stage == 2u && !_may_continue_shadow)) {
+            if (!(stage == 2u && !_may_continue_shadow && !vt_enabled)) {
               if (_warp_size == 32u) {
                 $if(luisa::compute::warp_active_all_equal(next)) {
                   const auto total = luisa::compute::warp_active_count_bits(true);
@@ -755,10 +794,28 @@ public:
               _count->atomic(0u).fetch_sub(active_count);
               _scratch_count->write(out_count_slot ^ 1u, 0u);
             };
-            const auto survived = (x < active_count) & (next != 0u);
-            $if((x < active_count) & !survived) {
+            const auto survived = (x < active_count) & (next == 2u);
+            $if((x < active_count) & (next == 0u)) {
               _tokens->write(slot, 0u);
             };
+            if (vt_enabled) {
+              const auto vt_retry = (x < active_count) & (next == 1u);
+              $if(vt_retry) {
+                _tokens->write(slot, 1u);
+              };
+              if (_warp_size == 32u) {
+                const auto miss_lanes =
+                    luisa::compute::warp_active_count_bits(vt_retry);
+                $if(vt_retry &
+                    (luisa::compute::warp_prefix_count_bits(vt_retry) == 0u)) {
+                  _count->atomic(0u).fetch_add(miss_lanes);
+                };
+              } else {
+                $if(vt_retry) {
+                  _count->atomic(0u).fetch_add(1u);
+                };
+              }
+            }
             if (_warp_size == 32u) {
               const auto lane_prefix =
                   luisa::compute::warp_prefix_count_bits(survived);
@@ -978,14 +1035,14 @@ public:
     _host_counts = {};
     _scratch_slot = 0u;
     _chained_slot = 0u;
-    stream << _initialize(_capacity).dispatch(std::max(_capacity, 4u));
+    stream << _initialize(_capacity).dispatch(std::max(_capacity, 5u));
   }
 
   void encode_reset(Stream &, luisa::compute::CommandList &commands) noexcept override {
     _host_counts = {};
     _scratch_slot = 0u;
     _chained_slot = 0u;
-    commands << _initialize(_capacity).dispatch(std::max(_capacity, 4u));
+    commands << _initialize(_capacity).dispatch(std::max(_capacity, 5u));
   }
 
   void enqueue_count_readback(Stream &stream) noexcept override {
@@ -1057,6 +1114,9 @@ public:
   }
 
   [[nodiscard]] bool try_predict_stage_transition(unsigned stage) noexcept override {
+    if (_vt_cache != nullptr && (stage == 0u || stage == 2u)) {
+      return false;
+    }
     if (_fuse_unoccluded_shadow && !_may_have_shade_shadow) {
       if (stage == 0u) {
         _host_counts[0u] = 0u;
@@ -1086,7 +1146,7 @@ public:
                  "Shadow producer exceeds its admitted append storage.");
   }
 
-  void encode_dispatch_stage(unsigned stage, Stream &,
+  void encode_dispatch_stage(unsigned stage, Stream &stream,
                              luisa::compute::CommandList &commands,
                              luisa::compute::BufferView<luisa::float4> combined,
                              luisa::compute::BufferView<luisa::float4>,
@@ -1100,6 +1160,15 @@ public:
                              luisa::compute::BufferView<luisa::float4>,
                              luisa::compute::BufferView<float>,
                              const RenderKernelParameters &parameters) noexcept override {
+    if (_vt_cache && _host_counts[4u] != 0u &&
+        (stage == 0u || stage == 2u)) {
+      if (!commands.empty()) {
+        stream << commands.commit();
+      }
+      _vt_cache->service_aux_misses(stream);
+      _host_counts[4u] = 0u;
+      commands << _clear_count_slot(4u).dispatch(1u);
+    }
     const auto count = stage_host_count(stage);
     LUISA_ASSERT(parameters.wavefront_frame_capacity == _capacity,
                  "Direct-light queue runtime capacity {} does not match its "
@@ -1209,12 +1278,14 @@ make_direct_light_task_queue_impl(
     std::shared_ptr<const ShadowIntersectionBatchStorage> shadow_storage = {},
     bool may_have_shade_shadow = true,
     bool may_continue_shadow = true,
-    std::span<const std::string_view> producer_continuations = {}) noexcept {
+    std::span<const std::string_view> producer_continuations = {},
+    std::shared_ptr<VirtualTextureCache> vt_cache = {}) noexcept {
   LUISA_ASSERT(capacity != 0u, "Direct-light task queue capacity must be positive.");
   auto queue = std::make_shared<DirectLightTaskQueue>(
       device, std::move(evaluator), capacity, execution_block_size,
       shader_option, fuse_unoccluded_shadow, std::move(shadow_storage),
-      may_have_shade_shadow, may_continue_shadow, producer_continuations);
+      may_have_shade_shadow, may_continue_shadow, producer_continuations,
+      std::move(vt_cache));
   LUISA_INFO("Psycles direct-light shadow queue: capacity={} "
              "payload_fields={} payload_aos_bytes={} task_soa_bytes={} "
              "traversal_soa_bytes={} queue_bytes={} stages={} fused_unoccluded={}.",
@@ -1261,10 +1332,16 @@ make_direct_light_task_queue(luisa::compute::Device &device,
       config.scene, shadow_storage, config.transparent_max_bounces);
   const auto bucket_plan = make_path_surface_bucket_plan(config);
   const auto producers = bucket_plan.producer_continuations();
+  auto vt_cache =
+      (config.enable_virtual_texture_cache && config.scene &&
+       config.scene->virtual_texture_cache &&
+       config.scene->virtual_texture_cache->has_virtual_images())
+          ? config.scene->virtual_texture_cache
+          : std::shared_ptr<VirtualTextureCache>{};
   return make_direct_light_task_queue_impl(
       device, std::move(evaluator), capacity, execution_block_size,
       shader_option, true, std::move(shadow_storage), may_have_shade_shadow,
-      may_continue_shadow, producers);
+      may_continue_shadow, producers, std::move(vt_cache));
 }
 
 } // namespace psycles::luisa_backend::detail
