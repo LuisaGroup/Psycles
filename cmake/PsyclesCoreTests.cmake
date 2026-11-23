@@ -1025,8 +1025,11 @@ if(PSYCLES_BUILD_TESTS)
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_cycles_sampler.py")
         set(blender_exporter
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
-        set(blender_inspector
-            "$<TARGET_FILE:psycles_inspect_blender_material>")
+        set(blender_inspector_args)
+        if(TARGET psycles_inspect_blender_material)
+            set(blender_inspector_args
+                "$<TARGET_FILE:psycles_inspect_blender_material>")
+        endif()
         psycles_add_blender_test(
             NAME psycles.blender_export_geometry_cache
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_geometry_cache.py"
@@ -1034,7 +1037,7 @@ if(PSYCLES_BUILD_TESTS)
         psycles_add_blender_test(
             NAME psycles.blender_export_attribute_domains
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_attribute_domains.py"
-            ARGUMENTS "${blender_exporter}" "${blender_inspector}")
+            ARGUMENTS "${blender_exporter}" ${blender_inspector_args})
         psycles_add_blender_test(
             NAME psycles.blender_export_smooth_normals
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_smooth_normals.py"
@@ -1046,7 +1049,7 @@ if(PSYCLES_BUILD_TESTS)
         psycles_add_blender_test(
             NAME psycles.blender_export_pointiness_source
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_pointiness_source.py"
-            ARGUMENTS "${blender_exporter}" "${blender_inspector}")
+            ARGUMENTS "${blender_exporter}" ${blender_inspector_args})
         foreach(test IN ITEMS
                 linked_images
                 generated_images

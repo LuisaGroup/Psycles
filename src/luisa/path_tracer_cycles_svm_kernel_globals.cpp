@@ -759,7 +759,8 @@ PathCyclesSvmKernelGlobals::surface_attribute_buffers() const noexcept {
 }
 
 bool PathCyclesSvmKernelGlobals::prefers_outlined_loops() const noexcept {
-  return _scene->device.backend_name() == "simd";
+  return _scene->device.backend_name() == "simd" &&
+         _scene->device.compute_warp_size() > 1u;
 }
 
 Float PathCyclesSvmKernelGlobals::attribute_float(

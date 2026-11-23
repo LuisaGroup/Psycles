@@ -417,7 +417,8 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                           abi::ClosureUsage::fresnel_f82_tint |
                           abi::ClosureUsage::fresnel_generalized_schlick),
                   .outline_transparent_merge =
-                      _scene->device.backend_name() == "simd"})},
+                      _scene->device.backend_name() == "simd" &&
+                      _scene->device.compute_warp_size() > 1u})},
           _closure_types{
               svm_detail::closure_types_for_kernel_features(
                   _scene->cycles_svm->kernel_features) &
@@ -544,8 +545,10 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                 : std::span<const std::uint8_t>{bucket.active_shader_mask};
         const auto backend_name = _scene->device.backend_name();
         const bool is_simd = backend_name == "simd";
+        const bool is_simd_wide =
+            is_simd && _scene->device.compute_warp_size() > 1u;
         const bool cpu_backend = backend_name == "fallback" || is_simd;
-        const bool outline_svm_chunks = cpu_backend;
+        const bool outline_svm_chunks = backend_name == "fallback" || is_simd_wide;
         svm_detail::surface_shader_initialize_closures(
             *_closures, path_state.visibility, path_state.flag);
         const auto simd_chunk_groups = []() noexcept -> std::size_t {
@@ -586,10 +589,10 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                 .active_shader_mask = active_mask,
                 .max_groups_per_outlined_chunk =
                     (cpu_backend && outline_svm_chunks)
-                        ? (is_simd ? simd_chunk_groups : std::size_t{16u})
+                        ? (is_simd_wide ? simd_chunk_groups : std::size_t{16u})
                         : std::size_t{0u},
                 .max_chunk_jit_weight =
-                    is_simd ? simd_chunk_weight : std::size_t{900u},
+                    is_simd_wide ? simd_chunk_weight : std::size_t{900u},
                 .outline_chunk_dispatcher = true},
             cpu_backend ? svm::SvmBackendStrategy::direct_jit
                         : svm::SvmBackendStrategy::auto_select);
@@ -644,6 +647,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
         const SurfaceLightQuery &query) const noexcept override {
       const bool outline_bsdf =
           _scene->device.backend_name() == "simd" &&
+          _scene->device.compute_warp_size() > 1u &&
           ([]() noexcept {
             const char *raw = std::getenv("PSYCLES_SIMD_OUTLINE_BSDF");
             return raw == nullptr || std::string_view{raw} != "0";

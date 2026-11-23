@@ -12,7 +12,9 @@
 #include <psycles/sampling/tabulated_sobol.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <memory>
+#include <string_view>
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
@@ -178,17 +180,34 @@ class PathVolumeSegmentStageImpl final
             .emission_is_constant = false,
             .use_mis = false,
             .valid = false};
+        const auto outline_volume =
+            _scene && static_cast<bool>(_scene->device) &&
+            _scene->device.backend_name() == "simd" &&
+            _scene->device.compute_warp_size() > 1u &&
+            ([]() noexcept {
+                const char *raw = std::getenv("PSYCLES_SIMD_OUTLINE_VOLUME");
+                return raw == nullptr || std::string_view{raw} != "0";
+            })();
         std::unique_ptr<
             VolumeDirectLightProvider>
             direct_provider;
         if (_direct_lighting) {
-            direct_proposal =
-                _direct_lighting->propose(
-                    event,
-                    stack,
-                    segment_position,
-                    ray->direction(),
-                    segment_length);
+            $outline_when_with_name(outline_volume, "simd_volume_direct_propose") {
+                const auto proposed =
+                    _direct_lighting->propose(
+                        event,
+                        stack,
+                        segment_position,
+                        ray->direction(),
+                        segment_length);
+                direct_proposal.emitter_kind = proposed.emitter_kind;
+                direct_proposal.emitter_index = proposed.emitter_index;
+                direct_proposal.requested_method = proposed.requested_method;
+                direct_proposal.light_position = proposed.light_position;
+                direct_proposal.interval.minimum = proposed.interval.minimum;
+                direct_proposal.interval.maximum = proposed.interval.maximum;
+                direct_proposal.valid = proposed.valid;
+            };
             direct_provider =
                 _direct_lighting
                     ->make_light_provider(
@@ -272,199 +291,222 @@ class PathVolumeSegmentStageImpl final
             .valid = false};
         Bool result_scattered = false;
         Bool result_phase_failed = false;
+        Float3 direct_transport_throughput = make_float3(1.0f);
+        Float direct_transport_distance = 0.0f;
+        VolumePhaseSetEvaluation direct_phase{
+            .value = 0.0f,
+            .pdf = 0.0f,
+            .sample_weight = 0.0f,
+            .valid = false};
+        Bool direct_scattered = false;
 
         const auto emit_homogeneous =
             [&]() noexcept {
-                const auto result =
-                    _homogeneous->emit(
-                        volume_shader,
-                        stack,
-                        segment_position,
-                        -ray->direction(),
-                        segment_length,
-                        throughput,
-                        scatter_random,
-                        channel_random,
-                        phase_random,
-                        transport_terminate,
-                        {.scattered_radiance =
-                             invocation
-                                 .volume_guiding_scattered_radiance,
-                         .transmitted_radiance =
-                             invocation
-                                 .volume_guiding_transmitted_radiance,
-                         .majorant_optical_depth =
-                             invocation
-                                 .volume_guiding_majorant_optical_depth(),
-                         .enabled =
-                             inside_volume &
-                             (path_depth == 0u)},
-                        {.requested_method =
-                             direct_proposal
-                                 .requested_method,
-                         .light_position =
-                             direct_proposal
-                                 .light_position,
-                         .interval =
-                             direct_proposal
-                                 .interval,
-                         .enabled =
-                             inside_volume &
-                             direct_proposal.valid},
-                        direct_provider.get());
-                if (_direct_lighting) {
-                    _direct_lighting->accumulate(
-                        event,
-                        direct_light,
-                        {.throughput =
-                             result
-                                 .direct_transport
-                                 .throughput,
-                         .distance =
-                             result
-                                 .direct_transport
-                                 .distance,
-                         .phase =
-                             result.direct_phase,
-                         .scattered =
-                             result
-                                 .direct_transport
-                                 .scattered},
-                        stack,
-                        segment_position,
-                        inside_volume);
-                }
-                result_throughput =
-                    result.transport
-                        .throughput;
-                result_emission =
-                    result.transport.emission;
-                result_distance =
-                    result.transport.distance;
-                result_optical_depth =
-                    max(
-                        result.coefficients
-                            .sigma_t.x,
+                $outline_when_with_name(outline_volume, "simd_volume_homogeneous") {
+                    const auto result =
+                        _homogeneous->emit(
+                            volume_shader,
+                            stack,
+                            segment_position,
+                            -ray->direction(),
+                            segment_length,
+                            throughput,
+                            scatter_random,
+                            channel_random,
+                            phase_random,
+                            transport_terminate,
+                            {.scattered_radiance =
+                                 invocation
+                                     .volume_guiding_scattered_radiance,
+                             .transmitted_radiance =
+                                 invocation
+                                     .volume_guiding_transmitted_radiance,
+                             .majorant_optical_depth =
+                                 invocation
+                                     .volume_guiding_majorant_optical_depth(),
+                             .enabled =
+                                 inside_volume &
+                                 (path_depth == 0u)},
+                            {.requested_method =
+                                 direct_proposal
+                                     .requested_method,
+                             .light_position =
+                                 direct_proposal
+                                     .light_position,
+                             .interval =
+                                 direct_proposal
+                                     .interval,
+                             .enabled =
+                                 inside_volume &
+                                 direct_proposal.valid},
+                            direct_provider.get());
+                    if (_direct_lighting) {
+                        direct_transport_throughput =
+                            result.direct_transport.throughput;
+                        direct_transport_distance =
+                            result.direct_transport.distance;
+                        direct_phase.value = result.direct_phase.value;
+                        direct_phase.pdf = result.direct_phase.pdf;
+                        direct_phase.sample_weight =
+                            result.direct_phase.sample_weight;
+                        direct_phase.valid = result.direct_phase.valid;
+                        direct_scattered =
+                            result.direct_transport.scattered;
+                    }
+                    result_throughput =
+                        result.transport
+                            .throughput;
+                    result_emission =
+                        result.transport.emission;
+                    result_distance =
+                        result.transport.distance;
+                    result_optical_depth =
                         max(
                             result.coefficients
-                                .sigma_t.y,
-                            result.coefficients
-                                .sigma_t.z)) *
-                    segment_length;
-                result_phase = result.phase;
-                result_scattered =
-                    result.scattered;
-                result_phase_failed =
-                    result.phase_failed;
+                                .sigma_t.x,
+                            max(
+                                result.coefficients
+                                    .sigma_t.y,
+                                result.coefficients
+                                    .sigma_t.z)) *
+                        segment_length;
+                    result_phase.direction = result.phase.direction;
+                    result_phase.pdf = result.phase.pdf;
+                    result_phase.sampled_roughness =
+                        result.phase.sampled_roughness;
+                    result_phase.selection_rescaled =
+                        result.phase.selection_rescaled;
+                    result_phase.closure_index = result.phase.closure_index;
+                    result_phase.closure_type = result.phase.closure_type;
+                    result_phase.valid = result.phase.valid;
+                    result_scattered =
+                        result.scattered;
+                    result_phase_failed =
+                        result.phase_failed;
+                };
             };
         if (_heterogeneous) {
             $if(heterogeneous) {
-                const auto result =
-                    _heterogeneous->emit(
-                        {.stack = stack,
-                         .shader = volume_shader,
-                         .sobol_table =
-                             sobol_table,
-                         .sobol_sequence_size =
-                             parameters
-                                 .sobol_sequence_size,
-                         .sample_index =
-                             sample.sample_index,
-                         .rng_hash =
-                             sample.rng_hash,
-                         .path_rng_offset =
-                             cycles_rng_offset,
-                         .ray_origin =
-                             ray->origin(),
-                         .ray_direction =
-                             ray->direction(),
-                         .ray_minimum =
-                             segment_start,
-                         .ray_maximum =
-                             event.distance,
-                         .throughput =
-                             throughput,
-                         .reservoir_random =
-                             channel_random,
-                         .phase_random =
-                             phase_random,
-                         .guiding =
-                             {.scattered_radiance =
-                                  invocation
-                                      .volume_guiding_scattered_radiance,
-                              .transmitted_radiance =
-                                  invocation
-                                      .volume_guiding_transmitted_radiance,
-                              .majorant_optical_depth =
-                                  invocation
-                                      .volume_guiding_majorant_optical_depth(),
-                              .enabled =
-                                  inside_volume &
-                                  (path_depth ==
-                                   0u)},
-                         .direct =
-                             {.requested_method =
-                                  direct_proposal
-                                      .requested_method,
-                              .light_position =
-                                  direct_proposal
-                                      .light_position,
-                              .interval =
-                                  direct_proposal
-                                      .interval,
-                              .enabled =
-                                  inside_volume &
-                                  direct_proposal
-                                      .valid},
-                         .direct_light =
-                             direct_provider.get(),
-                         .terminate =
-                             transport_terminate});
-                if (_direct_lighting) {
-                    _direct_lighting->accumulate(
-                        event,
-                        direct_light,
-                        {.throughput =
-                             result
-                                 .direct_transport
-                                 .throughput,
-                         .distance =
-                             result
-                                 .direct_transport
-                                 .distance -
-                             segment_start,
-                         .phase =
-                             result.direct_phase,
-                         .scattered =
-                             result
-                                 .direct_transport
-                                 .scattered},
-                        stack,
-                        segment_position,
-                        inside_volume);
-                }
-                result_throughput =
-                    result.transport
-                        .throughput;
-                result_emission =
-                    result.transport.emission;
-                result_distance =
-                    result.transport.distance -
-                    segment_start;
-                result_optical_depth =
-                    result.transport
-                        .optical_depth;
-                result_phase = result.phase;
-                result_scattered =
-                    result.scattered;
-                result_phase_failed =
-                    result.phase_failed;
+                $outline_when_with_name(outline_volume, "simd_volume_heterogeneous") {
+                    const auto result =
+                        _heterogeneous->emit(
+                            {.stack = stack,
+                             .shader = volume_shader,
+                             .sobol_table =
+                                 sobol_table,
+                             .sobol_sequence_size =
+                                 parameters
+                                     .sobol_sequence_size,
+                             .sample_index =
+                                 sample.sample_index,
+                             .rng_hash =
+                                 sample.rng_hash,
+                             .path_rng_offset =
+                                 cycles_rng_offset,
+                             .ray_origin =
+                                 ray->origin(),
+                             .ray_direction =
+                                 ray->direction(),
+                             .ray_minimum =
+                                 segment_start,
+                             .ray_maximum =
+                                 event.distance,
+                             .throughput =
+                                 throughput,
+                             .reservoir_random =
+                                 channel_random,
+                             .phase_random =
+                                 phase_random,
+                             .guiding =
+                                 {.scattered_radiance =
+                                      invocation
+                                          .volume_guiding_scattered_radiance,
+                                  .transmitted_radiance =
+                                      invocation
+                                          .volume_guiding_transmitted_radiance,
+                                  .majorant_optical_depth =
+                                      invocation
+                                          .volume_guiding_majorant_optical_depth(),
+                                  .enabled =
+                                      inside_volume &
+                                      (path_depth ==
+                                       0u)},
+                             .direct =
+                                 {.requested_method =
+                                      direct_proposal
+                                          .requested_method,
+                                  .light_position =
+                                      direct_proposal
+                                          .light_position,
+                                  .interval =
+                                      direct_proposal
+                                          .interval,
+                                  .enabled =
+                                      inside_volume &
+                                      direct_proposal
+                                          .valid},
+                             .direct_light =
+                                 direct_provider.get(),
+                             .terminate =
+                                 transport_terminate});
+                    if (_direct_lighting) {
+                        direct_transport_throughput =
+                            result.direct_transport.throughput;
+                        direct_transport_distance =
+                            result.direct_transport.distance - segment_start;
+                        direct_phase.value = result.direct_phase.value;
+                        direct_phase.pdf = result.direct_phase.pdf;
+                        direct_phase.sample_weight =
+                            result.direct_phase.sample_weight;
+                        direct_phase.valid = result.direct_phase.valid;
+                        direct_scattered =
+                            result.direct_transport.scattered;
+                    }
+                    result_throughput =
+                        result.transport
+                            .throughput;
+                    result_emission =
+                        result.transport.emission;
+                    result_distance =
+                        result.transport.distance -
+                        segment_start;
+                    result_optical_depth =
+                        result.transport
+                            .optical_depth;
+                    result_phase.direction = result.phase.direction;
+                    result_phase.pdf = result.phase.pdf;
+                    result_phase.sampled_roughness =
+                        result.phase.sampled_roughness;
+                    result_phase.selection_rescaled =
+                        result.phase.selection_rescaled;
+                    result_phase.closure_index = result.phase.closure_index;
+                    result_phase.closure_type = result.phase.closure_type;
+                    result_phase.valid = result.phase.valid;
+                    result_scattered =
+                        result.scattered;
+                    result_phase_failed =
+                        result.phase_failed;
+                };
             }
             $else {
                 emit_homogeneous();
             };
         } else {
             emit_homogeneous();
+        }
+        if (_direct_lighting) {
+            $outline_when_with_name(outline_volume, "simd_volume_direct_accumulate") {
+                _direct_lighting->accumulate(
+                    event,
+                    direct_light,
+                    {.throughput = direct_transport_throughput,
+                     .distance = direct_transport_distance,
+                     .phase = direct_phase,
+                     .scattered = direct_scattered},
+                    stack,
+                    segment_position,
+                    inside_volume);
+            };
         }
 
         const auto emission =

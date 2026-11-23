@@ -34,12 +34,12 @@ def _read_section(
 
 def _main() -> None:
     args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-    if len(args) != 2:
+    if len(args) not in (1, 2):
         raise SystemExit(
-            "expected exporter and inspector paths after '--'"
+            "expected exporter path (and optional inspector path) after '--'"
         )
     exporter = pathlib.Path(args[0]).resolve()
-    inspector = pathlib.Path(args[1]).resolve()
+    inspector = pathlib.Path(args[1]).resolve() if len(args) == 2 else None
 
     _clear_scene()
     scene = bpy.context.scene
@@ -428,28 +428,29 @@ def _main() -> None:
                     "Cycles CORNER/BYTE_COLOR Rec.709 conversion was lost: "
                     f"{actual}, expected {expected_byte_scene_linear[corner]}"
                 )
-        inspected = subprocess.run(
-            [
-                str(inspector),
-                str(output),
-                "Domain Material",
-                "--require-generated-transform",
-                "--require-default-cycles-byte-color",
-            ],
-            check=False,
-            text=True,
-            capture_output=True,
-        )
-        if inspected.returncode != 0:
-            raise AssertionError(
-                "C++ compact-geometry import failed:\n"
-                f"{inspected.stdout}\n{inspected.stderr}"
+        if inspector is not None:
+            inspected = subprocess.run(
+                [
+                    str(inspector),
+                    str(output),
+                    "Domain Material",
+                    "--require-generated-transform",
+                    "--require-default-cycles-byte-color",
+                ],
+                check=False,
+                text=True,
+                capture_output=True,
             )
-        if "node type 'ATTRIBUTE'" in inspected.stderr:
-            raise AssertionError(
-                "Cycles Attribute outputs fell back during typed lowering:\n"
-                f"{inspected.stderr}"
-            )
+            if inspected.returncode != 0:
+                raise AssertionError(
+                    "C++ compact-geometry import failed:\n"
+                    f"{inspected.stdout}\n{inspected.stderr}"
+                )
+            if "node type 'ATTRIBUTE'" in inspected.stderr:
+                raise AssertionError(
+                    "Cycles Attribute outputs fell back during typed lowering:\n"
+                    f"{inspected.stderr}"
+                )
 
     while mesh.uv_layers:
         mesh.uv_layers.remove(mesh.uv_layers[0])

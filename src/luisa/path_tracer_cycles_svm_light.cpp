@@ -238,9 +238,10 @@ public:
       const Var<RenderKernelParameters> &parameters) const noexcept override {
     const auto backend_name = _scene->device.backend_name();
     const bool is_simd = backend_name == "simd";
+    const bool is_simd_wide = is_simd && _scene->device.compute_warp_size() > 1u;
     const bool cpu_backend = backend_name == "fallback" || is_simd;
     Float3 emission = make_float3(0.0f);
-    $outline_when_with_name(is_simd, "simd_eval_light_nee") {
+    $outline_when_with_name(is_simd_wide, "simd_eval_light_nee") {
       const PathCyclesSvmKernelGlobals kg{
           _scene, parameters, _camera_projection, Bool{_reflective_caustics},
           Bool{_refractive_caustics}, PathCyclesSvmShaderDomain::light_emission};
@@ -280,12 +281,13 @@ public:
               .noise_usage = usage.noise_usage,
               .active_shader_mask = active_mask,
               .max_groups_per_outlined_chunk =
-                  backend_name == "fallback"
-                      ? std::size_t{16u}
-                      : (is_simd ? std::size_t{2u} : std::size_t{0u}),
+                  is_simd_wide
+                      ? std::size_t{2u}
+                      : (backend_name == "fallback" ? std::size_t{16u}
+                                                    : std::size_t{0u}),
               .max_chunk_jit_weight =
-                  is_simd ? std::size_t{180u} : std::size_t{900u},
-              .outline_chunk_dispatcher = !is_simd},
+                  is_simd_wide ? std::size_t{180u} : std::size_t{900u},
+              .outline_chunk_dispatcher = !is_simd_wide},
           cpu_backend ? svm::SvmBackendStrategy::direct_jit
                       : svm::SvmBackendStrategy::auto_select);
       $if((sd.flag & static_cast<unsigned>(abi::SD_EMISSION)) != 0u) {

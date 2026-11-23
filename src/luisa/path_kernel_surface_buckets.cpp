@@ -388,6 +388,8 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
             });
 
   std::size_t total_active_nonempty = 0u;
+  std::size_t pure_simple_shaders = 0u;
+  std::size_t pure_simple_groups = 0u;
   std::size_t simple_single_closure_shaders = 0u;
   std::size_t simple_single_closure_groups = 0u;
   for (const auto &g : groups) {
@@ -395,6 +397,10 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
     if (g.max_closures <= 1u && !g.has_bssrdf) {
       simple_single_closure_shaders += g.shader_ids.size();
       ++simple_single_closure_groups;
+      if (!g.has_emission && !g.has_holdout) {
+        pure_simple_shaders += g.shader_ids.size();
+        ++pure_simple_groups;
+      }
     }
   }
 
@@ -443,7 +449,12 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
   std::vector<std::size_t> group_cuts;
   if (bucket_count == 2u) {
     std::size_t cut = groups.size() / 2u;
-    if (simple_single_closure_groups >= 1u &&
+    if (pure_simple_groups >= 1u &&
+        pure_simple_groups < groups.size() &&
+        pure_simple_shaders <= jit_safe_cap &&
+        (total_active_nonempty - pure_simple_shaders) <= jit_safe_cap) {
+      cut = pure_simple_groups;
+    } else if (simple_single_closure_groups >= 1u &&
         simple_single_closure_groups < groups.size() &&
         simple_single_closure_shaders <= jit_safe_cap &&
         (total_active_nonempty - simple_single_closure_shaders) <=

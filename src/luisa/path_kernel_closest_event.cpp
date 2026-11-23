@@ -87,7 +87,8 @@ class ClosestEventStageImpl final
         if (_analytic_light_endpoints) {
             const bool outline_lights =
                 scene != nullptr && static_cast<bool>(scene->device) &&
-                scene->device.backend_name() == "simd";
+                scene->device.backend_name() == "simd" &&
+                scene->device.compute_warp_size() > 1u;
             const Float3 ray_origin = ray->origin();
             const Float3 ray_direction = ray->direction();
             const Float ray_t_min = ray->t_min();

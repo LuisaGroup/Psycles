@@ -14,6 +14,20 @@
 #include <psycles/luisa/cycles_ray_differential.h>
 
 namespace psycles::luisa_backend::detail {
+namespace {
+
+[[nodiscard]] bool should_outline_simd_bsdf(const PathKernelConfig &config) noexcept {
+  if (!config.scene || !static_cast<bool>(config.scene->device) ||
+      config.scene->device.backend_name() != "simd" ||
+      config.scene->device.compute_warp_size() <= 1u) {
+    return false;
+  }
+  const char *raw = std::getenv("PSYCLES_SIMD_OUTLINE_BSDF");
+  return raw == nullptr || std::string_view{raw} != "0";
+}
+
+} // namespace
+
 namespace svm = cycles_svm;
 namespace native = cycles_svm::detail;
 namespace closure = cycles_closure;
@@ -91,13 +105,7 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
     const auto pick = native::surface_shader_bsdf_bssrdf_pick(sd, random);
     const auto sc = pool.common(pick.index);
 
-    const bool outline_bsdf =
-        config.scene && static_cast<bool>(config.scene->device) &&
-        config.scene->device.backend_name() == "simd" &&
-        ([]() noexcept {
-          const char *raw = std::getenv("PSYCLES_SIMD_OUTLINE_BSDF");
-          return raw == nullptr || std::string_view{raw} != "0";
-        })();
+    const bool outline_bsdf = should_outline_simd_bsdf(config);
     const auto sample_ordinary_bsdf = [&] noexcept {
       $outline_when_with_name(outline_bsdf, "simd_svm_bsdf_sample") {
         const auto bsdf = native::surface_shader_bsdf_sample_closure(
@@ -317,20 +325,41 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
     }
 
     UInt label = closure::label_none;
+    const bool outline_bsdf = should_outline_simd_bsdf(config);
     const auto ordinary_bsdf = [&] noexcept {
-      const auto bsdf = native::surface_shader_bsdf_sample_closure(
-          kg, sd, pick, population.closure_types);
+      Float3 bsdf_wo = make_float3(0.0f);
+      Float3 bsdf_sum = make_float3(0.0f);
+      Float3 bsdf_diffuse = make_float3(0.0f);
+      Float3 bsdf_glossy = make_float3(0.0f);
+      Float bsdf_pdf = 0.0f;
+      Float bsdf_avg_r2 = 0.0f;
+      Float2 bsdf_sampled_roughness = make_float2(0.0f);
+      Float bsdf_eta = 0.0f;
+      UInt bsdf_label = closure::label_none;
+      $outline_when_with_name(outline_bsdf, "simd_svm_bsdf_sample") {
+        const auto bsdf = native::surface_shader_bsdf_sample_closure(
+            kg, sd, pick, population.closure_types);
+        bsdf_wo = bsdf.wo;
+        bsdf_sum = bsdf.evaluation.sum;
+        bsdf_diffuse = bsdf.evaluation.diffuse;
+        bsdf_glossy = bsdf.evaluation.glossy;
+        bsdf_pdf = bsdf.evaluation.pdf;
+        bsdf_avg_r2 = bsdf.evaluation.average_roughness_squared;
+        bsdf_sampled_roughness = bsdf.sampled_roughness;
+        bsdf_eta = bsdf.eta;
+        bsdf_label = bsdf.label;
+      };
       // Native rejection is exactly zero PDF or zero BsdfEval. Do not add a
       // selected-weight, positive-PDF, finite or nonnegative-throughput guard.
-      $if((bsdf.evaluation.pdf != 0.0f) & any(bsdf.evaluation.sum != 0.0f)) {
-        label = bsdf.label;
+      $if((bsdf_pdf != 0.0f) & any(bsdf_sum != 0.0f)) {
+        label = bsdf_label;
         if (config.path_trace_enabled) {
           trace(path_trace_schema::EventSlot::bsdf_meta,
-                make_float3(bsdf.evaluation.pdf, bsdf.evaluation.pdf, label.cast<float>()));
-          trace(path_trace_schema::EventSlot::bsdf_wo, bsdf.wo);
-          trace(path_trace_schema::EventSlot::bsdf_eval, bsdf.evaluation.sum);
+                make_float3(bsdf_pdf, bsdf_pdf, label.cast<float>()));
+          trace(path_trace_schema::EventSlot::bsdf_wo, bsdf_wo);
+          trace(path_trace_schema::EventSlot::bsdf_eval, bsdf_sum);
           trace(path_trace_schema::EventSlot::bsdf_roughness_eta,
-                make_float3(bsdf.sampled_roughness, bsdf.eta));
+                make_float3(bsdf_sampled_roughness, bsdf_eta));
         }
         const auto transparent = (label & closure::label_transparent) != 0u;
         $if(transparent) {
@@ -340,26 +369,26 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
               max(sample.ray->t_min(), sd.ray_length)));
         }
         $else {
-          const auto D = normalize(bsdf.wo);
+          const auto D = normalize(bsdf_wo);
           sample.ray = make_ray(context.surface.make_ray_origin(D), D, 0.0f, ray_maximum);
           sample.ray_dP = sd.dP;
           sample.ray_dD = cycles_ray_differential::widen_direction(
-              sample.ray_dD, bsdf.evaluation.average_roughness_squared);
+              sample.ray_dD, bsdf_avg_r2);
         };
-        sample.throughput *= bsdf.evaluation.sum / bsdf.evaluation.pdf;
+        sample.throughput *= bsdf_sum / bsdf_pdf;
         // This renderer exposes the complete light-pass contract. Native
         // first-bounce weights include transparent closures and are reduced
         // only inside the first-bounce predicate.
         $if(sample.path_depth == 0u) {
           sample.path_diffuse_weight = config.light_transport.light_component_ratio(
-              bsdf.evaluation.diffuse, bsdf.evaluation.sum);
+              bsdf_diffuse, bsdf_sum);
           sample.path_glossy_weight = config.light_transport.light_component_ratio(
-              bsdf.evaluation.glossy, bsdf.evaluation.sum);
+              bsdf_glossy, bsdf_sum);
         };
         $if(!transparent) {
-          sample.previous_bsdf_pdf = bsdf.evaluation.pdf;
+          sample.previous_bsdf_pdf = bsdf_pdf;
           if (config.has_filter_glossy || config.path_trace_enabled) {
-            sample.minimum_bsdf_pdf = min(bsdf.evaluation.pdf, sample.minimum_bsdf_pdf);
+            sample.minimum_bsdf_pdf = min(bsdf_pdf, sample.minimum_bsdf_pdf);
           }
           sample.previous_mis_origin_normal = sd.N;
         };

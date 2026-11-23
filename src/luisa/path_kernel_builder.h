@@ -244,6 +244,7 @@ enum class PathFilmAccumulation : std::uint8_t {
         return false;
     }
     if (config.scene->device.backend_name() != "simd" ||
+        config.scene->device.compute_warp_size() != 8u ||
         config.path_trace_enabled ||
         config.direct_light_task_sink != nullptr) {
         return false;

@@ -38,9 +38,10 @@ Float3 evaluate_cycles_svm_lamp_emission(
   const auto constant = cycles_svm_constant_emission(*scene, shader, emission);
   const auto backend_name = scene->device.backend_name();
   const bool is_simd = backend_name == "simd";
+  const bool is_simd_wide = is_simd && scene->device.compute_warp_size() > 1u;
   const bool cpu_backend = backend_name == "fallback" || is_simd;
   $if(!constant) {
-    $outline_when_with_name(is_simd, "simd_eval_lamp_emission") {
+    $outline_when_with_name(is_simd_wide, "simd_eval_lamp_emission") {
       // light_sample_shader_eval_forward uses visibility NONE and EMISSION.
       // Caustic suppression therefore cannot be active in this domain.
       const PathCyclesSvmKernelGlobals kg{
@@ -93,11 +94,13 @@ Float3 evaluate_cycles_svm_lamp_emission(
               .noise_usage = usage.noise_usage,
               .active_shader_mask = active_mask,
               .max_groups_per_outlined_chunk =
-                  cpu_backend ? (is_simd ? std::size_t{2u} : std::size_t{16u})
-                              : std::size_t{0u},
+                  is_simd_wide
+                      ? std::size_t{2u}
+                      : (backend_name == "fallback" ? std::size_t{16u}
+                                                    : std::size_t{0u}),
               .max_chunk_jit_weight =
-                  is_simd ? std::size_t{180u} : std::size_t{900u},
-              .outline_chunk_dispatcher = !is_simd},
+                  is_simd_wide ? std::size_t{180u} : std::size_t{900u},
+              .outline_chunk_dispatcher = !is_simd_wide},
           cpu_backend ? svm::SvmBackendStrategy::direct_jit
                       : svm::SvmBackendStrategy::auto_select);
       $if(((sd.flag & svm::shader_data_emission) != 0u) &

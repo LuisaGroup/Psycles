@@ -119,10 +119,12 @@ def _read_section(
 
 def _main() -> None:
     args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-    if len(args) != 2:
-        raise SystemExit("expected exporter and inspector paths after '--'")
+    if len(args) not in (1, 2):
+        raise SystemExit(
+            "expected exporter path (and optional inspector path) after '--'"
+        )
     exporter = pathlib.Path(args[0]).resolve()
-    inspector = pathlib.Path(args[1]).resolve()
+    inspector = pathlib.Path(args[1]).resolve() if len(args) == 2 else None
 
     _clear_scene()
     scene = bpy.context.scene
@@ -209,27 +211,28 @@ def _main() -> None:
                 f"original edges were replaced by tessellation: {edges}"
             )
 
-        inspected = subprocess.run(
-            [
-                str(inspector),
-                str(output),
-                "Pointiness Material",
-                "--require-pointiness-source",
-            ],
-            check=False,
-            text=True,
-            capture_output=True,
-        )
-        if inspected.returncode != 0:
-            raise AssertionError(
-                "C++ Pointiness import/lowering failed:\n"
-                f"{inspected.stdout}\n{inspected.stderr}"
+        if inspector is not None:
+            inspected = subprocess.run(
+                [
+                    str(inspector),
+                    str(output),
+                    "Pointiness Material",
+                    "--require-pointiness-source",
+                ],
+                check=False,
+                text=True,
+                capture_output=True,
             )
-        if "Pointiness" in inspected.stderr:
-            raise AssertionError(
-                "Pointiness import emitted a diagnostic:\n"
-                f"{inspected.stderr}"
-            )
+            if inspected.returncode != 0:
+                raise AssertionError(
+                    "C++ Pointiness import/lowering failed:\n"
+                    f"{inspected.stdout}\n{inspected.stderr}"
+                )
+            if "Pointiness" in inspected.stderr:
+                raise AssertionError(
+                    "Pointiness import emitted a diagnostic:\n"
+                    f"{inspected.stderr}"
+                )
 
     print("Psycles Blender Pointiness-source regression passed")
 

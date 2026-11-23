@@ -880,7 +880,8 @@ void PathKernelPipeline::emit(
 
                 const bool outline_subsurface =
                     scene != nullptr && static_cast<bool>(scene->device) &&
-                    scene->device.backend_name() == "simd";
+                    scene->device.backend_name() == "simd" &&
+                    scene->device.compute_warp_size() > 1u;
                 if (!on_sample_complete) {
                   $if(!scatter.valid) { $break; };
 

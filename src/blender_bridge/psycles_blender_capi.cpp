@@ -394,27 +394,34 @@ std::uint32_t psycles_probe_backends(
         }
 #if defined(_WIN32)
         constexpr std::string_view prefix = "luisa-backend-";
-        constexpr std::string_view ext = ".dll";
+        constexpr std::array<std::string_view, 1> exts{".dll"};
         constexpr std::array<std::string_view, 7> priority{
             "vk", "dx", "hip", "metal", "metal4", "fallback", "simd"};
 #elif defined(__APPLE__)
         constexpr std::string_view prefix = "libluisa-backend-";
-        constexpr std::string_view ext = ".dylib";
+        constexpr std::array<std::string_view, 2> exts{".so", ".dylib"};
         constexpr std::array<std::string_view, 7> priority{
             "metal", "metal4", "vk", "dx", "hip", "fallback", "simd"};
 #else
         constexpr std::string_view prefix = "libluisa-backend-";
-        constexpr std::string_view ext = ".so";
+        constexpr std::array<std::string_view, 1> exts{".so"};
         constexpr std::array<std::string_view, 7> priority{
             "vk", "hip", "dx", "metal", "metal4", "fallback", "simd"};
 #endif
         std::string csv;
         std::uint32_t count = 0u;
         for (const auto name : priority) {
-            const auto filename =
-                std::string{prefix} + std::string{name} + std::string{ext};
-            std::error_code ec;
-            if (std::filesystem::is_regular_file(dir / filename, ec)) {
+            bool found = false;
+            for (const auto ext : exts) {
+                const auto filename =
+                    std::string{prefix} + std::string{name} + std::string{ext};
+                std::error_code ec;
+                if (std::filesystem::is_regular_file(dir / filename, ec)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (found) {
                 if (!csv.empty()) {
                     csv.push_back(',');
                 }

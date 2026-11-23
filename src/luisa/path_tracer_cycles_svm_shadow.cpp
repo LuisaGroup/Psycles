@@ -150,9 +150,10 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
                  Var<RenderKernelParameters> parameters) noexcept {
     const auto backend_name = scene->device.backend_name();
     const bool is_simd = backend_name == "simd";
+    const bool is_simd_wide = is_simd && scene->device.compute_warp_size() > 1u;
     const bool cpu_backend = backend_name == "fallback" || is_simd;
     Var<ShadowSurfaceEvaluationCall> surface;
-    $outline_when_with_name(is_simd, "simd_eval_shadow_surface") {
+    $outline_when_with_name(is_simd_wide, "simd_eval_shadow_surface") {
       // Caustic suppression is conditioned on diffuse visibility in Cycles.
       // SURFACE_SHADOW has no diffuse visibility bit, so both configurations
       // have the same effective behavior here.
@@ -204,12 +205,13 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
                 .noise_usage = usage.noise_usage,
                 .active_shader_mask = active_mask,
                 .max_groups_per_outlined_chunk =
-                    backend_name == "fallback"
-                        ? std::size_t{16u}
-                        : (is_simd ? std::size_t{2u} : std::size_t{0u}),
+                    is_simd_wide
+                        ? std::size_t{2u}
+                        : (backend_name == "fallback" ? std::size_t{16u}
+                                                      : std::size_t{0u}),
                 .max_chunk_jit_weight =
-                    is_simd ? std::size_t{180u} : std::size_t{900u},
-                .outline_chunk_dispatcher = !is_simd},
+                    is_simd_wide ? std::size_t{180u} : std::size_t{900u},
+                .outline_chunk_dispatcher = !is_simd_wide},
             cpu_backend ? svm::SvmBackendStrategy::direct_jit
                         : svm::SvmBackendStrategy::auto_select);
       };

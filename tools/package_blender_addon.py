@@ -42,7 +42,7 @@ def _is_runtime_payload(path: pathlib.Path) -> bool:
     if sys.platform == "win32":
         return path.suffix.lower() in {".dll", ".bc", ".hipfb"}
     if sys.platform == "darwin":
-        return path.suffix.lower() in {".dylib", ".metallib"}
+        return path.suffix.lower() in {".dylib", ".so", ".metallib"}
     return ".so" in path.suffixes or path.suffix.lower() in {".bc", ".hipfb"}
 
 

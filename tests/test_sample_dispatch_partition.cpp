@@ -209,8 +209,10 @@ int main() {
                 watchdog_max_pixel_samples_per_dispatch &&
             backend_max_pixel_samples_per_dispatch("vk", true) ==
                 std::numeric_limits<std::uint32_t>::max() &&
-            backend_max_pixel_samples_per_dispatch("metal", true) ==
+            backend_max_pixel_samples_per_dispatch("metal", false) ==
                 watchdog_max_pixel_samples_per_dispatch &&
+            backend_max_pixel_samples_per_dispatch("metal", true) ==
+                std::numeric_limits<std::uint32_t>::max() &&
             backend_max_pixel_samples_per_dispatch("dx", false) ==
                 std::numeric_limits<std::uint32_t>::max() &&
             backend_max_pixel_samples_per_dispatch("hip", true) ==
