@@ -4,6 +4,10 @@ project(Psycles
     DESCRIPTION "Cycles-compatible renderer contracts on LuisaCompute DSL/JIT"
     LANGUAGES C CXX)
 
+if(WIN32)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+endif()
+
 option(PSYCLES_BUILD_TESTS "Build Psycles contract tests" ON)
 option(PSYCLES_BUILD_EXAMPLES "Build Psycles executable examples" ON)
 option(PSYCLES_BUILD_BLENDER_PLUGIN
@@ -22,6 +26,17 @@ else()
     set(_psycles_enable_luisa_metal_default OFF)
     set(_psycles_enable_luisa_non_apple_gpu_default ON)
 endif()
+if(WIN32)
+    set(_psycles_enable_luisa_dx_default ON)
+else()
+    set(_psycles_enable_luisa_dx_default OFF)
+endif()
+if(DEFINED LUISA_COMPUTE_ENABLE_EXPERIMENTAL_CUDA_LLVM_CODEGEN)
+    set(_psycles_enable_luisa_cuda_llvm_default
+        ${LUISA_COMPUTE_ENABLE_EXPERIMENTAL_CUDA_LLVM_CODEGEN})
+else()
+    set(_psycles_enable_luisa_cuda_llvm_default OFF)
+endif()
 option(PSYCLES_ENABLE_LUISA_METAL
     "Build LuisaCompute's Metal backend on Apple platforms"
     ${_psycles_enable_luisa_metal_default})
@@ -34,8 +49,19 @@ option(PSYCLES_ENABLE_LUISA_HIP
 option(PSYCLES_ENABLE_LUISA_VULKAN
     "Build LuisaCompute's Vulkan backend"
     ${_psycles_enable_luisa_non_apple_gpu_default})
+option(PSYCLES_ENABLE_LUISA_CUDA
+    "Build LuisaCompute's CUDA backend"
+    ${_psycles_enable_luisa_non_apple_gpu_default})
+option(PSYCLES_ENABLE_LUISA_CUDA_LLVM_CODEGEN
+    "Build LuisaCompute's experimental LLVM-based CUDA codegen"
+    ${_psycles_enable_luisa_cuda_llvm_default})
+option(PSYCLES_ENABLE_LUISA_DX
+    "Build LuisaCompute's DirectX 12 backend on Windows"
+    ${_psycles_enable_luisa_dx_default})
 unset(_psycles_enable_luisa_metal_default)
 unset(_psycles_enable_luisa_non_apple_gpu_default)
+unset(_psycles_enable_luisa_dx_default)
+unset(_psycles_enable_luisa_cuda_llvm_default)
 option(PSYCLES_FETCH_LUISA_NEXT
     "Fetch LuisaCompute from its next branch when the bundled submodule is unavailable" OFF)
 set(PSYCLES_LUISA_SUBMODULE_DIR
@@ -104,6 +130,13 @@ add_library(psycles_core
     third_party/sky_nishita/sky_single_scattering.cpp
     third_party/sky_nishita/sky_multiple_scattering.cpp)
 add_library(Psycles::core ALIAS psycles_core)
+if(WIN32)
+    set_target_properties(
+        psycles_core
+        PROPERTIES
+            WINDOWS_EXPORT_ALL_SYMBOLS ON
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+endif()
 
 target_include_directories(psycles_core
     PUBLIC
@@ -161,6 +194,12 @@ if(PSYCLES_ENABLE_LUISA)
             ${PSYCLES_ENABLE_LUISA_METAL4} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_HIP
             ${PSYCLES_ENABLE_LUISA_HIP} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_CUDA
+            ${PSYCLES_ENABLE_LUISA_CUDA} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_EXPERIMENTAL_CUDA_LLVM_CODEGEN
+            ${PSYCLES_ENABLE_LUISA_CUDA_LLVM_CODEGEN} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_DX
+            ${PSYCLES_ENABLE_LUISA_DX} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_VULKAN
             ${PSYCLES_ENABLE_LUISA_VULKAN} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_VK_XIR_SPIRV
@@ -190,6 +229,12 @@ if(PSYCLES_ENABLE_LUISA)
             ${PSYCLES_ENABLE_LUISA_METAL4} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_HIP
             ${PSYCLES_ENABLE_LUISA_HIP} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_CUDA
+            ${PSYCLES_ENABLE_LUISA_CUDA} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_EXPERIMENTAL_CUDA_LLVM_CODEGEN
+            ${PSYCLES_ENABLE_LUISA_CUDA_LLVM_CODEGEN} CACHE BOOL "" FORCE)
+        set(LUISA_COMPUTE_ENABLE_DX
+            ${PSYCLES_ENABLE_LUISA_DX} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_VULKAN
             ${PSYCLES_ENABLE_LUISA_VULKAN} CACHE BOOL "" FORCE)
         set(LUISA_COMPUTE_ENABLE_VK_XIR_SPIRV
@@ -272,6 +317,23 @@ if(PSYCLES_ENABLE_LUISA)
             "prerequisites or configure with "
             "PSYCLES_ENABLE_LUISA_VULKAN=OFF.")
     endif()
+    if(PSYCLES_ENABLE_LUISA_CUDA AND
+       NOT TARGET luisa-compute-backend-cuda)
+        message(FATAL_ERROR
+            "PSYCLES_ENABLE_LUISA_CUDA=ON requires LuisaCompute's "
+            "CUDA backend, but LuisaCompute did not create "
+            "luisa-compute-backend-cuda. Install the CUDA toolkit or "
+            "configure with PSYCLES_ENABLE_LUISA_CUDA=OFF.")
+    endif()
+    if(PSYCLES_ENABLE_LUISA_DX AND
+       NOT TARGET luisa-compute-backend-dx)
+        message(FATAL_ERROR
+            "PSYCLES_ENABLE_LUISA_DX=ON requires LuisaCompute's "
+            "DirectX 12 backend, but LuisaCompute did not create "
+            "luisa-compute-backend-dx. Configure on Windows with the "
+            "DirectX prerequisites or configure with "
+            "PSYCLES_ENABLE_LUISA_DX=OFF.")
+    endif()
 
     if(TARGET luisa::compute)
         include(
@@ -315,6 +377,13 @@ if(PSYCLES_ENABLE_LUISA)
         add_library(
             Psycles::luisa_runtime
             ALIAS psycles_luisa_runtime)
+        if(WIN32)
+            set_target_properties(
+                psycles_luisa_runtime
+                PROPERTIES
+                    WINDOWS_EXPORT_ALL_SYMBOLS ON
+                    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+        endif()
         target_include_directories(psycles_luisa_runtime
             PUBLIC
                 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -1643,7 +1712,7 @@ if(PSYCLES_ENABLE_LUISA)
                 psycles_luisa_surface_nee_normal_tests
                 PRIVATE
                     "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
-            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk)
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
                 if(TEST psycles.luisa_surface_nee_normal_${_backend})
                     set_tests_properties(
                         psycles.luisa_surface_nee_normal_${_backend}
@@ -1676,17 +1745,7 @@ if(PSYCLES_ENABLE_LUISA)
                     psycles_luisa_virtual_texture_cache_tests
                     PRIVATE OpenImageIO::OpenImageIO)
             endif()
-            if(TARGET luisa-compute-backend-dx)
-                add_dependencies(
-                    psycles_luisa_virtual_texture_cache_tests
-                    luisa-compute-backend-dx)
-                add_test(
-                    NAME psycles.luisa_virtual_texture_cache_dx
-                    COMMAND
-                        psycles_luisa_virtual_texture_cache_tests
-                        dx)
-            endif()
-            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx)
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
                 if(TEST "psycles.luisa_virtual_texture_cache_${_backend}")
                     set_tests_properties(
                         "psycles.luisa_virtual_texture_cache_${_backend}"
@@ -1806,7 +1865,7 @@ if(PSYCLES_ENABLE_LUISA)
                 PROPERTIES
                     RUNTIME_OUTPUT_DIRECTORY
                         "${CMAKE_BINARY_DIR}/bin")
-            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk)
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
                 if(TARGET luisa-compute-backend-${_backend})
                     add_dependencies(
                         psycles_luisa_render_demo
@@ -1860,7 +1919,7 @@ if(PSYCLES_ENABLE_LUISA)
                 target_compile_options(psycles_blender PRIVATE
                     -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion)
             endif()
-            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx)
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
                 if(TARGET luisa-compute-backend-${_backend})
                     add_dependencies(
                         psycles_blender

@@ -184,17 +184,28 @@ using detail::unsigned_number;
         std::string{name});
 }
 
+[[nodiscard]] std::filesystem::path utf8_path(std::string_view value) {
+    return std::filesystem::path{std::u8string_view{
+        reinterpret_cast<const char8_t *>(value.data()), value.size()}};
+}
+
+[[nodiscard]] std::string path_to_utf8(const std::filesystem::path &path) {
+    const auto u8 = path.u8string();
+    return std::string{
+        reinterpret_cast<const char *>(u8.data()), u8.size()};
+}
+
 [[nodiscard]] std::vector<std::uint8_t> read_file(
     const std::filesystem::path &path) {
     std::ifstream stream{path, std::ios::binary | std::ios::ate};
     if (!stream) {
         throw std::runtime_error(
-            "failed to open file: " + path.string());
+            "failed to open file: " + path_to_utf8(path));
     }
     const auto end = stream.tellg();
     if (end < 0) {
         throw std::runtime_error(
-            "failed to size file: " + path.string());
+            "failed to size file: " + path_to_utf8(path));
     }
     std::vector<std::uint8_t> result(
         static_cast<std::size_t>(end));
@@ -204,7 +215,7 @@ using detail::unsigned_number;
         static_cast<std::streamsize>(result.size()));
     if (!stream) {
         throw std::runtime_error(
-            "failed to read file: " + path.string());
+            "failed to read file: " + path_to_utf8(path));
     }
     return result;
 }
@@ -221,13 +232,13 @@ using detail::unsigned_number;
             std::numeric_limits<std::size_t>::max() /
                 (3u * sizeof(float))) {
         throw std::runtime_error(
-            "invalid float3 image dimensions: " + path.string());
+            "invalid float3 image dimensions: " + path_to_utf8(path));
     }
     const auto bytes = read_file(path);
     const auto expected = count * 3u * sizeof(float);
     if (bytes.size() != expected) {
         throw std::runtime_error(
-            "float3 image byte count mismatch: " + path.string());
+            "float3 image byte count mismatch: " + path_to_utf8(path));
     }
     std::vector<Vec3f> result(count);
     for (std::size_t i = 0u; i < count; ++i) {
@@ -428,11 +439,11 @@ using detail::unsigned_number;
                 source_format = text(member(image, "source_format"), ".png");
             } else if (!load_failed) {
                 const auto relative_path =
-                    std::filesystem::path{text(member(image, "path"))};
+                    utf8_path(text(member(image, "path")));
                 source_path = relative_path.is_absolute()
                                   ? relative_path
                                   : (directory / relative_path);
-                source_format = source_path.extension().string();
+                source_format = path_to_utf8(source_path.extension());
                 encoded_data = read_file(source_path);
             } else {
                 source_format = text(member(image, "source_format"));
@@ -1273,8 +1284,7 @@ using detail::unsigned_number;
                 .height = height,
                 .pixels = read_float3_file(
                     directory /
-                        std::filesystem::path{
-                            text(member(environment, "path"))},
+                        utf8_path(text(member(environment, "path"))),
                     width,
                     height),
                 .suns = {},
@@ -1316,16 +1326,18 @@ BlenderSceneImport load_blender_scene_bundle(
             .message = std::move(message)});
     };
     const auto json_path = directory / "scene.json";
-    yyjson_read_err read_error{};
-    Document document{yyjson_read_file(
-        json_path.string().c_str(), 0u, nullptr, &read_error)};
-    if (!document) {
-        error("failed to parse '" + json_path.string() + "': " +
-              (read_error.msg == nullptr ? std::string{"unknown JSON error"}
-                                         : std::string{read_error.msg}));
-        return result;
-    }
     try {
+        auto json_bytes = read_file(json_path);
+        yyjson_read_err read_error{};
+        Document document{yyjson_read_opts(
+            reinterpret_cast<char *>(json_bytes.data()),
+            json_bytes.size(), 0u, nullptr, &read_error)};
+        if (!document) {
+            error("failed to parse '" + path_to_utf8(json_path) + "': " +
+                  (read_error.msg == nullptr ? std::string{"unknown JSON error"}
+                                             : std::string{read_error.msg}));
+            return result;
+        }
         const auto geometry_bytes = read_file(directory / "geometry.bin");
         return load_blender_scene_from_document(
             yyjson_doc_get_root(document.get()),

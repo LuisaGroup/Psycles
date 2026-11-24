@@ -45,7 +45,7 @@ target_include_directories(
 
 # Run the same traversal and reordered coroutine-edge assertions with local
 # hit storage as well as the invocation-indexed SoA used by the default case.
-foreach(_backend IN ITEMS fallback simd metal metal4 hip vk)
+foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
     if(TARGET luisa-compute-backend-${_backend})
         add_test(
             NAME psycles.luisa_scene_traversal_local_${_backend}

@@ -387,7 +387,7 @@ std::uint32_t psycles_probe_backends(
         return 0u;
     }
     try {
-        const std::filesystem::path dir{runtime_dir};
+        const auto dir = utf8_path(runtime_dir);
         if (!std::filesystem::is_directory(dir)) {
             write_cstr(out_csv, out_cap, "");
             return 0u;
@@ -453,16 +453,17 @@ PsyclesEngine *psycles_engine_create(
             write_cstr(err_buf, err_cap, "backend_name must not be empty");
             return nullptr;
         }
-        const std::filesystem::path rt_path{runtime_dir};
+        const auto rt_path = utf8_path(runtime_dir);
         if (!std::filesystem::exists(rt_path)) {
             write_cstr(err_buf, err_cap,
-                       "runtime_dir does not exist: " + rt_path.string());
+                       "runtime_dir does not exist: " +
+                           path_to_utf8(rt_path));
             return nullptr;
         }
         std::filesystem::path data_path = rt_path;
         if (cfg != nullptr && cfg->cache_dir != nullptr &&
             *cfg->cache_dir != '\0') {
-            data_path = std::filesystem::path{cfg->cache_dir};
+            data_path = utf8_path(cfg->cache_dir);
             std::filesystem::create_directories(data_path);
         }
 
@@ -568,7 +569,7 @@ PsyclesScene *psycles_scene_compile_memory(
             return nullptr;
         }
         const std::filesystem::path base_dir =
-            asset_base_dir != nullptr ? std::filesystem::path{asset_base_dir}
+            asset_base_dir != nullptr ? utf8_path(asset_base_dir)
                                       : std::filesystem::path{};
         std::string error;
         auto scene = compile_scene_impl(

@@ -1,3 +1,7 @@
 tools/cycles_path_trace/*.patch -whitespace
 tools/cycles_binding_oracle.patch -whitespace
 tools/cycles_light_parameters_oracle.patch -whitespace
+tests/data/** text eol=lf
+tests/** text eol=lf
+tools/*.hip text eol=lf
+tools/*.patch text eol=lf

@@ -21,6 +21,18 @@
 
 namespace psycles::blender_bridge::detail {
 
+[[nodiscard]] inline std::filesystem::path utf8_path(std::string_view value) {
+    return std::filesystem::path{std::u8string_view{
+        reinterpret_cast<const char8_t *>(value.data()), value.size()}};
+}
+
+[[nodiscard]] inline std::string path_to_utf8(
+    const std::filesystem::path &path) {
+    const auto u8 = path.u8string();
+    return std::string{
+        reinterpret_cast<const char *>(u8.data()), u8.size()};
+}
+
 void write_cstr(char *dst, std::size_t cap, std::string_view text) noexcept;
 
 struct PassBuffer {

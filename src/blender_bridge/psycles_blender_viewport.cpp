@@ -5,6 +5,12 @@
 #include <charconv>
 #include <chrono>
 #include <cstdlib>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 #include <cstring>
 #include <exception>
 #include <filesystem>
@@ -18,8 +24,21 @@
 namespace psycles::blender_bridge::detail {
 namespace {
 
+#ifdef _WIN32
+[[nodiscard]] inline const char *read_test_step_delay_env(char (&buffer)[64]) noexcept {
+    const auto len = GetEnvironmentVariableA(
+        "PSYCLES_TEST_VIEWPORT_STEP_DELAY_MS", buffer, static_cast<DWORD>(sizeof(buffer)));
+    return (len > 0u && len < sizeof(buffer)) ? buffer : nullptr;
+}
+#else
+[[nodiscard]] inline const char *read_test_step_delay_env(char (&)[64]) noexcept {
+    return std::getenv("PSYCLES_TEST_VIEWPORT_STEP_DELAY_MS");
+}
+#endif
+
 [[nodiscard]] std::uint32_t read_test_step_delay_ms() noexcept {
-    if (const char *raw = std::getenv("PSYCLES_TEST_VIEWPORT_STEP_DELAY_MS");
+    char delay_env_buf[64]{};
+    if (const char *raw = read_test_step_delay_env(delay_env_buf);
         raw != nullptr && *raw != '\0') {
         const std::string_view sv{raw};
         std::uint32_t ms = 0u;
@@ -437,7 +456,7 @@ PsyclesViewportTask *psycles_viewport_task_start_compile(
         const auto *geom_ptr = static_cast<const std::byte *>(geometry_bin);
         task->compile_geom.assign(geom_ptr, geom_ptr + geom_len);
         task->compile_base_dir =
-            asset_base_dir != nullptr ? std::filesystem::path{asset_base_dir}
+            asset_base_dir != nullptr ? utf8_path(asset_base_dir)
                                       : std::filesystem::path{};
 
         auto wrapper = std::make_unique<PsyclesViewportTask>();

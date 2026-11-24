@@ -47,6 +47,9 @@ UInt4 ClosurePool::load_vec4(Expr<std::uint32_t> slot,
     return _storage[vec_index];
   }
   if (const auto c = detail::try_const_uint(slot)) {
+    if (*c >= _capacity) {
+      return luisa::compute::make_uint4(0u);
+    }
     return _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_index];
   }
   return _storage[slot * static_cast<std::uint32_t>(closure_vec4s) + vec_index];
@@ -60,6 +63,9 @@ void ClosurePool::store_vec4(Expr<std::uint32_t> slot,
     return;
   }
   if (const auto c = detail::try_const_uint(slot)) {
+    if (*c >= _capacity) {
+      return;
+    }
     _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_index] =
         value;
     return;
@@ -75,6 +81,9 @@ UInt ClosurePool::load_word(Expr<std::uint32_t> slot,
     return _storage[vec_offset][lane];
   }
   if (const auto c = detail::try_const_uint(slot)) {
+    if (*c >= _capacity) {
+      return 0u;
+    }
     return _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_offset]
                    [lane];
   }
@@ -92,6 +101,9 @@ void ClosurePool::store_word(Expr<std::uint32_t> slot,
     return;
   }
   if (const auto c = detail::try_const_uint(slot)) {
+    if (*c >= _capacity) {
+      return;
+    }
     _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_offset][lane] =
         value;
     return;

@@ -228,7 +228,8 @@ bool check_joint_surface_queue(Device &device, Stream &stream, const Oracle &ora
 bool check_multi_bucket_surface_routing(Device &device, Stream &stream) {
   using namespace luisa::compute::coro;
   constexpr unsigned shader_count = 78u;
-  auto scene = std::make_shared<LuisaSceneData>(device);
+  auto scene = std::make_shared<LuisaSceneData>();
+  scene->device = device;
   scene->cycles_svm = std::make_unique<CyclesSvmRuntime>();
   auto &comp = scene->cycles_svm->compilation;
   comp.table.valid = true;

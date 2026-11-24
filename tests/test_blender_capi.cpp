@@ -7,6 +7,12 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 #include <cstring>
 #include <filesystem>
 #include <iostream>
@@ -502,7 +508,7 @@ int main(int, char **argv) {
         // 3) Delayed cancellation & ownership safety test using PSYCLES_TEST_VIEWPORT_STEP_DELAY_MS.
         const auto set_delay_env = [](const char *val) {
 #ifdef _WIN32
-            _putenv_s("PSYCLES_TEST_VIEWPORT_STEP_DELAY_MS", val);
+            SetEnvironmentVariableA("PSYCLES_TEST_VIEWPORT_STEP_DELAY_MS", val);
 #else
             setenv("PSYCLES_TEST_VIEWPORT_STEP_DELAY_MS", val, 1);
 #endif
