@@ -60,7 +60,8 @@ struct PathSurfaceBucketPlan {
 [[nodiscard]] PathSurfaceBucketPlan make_path_surface_bucket_plan(
     const LuisaSceneData &scene, bool staged_surface_sorting,
     bool staged_surface_sort_annotation, bool path_trace_enabled = false,
-    bool has_subsurface = false) noexcept;
+    bool has_subsurface = false,
+    bool force_large_bucket_split = false) noexcept;
 
 [[nodiscard]] PathSurfaceBucketPlan
 make_path_surface_bucket_plan(const PathKernelConfig &config) noexcept;

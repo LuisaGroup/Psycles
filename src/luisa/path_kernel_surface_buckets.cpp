@@ -271,7 +271,7 @@ UInt PathSurfaceBucketPlan::emit_dense_sort_key(
 PathSurfaceBucketPlan make_path_surface_bucket_plan(
     const LuisaSceneData &scene, bool staged_surface_sorting,
     bool staged_surface_sort_annotation, bool path_trace_enabled,
-    bool has_subsurface) noexcept {
+    bool has_subsurface, bool force_large_bucket_split) noexcept {
   PathSurfaceBucketPlan plan{};
   plan.post_closure_substage = configured_post_closure_substage(
       scene, staged_surface_sort_annotation, path_trace_enabled);
@@ -309,9 +309,31 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       scene, PathCyclesSvmShaderDomain::surface_only);
 
   const auto mode = configured_bucket_mode();
+  const auto backend_name =
+      static_cast<bool>(scene.device)
+          ? std::string_view{scene.device.backend_name()}
+          : std::string_view{};
+  const SurfaceBucketMode effective_mode = [&]() noexcept {
+    if (mode != SurfaceBucketMode::auto_select) {
+      return mode;
+    }
+    if (force_large_bucket_split) {
+      return SurfaceBucketMode::large_only;
+    }
+    // Multi-bucket splitting reduces shader I-cache/register pressure on
+    // CUDA and Metal, but on DX and Vulkan the extra per-bucket surface-sort
+    // and wavefront continuation dispatches outweigh I-cache savings on
+    // large shader tables (e.g. Classroom: +16-20% faster and ~2x faster
+    // warm JIT with a single surface bucket). Explicit
+    // PSYCLES_SURFACE_BUCKET_MODE overrides still take precedence.
+    if (backend_name == "dx" || backend_name == "vk") {
+      return SurfaceBucketMode::off;
+    }
+    return SurfaceBucketMode::large_only;
+  }();
   const bool allow_multi_bucket =
       staged_surface_sort_annotation && staged_surface_sorting &&
-      mode != SurfaceBucketMode::off && count > 1u;
+      effective_mode != SurfaceBucketMode::off && count > 1u;
 
   if (!allow_multi_bucket) {
     PathSurfaceBucketSpec single{};
@@ -405,12 +427,6 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
   }
 
   const std::size_t max_per_bucket = configured_bucket_max_shaders();
-  // Default auto_select partitions large shader tables (> max_per_bucket, e.g.
-  // Classroom's 76 active surface shaders) so every bucket stays comfortably
-  // inside DirectJitTranslator's 48-shader Apple GPU L1 I-cache budget.
-  const SurfaceBucketMode effective_mode =
-      mode == SurfaceBucketMode::auto_select ? SurfaceBucketMode::large_only
-                                             : mode;
 
   std::size_t bucket_count = 1u;
   if (total_active_nonempty > max_per_bucket && groups.size() >= 2u) {

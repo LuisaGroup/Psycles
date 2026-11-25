@@ -70,9 +70,12 @@ void emit_surface_emission(
              static_cast<std::uint32_t>(contract::EmissionSampling::back)) |
             (surface.emission_sampling ==
              static_cast<std::uint32_t>(contract::EmissionSampling::front_back));
-        const auto has_mis =
+        Bool has_mis =
             (!mis_competition_skipped) &
             select(samples_front, samples_back, point.back_facing);
+        if (!config.path_trace_enabled) {
+          has_mis = (path_depth > 0u) & has_mis;
+        }
         $if(has_mis) {
           const auto [wp0, wp1, wp2] =
               surface.resolve_world_triangle_vertices();

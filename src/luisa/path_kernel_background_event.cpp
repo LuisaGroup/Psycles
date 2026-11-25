@@ -51,51 +51,56 @@ class BackgroundEventStageImpl final
             config.light_transport
                 .forward_light_weight;
 
-        Bool competing =
-            (path_depth > 0u) &
-            (!mis_competition_skipped);
-        Float environment_selection_pdf =
-            scene->environment_in_light_distribution
-                ? scene->light_selection_pdf
-                : 0.0f;
-        if (config.use_light_tree) {
-            const auto environment_emitter_id =
-                scene->emissive_triangle_count + scene->light_count;
-            environment_selection_pdf = select(
-                0.0f,
-                config.light_tree.forward_pdf(
-                    environment_emitter_id,
-                    ray->origin(),
-                    previous_mis_origin_normal,
-                    previous_light_tree_dt,
-                    sample.cycles_path_visibility,
-                    path_flags),
-                scene->environment_in_light_distribution);
-        }
-        Float environment_pdf =
-            _environment_light
-                ->from_direction(
-                    scene,
-                    *config.background_sampling,
-                    ray->origin(),
-                    ray->direction(),
-                    environment_selection_pdf,
-                    invocation.parameters
-                        .analytic_light_count,
-                    invocation.parameters
-                        .portal_count);
-        Float environment_weight =
-            forward_light_weight(
-                previous_bsdf_pdf,
-                environment_pdf,
-                competing,
-                environment_pdf > 0.0f);
         const auto world_visible =
             (scene->world_visibility_mask &
              traversal_ray_visibility) != 0u;
-        Float3 environment_radiance;
-        // Cycles rejects invisible background shaders before evaluating SVM.
+        Bool competing =
+            (path_depth > 0u) &
+            (!mis_competition_skipped);
+        Float environment_weight = 1.0f;
+        Float3 environment_radiance = make_float3(0.0f);
+        // Cycles rejects invisible background shaders before evaluating SVM,
+        // and non-competing rays (primary / delta) always receive unit MIS
+        // weight so environment PDF evaluation is not needed.
         $if(world_visible) {
+            $if(competing) {
+                Float environment_selection_pdf =
+                    scene->environment_in_light_distribution
+                        ? scene->light_selection_pdf
+                        : 0.0f;
+                if (config.use_light_tree) {
+                    const auto environment_emitter_id =
+                        scene->emissive_triangle_count + scene->light_count;
+                    environment_selection_pdf = select(
+                        0.0f,
+                        config.light_tree.forward_pdf(
+                            environment_emitter_id,
+                            ray->origin(),
+                            previous_mis_origin_normal,
+                            previous_light_tree_dt,
+                            sample.cycles_path_visibility,
+                            path_flags),
+                        scene->environment_in_light_distribution);
+                }
+                Float environment_pdf =
+                    _environment_light
+                        ->from_direction(
+                            scene,
+                            *config.background_sampling,
+                            ray->origin(),
+                            ray->direction(),
+                            environment_selection_pdf,
+                            invocation.parameters
+                                .analytic_light_count,
+                            invocation.parameters
+                                .portal_count);
+                environment_weight =
+                    forward_light_weight(
+                        previous_bsdf_pdf,
+                        environment_pdf,
+                        competing,
+                        environment_pdf > 0.0f);
+            };
             if (scene->environment_emission_is_constant) {
                 environment_radiance =
                     _environment_light->evaluate_constant_emission(sample);

@@ -8,9 +8,11 @@
 #include <luisa/luisa-compute.h>
 
 #include <array>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 namespace {
 using namespace luisa::compute;
@@ -259,8 +261,22 @@ bool check_multi_bucket_surface_routing(Device &device, Stream &stream) {
   scene->cycles_svm->kernel_features =
       psycles::luisa_backend::cycles_svm::kernel_feature_subsurface;
 
+  if (std::getenv("PSYCLES_SURFACE_BUCKET_MODE") == nullptr) {
+    const auto auto_plan =
+        make_path_surface_bucket_plan(*scene, true, true, false, true);
+    const auto backend = std::string_view{device.backend_name()};
+    const std::size_t expected_auto_buckets =
+        (backend == "dx" || backend == "vk") ? 1u : 2u;
+    if (auto_plan.buckets.size() != expected_auto_buckets) {
+      std::cerr << "Unexpected auto surface bucket count "
+                << auto_plan.buckets.size() << " for backend " << backend
+                << " (expected " << expected_auto_buckets << ")\n";
+      return false;
+    }
+  }
+
   const auto plan =
-      make_path_surface_bucket_plan(*scene, true, true, false, true);
+      make_path_surface_bucket_plan(*scene, true, true, false, true, true);
   if (plan.buckets.size() != 2u || plan.buckets[0u].max_surface_closures != 1u ||
       plan.buckets[0u].may_have_emission || plan.buckets[0u].may_have_bssrdf ||
       plan.buckets[1u].max_surface_closures != 4u ||

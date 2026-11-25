@@ -57,19 +57,22 @@ public:
                          max(ray->t_min(), event.distance)),
                      ray->t_max());
       $if(evaluate_emission & any(light_radiance != make_float3(0.0f))) {
-        Float selection_pdf = scene->light_selection_pdf;
-        if (config.use_light_tree) {
-          const auto emitter_id =
-              scene->emissive_triangle_count + event.light_index;
-          selection_pdf = config.light_tree.forward_pdf(
-              emitter_id, ray->origin(), previous_mis_origin_normal,
-              previous_light_tree_dt, sample.cycles_path_visibility,
-              path_flags);
-        }
-        const auto light_pdf = event.light_pdf * selection_pdf;
+        Float mis_weight = 1.0f;
         const auto competing = (path_depth > 0u) & (!mis_competition_skipped);
-        const auto mis_weight = forward_light_weight(
-            previous_bsdf_pdf, light_pdf, competing, light_pdf > 0.0f);
+        $if(competing) {
+          Float selection_pdf = scene->light_selection_pdf;
+          if (config.use_light_tree) {
+            const auto emitter_id =
+                scene->emissive_triangle_count + event.light_index;
+            selection_pdf = config.light_tree.forward_pdf(
+                emitter_id, ray->origin(), previous_mis_origin_normal,
+                previous_light_tree_dt, sample.cycles_path_visibility,
+                path_flags);
+          }
+          const auto light_pdf = event.light_pdf * selection_pdf;
+          mis_weight = forward_light_weight(
+              previous_bsdf_pdf, light_pdf, competing, light_pdf > 0.0f);
+        };
         const auto contribution = invocation.clamp_emission_contribution(
             throughput * light_radiance * mis_weight, path_depth);
         sample.accumulate_radiance(contribution);
