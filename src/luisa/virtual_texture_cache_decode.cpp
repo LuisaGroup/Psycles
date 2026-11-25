@@ -3,6 +3,7 @@
 #include "cycles_texture_sampling.h"
 #include "path_tracer_image_decode.h"
 #include "path_tracer_internal.h"
+#include "virtual_texture_cache_mipmap.h"
 
 #include <psycles/core/parallel.h>
 
@@ -31,7 +32,8 @@ using DecodedSourcePayload = VirtualTextureCache::DecodedSourcePayload;
 }
 
 [[nodiscard]] DecodedSourcePayload decode_source_payload(
-    const VirtualTextureCache::SourceImageEntry &src) noexcept {
+    const VirtualTextureCache::SourceImageEntry &src,
+    bool build_mips) noexcept {
   DecodedSourcePayload out;
   auto decoded = decode_scene_image(src.encoded_data, src.name);
   if (!decoded) {
@@ -51,6 +53,14 @@ using DecodedSourcePayload = VirtualTextureCache::DecodedSourcePayload;
       }
     }
     out.decoded_bytes = out.unorm8_pixels.size();
+    if (build_mips) {
+      out.unorm8_mips = vt_build_unorm8_tail_mips(
+          out.unorm8_pixels, out.width, out.height,
+          src.color_space == contract::ImageColorSpace::srgb);
+      for (const auto &m : out.unorm8_mips) {
+        out.decoded_bytes += m.rgba.size();
+      }
+    }
   } else {
     if (decoded->storage == io::DecodedImageStorage::float32) {
       out.float_pixels = std::move(decoded->float_pixels);
@@ -63,6 +73,13 @@ using DecodedSourcePayload = VirtualTextureCache::DecodedSourcePayload;
       }
     }
     out.decoded_bytes = out.float_pixels.size() * sizeof(float);
+    if (build_mips) {
+      out.float4_mips = vt_build_float4_tail_mips(
+          out.float_pixels, out.width, out.height);
+      for (const auto &m : out.float4_mips) {
+        out.decoded_bytes += m.rgba.size() * sizeof(float);
+      }
+    }
   }
   return out;
 }
@@ -85,9 +102,13 @@ void VirtualTextureCache::apply_decoded_source_payload(
     src.height = payload.height;
     src.unorm8_pixels = std::move(payload.unorm8_pixels);
     src.float_pixels = std::move(payload.float_pixels);
+    src.unorm8_mips = std::move(payload.unorm8_mips);
+    src.float4_mips = std::move(payload.float4_mips);
     src.decoded_bytes = payload.decoded_bytes;
     src.decoded = true;
     _host_decoded_bytes += src.decoded_bytes;
+    _stats.peak_host_decoded_bytes =
+        std::max(_stats.peak_host_decoded_bytes, _host_decoded_bytes);
   }
 }
 
@@ -96,14 +117,18 @@ void VirtualTextureCache::decode_sources_batch(
   if (source_indices.empty()) {
     return;
   }
+  const bool build_mips =
+      (_options.mip_mode == LuisaTextureMipMode::isotropic);
   const auto t0 = std::chrono::steady_clock::now();
   std::vector<DecodedSourcePayload> payloads(source_indices.size());
   if (source_indices.size() > 1u) {
     psycles::parallel_for(source_indices.size(), [&](std::size_t idx) {
-      payloads[idx] = decode_source_payload(_sources[source_indices[idx]]);
+      payloads[idx] =
+          decode_source_payload(_sources[source_indices[idx]], build_mips);
     });
   } else {
-    payloads[0u] = decode_source_payload(_sources[source_indices[0u]]);
+    payloads[0u] =
+        decode_source_payload(_sources[source_indices[0u]], build_mips);
   }
   const auto t1 = std::chrono::steady_clock::now();
   _stats.decode_ms +=
@@ -129,7 +154,10 @@ void VirtualTextureCache::bg_decode_worker_loop() noexcept {
       _bg_pending_queue.pop_front();
       _bg_source_queued[idx] = 2u;
     }
-    DecodedSourcePayload payload = decode_source_payload(_sources[idx]);
+    const bool build_mips =
+        (_options.mip_mode == LuisaTextureMipMode::isotropic);
+    DecodedSourcePayload payload =
+        decode_source_payload(_sources[idx], build_mips);
     {
       std::lock_guard lock(_bg_mutex);
       if (_bg_stop) {
@@ -295,6 +323,14 @@ void VirtualTextureCache::trim_host_decoded_cache(
       std::vector<float> empty;
       v.float_pixels.swap(empty);
     }
+    {
+      std::vector<VtUnorm8MipLevel> empty;
+      v.unorm8_mips.swap(empty);
+    }
+    {
+      std::vector<VtFloat4MipLevel> empty;
+      v.float4_mips.swap(empty);
+    }
     ++_stats.host_decode_evictions;
   }
 }
@@ -413,12 +449,25 @@ void VirtualTextureCache::populate_temporary_direct_textures(
       continue;
     }
     const auto storage = is_unorm8 ? PixelStorage::BYTE4 : PixelStorage::FLOAT4;
+    const std::uint32_t mip_levels =
+        is_unorm8
+            ? static_cast<std::uint32_t>(1u + src.unorm8_mips.size())
+            : static_cast<std::uint32_t>(1u + src.float4_mips.size());
     auto &resource = temp_images.emplace_back(
-        scene.device.create_image<float>(storage, src.width, src.height));
+        scene.device.create_image<float>(
+            storage, src.width, src.height, mip_levels));
     if (is_unorm8) {
-      stream << resource.copy_from(src.unorm8_pixels.data());
+      stream << resource.view(0u).copy_from(src.unorm8_pixels.data());
+      for (std::size_t m = 0u; m < src.unorm8_mips.size(); ++m) {
+        stream << resource.view(static_cast<std::uint32_t>(m + 1u))
+                      .copy_from(src.unorm8_mips[m].rgba.data());
+      }
     } else {
-      stream << resource.copy_from(src.float_pixels.data());
+      stream << resource.view(0u).copy_from(src.float_pixels.data());
+      for (std::size_t m = 0u; m < src.float4_mips.size(); ++m) {
+        stream << resource.view(static_cast<std::uint32_t>(m + 1u))
+                      .copy_from(src.float4_mips[m].rgba.data());
+      }
     }
     const auto primary_slot = static_cast<std::uint32_t>(image_id.value);
     scene.texture_heap.emplace_on_update(primary_slot, resource,

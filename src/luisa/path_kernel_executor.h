@@ -5,6 +5,7 @@
 #include "path_tracer_types.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 
 #include <luisa/runtime/buffer.h>
@@ -36,6 +37,7 @@ struct PathKernelExecutorConfig {
     bool persistent_shared_memory_soa{true};
     bool persistent_global_memory_extension{true};
     luisa::compute::ShaderOption shader_option{};
+    std::function<void()> on_before_register_extensions{};
 };
 
 // Complete binding packet for one logical path-program dispatch. Keeping this

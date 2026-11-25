@@ -29,7 +29,8 @@ cycles_svm_material_metadata(const LuisaSceneData &scene,
 [[nodiscard]] std::unique_ptr<CyclesSvmRuntime>
 build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
                          const contract::SceneSnapshot &snapshot,
-                         std::string &diagnostic);
+                         std::string &diagnostic,
+                         bool enable_texture_derivatives = false);
 
 void upload_cycles_svm_runtime(Stream &stream,
                                CyclesSvmRuntime &runtime) noexcept;

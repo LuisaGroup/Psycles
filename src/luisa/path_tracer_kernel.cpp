@@ -5,6 +5,8 @@
 #include "sample_dispatch_partition.h"
 #include "path_tracer_internal.h"
 #include "path_tracer_volume_majorant_scene.h"
+#include "virtual_texture_cache.h"
+#include "virtual_texture_preflight.h"
 
 #include <psycles/compiler/cycles_transform.h>
 #include <psycles/compiler/cycles_camera.h>
@@ -13,6 +15,7 @@
 #include <psycles/sampling/light_distribution.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <string_view>
 #include <utility>
@@ -318,6 +321,13 @@ LuisaRenderSession::update_kernel_parameters(const RenderSettings &settings) {
 }
 
 void LuisaRenderSession::initialize(const RenderSettings &settings) {
+    const bool tl_active =
+        _scene && _scene->device &&
+        _scene->device.impl()->query("vk_timeline_active") == "1";
+    if (tl_active) {
+        static_cast<void>(
+            _scene->device.impl()->query("vk_timeline_mark:session_init_begin"));
+    }
     _settings = settings;
     _total_aa_samples = 0u;
     _rendered_samples = 0u;
@@ -421,8 +431,49 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
                 render_shader_driver_optimization_enabled(
                     _scene->device, _options.scheduler)}};
 
+    PreflightOverlapHandle preflight_handle;
+    const bool vt_sched =
+        (_options.scheduler == LuisaPathScheduler::wavefront ||
+         _options.scheduler == LuisaPathScheduler::wavefront_staged);
+    const bool run_preflight =
+        vt_sched && _options.virtual_texture_cache.enable_preflight &&
+        _scene && _scene->virtual_texture_cache &&
+        _scene->virtual_texture_cache->has_virtual_images() &&
+        !_scene->virtual_texture_cache->eager_fallback_active();
+    if (run_preflight) {
+        if (tl_active) {
+            static_cast<void>(
+                _scene->device.impl()->query("vk_timeline_mark:preflight_begin"));
+        }
+        preflight_handle = start_vt_preflight(
+            _scene, signature, _pixel_filter_table, _kernel_parameters,
+            kernel_config.light_transport.safe_normalize,
+            VtPreflightConfig{
+                .overlap_pso = _options.virtual_texture_cache.preflight_overlap_pso,
+                .stride = _options.virtual_texture_cache.preflight_stride,
+                .bounces = _options.virtual_texture_cache.preflight_bounces,
+                .width = _window.width,
+                .height = _window.height,
+                .shader_option = executor_config.shader_option});
+        executor_config.on_before_register_extensions = [&preflight_handle]() {
+            preflight_handle.join();
+        };
+    }
+
+    const auto pso_t0 = std::chrono::steady_clock::now();
     _render_executor = build_path_kernel_executor(
         _scene->device, kernel_config, executor_config);
+    const auto pso_t1 = std::chrono::steady_clock::now();
+    preflight_handle.join();
+    if (tl_active) {
+        static_cast<void>(
+            _scene->device.impl()->query("vk_timeline_mark:pso_compile_end"));
+    }
+    if (_scene && _scene->virtual_texture_cache) {
+        const double pso_ms =
+            std::chrono::duration<double, std::milli>(pso_t1 - pso_t0).count();
+        _scene->virtual_texture_cache->set_pso_compile_ms(pso_ms);
+    }
     _kernel_signature = signature;
 }
 

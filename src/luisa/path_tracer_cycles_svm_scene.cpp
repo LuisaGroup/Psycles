@@ -221,7 +221,8 @@ MaterialBinding make_cycles_svm_material_binding(
 std::unique_ptr<CyclesSvmRuntime>
 build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
                          const contract::SceneSnapshot &snapshot,
-                         std::string &diagnostic) {
+                         std::string &diagnostic,
+                         bool enable_texture_derivatives) {
   diagnostic.clear();
   auto runtime = std::make_unique<CyclesSvmRuntime>();
   runtime->object_identities =
@@ -314,6 +315,7 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
         .shader = shader_programs.at(material_id).get(),
         .context = {.background = snapshot.world_shader == material_id,
                     .displacement_method = source.displacement_method,
+                    .enable_texture_derivatives = enable_texture_derivatives,
                     .color_space = snapshot.shader_color_space},
         .kernel = {.name = source.name,
                    .use_transparent_shadow =

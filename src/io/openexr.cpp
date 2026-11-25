@@ -159,9 +159,45 @@ bool probe_image_info(
         std::min(specification.nchannels, 4);
     info.width = static_cast<std::uint32_t>(width);
     info.height = static_cast<std::uint32_t>(height);
-    info.storage = source_is_uint8(specification, source_channels)
+    info.channels = static_cast<std::uint8_t>(std::clamp(source_channels, 1, 4));
+
+    bool all_u8 = true;
+    bool any_float = false;
+    std::uint8_t max_bits = 8u;
+    for (int channel = 0; channel < source_channels; ++channel) {
+        const auto fmt =
+            static_cast<std::size_t>(channel) >=
+                    specification.channelformats.size()
+                ? specification.format
+                : specification.channelformats[
+                      static_cast<std::size_t>(channel)];
+        if (fmt != OIIO::TypeDesc::UINT8) {
+            all_u8 = false;
+        }
+        if (fmt == OIIO::TypeDesc::HALF ||
+            fmt == OIIO::TypeDesc::FLOAT ||
+            fmt == OIIO::TypeDesc::DOUBLE) {
+            any_float = true;
+        }
+        if (fmt == OIIO::TypeDesc::UINT8 || fmt == OIIO::TypeDesc::INT8) {
+            max_bits = std::max<std::uint8_t>(max_bits, 8u);
+        } else if (fmt == OIIO::TypeDesc::UINT16 ||
+                   fmt == OIIO::TypeDesc::INT16 ||
+                   fmt == OIIO::TypeDesc::HALF) {
+            max_bits = std::max<std::uint8_t>(max_bits, 16u);
+        } else {
+            max_bits = 32u;
+        }
+    }
+    info.storage = all_u8
                        ? DecodedImageStorage::unorm8
                        : DecodedImageStorage::float32;
+    info.bit_depth = all_u8 ? 8u : (max_bits <= 16u ? 16u : 32u);
+    info.is_floating_point = any_float;
+    info.has_alpha =
+        (specification.alpha_channel >= 0 &&
+         specification.alpha_channel < source_channels) ||
+        (source_channels == 2) || (source_channels == 4);
     return true;
 }
 

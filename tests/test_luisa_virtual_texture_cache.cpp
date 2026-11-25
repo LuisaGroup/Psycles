@@ -3,9 +3,11 @@
 #include "path_tracer_image_decode.h"
 #include "path_tracer_internal.h"
 #include "virtual_texture_cache.h"
+#include "virtual_texture_cache_prepack.h"
 
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/contract/scene.h>
+#include <psycles/core/parallel.h>
 #include <psycles/io/image.h>
 #include <psycles/luisa/path_tracer.h>
 
@@ -521,17 +523,12 @@ void test_npot_wrap_filter_matrix(Device &device, Stream &stream) {
                          .alpha_type = ImageAlphaType::straight,
                          .color_space = ImageColorSpace::data,
                          .probed = *probed}};
-  LuisaVirtualTextureCacheOptions vt_opts{
-      .enabled = true,
-      .gpu_cache_budget_bytes = 64ull * 1024ull * 1024ull,
-      .physical_tile_size = 64u};
-  auto vt = VirtualTextureCache::create(device, stream, vt_opts, probed_images,
-                                        handles, gpu_bindings);
 
-  // Build test points: corners, tile seam texels (59, 60, 61), interior, and out-of-range UVs.
-  const std::array<float, 14> coord_x_texels{
-      -1.75f * w, -0.01f * w, 0.0f, 0.5f, 1.5f, 59.5f, 60.2f,
-      60.5f,      61.5f,      120.5f, 126.5f, 1.0f * w, 1.01f * w, 2.37f * w};
+  // Build test points: corners, tile seam texels (60 for P=64; 124 for P=128), interior, and out-of-range UVs.
+  const std::array<float, 18> coord_x_texels{
+      -1.75f * w, -0.01f * w, 0.0f,   0.5f,   1.5f,   59.5f,
+      60.2f,      60.5f,      61.5f,  120.5f, 123.5f, 124.2f,
+      124.5f,     125.5f,     126.5f, 1.0f * w, 1.01f * w, 2.37f * w};
   const std::array<float, 12> coord_y_texels{
       -1.75f * h, -0.01f * h, 0.0f, 0.5f, 59.5f, 60.3f,
       61.5f,      72.5f,      1.0f * h, 1.01f * h, 2.37f * h, 36.25f};
@@ -539,7 +536,7 @@ void test_npot_wrap_filter_matrix(Device &device, Stream &stream) {
   std::vector<luisa::float2> center_uvs;
   std::vector<luisa::float2> general_uvs;
   for (std::uint32_t y : {0u, 1u, 59u, 60u, 61u, 72u}) {
-    for (std::uint32_t x : {0u, 1u, 59u, 60u, 61u, 119u, 120u, 126u}) {
+    for (std::uint32_t x : {0u, 1u, 59u, 60u, 61u, 119u, 120u, 123u, 124u, 125u, 126u}) {
       center_uvs.push_back(luisa::make_float2((static_cast<float>(x) + 0.5f) / w,
                                               (static_cast<float>(y) + 0.5f) / h));
     }
@@ -571,96 +568,182 @@ void test_npot_wrap_filter_matrix(Device &device, Stream &stream) {
   auto miss_count = device.create_buffer<luisa::uint>(1u);
   stream << uv_buf.copy_from(luisa::span{all_uvs}) << synchronize();
 
-  auto eval_kernel = device.compile<1>(
-      [&](BufferVar<luisa::float2> uvs, BufferVar<luisa::float4> out_c,
-          BufferVar<luisa::float4> out_d, BufferVar<luisa::float4> out_ref,
-          BufferVar<luisa::uint> misses, UInt n_uv) noexcept {
-        const auto u_idx = dispatch_x();
-        $if(u_idx >= n_uv) { $return(); };
-        const auto uv = uvs.read(u_idx);
-        for (std::uint32_t b = 0u; b < 12u; ++b) {
-          UInt miss_c = vt_invalid_page;
-          UInt miss_d = vt_invalid_page;
-          const auto vc =
-              vt->sample_2d_const(static_cast<std::int32_t>(b), uv, &miss_c);
-          const auto vd = vt->sample_2d_dynamic(
-              Int(static_cast<std::int32_t>(b)), uv, direct_heap, &miss_d);
-          $if((miss_c != vt_invalid_page) | (miss_d != vt_invalid_page)) {
-            misses.atomic(0u).fetch_add(1u);
-          };
-          const auto interp = cycles_svm_image_sampling_family(handles[b].interpolation);
-          const auto ext = cycles_svm_image_sampling_extension(handles[b].extension);
-          const auto vr = sample_cycles_texture_2d(direct_heap, b, uv, interp, ext);
-          const auto out_idx = b * n_uv + u_idx;
-          out_c.write(out_idx, vc);
-          out_d.write(out_idx, vd);
-          out_ref.write(out_idx, vr);
-        }
-      });
-
-  std::uint32_t zero_u32 = 0u;
-  std::uint32_t host_misses = 0u;
-  bool clean = false;
-  for (int iter = 0; iter < 8; ++iter) {
-    stream << miss_count.copy_from(&zero_u32)
-           << eval_kernel(uv_buf, const_out, dyn_out, ref_out, miss_count, u_count)
-                  .dispatch(u_count)
-           << miss_count.copy_to(&host_misses) << synchronize();
-    if (host_misses == 0u) {
-      clean = true;
-      break;
+  struct TempDirGuard {
+    std::filesystem::path dir;
+    explicit TempDirGuard(std::filesystem::path d) : dir{std::move(d)} {
+      std::error_code ec;
+      std::filesystem::remove_all(dir, ec);
     }
-    vt->service_bitset_misses(stream);
-  }
-  require(clean, "Test 2 did not converge to 0 misses");
+    ~TempDirGuard() {
+      std::error_code ec;
+      std::filesystem::remove_all(dir, ec);
+    }
+  };
+  const TempDirGuard disk_guard{
+      std::filesystem::temp_directory_path() / "psycles_vt_npot_disk_test"};
 
-  std::vector<luisa::float4> h_c(total), h_d(total), h_r(total);
-  stream << const_out.copy_to(luisa::span{h_c})
-         << dyn_out.copy_to(luisa::span{h_d})
-         << ref_out.copy_to(luisa::span{h_r}) << synchronize();
+  struct MatrixRunResult {
+    VirtualTextureCacheStats stats{};
+    std::vector<luisa::float4> h_c;
+    std::vector<luisa::float4> h_d;
+  };
 
-  for (std::uint32_t b = 0u; b < b_count; ++b) {
-    const bool is_closest =
-        (handles[b].interpolation == ImageInterpolation::closest);
-    for (std::uint32_t u = 0u; u < u_count; ++u) {
-      const std::size_t idx = static_cast<std::size_t>(b) * u_count + u;
-      for (int c = 0; c < 4; ++c) {
-        const float vc = (&h_c[idx].x)[c];
-        const float vd = (&h_d[idx].x)[c];
-        const float vr = (&h_r[idx].x)[c];
-        require(std::isfinite(vc) && std::isfinite(vd), "non-finite Test 2 sample");
-        // Const and dynamic VT sampling paths must agree (allowing tiny float rounding).
-        require(std::abs(vc - vd) <= 1e-4f,
-                "Test 2 const vs dynamic mismatch at binding=" +
-                    std::to_string(b) + " u=" + std::to_string(u) +
-                    " vc=" + std::to_string(vc) + " vd=" + std::to_string(vd) +
-                    " vr=" + std::to_string(vr));
-        const double diff = std::abs(static_cast<double>(vc) - static_cast<double>(vr));
-        if (is_closest) {
-          // Near integer texel edge u=1.0/0.0, floor vs hardware point rounding on
-          // out-of-range/boundary coordinates may pick adjacent texel on float ULP;
-          // texel-center UVs must match with 0-ULP exactness.
-          if (u < center_count) {
-            require(vc == vr, "Test 2 Closest seam/center mismatch (> 0 ULP)");
-          } else {
-            // Exact boundary u == 0.0 / 1.0 under REPEAT/EXTEND/MIRROR can differ by
-            // at most 1 texel if floor(u*extent) straddles an integer boundary; CLIP matches.
-            if (all_uvs[u].x != 0.0f && all_uvs[u].x != 1.0f &&
-                all_uvs[u].y != 0.0f && all_uvs[u].y != 1.0f) {
-              require(vc == vr, "Test 2 Closest non-integer-edge mismatch: got=" +
-                                    std::to_string(vc) + " ref=" + std::to_string(vr));
-            }
+  auto run_vt_matrix_case = [&](std::string_view tag,
+                                const LuisaVirtualTextureCacheOptions &vt_opts,
+                                const std::vector<luisa::float4> *expected_c,
+                                const std::vector<luisa::float4> *expected_d) {
+    auto vt = VirtualTextureCache::create(device, stream, vt_opts, probed_images,
+                                          handles, gpu_bindings);
+    auto eval_kernel = device.compile<1>(
+        [&](BufferVar<luisa::float2> uvs, BufferVar<luisa::float4> out_c,
+            BufferVar<luisa::float4> out_d, BufferVar<luisa::float4> out_ref,
+            BufferVar<luisa::uint> misses, UInt n_uv) noexcept {
+          const auto u_idx = dispatch_x();
+          $if(u_idx >= n_uv) { $return(); };
+          const auto uv = uvs.read(u_idx);
+          for (std::uint32_t b = 0u; b < 12u; ++b) {
+            UInt miss_c = vt_invalid_page;
+            UInt miss_d = vt_invalid_page;
+            const auto vc =
+                vt->sample_2d_const(static_cast<std::int32_t>(b), uv, &miss_c);
+            const auto vd = vt->sample_2d_dynamic(
+                Int(static_cast<std::int32_t>(b)), uv, direct_heap, &miss_d);
+            $if((miss_c != vt_invalid_page) | (miss_d != vt_invalid_page)) {
+              misses.atomic(0u).fetch_add(1u);
+            };
+            const auto interp =
+                cycles_svm_image_sampling_family(handles[b].interpolation);
+            const auto ext =
+                cycles_svm_image_sampling_extension(handles[b].extension);
+            const auto vr =
+                sample_cycles_texture_2d(direct_heap, b, uv, interp, ext);
+            const auto out_idx = b * n_uv + u_idx;
+            out_c.write(out_idx, vc);
+            out_d.write(out_idx, vd);
+            out_ref.write(out_idx, vr);
           }
-        } else {
-          // Bilinear / cubic hardware 8-bit subtexel weight quantization on BYTE4.
-          require(diff <= 0.008, "Test 2 filtered mismatch at binding=" +
-                                     std::to_string(b) + " u=" + std::to_string(u) +
-                                     " diff=" + std::to_string(diff));
+        });
+
+    std::uint32_t zero_u32 = 0u;
+    std::uint32_t host_misses = 0u;
+    bool clean = false;
+    for (int iter = 0; iter < 8; ++iter) {
+      stream << miss_count.copy_from(&zero_u32)
+             << eval_kernel(uv_buf, const_out, dyn_out, ref_out, miss_count,
+                            u_count)
+                    .dispatch(u_count)
+             << miss_count.copy_to(&host_misses) << synchronize();
+      if (host_misses == 0u) {
+        clean = true;
+        break;
+      }
+      vt->service_bitset_misses(stream);
+    }
+    require(clean, "Test 2 did not converge to 0 misses: " + std::string{tag});
+
+    MatrixRunResult out;
+    out.stats = vt->stats();
+    out.h_c.resize(total);
+    out.h_d.resize(total);
+    std::vector<luisa::float4> h_r(total);
+    stream << const_out.copy_to(luisa::span{out.h_c})
+           << dyn_out.copy_to(luisa::span{out.h_d})
+           << ref_out.copy_to(luisa::span{h_r}) << synchronize();
+
+    for (std::uint32_t b = 0u; b < b_count; ++b) {
+      const bool is_closest =
+          (handles[b].interpolation == ImageInterpolation::closest);
+      for (std::uint32_t u = 0u; u < u_count; ++u) {
+        const std::size_t idx = static_cast<std::size_t>(b) * u_count + u;
+        for (int c = 0; c < 4; ++c) {
+          const float vc = (&out.h_c[idx].x)[c];
+          const float vd = (&out.h_d[idx].x)[c];
+          const float vr = (&h_r[idx].x)[c];
+          require(std::isfinite(vc) && std::isfinite(vd),
+                  "non-finite Test 2 sample");
+          require(std::abs(vc - vd) <= 1e-4f,
+                  "Test 2 const vs dynamic mismatch at binding=" +
+                      std::to_string(b) + " u=" + std::to_string(u));
+          const double diff =
+              std::abs(static_cast<double>(vc) - static_cast<double>(vr));
+          if (is_closest) {
+            if (u < center_count) {
+              require(vc == vr, "Test 2 Closest seam/center mismatch (> 0 ULP)");
+            } else if (all_uvs[u].x != 0.0f && all_uvs[u].x != 1.0f &&
+                       all_uvs[u].y != 0.0f && all_uvs[u].y != 1.0f) {
+              require(vc == vr,
+                      "Test 2 Closest non-integer-edge mismatch: got=" +
+                          std::to_string(vc) + " ref=" + std::to_string(vr));
+            }
+          } else {
+            require(diff <= 0.008, "Test 2 filtered mismatch at binding=" +
+                                       std::to_string(b) +
+                                       " u=" + std::to_string(u) +
+                                       " diff=" + std::to_string(diff));
+          }
         }
       }
     }
+    if (expected_c != nullptr) {
+      require(out.h_c.size() == expected_c->size() &&
+                  std::memcmp(out.h_c.data(), expected_c->data(),
+                              out.h_c.size() * sizeof(luisa::float4)) == 0,
+              "Test 2 prepack GPU parity mismatch (const): " +
+                  std::string{tag});
+    }
+    if (expected_d != nullptr) {
+      require(out.h_d.size() == expected_d->size() &&
+                  std::memcmp(out.h_d.data(), expected_d->data(),
+                              out.h_d.size() * sizeof(luisa::float4)) == 0,
+              "Test 2 prepack GPU parity mismatch (dynamic): " +
+                  std::string{tag});
+    }
+    return out;
+  };
+
+  for (const std::uint32_t tile_size : {64u, 128u}) {
+    const std::string ptag = "P=" + std::to_string(tile_size);
+    LuisaVirtualTextureCacheOptions off_opts{
+        .enabled = true,
+        .gpu_cache_budget_bytes = 64ull * 1024ull * 1024ull,
+        .physical_tile_size = tile_size,
+        .prepack_mode = LuisaVirtualTexturePrepackMode::off};
+    const auto off_res =
+        run_vt_matrix_case(ptag + "_off", off_opts, nullptr, nullptr);
+
+    LuisaVirtualTextureCacheOptions mem_warm_opts = off_opts;
+    mem_warm_opts.prepack_mode = LuisaVirtualTexturePrepackMode::memory;
+    mem_warm_opts.host_prepacked_cache_budget_bytes = 64ull * 1024ull * 1024ull;
+    mem_warm_opts.prepack_warm_on_init = true;
+    const auto mem_warm_res = run_vt_matrix_case(
+        ptag + "_mem_warm", mem_warm_opts, &off_res.h_c, &off_res.h_d);
+    require(mem_warm_res.stats.prepack_hits > 0u &&
+                mem_warm_res.stats.prepack_misses == 0u,
+            "Test 2 " + ptag + " mem_warm expected hits>0 and misses==0");
+
+    LuisaVirtualTextureCacheOptions mem_lazy_opts = mem_warm_opts;
+    mem_lazy_opts.prepack_warm_on_init = false;
+    const auto mem_lazy_res = run_vt_matrix_case(
+        ptag + "_mem_lazy", mem_lazy_opts, &off_res.h_c, &off_res.h_d);
+    require(mem_lazy_res.stats.prepack_misses > 0u,
+            "Test 2 " + ptag + " mem_lazy expected misses>0");
+
+    LuisaVirtualTextureCacheOptions disk_opts = mem_lazy_opts;
+    disk_opts.prepack_mode = LuisaVirtualTexturePrepackMode::disk;
+    disk_opts.prepack_disk_dir = disk_guard.dir.string();
+    const auto disk_cold_res = run_vt_matrix_case(
+        ptag + "_disk_cold", disk_opts, &off_res.h_c, &off_res.h_d);
+    require(disk_cold_res.stats.prepack_disk_writes > 0u,
+            "Test 2 " + ptag + " disk_cold expected disk_writes>0");
+
+    const auto disk_warm_res = run_vt_matrix_case(
+        ptag + "_disk_warm", disk_opts, &off_res.h_c, &off_res.h_d);
+    require(disk_warm_res.stats.images_decoded == 0u &&
+                disk_warm_res.stats.prepack_disk_reads > 0u,
+            "Test 2 " + ptag +
+                " disk_warm expected images_decoded==0 and disk_reads>0");
   }
-  std::cout << "  all 12 wrap x filter combos passed const/dynamic vs direct!\n";
+  std::cout << "  all 12 wrap x filter combos passed across P=64/128 x prepack={off,mem_warm,mem_lazy,disk_cold,disk_warm}!\n";
 }
 
 struct ImageDiffMetrics {
@@ -1229,10 +1312,659 @@ void test_multistage_parity(Device &device) {
   require(all_ok, fail_msg.empty() ? "Test 5 parity failed" : fail_msg);
 }
 
+[[nodiscard]] std::int32_t ref_wrap_index(
+    std::int32_t coord,
+    std::int32_t extent,
+    std::uint32_t ext_mode) noexcept {
+  switch (ext_mode) {
+    case 0u: {
+      std::int32_t m = coord % extent;
+      if (m < 0) {
+        m += extent;
+      }
+      return m;
+    }
+    case 1u:
+      return (coord < 0 || coord >= extent) ? -1 : coord;
+    case 2u:
+      return std::clamp<std::int32_t>(coord, 0, extent - 1);
+    case 3u: {
+      const std::int32_t period = extent * 2;
+      std::int32_t m = coord % period;
+      if (m < 0) {
+        m += period;
+      }
+      if (m >= extent) {
+        m = period - 1 - m;
+      }
+      return std::clamp<std::int32_t>(m, 0, extent - 1);
+    }
+    default:
+      return std::clamp<std::int32_t>(coord, 0, extent - 1);
+  }
+}
+
+template <std::size_t ElemBytes>
+void ref_pack_tile(
+    const void *pixels,
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t tx,
+    std::uint32_t ty,
+    std::uint32_t ext,
+    std::uint32_t P,
+    std::uint32_t logical,
+    std::uint32_t border,
+    std::vector<std::uint8_t> &out) {
+  out.resize(static_cast<std::size_t>(P) * P * ElemBytes);
+  const auto *src_u8 = static_cast<const std::uint8_t *>(pixels);
+  const std::int32_t bx =
+      static_cast<std::int32_t>(tx * logical) - static_cast<std::int32_t>(border);
+  const std::int32_t by =
+      static_cast<std::int32_t>(ty * logical) - static_cast<std::int32_t>(border);
+  for (std::uint32_t dy = 0u; dy < P; ++dy) {
+    const auto sy =
+        ref_wrap_index(by + static_cast<std::int32_t>(dy),
+                       static_cast<std::int32_t>(height), ext);
+    for (std::uint32_t dx = 0u; dx < P; ++dx) {
+      const auto sx =
+          ref_wrap_index(bx + static_cast<std::int32_t>(dx),
+                         static_cast<std::int32_t>(width), ext);
+      const std::size_t dst_off =
+          (static_cast<std::size_t>(dy) * P + dx) * ElemBytes;
+      if (sx < 0 || sy < 0) {
+        std::memset(out.data() + dst_off, 0, ElemBytes);
+      } else {
+        const std::size_t src_off =
+            (static_cast<std::size_t>(sy) * width + sx) * ElemBytes;
+        std::memcpy(out.data() + dst_off, src_u8 + src_off, ElemBytes);
+      }
+    }
+  }
+}
+
+void test_prepacked_pages_byte_for_byte() {
+  std::cout << "[Test 0] Prepacked physical pages byte-for-byte & keys...\n";
+  struct DirCleanup {
+    std::filesystem::path dir;
+    explicit DirCleanup(std::filesystem::path p) : dir{std::move(p)} {
+      std::error_code ec;
+      std::filesystem::remove_all(dir, ec);
+    }
+    ~DirCleanup() {
+      std::error_code ec;
+      std::filesystem::remove_all(dir, ec);
+    }
+  };
+  const DirCleanup cleanup{
+      std::filesystem::temp_directory_path() / "psycles_vt_prepack_unit_test"};
+  VtPrepackedDiskStore disk{cleanup.dir};
+
+  // 1. Identity key stability and sensitivity checks.
+  const std::vector<std::uint8_t> raw_a{10u, 20u, 30u, 40u, 50u, 60u, 70u, 80u};
+  const std::vector<std::uint8_t> raw_a_copy = raw_a;
+  std::vector<std::uint8_t> raw_b = raw_a;
+  raw_b[3u] ^= 0x01u;
+  const auto sid_a = vt_make_source_identity_key(
+      raw_a, 127u, 73u, io::DecodedImageStorage::unorm8,
+      ImageAlphaType::straight, ImageColorSpace::srgb);
+  const auto sid_a2 = vt_make_source_identity_key(
+      raw_a_copy, 127u, 73u, io::DecodedImageStorage::unorm8,
+      ImageAlphaType::straight, ImageColorSpace::srgb);
+  require(sid_a == sid_a2, "Source identity key should be deterministic");
+  const VtPrepackedImageKey ik_base{
+      .source = sid_a, .extension = 0u, .physical_tile_size = 64u, .tile_border = 2u};
+  require(VtPrepackedPageKeyHash{}(VtPrepackedPageKey{.image = ik_base, .tile_x = 1u, .tile_y = 2u}) ==
+              VtPrepackedPageKeyHash{}(VtPrepackedPageKey{.image = ik_base, .tile_x = 1u, .tile_y = 2u}),
+          "Page key hash mismatch for equal keys");
+  const auto p_base = disk.file_path_for(ik_base);
+  const std::array<VtPrepackedImageKey, 8> mutated_keys{
+      VtPrepackedImageKey{.source = vt_make_source_identity_key(
+                              raw_b, 127u, 73u, io::DecodedImageStorage::unorm8,
+                              ImageAlphaType::straight, ImageColorSpace::srgb),
+                          .extension = 0u, .physical_tile_size = 64u, .tile_border = 2u},
+      VtPrepackedImageKey{.source = vt_make_source_identity_key(
+                              raw_a, 128u, 73u, io::DecodedImageStorage::unorm8,
+                              ImageAlphaType::straight, ImageColorSpace::srgb),
+                          .extension = 0u, .physical_tile_size = 64u, .tile_border = 2u},
+      VtPrepackedImageKey{.source = vt_make_source_identity_key(
+                              raw_a, 127u, 74u, io::DecodedImageStorage::unorm8,
+                              ImageAlphaType::straight, ImageColorSpace::srgb),
+                          .extension = 0u, .physical_tile_size = 64u, .tile_border = 2u},
+      VtPrepackedImageKey{.source = vt_make_source_identity_key(
+                              raw_a, 127u, 73u, io::DecodedImageStorage::float32,
+                              ImageAlphaType::straight, ImageColorSpace::srgb),
+                          .extension = 0u, .physical_tile_size = 64u, .tile_border = 2u},
+      VtPrepackedImageKey{.source = vt_make_source_identity_key(
+                              raw_a, 127u, 73u, io::DecodedImageStorage::unorm8,
+                              ImageAlphaType::premultiplied, ImageColorSpace::srgb),
+                          .extension = 0u, .physical_tile_size = 64u, .tile_border = 2u},
+      VtPrepackedImageKey{.source = vt_make_source_identity_key(
+                              raw_a, 127u, 73u, io::DecodedImageStorage::unorm8,
+                              ImageAlphaType::straight, ImageColorSpace::data),
+                          .extension = 0u, .physical_tile_size = 64u, .tile_border = 2u},
+      VtPrepackedImageKey{.source = sid_a, .extension = 1u, .physical_tile_size = 64u, .tile_border = 2u},
+      VtPrepackedImageKey{.source = sid_a, .extension = 0u, .physical_tile_size = 128u, .tile_border = 2u},
+  };
+  for (std::size_t mi = 0u; mi < mutated_keys.size(); ++mi) {
+    require(!(mutated_keys[mi] == ik_base),
+            "Mutated image key matched base at index " + std::to_string(mi));
+    require(disk.file_path_for(mutated_keys[mi]) != p_base,
+            "Mutated disk path collided at index " + std::to_string(mi));
+  }
+  const VtPrepackedImageKey ik_border3{
+      .source = sid_a, .extension = 0u, .physical_tile_size = 64u, .tile_border = 3u};
+  require(disk.file_path_for(ik_border3) != p_base,
+          "Border mutation disk path collided");
+
+  // 2. Byte-for-byte packer, memory cache, and multi-thread disk store matrix.
+  constexpr std::array<std::pair<std::uint32_t, std::uint32_t>, 5> dims{
+      {{127u, 73u}, {61u, 59u}, {1u, 1u}, {3u, 5u}, {131u, 257u}}};
+  constexpr std::uint32_t border = 2u;
+
+  std::vector<std::uint8_t> ref_bytes;
+  std::vector<std::uint8_t> live_bytes;
+  std::vector<std::uint8_t> disk_bytes;
+
+  for (const auto [w, h] : dims) {
+    std::vector<std::uint8_t> u8_pix(static_cast<std::size_t>(w) * h * 4u);
+    std::vector<float> f32_pix(static_cast<std::size_t>(w) * h * 4u);
+    for (std::uint32_t y = 0u; y < h; ++y) {
+      for (std::uint32_t x = 0u; x < w; ++x) {
+        const std::size_t i = (static_cast<std::size_t>(y) * w + x) * 4u;
+        u8_pix[i + 0u] = static_cast<std::uint8_t>((x * 37u + y * 13u + 5u) & 0xffu);
+        u8_pix[i + 1u] = static_cast<std::uint8_t>((x * 19u + y * 43u + 17u) & 0xffu);
+        u8_pix[i + 2u] = static_cast<std::uint8_t>((x * 59u + y * 29u + 91u) & 0xffu);
+        u8_pix[i + 3u] = static_cast<std::uint8_t>((x * 7u + y * 61u + 203u) & 0xffu);
+        f32_pix[i + 0u] = 0.01f * static_cast<float>(u8_pix[i + 0u]);
+        f32_pix[i + 1u] = 1.5f + 0.005f * static_cast<float>(u8_pix[i + 1u]);
+        f32_pix[i + 2u] = 0.25f * static_cast<float>((x + y) % 17u);
+        f32_pix[i + 3u] = 1.0f;
+      }
+    }
+    const auto sid_b4 = vt_make_source_identity_key(
+        u8_pix, w, h, io::DecodedImageStorage::unorm8,
+        ImageAlphaType::straight, ImageColorSpace::data);
+    const auto sid_f4 = vt_make_source_identity_key(
+        u8_pix, w, h, io::DecodedImageStorage::float32,
+        ImageAlphaType::straight, ImageColorSpace::data);
+
+    for (const std::uint32_t P : {64u, 128u}) {
+      const std::uint32_t logical = P - 2u * border;
+      const std::uint32_t tiles_x = (w + logical - 1u) / logical;
+      const std::uint32_t tiles_y = (h + logical - 1u) / logical;
+      const std::size_t tile_texels = static_cast<std::size_t>(P) * P;
+      VtPrepackedPageCache mem_cache{32ull * 1024ull * 1024ull};
+
+      for (std::uint32_t ext = 0u; ext < 4u; ++ext) {
+        const VtPrepackedImageKey ik_b4{
+            .source = sid_b4, .extension = ext, .physical_tile_size = P, .tile_border = border};
+        const VtPrepackedImageKey ik_f4{
+            .source = sid_f4, .extension = ext, .physical_tile_size = P, .tile_border = border};
+        require(disk.ensure_image_file(ik_b4, u8_pix.data(), nullptr, tiles_x, tiles_y),
+                "ensure_image_file BYTE4 failed");
+        require(disk.has_valid_file(ik_b4, tiles_x, tiles_y),
+                "has_valid_file BYTE4 failed");
+        require(disk.ensure_image_file(ik_f4, nullptr, f32_pix.data(), tiles_x, tiles_y),
+                "ensure_image_file FLOAT4 failed");
+        require(disk.has_valid_file(ik_f4, tiles_x, tiles_y),
+                "has_valid_file FLOAT4 failed");
+
+        const std::size_t b4_bytes = tile_texels * sizeof(luisa::uint);
+        const std::size_t f4_bytes = tile_texels * sizeof(luisa::float4);
+        live_bytes.resize(f4_bytes);
+        disk_bytes.resize(f4_bytes);
+
+        std::vector<VtPrepackedPageKey> keys_b4;
+        for (std::uint32_t ty = 0u; ty < tiles_y; ++ty) {
+          for (std::uint32_t tx = 0u; tx < tiles_x; ++tx) {
+            keys_b4.push_back(VtPrepackedPageKey{
+                .image = ik_b4, .tile_x = tx, .tile_y = ty});
+            ref_pack_tile<4u>(u8_pix.data(), w, h, tx, ty, ext, P, logical, border,
+                              ref_bytes);
+            vt_pack_byte4_tile(
+                u8_pix.data(), w, h, tx, ty, ext, P, logical, border,
+                std::span<luisa::uint>{
+                    reinterpret_cast<luisa::uint *>(live_bytes.data()),
+                    tile_texels});
+            require(std::memcmp(live_bytes.data(), ref_bytes.data(), b4_bytes) == 0,
+                    "BYTE4 packer mismatch");
+            require(disk.read_single_page(
+                        keys_b4.back(), tiles_x, tiles_y,
+                        std::span<std::uint8_t>{disk_bytes.data(), b4_bytes}),
+                    "BYTE4 read_single_page failed");
+            require(std::memcmp(disk_bytes.data(), ref_bytes.data(), b4_bytes) == 0,
+                    "BYTE4 disk mismatch");
+
+            ref_pack_tile<16u>(f32_pix.data(), w, h, tx, ty, ext, P, logical,
+                               border, ref_bytes);
+            vt_pack_float4_tile(
+                f32_pix.data(), w, h, tx, ty, ext, P, logical, border,
+                std::span<luisa::float4>{
+                    reinterpret_cast<luisa::float4 *>(live_bytes.data()),
+                    tile_texels});
+            require(std::memcmp(live_bytes.data(), ref_bytes.data(), f4_bytes) == 0,
+                    "FLOAT4 packer mismatch");
+            require(disk.read_single_page(
+                        VtPrepackedPageKey{.image = ik_f4, .tile_x = tx, .tile_y = ty},
+                        tiles_x, tiles_y,
+                        std::span<std::uint8_t>{disk_bytes.data(), f4_bytes}),
+                    "FLOAT4 read_single_page failed");
+            require(std::memcmp(disk_bytes.data(), ref_bytes.data(), f4_bytes) == 0,
+                    "FLOAT4 disk mismatch");
+          }
+        }
+
+        // Duplicate batch resolution + warm cache hit check + parallel_for disk readback.
+        std::vector<VtPrepackedPageKey> dup_keys = keys_b4;
+        dup_keys.push_back(keys_b4.front());
+        std::vector<VtPrepackedPageCache::ResolvedTileSlot> slots;
+        mem_cache.resolve_batch(dup_keys, b4_bytes, slots);
+        require(!slots.front().is_hit && slots.front().fill_ptr != nullptr,
+                "Expected cold cache miss fill_ptr");
+        require(!slots.back().is_hit && slots.back().duplicate_of == 0,
+                "Expected duplicate_of == 0 within batch");
+        for (std::size_t ti = 0u; ti < keys_b4.size(); ++ti) {
+          require(slots[ti].fill_ptr != nullptr, "Expected valid fill_ptr");
+          vt_pack_byte4_tile(
+              u8_pix.data(), w, h, keys_b4[ti].tile_x, keys_b4[ti].tile_y, ext,
+              P, logical, border,
+              std::span<luisa::uint>{
+                  reinterpret_cast<luisa::uint *>(slots[ti].fill_ptr),
+                  tile_texels});
+        }
+        mem_cache.unpin_batch(slots);
+
+        std::vector<VtPrepackedPageCache::ResolvedTileSlot> hit_slots;
+        mem_cache.resolve_batch(dup_keys, b4_bytes, hit_slots);
+        for (std::size_t ti = 0u; ti < dup_keys.size(); ++ti) {
+          require(hit_slots[ti].is_hit && hit_slots[ti].hit_ptr != nullptr,
+                  "Expected warm cache hit");
+          std::vector<std::uint8_t> expected;
+          ref_pack_tile<4u>(u8_pix.data(), w, h, dup_keys[ti].tile_x,
+                            dup_keys[ti].tile_y, ext, P, logical, border, expected);
+          require(std::memcmp(hit_slots[ti].hit_ptr, expected.data(), b4_bytes) == 0,
+                  "Cache hit payload mismatch");
+        }
+        mem_cache.unpin_batch(hit_slots);
+
+        const std::array<std::uint32_t, 2u> idx_probe{
+            static_cast<std::uint32_t>(keys_b4.size() - 1u), 0u};
+        mem_cache.resolve_batch_indexed(keys_b4, idx_probe, b4_bytes, hit_slots);
+        require(hit_slots.size() == 2u && hit_slots[0].is_hit && hit_slots[1].is_hit &&
+                    hit_slots[0].hit_ptr == slots[keys_b4.size() - 1u].fill_ptr,
+                "Indexed resolve hit mismatch");
+        mem_cache.unpin_batch(hit_slots);
+
+        // Multi-threaded read_single_page check across tiles.
+        const std::size_t par_count = keys_b4.size() * 2u;
+        std::vector<std::uint8_t> par_buf(par_count * b4_bytes);
+        std::vector<std::uint8_t> par_ok(par_count, 0u);
+        psycles::parallel_for(par_count, [&](std::size_t idx) noexcept {
+          const auto &pk = keys_b4[idx % keys_b4.size()];
+          par_ok[idx] = disk.read_single_page(
+                            pk, tiles_x, tiles_y,
+                            std::span<std::uint8_t>{
+                                par_buf.data() + idx * b4_bytes, b4_bytes})
+                            ? 1u
+                            : 0u;
+        });
+        for (std::size_t idx = 0u; idx < par_count; ++idx) {
+          require(par_ok[idx] == 1u, "Parallel disk read failed");
+          const auto &pk = keys_b4[idx % keys_b4.size()];
+          ref_pack_tile<4u>(u8_pix.data(), w, h, pk.tile_x, pk.tile_y, ext, P,
+                            logical, border, ref_bytes);
+          require(std::memcmp(par_buf.data() + idx * b4_bytes, ref_bytes.data(),
+                              b4_bytes) == 0,
+                  "Parallel disk payload mismatch");
+        }
+      }
+    }
+  }
+
+  // 3. Bounded LRU eviction test.
+  {
+    const std::size_t tb = 64u * 64u * 4u;
+    VtPrepackedPageCache lru_cache{2u * tb};
+    std::vector<VtPrepackedPageKey> kvec;
+    for (std::uint32_t i = 0u; i < 4u; ++i) {
+      kvec.push_back(VtPrepackedPageKey{.image = ik_base, .tile_x = i, .tile_y = 0u});
+    }
+    std::vector<VtPrepackedPageCache::ResolvedTileSlot> slots;
+    for (std::uint32_t i = 0u; i < 4u; ++i) {
+      lru_cache.resolve_batch(std::span<const VtPrepackedPageKey>{&kvec[i], 1u}, tb,
+                              slots);
+      require(slots[0].fill_ptr != nullptr, "LRU test expected fill_ptr");
+      std::memset(slots[0].fill_ptr, static_cast<int>(0x10u + i), tb);
+      lru_cache.unpin_batch(slots);
+    }
+    const auto st = lru_cache.stats();
+    require(st.resident_bytes <= 2u * tb && st.evictions >= 2u,
+            "LRU budget/eviction invariant violated");
+    const std::array<VtPrepackedPageKey, 2> probe{kvec[0], kvec[3]};
+    lru_cache.resolve_batch(probe, tb, slots);
+    require(!slots[0].is_hit && slots[1].is_hit,
+            "Expected oldest tile evicted and newest tile hit");
+    lru_cache.unpin_batch(slots);
+  }
+  std::cout << "  prepacked byte-for-byte, identity keys, LRU & multi-thread disk passed!\n";
+}
+
+void run_disk_layout_microbench(std::string_view out_json_path) {
+  std::cout << "Running Psycles VT disk layout microbenchmark...\n";
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+  struct BenchDirGuard {
+    std::filesystem::path dir;
+    explicit BenchDirGuard(std::filesystem::path d) : dir{std::move(d)} {
+      std::error_code ec;
+      std::filesystem::remove_all(dir, ec);
+      std::filesystem::create_directories(dir, ec);
+    }
+    ~BenchDirGuard() {
+      std::error_code ec;
+      std::filesystem::remove_all(dir, ec);
+    }
+  };
+  const BenchDirGuard tmp{
+      std::filesystem::temp_directory_path() / "psycles_vt_disk_bench"};
+
+  auto percentile_us = [](std::vector<double> &v, double q) -> double {
+    if (v.empty()) {
+      return 0.0;
+    }
+    std::sort(v.begin(), v.end());
+    const std::size_t idx =
+        std::min(v.size() - 1u,
+                 static_cast<std::size_t>(q * static_cast<double>(v.size() - 1u)));
+    return v[idx];
+  };
+
+  constexpr std::uint32_t P = 64u;
+  constexpr std::uint32_t border = 2u;
+  constexpr std::uint32_t logical = P - 2u * border;
+
+  auto bench_vtpages_reads = [&](const VtPrepackedImageKey &img_key,
+                                 std::uint32_t tx_cnt,
+                                 std::uint32_t ty_cnt,
+                                 std::size_t tile_bytes) {
+    VtPrepackedDiskStore store{tmp.dir};
+    std::vector<std::uint8_t> buf(tile_bytes);
+    std::vector<double> lat_us;
+    lat_us.reserve(128u);
+    for (std::uint32_t i = 0u; i < 128u; ++i) {
+      const VtPrepackedPageKey pk{
+          .image = img_key,
+          .tile_x = (i * 17u + 3u) % tx_cnt,
+          .tile_y = (i * 23u + 5u) % ty_cnt};
+      const auto t0 = std::chrono::steady_clock::now();
+      require(store.read_single_page(pk, tx_cnt, ty_cnt, luisa::span{buf}),
+              "bench_disk read_single_page failed");
+      lat_us.push_back(std::chrono::duration<double, std::micro>(
+                           std::chrono::steady_clock::now() - t0)
+                           .count());
+    }
+    const double p50_us = percentile_us(lat_us, 0.50);
+    const double p95_us = percentile_us(lat_us, 0.95);
+    std::vector<std::uint8_t> par_buf(256u * tile_bytes);
+    const auto par_t0 = std::chrono::steady_clock::now();
+    psycles::parallel_for(256u, [&](std::size_t i) noexcept {
+      const VtPrepackedPageKey pk{
+          .image = img_key,
+          .tile_x = static_cast<std::uint32_t>((i * 13u + 1u) % tx_cnt),
+          .tile_y = static_cast<std::uint32_t>((i * 19u + 2u) % ty_cnt)};
+      (void)store.read_single_page(
+          pk, tx_cnt, ty_cnt,
+          std::span<std::uint8_t>{par_buf.data() + i * tile_bytes, tile_bytes});
+    });
+    const double par_ms = std::chrono::duration<double, std::milli>(
+                              std::chrono::steady_clock::now() - par_t0)
+                              .count();
+    const double par_mbs =
+        (256.0 * static_cast<double>(tile_bytes) / (1024.0 * 1024.0)) /
+        std::max(1e-9, par_ms / 1000.0);
+    return std::array<double, 4>{p50_us, p95_us, par_ms, par_mbs};
+  };
+
+  // 1) BYTE4 2048x2048 PNG vs .vtpages
+  constexpr std::uint32_t b4_w = 2048u;
+  constexpr std::uint32_t b4_h = 2048u;
+  std::vector<std::uint8_t> b4_pix(static_cast<std::size_t>(b4_w) * b4_h * 4u);
+  for (std::uint32_t y = 0u; y < b4_h; ++y) {
+    for (std::uint32_t x = 0u; x < b4_w; ++x) {
+      const std::size_t idx = (static_cast<std::size_t>(y) * b4_w + x) * 4u;
+      const std::uint32_t hval =
+          ((x * 73856093u) ^ (y * 19349663u) ^ ((x >> 2u) * 83492791u));
+      b4_pix[idx + 0u] = static_cast<std::uint8_t>((x + (hval & 0x3fu)) & 0xffu);
+      b4_pix[idx + 1u] = static_cast<std::uint8_t>((y + ((hval >> 8u) & 0x3fu)) & 0xffu);
+      b4_pix[idx + 2u] = static_cast<std::uint8_t>(((x ^ y) + ((hval >> 16u) & 0x3fu)) & 0xffu);
+      b4_pix[idx + 3u] = 255u;
+    }
+  }
+  const auto png_bytes = encode_png_rgba8(b4_w, b4_h, b4_pix);
+  const auto png_path = tmp.dir / "tex_2048_b4.png";
+  {
+    std::ofstream ofs{png_path, std::ios::binary};
+    ofs.write(reinterpret_cast<const char *>(png_bytes.data()),
+              static_cast<std::streamsize>(png_bytes.size()));
+  }
+  const std::uint32_t b4_tx = (b4_w + logical - 1u) / logical;
+  const std::uint32_t b4_ty = (b4_h + logical - 1u) / logical;
+  const VtPrepackedImageKey b4_img_key{
+      .source = vt_make_source_identity_key(
+          png_bytes, b4_w, b4_h, io::DecodedImageStorage::unorm8,
+          ImageAlphaType::straight, ImageColorSpace::srgb),
+      .extension = 0u,
+      .physical_tile_size = P,
+      .tile_border = border};
+  {
+    VtPrepackedDiskStore init_store{tmp.dir};
+    require(init_store.ensure_image_file(b4_img_key, b4_pix.data(), nullptr, b4_tx, b4_ty),
+            "bench_disk ensure B4 failed");
+  }
+  const auto b4_vt_path = VtPrepackedDiskStore{tmp.dir}.file_path_for(b4_img_key);
+  const std::uint64_t b4_png_size = std::filesystem::file_size(png_path);
+  const std::uint64_t b4_vt_size = std::filesystem::file_size(b4_vt_path);
+
+  const auto b4_dec_t0 = std::chrono::steady_clock::now();
+  {
+    std::ifstream ifs{png_path, std::ios::binary};
+    std::vector<std::uint8_t> disk_png{std::istreambuf_iterator<char>(ifs),
+                                       std::istreambuf_iterator<char>()};
+    const auto dec = decode_scene_image(disk_png, "tex_2048_b4.png");
+    require(dec.has_value(), "bench_disk B4 PNG decode failed");
+    std::vector<luisa::uint> tmp_tile(P * P);
+    vt_pack_byte4_tile(dec->unorm8_pixels.data(), b4_w, b4_h, 5u, 7u, 0u, P,
+                       logical, border, luisa::span{tmp_tile});
+  }
+  const double b4_full_decode_pack_ms =
+      std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - b4_dec_t0)
+          .count();
+  const auto b4_vt = bench_vtpages_reads(b4_img_key, b4_tx, b4_ty, P * P * 4u);
+
+  // 2) FLOAT4 2048x1024 EXR vs .vtpages vs 64x64 Tiled EXR (none & zip)
+  constexpr std::uint32_t f4_w = 2048u;
+  constexpr std::uint32_t f4_h = 1024u;
+  std::vector<float> f4_pix(static_cast<std::size_t>(f4_w) * f4_h * 4u);
+  for (std::uint32_t y = 0u; y < f4_h; ++y) {
+    for (std::uint32_t x = 0u; x < f4_w; ++x) {
+      const std::size_t idx = (static_cast<std::size_t>(y) * f4_w + x) * 4u;
+      const std::uint32_t hval = ((x * 2654435761u) ^ (y * 2246822519u));
+      f4_pix[idx + 0u] = 0.001f * static_cast<float>((hval & 0x3ffu) + x % 31u);
+      f4_pix[idx + 1u] = 0.002f * static_cast<float>(((hval >> 10u) & 0x3ffu) + y % 29u);
+      f4_pix[idx + 2u] = 0.003f * static_cast<float>(((hval >> 20u) & 0x3ffu));
+      f4_pix[idx + 3u] = 1.0f;
+    }
+  }
+  const auto exr_scan_path = tmp.dir / "tex_2048_f4_scan.exr";
+  const auto exr_t_none_path = tmp.dir / "tex_2048_f4_tiled_none.exr";
+  const auto exr_t_zip_path = tmp.dir / "tex_2048_f4_tiled_zip.exr";
+  auto write_exr_file = [&](const std::filesystem::path &path, int tw, int th,
+                            const char *comp) {
+    OIIO::ImageSpec spec{static_cast<int>(f4_w), static_cast<int>(f4_h), 4,
+                         OIIO::TypeDesc::FLOAT};
+    if (tw > 0 && th > 0) {
+      spec.tile_width = tw;
+      spec.tile_height = th;
+    }
+    spec.attribute("compression", comp);
+    auto out = OIIO::ImageOutput::create(path.string());
+    require(bool(out) && out->open(path.string(), spec),
+            "bench_disk EXR open failed: " + path.string());
+    require(out->write_image(OIIO::TypeDesc::FLOAT, f4_pix.data()),
+            "bench_disk EXR write failed");
+    require(out->close(), "bench_disk EXR close failed");
+  };
+  write_exr_file(exr_scan_path, 0, 0, "zip");
+  write_exr_file(exr_t_none_path, 64, 64, "none");
+  write_exr_file(exr_t_zip_path, 64, 64, "zip");
+
+  std::vector<std::uint8_t> exr_scan_bytes;
+  {
+    std::ifstream ifs{exr_scan_path, std::ios::binary};
+    exr_scan_bytes.assign(std::istreambuf_iterator<char>(ifs),
+                          std::istreambuf_iterator<char>());
+  }
+  const std::uint32_t f4_tx = (f4_w + logical - 1u) / logical;
+  const std::uint32_t f4_ty = (f4_h + logical - 1u) / logical;
+  const VtPrepackedImageKey f4_img_key{
+      .source = vt_make_source_identity_key(
+          exr_scan_bytes, f4_w, f4_h, io::DecodedImageStorage::float32,
+          ImageAlphaType::straight, ImageColorSpace::data),
+      .extension = 0u,
+      .physical_tile_size = P,
+      .tile_border = border};
+  {
+    VtPrepackedDiskStore init_store{tmp.dir};
+    require(init_store.ensure_image_file(f4_img_key, nullptr, f4_pix.data(), f4_tx, f4_ty),
+            "bench_disk ensure F4 failed");
+  }
+  const auto f4_vt_path = VtPrepackedDiskStore{tmp.dir}.file_path_for(f4_img_key);
+
+  const auto f4_dec_t0 = std::chrono::steady_clock::now();
+  {
+    auto in = OIIO::ImageInput::open(exr_scan_path.string());
+    require(bool(in), "bench_disk open scanline EXR failed");
+    std::vector<float> tmp_img(static_cast<std::size_t>(f4_w) * f4_h * 4u);
+    require(in->read_image(0, 0, 0, 4, OIIO::TypeDesc::FLOAT, tmp_img.data()),
+            "bench_disk read scanline EXR failed");
+    in->close();
+    std::vector<luisa::float4> tmp_tile(P * P);
+    vt_pack_float4_tile(tmp_img.data(), f4_w, f4_h, 5u, 7u, 0u, P, logical,
+                        border, luisa::span{tmp_tile});
+  }
+  const double f4_full_decode_pack_ms =
+      std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - f4_dec_t0)
+          .count();
+  const auto f4_vt = bench_vtpages_reads(f4_img_key, f4_tx, f4_ty, P * P * 16u);
+
+  auto bench_tiled_exr = [&](const std::filesystem::path &path) {
+    auto in = OIIO::ImageInput::open(path.string());
+    require(bool(in), "bench_disk open tiled EXR failed");
+    const std::uint32_t exr_tx = f4_w / 64u;
+    const std::uint32_t exr_ty = f4_h / 64u;
+    std::vector<float> exr_tile(64u * 64u * 4u);
+    std::vector<float> patch(128u * 128u * 4u);
+    std::vector<luisa::float4> packed(P * P);
+    std::vector<double> lat1_us, lat4_us;
+    lat1_us.reserve(128u);
+    lat4_us.reserve(128u);
+    for (std::uint32_t i = 0u; i < 128u; ++i) {
+      const int tx = static_cast<int>((i * 13u + 1u) % exr_tx);
+      const int ty = static_cast<int>((i * 7u + 1u) % exr_ty);
+      const auto t0 = std::chrono::steady_clock::now();
+      require(in->read_tile(tx * 64, ty * 64, 0, OIIO::TypeDesc::FLOAT,
+                            exr_tile.data()),
+              "bench_disk read_tile 1x1 failed");
+      lat1_us.push_back(std::chrono::duration<double, std::micro>(
+                            std::chrono::steady_clock::now() - t0)
+                            .count());
+
+      const int bx = static_cast<int>((i * 13u + 1u) % (exr_tx - 1u));
+      const int by = static_cast<int>((i * 7u + 1u) % (exr_ty - 1u));
+      const auto r0 = std::chrono::steady_clock::now();
+      for (int oy = 0; oy < 2; ++oy) {
+        for (int ox = 0; ox < 2; ++ox) {
+          require(in->read_tile((bx + ox) * 64, (by + oy) * 64, 0,
+                                OIIO::TypeDesc::FLOAT, exr_tile.data()),
+                  "bench_disk read_tile 2x2 failed");
+          for (int row = 0; row < 64; ++row) {
+            std::memcpy(
+                patch.data() +
+                    (static_cast<std::size_t>(oy * 64 + row) * 128u + ox * 64u) *
+                        4u,
+                exr_tile.data() + static_cast<std::size_t>(row) * 64u * 4u,
+                64u * 4u * sizeof(float));
+          }
+        }
+      }
+      vt_pack_float4_tile(patch.data(), 128u, 128u, 0u, 0u, 0u, P, logical,
+                          border, luisa::span{packed});
+      lat4_us.push_back(std::chrono::duration<double, std::micro>(
+                            std::chrono::steady_clock::now() - r0)
+                            .count());
+    }
+    in->close();
+    return std::array<double, 5>{
+        static_cast<double>(std::filesystem::file_size(path)),
+        percentile_us(lat1_us, 0.50),
+        percentile_us(lat1_us, 0.95),
+        percentile_us(lat4_us, 0.50),
+        percentile_us(lat4_us, 0.95)};
+  };
+
+  const auto exr_none = bench_tiled_exr(exr_t_none_path);
+  const auto exr_zip = bench_tiled_exr(exr_t_zip_path);
+
+  std::ostringstream js;
+  js << "{\n"
+     << "  \"byte4_2048x2048\": {\n"
+     << "    \"png_bytes\": " << b4_png_size << ",\n"
+     << "    \"vtpages_bytes\": " << b4_vt_size << ",\n"
+     << "    \"full_png_decode_plus_pack_ms\": " << b4_full_decode_pack_ms << ",\n"
+     << "    \"vtpages_single_page_p50_us\": " << b4_vt[0] << ",\n"
+     << "    \"vtpages_single_page_p95_us\": " << b4_vt[1] << ",\n"
+     << "    \"vtpages_parallel_256_ms\": " << b4_vt[2] << ",\n"
+     << "    \"vtpages_parallel_256_mb_s\": " << b4_vt[3] << "\n"
+     << "  },\n"
+     << "  \"float4_2048x1024\": {\n"
+     << "    \"scanline_zip_exr_bytes\": " << std::filesystem::file_size(exr_scan_path) << ",\n"
+     << "    \"vtpages_bytes\": " << std::filesystem::file_size(f4_vt_path) << ",\n"
+     << "    \"full_exr_decode_plus_pack_ms\": " << f4_full_decode_pack_ms << ",\n"
+     << "    \"vtpages_single_page_p50_us\": " << f4_vt[0] << ",\n"
+     << "    \"vtpages_single_page_p95_us\": " << f4_vt[1] << ",\n"
+     << "    \"vtpages_parallel_256_ms\": " << f4_vt[2] << ",\n"
+     << "    \"vtpages_parallel_256_mb_s\": " << f4_vt[3] << ",\n"
+     << "    \"tiled_exr_64_none\": {\"bytes\": " << static_cast<std::uint64_t>(exr_none[0])
+     << ", \"tile1_p50_us\": " << exr_none[1] << ", \"tile1_p95_us\": " << exr_none[2]
+     << ", \"tile4_repack_p50_us\": " << exr_none[3] << ", \"tile4_repack_p95_us\": " << exr_none[4] << "},\n"
+     << "    \"tiled_exr_64_zip\": {\"bytes\": " << static_cast<std::uint64_t>(exr_zip[0])
+     << ", \"tile1_p50_us\": " << exr_zip[1] << ", \"tile1_p95_us\": " << exr_zip[2]
+     << ", \"tile4_repack_p50_us\": " << exr_zip[3] << ", \"tile4_repack_p95_us\": " << exr_zip[4] << "}\n"
+     << "  }\n"
+     << "}\n";
+  const auto out_str = js.str();
+  std::cout << out_str;
+  if (!out_json_path.empty()) {
+    std::ofstream ofs{std::filesystem::path{out_json_path}, std::ios::binary | std::ios::trunc};
+    require(ofs.is_open(), "failed to open disk microbench output json");
+    ofs << out_str;
+  }
+#else
+  (void)out_json_path;
+  throw std::runtime_error{"bench_disk requires PSYCLES_WITH_OPENIMAGEIO"};
+#endif
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
   try {
+    if (argc > 2 && std::string_view{argv[2]} == "bench_disk") {
+      run_disk_layout_microbench(argc > 3 ? std::string_view{argv[3]} : "");
+      return EXIT_SUCCESS;
+    }
     const std::string_view backend{argc > 1 ? argv[1] : "fallback"};
     const bool test5_only =
         argc > 2 && std::string_view{argv[2]} == "test5";
@@ -1242,6 +1974,7 @@ int main(int argc, char **argv) {
     std::cout << "Running Psycles VT tests on backend: " << backend << '\n';
 
     if (!test5_only) {
+      test_prepacked_pages_byte_for_byte();
       test_byte4_and_float4_roundtrip(device, stream);
       test_npot_wrap_filter_matrix(device, stream);
       test_lazy_decode_proof(device);

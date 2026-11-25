@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -904,6 +905,28 @@ public:
         }
       }
     });
+    if (device.impl()->query("vk_timeline_active") == "1") {
+      auto lbl = [&](const char *name, std::uint64_t handle) noexcept {
+        if (handle == 0ull || handle == luisa::compute::invalid_resource_handle) {
+          return;
+        }
+        char qbuf[192];
+        std::snprintf(qbuf, sizeof(qbuf), "vk_timeline_label:shader:%llu:%s",
+                      static_cast<unsigned long long>(handle), name);
+        static_cast<void>(device.impl()->query(qbuf));
+      };
+      lbl("aux_shadow_clear_count", _clear_count_slot.handle());
+      lbl("aux_shadow_init", _initialize.handle());
+      lbl("aux_shadow_set_extent", _set_extent_and_clear_reloc.handle());
+      lbl("aux_shadow_gather", _gather.handle());
+      lbl("aux_shadow_collect_reloc", _collect_relocations.handle());
+      lbl("aux_shadow_compact", _compact.handle());
+      for (auto stage = 0u; stage < active_stages; ++stage) {
+        char cname[64];
+        std::snprintf(cname, sizeof(cname), "aux_shadow_consumer_%u", stage);
+        lbl(cname, _consumers[stage].handle());
+      }
+    }
   }
 
   [[nodiscard]] luisa::string_view name() const noexcept override {
@@ -1133,6 +1156,12 @@ public:
       return true;
     }
     return false;
+  }
+
+  [[nodiscard]] bool stage_blocks_async_domain(
+      unsigned stage, luisa::string_view domain) const noexcept override {
+    return _vt_cache != nullptr && _host_counts[4u] != 0u &&
+           (stage == 0u || stage == 2u) && domain == vt_extension_schema;
   }
 
   void prepare_for_producer(Stream &, unsigned required) noexcept override {

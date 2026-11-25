@@ -172,6 +172,7 @@ struct GraphNode {
     return ClosureUsage::none();
   }
   [[nodiscard]] virtual ShaderNodeType shader_node_type() const noexcept;
+  [[nodiscard]] bool outputs_have_derivatives() const noexcept;
   [[nodiscard]] virtual bool equals(const GraphNode &other) const noexcept;
   [[nodiscard]] virtual bool has_surface_emission() const noexcept;
   [[nodiscard]] virtual bool has_surface_transparent() const noexcept;
@@ -212,7 +213,8 @@ private:
 public:
   [[nodiscard]] static CyclesGraph
   project(const ShaderProgram &shader,
-          const contract::ShaderColorSpace &color_space = {});
+          const contract::ShaderColorSpace &color_space = {},
+          bool enable_texture_derivatives = false);
 
   [[nodiscard]] bool valid() const noexcept { return _diagnostic.empty(); }
   [[nodiscard]] const std::string &diagnostic() const noexcept {
@@ -264,6 +266,7 @@ public:
   void expand();
   void clean();
   void refine_bump_nodes();
+  void propagate_derivatives(bool enable_texture_derivatives);
 
 private:
   [[nodiscard]] bool connect_with_autoconvert(GraphOutput *output,

@@ -32,6 +32,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <psapi.h>
 #endif
 
 namespace {
@@ -233,6 +234,8 @@ int main(int argc, char **argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
     psycles::luisa_backend::LuisaVirtualTextureCacheOptions vt_options{};
+    auto direct_texture_mip_mode =
+        psycles::luisa_backend::LuisaTextureMipMode::mip0;
     std::vector<char *> positional_argv;
     positional_argv.reserve(static_cast<std::size_t>(argc));
     if (argc > 0) {
@@ -289,6 +292,229 @@ int main(int argc, char **argv) {
                 return EXIT_FAILURE;
             }
             vt_options.host_decoded_cache_budget_bytes = *mb * 1024ull * 1024ull;
+            continue;
+        }
+        if (arg == "--vt-prepack") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-prepack requires off|memory|disk\n";
+                return EXIT_FAILURE;
+            }
+            const std::string_view mode{argv[++i]};
+            if (mode == "off") {
+                vt_options.prepack_mode =
+                    psycles::luisa_backend::LuisaVirtualTexturePrepackMode::off;
+            } else if (mode == "memory") {
+                vt_options.prepack_mode =
+                    psycles::luisa_backend::LuisaVirtualTexturePrepackMode::memory;
+            } else if (mode == "disk") {
+                vt_options.prepack_mode =
+                    psycles::luisa_backend::LuisaVirtualTexturePrepackMode::disk;
+            } else {
+                std::cerr << "error: --vt-prepack must be off, memory, or disk\n";
+                return EXIT_FAILURE;
+            }
+            continue;
+        }
+        if (arg == "--vt-prepack-mb") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-prepack-mb requires a value\n";
+                return EXIT_FAILURE;
+            }
+            const auto mb = parse_unsigned<std::uint64_t>(argv[++i]);
+            if (!mb) {
+                std::cerr << "error: invalid --vt-prepack-mb value\n";
+                return EXIT_FAILURE;
+            }
+            vt_options.host_prepacked_cache_budget_bytes =
+                *mb * 1024ull * 1024ull;
+            continue;
+        }
+        if (arg == "--vt-prepack-warm-init") {
+            vt_options.prepack_warm_on_init = true;
+            continue;
+        }
+        if (arg == "--vt-prepack-dir") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-prepack-dir requires a path\n";
+                return EXIT_FAILURE;
+            }
+            vt_options.prepack_disk_dir = argv[++i];
+            continue;
+        }
+        if (arg == "--vt-async-worker") {
+            vt_options.enable_async_worker = true;
+            continue;
+        }
+        if (arg == "--no-vt-async-worker") {
+            vt_options.enable_async_worker = false;
+            continue;
+        }
+        if (arg == "--vt-async-slots") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-async-slots requires a value (1..8)\n";
+                return EXIT_FAILURE;
+            }
+            const auto slots = parse_unsigned<std::uint32_t>(argv[++i]);
+            if (!slots || *slots < 1u || *slots > 8u) {
+                std::cerr << "error: --vt-async-slots must be in [1, 8]\n";
+                return EXIT_FAILURE;
+            }
+            vt_options.async_batch_slots = *slots;
+            continue;
+        }
+        if (arg == "--vt-copy-queue") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-copy-queue requires off|direct|staged|staged_shader\n";
+                return EXIT_FAILURE;
+            }
+            const std::string_view mode{argv[++i]};
+            if (mode == "off") {
+                vt_options.copy_queue_mode =
+                    psycles::luisa_backend::LuisaVirtualTextureCopyQueueMode::off;
+            } else if (mode == "direct") {
+                vt_options.copy_queue_mode =
+                    psycles::luisa_backend::LuisaVirtualTextureCopyQueueMode::direct;
+            } else if (mode == "staged") {
+                vt_options.copy_queue_mode =
+                    psycles::luisa_backend::LuisaVirtualTextureCopyQueueMode::staged;
+            } else if (mode == "staged_shader") {
+                vt_options.copy_queue_mode =
+                    psycles::luisa_backend::LuisaVirtualTextureCopyQueueMode::staged_shader;
+            } else {
+                std::cerr << "error: --vt-copy-queue must be off, direct, staged, or staged_shader\n";
+                return EXIT_FAILURE;
+            }
+            continue;
+        }
+        if (arg == "--no-vt-copy-queue") {
+            vt_options.copy_queue_mode =
+                psycles::luisa_backend::LuisaVirtualTextureCopyQueueMode::off;
+            continue;
+        }
+        if (arg == "--vt-compression") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-compression requires off|auto|auto_compact|bc7|bc3|bc1\n";
+                return EXIT_FAILURE;
+            }
+            const std::string_view mode{argv[++i]};
+            if (mode == "off") {
+                vt_options.compression_mode =
+                    psycles::luisa_backend::LuisaVirtualTextureCompressionMode::off;
+            } else if (mode == "auto" || mode == "auto_hq") {
+                vt_options.compression_mode =
+                    psycles::luisa_backend::LuisaVirtualTextureCompressionMode::auto_hq;
+            } else if (mode == "auto_compact") {
+                vt_options.compression_mode =
+                    psycles::luisa_backend::LuisaVirtualTextureCompressionMode::auto_compact;
+            } else if (mode == "bc7") {
+                vt_options.compression_mode =
+                    psycles::luisa_backend::LuisaVirtualTextureCompressionMode::bc7;
+            } else if (mode == "bc3") {
+                vt_options.compression_mode =
+                    psycles::luisa_backend::LuisaVirtualTextureCompressionMode::bc3;
+            } else if (mode == "bc1") {
+                vt_options.compression_mode =
+                    psycles::luisa_backend::LuisaVirtualTextureCompressionMode::bc1;
+            } else {
+                std::cerr << "error: --vt-compression must be off, auto, auto_compact, bc7, bc3, or bc1\n";
+                return EXIT_FAILURE;
+            }
+            continue;
+        }
+        if (arg == "--no-vt-compression") {
+            vt_options.compression_mode =
+                psycles::luisa_backend::LuisaVirtualTextureCompressionMode::off;
+            continue;
+        }
+        if (arg == "--vt-compression-quality") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-compression-quality requires fast|balanced|high\n";
+                return EXIT_FAILURE;
+            }
+            const std::string_view qual{argv[++i]};
+            if (qual == "fast" || qual == "low") {
+                vt_options.compression_quality =
+                    psycles::luisa_backend::LuisaVirtualTextureCompressionQuality::fast;
+            } else if (qual == "balanced" || qual == "medium") {
+                vt_options.compression_quality =
+                    psycles::luisa_backend::LuisaVirtualTextureCompressionQuality::balanced;
+            } else if (qual == "high" || qual == "hq" || qual == "slow") {
+                vt_options.compression_quality =
+                    psycles::luisa_backend::LuisaVirtualTextureCompressionQuality::high;
+            } else {
+                std::cerr << "error: --vt-compression-quality must be fast, balanced, or high\n";
+                return EXIT_FAILURE;
+            }
+            continue;
+        }
+        if (arg == "--vt-preflight") {
+            vt_options.enable_preflight = true;
+            continue;
+        }
+        if (arg == "--no-vt-preflight") {
+            vt_options.enable_preflight = false;
+            continue;
+        }
+        if (arg == "--vt-preflight-stride") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-preflight-stride requires a value (1..16)\n";
+                return EXIT_FAILURE;
+            }
+            const auto stride = parse_unsigned<std::uint32_t>(argv[++i]);
+            if (!stride || *stride < 1u || *stride > 16u) {
+                std::cerr << "error: --vt-preflight-stride must be in [1, 16]\n";
+                return EXIT_FAILURE;
+            }
+            vt_options.preflight_stride = *stride;
+            continue;
+        }
+        if (arg == "--vt-preflight-bounces") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --vt-preflight-bounces requires a value (0..2)\n";
+                return EXIT_FAILURE;
+            }
+            const auto bounces = parse_unsigned<std::uint32_t>(argv[++i]);
+            if (!bounces || *bounces > 2u) {
+                std::cerr << "error: --vt-preflight-bounces must be in [0, 2]\n";
+                return EXIT_FAILURE;
+            }
+            vt_options.preflight_bounces = *bounces;
+            continue;
+        }
+        if (arg == "--vt-preflight-overlap") {
+            vt_options.preflight_overlap_pso = true;
+            continue;
+        }
+        if (arg == "--no-vt-preflight-overlap") {
+            vt_options.preflight_overlap_pso = false;
+            continue;
+        }
+        if (arg == "--vt-mip-mode" || arg == "--direct-mip-mode" ||
+            arg == "--texture-mip-mode") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: " << arg
+                          << " requires mip0|isotropic\n";
+                return EXIT_FAILURE;
+            }
+            const std::string_view mode{argv[++i]};
+            psycles::luisa_backend::LuisaTextureMipMode parsed_mode{};
+            if (mode == "mip0") {
+                parsed_mode =
+                    psycles::luisa_backend::LuisaTextureMipMode::mip0;
+            } else if (mode == "isotropic") {
+                parsed_mode =
+                    psycles::luisa_backend::LuisaTextureMipMode::isotropic;
+            } else {
+                std::cerr << "error: " << arg
+                          << " must be mip0 or isotropic\n";
+                return EXIT_FAILURE;
+            }
+            if (arg == "--vt-mip-mode" || arg == "--texture-mip-mode") {
+                vt_options.mip_mode = parsed_mode;
+            }
+            if (arg == "--direct-mip-mode" || arg == "--texture-mip-mode") {
+                direct_texture_mip_mode = parsed_mode;
+            }
             continue;
         }
         positional_argv.push_back(argv[i]);
@@ -726,7 +952,8 @@ int main(int argc, char **argv) {
          .path_trace = path_trace_request,
          .surface_closure_count_histogram =
              surface_closure_count_histogram_request,
-         .virtual_texture_cache = vt_options}};
+         .virtual_texture_cache = vt_options,
+         .direct_texture_mip_mode = direct_texture_mip_mode}};
     const auto compile_begin = std::chrono::steady_clock::now();
     auto compilation = renderer.compile_scene(*imported.scene);
     if (!compilation.ok()) {
@@ -993,6 +1220,17 @@ int main(int argc, char **argv) {
       const double total_cpu_s = user_s + kernel_s;
       DWORD_PTR proc_mask = 0, sys_mask = 0;
       GetProcessAffinityMask(GetCurrentProcess(), &proc_mask, &sys_mask);
+      PROCESS_MEMORY_COUNTERS_EX pmc{};
+      pmc.cb = sizeof(pmc);
+      std::uint64_t peak_rss = 0ull;
+      std::uint64_t peak_commit = 0ull;
+      if (K32GetProcessMemoryInfo(
+              GetCurrentProcess(),
+              reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&pmc),
+              sizeof(pmc))) {
+        peak_rss = static_cast<std::uint64_t>(pmc.PeakWorkingSetSize);
+        peak_commit = static_cast<std::uint64_t>(pmc.PeakPagefileUsage);
+      }
       const auto session_t = session->last_render_timings();
       const double integ_s =
           session_t ? session_t->integration_seconds : render_call_seconds;
@@ -1003,10 +1241,13 @@ int main(int argc, char **argv) {
           "{\"wall_render_call_seconds\":%.9f,\"integration_seconds\":%.9f,"
           "\"user_cpu_seconds\":%.9f,\"kernel_cpu_seconds\":%.9f,"
           "\"total_cpu_seconds\":%.9f,\"effective_threads_wall\":%.4f,"
+          "\"peak_working_set_bytes\":%llu,\"peak_pagefile_bytes\":%llu,"
           "\"process_affinity_mask\":\"0x%016llx\","
           "\"system_affinity_mask\":\"0x%016llx\"}\n",
           render_call_seconds, integ_s, user_s, kernel_s, total_cpu_s,
-          eff_threads, static_cast<unsigned long long>(proc_mask),
+          eff_threads, static_cast<unsigned long long>(peak_rss),
+          static_cast<unsigned long long>(peak_commit),
+          static_cast<unsigned long long>(proc_mask),
           static_cast<unsigned long long>(sys_mask));
       std::fflush(stdout);
     }

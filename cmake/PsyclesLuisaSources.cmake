@@ -203,7 +203,17 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_volume_majorant_scene.cpp
     src/luisa/path_tracer_volume_metadata.cpp
     src/luisa/virtual_texture_cache.cpp
+    src/luisa/virtual_texture_cache_async.cpp
+    src/luisa/virtual_texture_cache_staging.cpp
+    src/luisa/virtual_texture_cache_bc.cpp
+    src/luisa/virtual_texture_cache_gpu_bc.cpp
+    src/luisa/virtual_texture_cache_gpu_bc6h.cpp
+    src/luisa/virtual_texture_cache_gpu_bc7.cpp
+    src/luisa/virtual_texture_cache_formats.cpp
     src/luisa/virtual_texture_cache_decode.cpp
     src/luisa/virtual_texture_cache_device.cpp
+    src/luisa/virtual_texture_cache_mipmap.cpp
+    src/luisa/virtual_texture_cache_prepack.cpp
     src/luisa/virtual_texture_cache_service.cpp
+    src/luisa/virtual_texture_preflight.cpp
     src/luisa/volume_guiding_filter.cpp)

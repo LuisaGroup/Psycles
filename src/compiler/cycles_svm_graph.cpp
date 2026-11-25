@@ -835,7 +835,8 @@ void CyclesGraph::reject(std::string diagnostic) {
 
 CyclesGraph CyclesGraph::project(
     const ShaderProgram &shader,
-    const contract::ShaderColorSpace &color_space) {
+    const contract::ShaderColorSpace &color_space,
+    bool enable_texture_derivatives) {
   CyclesGraph graph;
   graph._color_space = color_space;
   const auto registry = make_core_node_registry();
@@ -1119,6 +1120,7 @@ CyclesGraph CyclesGraph::project(
   if (!graph.valid()) {
     return graph;
   }
+  graph.propagate_derivatives(enable_texture_derivatives);
   if (auto *surface = graph.root(GraphDomain::surface)) {
     graph.transform_multi_closure(surface->parent, nullptr, false);
   }

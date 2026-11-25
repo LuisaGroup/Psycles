@@ -8,6 +8,7 @@
 #include "cycles_surface_sort.h"
 #include "sample_dispatch_partition.h"
 #include "virtual_texture_cache.h"
+#include "virtual_texture_cache_profile.h"
 
 #include <algorithm>
 #include <array>
@@ -518,6 +519,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 "Wavefront frame capacity must be positive.");
     auto shadow_path = make_local_shadow_path(path, vt_active);
     shadow_path.enable_virtual_texture_cache = vt_active;
+    const auto pso_t0 = VtProfileRecorder::steady_ns();
     auto coroutine =
         build_cycles_stage_coroutine(shadow_path, config.scheduler);
     if (vt_active) {
@@ -545,15 +547,31 @@ build_path_kernel_executor(luisa::compute::Device &device,
         }
     }
     scheduler_config.shader_option = config.shader_option;
+    if (vt_active && shadow_path.scene->virtual_texture_cache->async_worker_enabled()) {
+        scheduler_config.max_async_in_flight_batches =
+            shadow_path.scene->virtual_texture_cache->async_batch_slots();
+    }
     auto scheduler = std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);
+    const auto pso_t1 = VtProfileRecorder::steady_ns();
     if (vt_active) {
+        shadow_path.scene->virtual_texture_cache->record_pso_compile_event(
+            pso_t0, pso_t1, "Wavefront Coro PSO Compile");
+    }
+    if (config.on_before_register_extensions) {
+        config.on_before_register_extensions();
+    }
+    if (vt_active) {
+        const auto ext_t0 = VtProfileRecorder::steady_ns();
         auto preparation_stream = device.create_stream();
         scheduler->register_extension_handler(
             preparation_stream,
             shadow_path.scene->virtual_texture_cache
                 ->make_wavefront_extension_handler());
         preparation_stream << luisa::compute::synchronize();
+        const auto ext_t1 = VtProfileRecorder::steady_ns();
+        shadow_path.scene->virtual_texture_cache->record_pso_compile_event(
+            ext_t0, ext_t1, "VT Extension Handler Compile");
     }
     return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
         config.scheduler, std::move(scheduler))};
@@ -632,6 +650,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
         path.scene->geometries.size(), path.scene->curve_geometries.size());
     const auto can_publish_direct_light = can_stage_direct_light_queue(
         config.staged_direct_light_queue, path.path_trace_enabled, stage_plan);
+    const auto pso_t0 = VtProfileRecorder::steady_ns();
     if (can_publish_direct_light) {
       direct_light_queue = make_direct_light_task_queue(
           device, staged_path, config.wavefront_frame_capacity,
@@ -724,8 +743,21 @@ build_path_kernel_executor(luisa::compute::Device &device,
         }
     }
     scheduler_config.shader_option = config.shader_option;
+    if (vt_active && staged_path.scene->virtual_texture_cache->async_worker_enabled()) {
+        scheduler_config.max_async_in_flight_batches =
+            staged_path.scene->virtual_texture_cache->async_batch_slots();
+    }
     auto scheduler = std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);
+    const auto pso_t1 = VtProfileRecorder::steady_ns();
+    if (vt_active) {
+        staged_path.scene->virtual_texture_cache->record_pso_compile_event(
+            pso_t0, pso_t1, "Wavefront Staged Coro PSO Compile");
+    }
+    if (config.on_before_register_extensions) {
+        config.on_before_register_extensions();
+    }
+    const auto ext_t0 = VtProfileRecorder::steady_ns();
     auto preparation_stream = device.create_stream();
     scheduler->register_extension_handler(preparation_stream, make_surface_sort_handler);
     if (vt_active) {
@@ -735,6 +767,11 @@ build_path_kernel_executor(luisa::compute::Device &device,
               ->make_wavefront_extension_handler());
     }
     preparation_stream << luisa::compute::synchronize();
+    const auto ext_t1 = VtProfileRecorder::steady_ns();
+    if (vt_active) {
+        staged_path.scene->virtual_texture_cache->record_pso_compile_event(
+            ext_t0, ext_t1, "Extension Handlers Compile");
+    }
     if (direct_light_queue.work) {
       scheduler->register_auxiliary_work(direct_light_queue.work);
     }

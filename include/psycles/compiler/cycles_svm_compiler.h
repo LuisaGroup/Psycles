@@ -227,6 +227,7 @@ struct ShaderCompileContext {
   bool background{};
   contract::DisplacementMethod displacement_method{
       contract::DisplacementMethod::bump};
+  bool enable_texture_derivatives{};
   // Cycles' Blackbody constant folder evaluates in Rec.709 and projects the
   // result through ShaderManager's active scene-linear transform. Keeping the
   // same scene-owned value here prevents host folding from silently assuming

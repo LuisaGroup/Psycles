@@ -124,4 +124,42 @@ template<typename TextureHeap, typename ImageBindingBuffer>
   return result;
 }
 
+template<typename TextureHeap, typename ImageBindingBuffer, typename MipDescBuffer>
+[[nodiscard]] luisa::compute::Float4 sample_scene_image_2d_isotropic(
+    const TextureHeap &textures,
+    const ImageBindingBuffer &bindings,
+    const MipDescBuffer &mip_descs,
+    luisa::compute::Expr<std::int32_t> image_id,
+    const Dual2 &uv,
+    bool has_load_failed = true) noexcept {
+  namespace scene_detail = ::psycles::luisa_backend::detail;
+  luisa::compute::Float4 result = luisa::compute::make_float4(1.0f, 0.0f, 1.0f, 1.0f);
+  $if((image_id >= 0) &
+      (image_id != std::numeric_limits<std::int32_t>::max())) {
+    const auto idx = image_id.cast<std::uint32_t>();
+    const auto binding = bindings->read(idx);
+    const auto sample_valid = [&]() noexcept {
+      const auto mip_desc = mip_descs->read(idx);
+      auto texture = textures->tex2d(binding.texture_slot);
+      auto sample_uv = uv.val;
+      sample_uv.y = 1.0f - sample_uv.y;
+      const auto duv_dx = luisa::compute::make_float2(uv.dx.x, -uv.dx.y);
+      const auto duv_dy = luisa::compute::make_float2(uv.dy.x, -uv.dy.y);
+      const luisa::compute::UInt interpolation =
+          binding.sampler & scene_detail::cycles_svm_image_interpolation_mask;
+      result = scene_detail::sample_direct_texture_2d_isotropic(
+          texture, sample_uv, duv_dx, duv_dy, mip_desc.x, mip_desc.y,
+          mip_desc.z, interpolation);
+    };
+    if (has_load_failed) {
+      $if((binding.sampler & scene_detail::cycles_svm_image_load_failed_flag) == 0u) {
+        sample_valid();
+      };
+    } else {
+      sample_valid();
+    }
+  };
+  return result;
+}
+
 } // namespace psycles::luisa_backend::cycles_svm::detail

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "path_tracer_internal.h"
+#include "virtual_texture_cache_lod.h"
 
 namespace psycles::luisa_backend::detail {
 
@@ -24,9 +25,9 @@ cycles_texture_sampler_address(std::uint32_t extension) noexcept {
 }
 
 template<typename Texture, typename Sample>
-[[nodiscard]] Float4 sample_cycles_texture_2d_bicubic(
-    const Texture &texture, Expr<luisa::float2> uv,
-    const Sample &sample) noexcept {
+[[nodiscard]] Float4 sample_cycles_texture_2d_bicubic_with_size(
+    const Texture & /*texture*/, Expr<luisa::float2> uv,
+    Expr<luisa::uint2> size, const Sample &sample) noexcept {
     // Cycles' fast bicubic reconstruction is a separable cubic B-spline
     // factored into four native bilinear samples. The factorization is exact:
     // g0=w0+w1, g1=w2+w3 and h selects the bilinear coordinate whose two
@@ -64,13 +65,28 @@ template<typename Texture, typename Sample>
             g0,
             g1);
     };
-    const auto size = texture.size();
     const auto x = cubic_axis(uv.x, cast<float>(size.x));
     const auto y = cubic_axis(uv.y, cast<float>(size.y));
     return y.z * (x.z * sample(x.x, y.x) +
                   x.w * sample(x.y, y.x)) +
            y.w * (x.z * sample(x.x, y.y) +
                   x.w * sample(x.y, y.y));
+}
+
+template<typename Texture, typename Sample>
+[[nodiscard]] Float4 sample_cycles_texture_2d_bicubic(
+    const Texture &texture, Expr<luisa::float2> uv,
+    const Sample &sample) noexcept {
+    return sample_cycles_texture_2d_bicubic_with_size(
+        texture, uv, texture.size(), sample);
+}
+
+template<typename Texture, typename Sample>
+[[nodiscard]] Float4 sample_cycles_texture_2d_bicubic_mip(
+    const Texture &texture, Expr<luisa::float2> uv,
+    Expr<luisa::uint> mip_level, const Sample &sample) noexcept {
+    return sample_cycles_texture_2d_bicubic_with_size(
+        texture, uv, texture.size(mip_level), sample);
 }
 
 // Explicit sampler specialization remains useful for independent API tests
@@ -99,6 +115,40 @@ template<typename TextureHeap>
                                   luisa::compute::SamplerFilter::LINEAR_POINT,
                                   address);
         });
+}
+
+template<typename Texture>
+[[nodiscard]] inline Float4 sample_direct_texture_2d_isotropic(
+    const Texture &texture,
+    Expr<luisa::float2> uv,
+    Expr<luisa::float2> duv_dx,
+    Expr<luisa::float2> duv_dy,
+    Expr<luisa::uint> width,
+    Expr<luisa::uint> height,
+    Expr<luisa::uint> mip_count,
+    Expr<luisa::uint> interpolation) noexcept {
+    const auto safe_mips = max(mip_count, 1u);
+    const auto lod = vt_compute_isotropic_lod(
+        duv_dx, duv_dy, width, height, safe_mips);
+    const auto sel = vt_select_mip_levels(lod, safe_mips, interpolation == 0u);
+    auto sample_level = [&](const UInt &mip) noexcept {
+        Float4 c = make_float4(0.0f);
+        $if(interpolation == 2u) {
+            c = sample_cycles_texture_2d_bicubic_mip(
+                texture, uv, mip, [&](Float u, Float v) noexcept {
+                    return texture.sample(make_float2(u, v), cast<float>(mip));
+                });
+        } $else {
+            c = texture.sample(uv, cast<float>(mip));
+        };
+        return c;
+    };
+    Float4 out = sample_level(sel.mip0);
+    $if(sel.mip1 != sel.mip0) {
+        const auto c1 = sample_level(sel.mip1);
+        out = lerp(out, c1, sel.frac);
+    };
+    return out;
 }
 
 }// namespace psycles::luisa_backend::detail

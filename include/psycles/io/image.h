@@ -77,6 +77,10 @@ struct ProbedImageInfo {
     std::uint32_t width{};
     std::uint32_t height{};
     DecodedImageStorage storage{DecodedImageStorage::unorm8};
+    std::uint8_t channels{4u};
+    std::uint8_t bit_depth{8u};
+    bool is_floating_point{false};
+    bool has_alpha{false};
 };
 
 [[nodiscard]] bool write_ppm(

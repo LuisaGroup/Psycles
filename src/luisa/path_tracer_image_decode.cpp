@@ -1,11 +1,51 @@
 #include "path_tracer_image_decode.h"
 
+#include <algorithm>
+#include <array>
 #include <cstring>
 #include <limits>
 
 #include <stb/stb_image.h>
 
 namespace psycles::luisa_backend::detail {
+
+namespace {
+
+[[nodiscard]] bool png_has_trns_chunk(
+    std::span<const std::uint8_t> encoded,
+    std::uint8_t &ihdr_color_type_out) noexcept {
+    constexpr std::array<std::uint8_t, 8u> kPngSig{
+        0x89u, 0x50u, 0x4eu, 0x47u, 0x0du, 0x0au, 0x1au, 0x0au};
+    if (encoded.size() < 33u ||
+        std::memcmp(encoded.data(), kPngSig.data(), kPngSig.size()) != 0) {
+        return false;
+    }
+    ihdr_color_type_out = encoded[25u];
+    std::size_t pos = 8u;
+    while (pos + 12u <= encoded.size()) {
+        const std::uint32_t len =
+            (static_cast<std::uint32_t>(encoded[pos + 0u]) << 24u) |
+            (static_cast<std::uint32_t>(encoded[pos + 1u]) << 16u) |
+            (static_cast<std::uint32_t>(encoded[pos + 2u]) << 8u) |
+            static_cast<std::uint32_t>(encoded[pos + 3u]);
+        const std::uint8_t *t = encoded.data() + pos + 4u;
+        if (t[0] == 't' && t[1] == 'R' && t[2] == 'N' && t[3] == 'S') {
+            return true;
+        }
+        if ((t[0] == 'I' && t[1] == 'D' && t[2] == 'A' && t[3] == 'T') ||
+            (t[0] == 'I' && t[1] == 'E' && t[2] == 'N' && t[3] == 'D')) {
+            return false;
+        }
+        const std::size_t step = static_cast<std::size_t>(len) + 12u;
+        if (step > encoded.size() - pos) {
+            return false;
+        }
+        pos += step;
+    }
+    return false;
+}
+
+} // namespace
 
 std::optional<io::ProbedImageInfo>
 probe_scene_image_info(
@@ -34,12 +74,31 @@ probe_scene_image_info(
             stbi_is_hdr_from_memory(encoded.data(), encoded_size) != 0;
         const auto is_sixteen_bit =
             stbi_is_16_bit_from_memory(encoded.data(), encoded_size) != 0;
+        auto ch = static_cast<std::uint8_t>(std::clamp(channels, 1, 4));
+        bool has_alpha = (ch == 2u || ch == 4u);
+        std::uint8_t png_ct = 0u;
+        if (png_has_trns_chunk(encoded, png_ct)) {
+            if (png_ct == 0u) {
+                ch = 2u;
+                has_alpha = true;
+            } else if (png_ct == 2u || png_ct == 3u) {
+                ch = 4u;
+                has_alpha = true;
+            }
+        }
         return io::ProbedImageInfo{
             .width = static_cast<std::uint32_t>(width),
             .height = static_cast<std::uint32_t>(height),
             .storage = (is_hdr || is_sixteen_bit)
                            ? io::DecodedImageStorage::float32
-                           : io::DecodedImageStorage::unorm8};
+                           : io::DecodedImageStorage::unorm8,
+            .channels = ch,
+            .bit_depth = is_hdr ? static_cast<std::uint8_t>(32u)
+                                : (is_sixteen_bit
+                                       ? static_cast<std::uint8_t>(16u)
+                                       : static_cast<std::uint8_t>(8u)),
+            .is_floating_point = is_hdr,
+            .has_alpha = has_alpha};
     }
 #if defined(PSYCLES_WITH_OPENIMAGEIO)
     io::ProbedImageInfo info;

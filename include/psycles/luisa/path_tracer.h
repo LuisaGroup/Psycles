@@ -11,6 +11,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -182,6 +183,102 @@ struct LuisaSurfaceClosureCountHistogramRequest {
   std::shared_ptr<LuisaSurfaceClosureCountHistogramSink> sink;
 };
 
+enum class LuisaVirtualTexturePrepackMode : std::uint8_t {
+  off = 0u,
+  memory = 1u,
+  disk = 2u,
+};
+
+enum class LuisaVirtualTextureCopyQueueMode : std::uint8_t {
+  off = 0u,
+  direct = 1u,
+  staged = 2u,
+  staged_shader = 3u,
+};
+
+[[nodiscard]] constexpr std::string_view
+luisa_virtual_texture_copy_queue_mode_name(
+    LuisaVirtualTextureCopyQueueMode mode) noexcept {
+  switch (mode) {
+  case LuisaVirtualTextureCopyQueueMode::off:
+    return "off";
+  case LuisaVirtualTextureCopyQueueMode::direct:
+    return "direct";
+  case LuisaVirtualTextureCopyQueueMode::staged:
+    return "staged";
+  case LuisaVirtualTextureCopyQueueMode::staged_shader:
+    return "staged_shader";
+  }
+  return "off";
+}
+
+enum class LuisaVirtualTextureCompressionMode : std::uint8_t {
+  off = 0u,
+  auto_hq = 1u,
+  auto_compact = 2u,
+  bc7 = 3u,
+  bc3 = 4u,
+  bc1 = 5u,
+};
+
+[[nodiscard]] constexpr std::string_view
+luisa_virtual_texture_compression_mode_name(
+    LuisaVirtualTextureCompressionMode mode) noexcept {
+  switch (mode) {
+  case LuisaVirtualTextureCompressionMode::off:
+    return "off";
+  case LuisaVirtualTextureCompressionMode::auto_hq:
+    return "auto";
+  case LuisaVirtualTextureCompressionMode::auto_compact:
+    return "auto_compact";
+  case LuisaVirtualTextureCompressionMode::bc7:
+    return "bc7";
+  case LuisaVirtualTextureCompressionMode::bc3:
+    return "bc3";
+  case LuisaVirtualTextureCompressionMode::bc1:
+    return "bc1";
+  }
+  return "off";
+}
+
+enum class LuisaVirtualTextureCompressionQuality : std::uint8_t {
+  fast = 0u,
+  balanced = 1u,
+  high = 2u,
+};
+
+[[nodiscard]] constexpr std::string_view
+luisa_virtual_texture_compression_quality_name(
+    LuisaVirtualTextureCompressionQuality quality) noexcept {
+  switch (quality) {
+  case LuisaVirtualTextureCompressionQuality::fast:
+    return "fast";
+  case LuisaVirtualTextureCompressionQuality::balanced:
+    return "balanced";
+  case LuisaVirtualTextureCompressionQuality::high:
+    return "high";
+  }
+  return "balanced";
+}
+
+// Mip level selection mode for texture lookups. `mip0` samples base mip 0 only;
+// `isotropic` computes ray-differential texel footprints and samples trilinearly.
+enum class LuisaTextureMipMode : std::uint8_t {
+  mip0 = 0,
+  isotropic = 1,
+};
+
+[[nodiscard]] constexpr std::string_view
+luisa_texture_mip_mode_name(LuisaTextureMipMode mode) noexcept {
+  switch (mode) {
+  case LuisaTextureMipMode::mip0:
+    return "mip0";
+  case LuisaTextureMipMode::isotropic:
+    return "isotropic";
+  }
+  return "mip0";
+}
+
 // Bounded-VRAM tiled virtual texture cache and on-demand texture streaming for
 // wavefront schedulers. When enabled, scene images are only header-probed at
 // compile_scene() time and decoded/uploaded on demand at tile granularity via
@@ -195,6 +292,24 @@ struct LuisaVirtualTextureCacheOptions {
   std::uint32_t physical_tile_size{64u};
   std::uint64_t host_decoded_cache_budget_bytes{1024ull * 1024ull * 1024ull};
   bool report_stats{false};
+  LuisaVirtualTexturePrepackMode prepack_mode{
+      LuisaVirtualTexturePrepackMode::off};
+  std::uint64_t host_prepacked_cache_budget_bytes{512ull * 1024ull * 1024ull};
+  bool prepack_warm_on_init{false};
+  std::string prepack_disk_dir{};
+  bool enable_async_worker{false};
+  std::uint32_t async_batch_slots{1u};
+  LuisaVirtualTextureCopyQueueMode copy_queue_mode{
+      LuisaVirtualTextureCopyQueueMode::off};
+  LuisaVirtualTextureCompressionMode compression_mode{
+      LuisaVirtualTextureCompressionMode::off};
+  LuisaVirtualTextureCompressionQuality compression_quality{
+      LuisaVirtualTextureCompressionQuality::balanced};
+  bool enable_preflight{false};
+  std::uint32_t preflight_stride{2u};
+  std::uint32_t preflight_bounces{1u};
+  bool preflight_overlap_pso{true};
+  LuisaTextureMipMode mip_mode{LuisaTextureMipMode::mip0};
 };
 
 [[nodiscard]] constexpr bool
@@ -291,6 +406,7 @@ struct LuisaPathTracerOptions {
   std::optional<LuisaSurfaceClosureCountHistogramRequest>
       surface_closure_count_histogram;
   LuisaVirtualTextureCacheOptions virtual_texture_cache{};
+  LuisaTextureMipMode direct_texture_mip_mode{LuisaTextureMipMode::mip0};
 };
 
 class LuisaPathTracerBackend final : public contract::RendererBackend {

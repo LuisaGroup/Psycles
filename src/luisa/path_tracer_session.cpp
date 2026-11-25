@@ -527,8 +527,19 @@ bool LuisaRenderSession::render_samples(const SampleRange &samples,
     return false;
   }
   _total_aa_samples = samples.total;
+  const bool tl_active =
+      _scene && _scene->device &&
+      (_scene->device.impl()->query("vk_timeline_active") == "1");
   const auto integration_begin = std::chrono::steady_clock::now();
+  if (tl_active) {
+    static_cast<void>(
+        _scene->device.impl()->query("vk_timeline_mark:integration_begin"));
+  }
   prepare_sobol_table(samples.total);
+  if (tl_active) {
+    static_cast<void>(
+        _scene->device.impl()->query("vk_timeline_mark:sobol_ready"));
+  }
   auto dispatches = _volume_guiding_filter
                         ? SampleDispatchPartition::make_volume_guided(
                               static_cast<std::uint32_t>(sample_begin),
@@ -604,6 +615,14 @@ bool LuisaRenderSession::render_samples(const SampleRange &samples,
     }
   }
   const auto integration_end = std::chrono::steady_clock::now();
+  if (tl_active) {
+    static_cast<void>(
+        _scene->device.impl()->query("vk_timeline_mark:integration_end"));
+    static_cast<void>(_scene->device.impl()->query("vk_timeline_flush"));
+  }
+  if (_scene && _scene->virtual_texture_cache) {
+    _scene->virtual_texture_cache->dump_profile_if_enabled();
+  }
   if (const auto *raw_util = std::getenv("PSYCLES_PRINT_RENDER_UTILIZATION");
       raw_util != nullptr && std::string_view{raw_util} == "1") {
     std::printf(

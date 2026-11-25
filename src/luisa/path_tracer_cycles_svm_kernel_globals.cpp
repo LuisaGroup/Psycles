@@ -286,7 +286,8 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     PathCyclesSvmShaderDomain domain,
     std::span<const std::uint8_t> explicit_shader_mask,
     bool force_direct_textures,
-    UInt *vt_miss_page) noexcept
+    UInt *vt_miss_page,
+    const UInt *vt_preflight_weight) noexcept
     : _scene{std::move(scene)},
       _parameters{parameters},
       _camera_projection{camera_projection},
@@ -295,7 +296,8 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
       _camera_to_world{parameters.camera_transform},
       _world_to_camera{parameters.camera_inverse_transform},
       _force_direct_textures{force_direct_textures},
-      _vt_miss_page{vt_miss_page} {
+      _vt_miss_page{vt_miss_page},
+      _vt_preflight_weight{vt_preflight_weight} {
   LUISA_ASSERT(_scene && _scene->cycles_svm &&
                    _scene->cycles_svm->geometry &&
                    _scene->cycles_svm->objects,
@@ -1017,9 +1019,31 @@ Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
     svm::ShaderData &, Expr<std::int32_t> image_texture_id,
     const svm::Dual2 &uv) const noexcept {
   const auto &vt = _scene->virtual_texture_cache;
+  auto sample_uv = uv.val;
+  sample_uv.y = 1.0f - sample_uv.y;
+  const auto duv_dx = make_float2(uv.dx.x, -uv.dx.y);
+  const auto duv_dy = make_float2(uv.dy.x, -uv.dy.y);
+  if (_vt_preflight_weight != nullptr) {
+    if (vt && !_force_direct_textures && !vt->eager_fallback_active()) {
+      if (vt->mip_mode() == LuisaTextureMipMode::isotropic) {
+        vt->record_preflight_demand_2d(
+            image_texture_id, sample_uv, duv_dx, duv_dy,
+            *_vt_preflight_weight);
+      } else {
+        vt->record_preflight_demand_2d(
+            image_texture_id, sample_uv, *_vt_preflight_weight);
+      }
+    }
+    return make_float4(0.5f, 0.5f, 0.5f, 0.5f);
+  }
   const bool use_vt =
       vt && !_force_direct_textures && _vt_miss_page != nullptr &&
       !vt->eager_fallback_active();
+  const bool vt_isotropic =
+      use_vt && (vt->mip_mode() == LuisaTextureMipMode::isotropic);
+  const bool direct_isotropic =
+      (_scene->direct_texture_mip_mode == LuisaTextureMipMode::isotropic) ||
+      vt_isotropic;
   if (const auto cid = svm_detail::try_const_int(image_texture_id)) {
     constexpr auto magenta = luisa::make_float4(1.0f, 0.0f, 1.0f, 1.0f);
     if (*cid < 0 ||
@@ -1032,12 +1056,20 @@ Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
     if ((b.sampler & cycles_svm_image_load_failed_flag) != 0u) {
       return make_float4(magenta);
     }
-    auto sample_uv = uv.val;
-    sample_uv.y = 1.0f - sample_uv.y;
     if (use_vt && vt->is_virtual_binding(*cid)) {
-      return vt->sample_2d_const(*cid, sample_uv, _vt_miss_page, false);
+      return vt_isotropic
+                 ? vt->sample_2d_const_mip(
+                       *cid, sample_uv, duv_dx, duv_dy, _vt_miss_page, false)
+                 : vt->sample_2d_const(*cid, sample_uv, _vt_miss_page, false);
     }
     auto texture = _scene->texture_heap->tex2d(b.texture_slot);
+    if (direct_isotropic && _scene->direct_image_mip_descs) {
+      const auto mip_desc = _scene->direct_image_mip_descs->read(
+          static_cast<luisa::uint>(*cid));
+      return sample_direct_texture_2d_isotropic(
+          texture, sample_uv, duv_dx, duv_dy, mip_desc.x, mip_desc.y,
+          mip_desc.z, UInt(b.sampler & cycles_svm_image_interpolation_mask));
+    }
     if ((b.sampler & cycles_svm_image_interpolation_mask) == 2u) {
       return sample_cycles_texture_2d_bicubic(
           texture, sample_uv, [&](Float u, Float v) noexcept {
@@ -1047,15 +1079,26 @@ Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
     return texture.sample(sample_uv);
   }
   if (use_vt && vt->has_virtual_images()) {
-    auto sample_uv = uv.val;
-    sample_uv.y = 1.0f - sample_uv.y;
-    return vt->sample_2d_dynamic(
-        image_texture_id, sample_uv, _scene->texture_heap, _vt_miss_page, false);
+    return vt_isotropic
+               ? vt->sample_2d_dynamic_mip(
+                     image_texture_id, sample_uv, duv_dx, duv_dy,
+                     _scene->texture_heap, _vt_miss_page, false)
+               : vt->sample_2d_dynamic(
+                     image_texture_id, sample_uv, _scene->texture_heap,
+                     _vt_miss_page, false);
   }
   if (!_scene->cycles_svm->image_binding_buffer) {
     dsl::unreachable(
         "image SVM node reached without a Cycles image binding table");
     return make_float4(0.0f);
+  }
+  if (direct_isotropic && _scene->direct_image_mip_descs) {
+    return svm_detail::sample_scene_image_2d_isotropic(
+        _scene->texture_heap,
+        *_scene->cycles_svm->image_binding_buffer,
+        _scene->direct_image_mip_descs,
+        image_texture_id, uv,
+        _has_failed_images);
   }
   return svm_detail::sample_scene_image_2d(
       _scene->texture_heap,

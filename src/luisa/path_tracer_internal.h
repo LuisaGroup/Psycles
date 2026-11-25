@@ -397,7 +397,10 @@ struct LuisaSceneData {
     std::vector<CurveGeometryResource> curve_geometries;
     std::vector<Image<float>> images;
     BindlessArray texture_heap;
+    LuisaTextureMipMode direct_texture_mip_mode{LuisaTextureMipMode::mip0};
+    Buffer<luisa::uint4> direct_image_mip_descs;
     std::shared_ptr<VirtualTextureCache> virtual_texture_cache;
+    std::shared_ptr<struct VtPreflightShaderCache> vt_preflight_cache;
     // The scene image upload below has one closed set of storage choices:
     // decoded UNORM8 images become BYTE4 and wider/HDR images become FLOAT4.
     // Keep the default conservative so any future/imported storage path still

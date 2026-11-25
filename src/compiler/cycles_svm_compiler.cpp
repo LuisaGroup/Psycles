@@ -358,13 +358,19 @@ private:
   [[nodiscard]] std::uint32_t stack_size(const GraphInput *input) const
       noexcept {
     const auto size = stack_base_size(input->type);
-    return input->parent->need_derivatives ? size * 3u : size;
+    return (_current_type != SHADER_TYPE_VOLUME &&
+            input->parent->need_derivatives)
+               ? size * 3u
+               : size;
   }
 
   [[nodiscard]] std::uint32_t stack_size(const GraphOutput *output) const
       noexcept {
     const auto size = stack_base_size(output->type);
-    return output->parent->need_derivatives ? size * 3u : size;
+    return (_current_type != SHADER_TYPE_VOLUME &&
+            output->parent->outputs_have_derivatives())
+               ? size * 3u
+               : size;
   }
 
   [[nodiscard]] SVMStackOffset stack_find_offset(std::uint32_t size) {
@@ -1525,7 +1531,8 @@ public:
   Compiler(const ShaderProgram &shader, AttributeIDMap &attribute_ids,
            ImageIDMap &image_ids, IESIDMap &ies_ids,
            ShaderCompileContext context)
-      : _graph{CyclesGraph::project(shader, context.color_space)},
+      : _graph{CyclesGraph::project(shader, context.color_space,
+                                    context.enable_texture_derivatives)},
         _attribute_ids{attribute_ids},
         _image_ids{image_ids},
         _ies_ids{ies_ids},

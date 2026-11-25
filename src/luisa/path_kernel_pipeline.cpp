@@ -163,7 +163,9 @@ void PathKernelPipeline::emit(
                      luisa::compute::coro_stage(
                          luisa::string{vt_extension_schema})
                          .read(luisa::string{vt_extension_binding},
-                               missed_page));
+                               missed_page)
+                         .blocking_async()
+                         .async_domain(luisa::string{vt_extension_schema}));
             $if(vt->is_resident(missed_page)) { $break; };
           };
         };

@@ -92,6 +92,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_geometry_nodes.cpp
     src/compiler/cycles_svm_geometry_scene.cpp
     src/compiler/cycles_svm_graph.cpp
+    src/compiler/cycles_svm_graph_derivatives.cpp
     src/compiler/cycles_svm_image_nodes.cpp
     src/compiler/cycles_svm_info_nodes.cpp
     src/compiler/cycles_svm_ies_nodes.cpp
@@ -1729,29 +1730,7 @@ if(PSYCLES_ENABLE_LUISA)
                     luisa_curve_path
                 LIBRARIES Psycles::luisa_runtime)
 
-            psycles_add_luisa_backend_test(
-                TARGET
-                    psycles_luisa_virtual_texture_cache_tests
-                SOURCE
-                    tests/test_luisa_virtual_texture_cache.cpp
-                TEST_STEM
-                    luisa_virtual_texture_cache
-                LIBRARIES Psycles::luisa_runtime)
-            target_include_directories(
-                psycles_luisa_virtual_texture_cache_tests
-                PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
-            if(PSYCLES_ENABLE_OPENIMAGEIO)
-                target_link_libraries(
-                    psycles_luisa_virtual_texture_cache_tests
-                    PRIVATE OpenImageIO::OpenImageIO)
-            endif()
-            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
-                if(TEST "psycles.luisa_virtual_texture_cache_${_backend}")
-                    set_tests_properties(
-                        "psycles.luisa_virtual_texture_cache_${_backend}"
-                        PROPERTIES TIMEOUT 300)
-                endif()
-            endforeach()
+            include(cmake/PsyclesLuisaVtTests.cmake)
 
             add_executable(
                 psycles_sample_dispatch_partition_tests
@@ -1926,14 +1905,6 @@ if(PSYCLES_ENABLE_LUISA)
                         luisa-compute-backend-${_backend})
                 endif()
             endforeach()
-            if(WIN32)
-                add_custom_command(
-                    TARGET psycles_blender POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        $<TARGET_FILE:psycles_core>
-                        $<TARGET_FILE:psycles_luisa_runtime>
-                        "${CMAKE_BINARY_DIR}/bin")
-            endif()
 
             if(PSYCLES_BUILD_TESTS)
                 add_executable(psycles_blender_capi_tests
