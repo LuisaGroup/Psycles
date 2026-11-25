@@ -403,9 +403,26 @@ private:
                   .on_surface_candidate(handle_excluded_src)
                   .on_procedural_candidate(handle_procedural));
         }
-        return finish(
-            scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
-                .on_surface_candidate(handle_excluded_src));
+        Var<luisa::compute::CommittedHit> result;
+        $if(src.inst == surface_ray::invalid_primitive) {
+          const auto surface_hit =
+              scene->accel->intersect(ray, {.visibility_mask = visibility_mask});
+          result->inst = surface_hit.inst;
+          result->prim = surface_hit.prim;
+          result->bary = surface_hit.bary;
+          result->hit_type = select(
+              static_cast<std::uint32_t>(luisa::compute::HitType::Surface),
+              static_cast<std::uint32_t>(luisa::compute::HitType::Miss),
+              surface_hit->miss());
+          result->committed_ray_t = select(
+              surface_hit.committed_ray_t, ray->t_max(), surface_hit->miss());
+        }
+        $else {
+          result = finish(
+              scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
+                  .on_surface_candidate(handle_excluded_src));
+        };
+        return result;
       }
       const auto src = resolve_excluded_triangle_identity(scene, source);
       const auto dst = resolve_excluded_triangle_identity(scene, light);
