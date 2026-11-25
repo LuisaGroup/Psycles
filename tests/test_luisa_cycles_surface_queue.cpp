@@ -372,6 +372,91 @@ bool check_multi_bucket_surface_routing(Device &device, Stream &stream) {
   return true;
 }
 
+bool check_single_block_small_batch_sort(Device &device, Stream &stream) {
+  using namespace luisa::compute::coro;
+  constexpr unsigned capacity = 2048u;
+  constexpr unsigned shader_count = 17u;
+  auto surface_order = device.create_buffer<unsigned>(capacity);
+  auto shader_keys = device.create_buffer<unsigned>(capacity);
+  auto bg_done = device.create_buffer<unsigned>(capacity);
+  std::vector<unsigned> host_order(capacity, ~0u);
+  std::vector<unsigned> host_keys(capacity, ~0u);
+  std::vector<unsigned> host_bg(capacity, 0u);
+  stream << surface_order.copy_from(host_order.data())
+         << shader_keys.copy_from(host_keys.data())
+         << bg_done.copy_from(host_bg.data()) << synchronize();
+
+  Coroutine<void(Buffer<unsigned>, Buffer<unsigned>, Buffer<unsigned>)> coro{
+      [shader_count](BufferUInt out_order, BufferUInt out_key,
+                     BufferUInt out_bg) {
+        const auto id = dispatch_x();
+        $suspend(path_transition::intersect_closest);
+        $if((id % 5u) == 0u) {
+          $suspend(path_transition::shade_background);
+          out_bg.write(id, 1u);
+        }
+        $else {
+          const auto shader = (id * 11u + (id >> 3u)) % shader_count;
+          $suspend(path_transition::shade_surface,
+                   make_surface_sort_annotation(shader, shader_count, true));
+          const auto slot = block_x() * 32u + thread_x();
+          out_order.write(slot, id);
+          out_key.write(slot, shader);
+        };
+      }};
+  WavefrontCoroSchedulerConfig config;
+  config.thread_count = capacity;
+  config.execution_block_size = 32u;
+  config.largest_continuation_first = true;
+  config.incremental_continuation_counts = true;
+  config.fused_continuation_counts = true;
+  config.frame_buffer_compaction = true;
+  WavefrontCoroScheduler<Buffer<unsigned>, Buffer<unsigned>, Buffer<unsigned>>
+      scheduler{device, coro, config};
+  scheduler.register_extension_handler(stream, make_surface_sort_handler);
+  stream << scheduler(surface_order, shader_keys, bg_done).dispatch(capacity)
+         << surface_order.copy_to(host_order.data())
+         << shader_keys.copy_to(host_keys.data())
+         << bg_done.copy_to(host_bg.data()) << synchronize();
+
+  std::vector<bool> seen(capacity, false);
+  unsigned surface_count = 0u;
+  for (unsigned i = 0u; i < capacity; ++i) {
+    if ((i % 5u) == 0u) {
+      if (host_bg[i] != 1u) {
+        std::cerr << "Background lane did not complete at " << i << '\n';
+        return false;
+      }
+      seen[i] = true;
+    } else {
+      if (host_bg[i] != 0u) {
+        std::cerr << "Non-background lane executed background at " << i << '\n';
+        return false;
+      }
+      ++surface_count;
+    }
+  }
+  unsigned previous_key = 0u;
+  for (unsigned slot = 0u; slot < surface_count; ++slot) {
+    const auto id = host_order[slot];
+    const auto k = host_keys[slot];
+    const auto expected_k = (id * 11u + (id >> 3u)) % shader_count;
+    if (id >= capacity || (id % 5u) == 0u || seen[id] || k != expected_k) {
+      std::cerr << "Single-block small-batch sort permutation invalid at slot "
+                << slot << " (id=" << id << ", key=" << k << ")\n";
+      return false;
+    }
+    if (k < previous_key) {
+      std::cerr << "Single-block small-batch sort is not non-decreasing at slot "
+                << slot << ": " << k << " < " << previous_key << '\n';
+      return false;
+    }
+    seen[id] = true;
+    previous_key = k;
+  }
+  return true;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -489,6 +574,7 @@ int main(int argc, char **argv) {
   }
   ok = check_joint_surface_queue(device, stream, oracle) && ok;
   ok = check_multi_bucket_surface_routing(device, stream) && ok;
+  ok = check_single_block_small_batch_sort(device, stream) && ok;
   if (ok) {
     std::cout << "Cycles surface queue shader identity passed\n";
   }

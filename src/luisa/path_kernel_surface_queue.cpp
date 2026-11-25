@@ -24,10 +24,15 @@ class SurfaceSortHandler final
   using Dispatch = luisa::compute::coro::WavefrontCoroExtensionDispatchContext;
   static constexpr unsigned max_fused_shader_range = 256u;
   static constexpr unsigned max_fused_composite_range = 16384u;
+  static constexpr unsigned single_block_max_scan = 4096u;
   luisa::compute::Buffer<luisa::uint> _keys[2u];
   luisa::compute::Buffer<luisa::uint> _indices;
   luisa::compute::Buffer<luisa::uint> _bucket_hist;
   luisa::compute::Buffer<luisa::uint> _bucket_offsets;
+  luisa::compute::Shader1D<luisa::compute::ByteBuffer,
+                           luisa::compute::Buffer<luisa::uint>, luisa::uint,
+                           luisa::uint, luisa::uint>
+      _fused_single_block_sort_shader;
   luisa::compute::Shader1D<luisa::compute::ByteBuffer,
                            luisa::compute::Buffer<luisa::uint>, luisa::uint,
                            luisa::uint, luisa::uint, luisa::uint, luisa::uint>
@@ -123,6 +128,94 @@ public:
           context.device.create_buffer<luisa::uint>(context.frame_capacity);
 
       const auto shader_range = _range;
+      Kernel1D fused_single_block_sort_kernel =
+          [read_shader, shader_range, layout = context.frame_layout,
+           soa = context.global_memory_soa](
+              ByteBufferVar storage, BufferUInt indices_out, UInt capacity,
+              UInt source_queue, UInt scan_count) noexcept {
+            set_block_size(256u);
+            set_warp_size(32u);
+            Shared<uint> hist{shader_range};
+            Shared<uint> warp_sums{8u};
+            const auto tid = thread_x();
+            const auto warp_id = tid >> 5u;
+            const auto lane_id = tid & 31u;
+            if (shader_range <= 256u) {
+              $if(tid < shader_range) { hist[tid] = 0u; };
+            }
+            sync_block();
+
+            UInt active_mask = 0u;
+            ArrayUInt<16u> cached_keys;
+            UInt iter = 0u;
+            UInt base_pos = 0u;
+            $while(base_pos < scan_count) {
+              const auto pos = base_pos + tid;
+              $if(pos < scan_count) {
+                const auto tok = coro_frame_read_field<uint>(
+                    storage, pos, capacity, layout, soa, 6u);
+                $if(tok == source_queue) {
+                  const auto s_key =
+                      min(read_shader(pos, storage, capacity), shader_range - 1u);
+                  active_mask |= (1u << iter);
+                  cached_keys[iter] = s_key;
+                  $if(warp_active_all_equal(s_key)) {
+                    const auto total = warp_active_count_bits(true);
+                    $if(warp_prefix_count_bits(true) == 0u) {
+                      hist.atomic(s_key).fetch_add(total);
+                    };
+                  }
+                  $else {
+                    hist.atomic(s_key).fetch_add(1u);
+                  };
+                };
+              };
+              base_pos += 256u;
+              iter += 1u;
+            };
+            sync_block();
+
+            UInt val = 0u;
+            $if(tid < shader_range) { val = hist[tid]; };
+            const auto w_prefix = warp_prefix_sum(val);
+            const auto w_total = warp_active_sum(val);
+            $if(lane_id == 0u) { warp_sums[warp_id] = w_total; };
+            sync_block();
+            $if(warp_id == 0u) {
+              UInt ws = 0u;
+              $if(lane_id < 8u) { ws = warp_sums[lane_id]; };
+              const auto wp = warp_prefix_sum(ws);
+              $if(lane_id < 8u) { warp_sums[lane_id] = wp; };
+            };
+            sync_block();
+            $if(tid < shader_range) { hist[tid] = warp_sums[warp_id] + w_prefix; };
+            sync_block();
+
+            iter = 0u;
+            base_pos = 0u;
+            $while(base_pos < scan_count) {
+              $if((active_mask & (1u << iter)) != 0u) {
+                const auto s_key = cached_keys[iter];
+                UInt dst = 0u;
+                $if(warp_active_all_equal(s_key)) {
+                  const auto total = warp_active_count_bits(true);
+                  const auto prefix = warp_prefix_count_bits(true);
+                  UInt base_dst = 0u;
+                  $if(prefix == 0u) {
+                    base_dst = hist.atomic(s_key).fetch_add(total);
+                  };
+                  dst = warp_read_first_active_lane(base_dst) + prefix;
+                }
+                $else {
+                  dst = hist.atomic(s_key).fetch_add(1u);
+                };
+                indices_out.write(dst, base_pos + tid);
+              };
+              base_pos += 256u;
+              iter += 1u;
+            };
+          };
+
       Kernel1D fused_bucket_kernel =
           [read_shader, shader_range, layout = context.frame_layout,
            soa = context.global_memory_soa](
@@ -307,7 +400,7 @@ public:
             indices_out.write(rank, indices_in.read(slot));
           };
 
-      psycles::parallel_for(6u, [&](std::size_t idx) {
+      psycles::parallel_for(7u, [&](std::size_t idx) {
         switch (idx) {
           case 0u:
             _fused_bucket_shader =
@@ -329,12 +422,18 @@ public:
             _bucket_hist_shader =
                 context.device.compile(hist_kernel, context.shader_option);
             break;
-          default:
+          case 5u:
             _bucket_scatter_shader =
                 context.device.compile(scatter_kernel, context.shader_option);
             break;
+          default:
+            _fused_single_block_sort_shader = context.device.compile(
+                fused_single_block_sort_kernel, context.shader_option);
+            break;
         }
       });
+      _fused_single_block_sort_shader.set_name(
+          "psycles_fused_surface_single_block_sort");
       _fused_bucket_shader.set_name("psycles_fused_surface_bucket");
       _fused_prefix_shader.set_name("psycles_fused_surface_prefix");
       _fused_scatter_shader.set_name("psycles_fused_surface_scatter");
@@ -426,6 +525,23 @@ public:
             _partition == 0u ? scan_count : _partition;
         const auto active_partitions =
             std::max(1u, (scan_count + partition_eff - 1u) / partition_eff);
+        if (active_partitions == 1u && scan_count <= single_block_max_scan) {
+          auto encode_single = [&](luisa::compute::CommandList &cmds) noexcept {
+            cmds << _fused_single_block_sort_shader(
+                        context.frame_buffer, out_indices,
+                        context.frame_capacity, context.source_queue_token,
+                        scan_count)
+                        .dispatch(256u);
+          };
+          if (context.command_list != nullptr) {
+            encode_single(*context.command_list);
+          } else {
+            auto cmds = luisa::compute::CommandList::create(1u);
+            encode_single(cmds);
+            context.stream << cmds.commit();
+          }
+          return out_indices;
+        }
         const auto subblocks = _subblocks_per_partition;
         const auto total_blocks = active_partitions * subblocks;
         const auto total_buckets = active_partitions * _range * subblocks;
