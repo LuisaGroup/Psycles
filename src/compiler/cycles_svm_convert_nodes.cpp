@@ -238,6 +238,7 @@ std::unique_ptr<GraphNode> make_convert_graph_node(std::string_view type) {
       type == node_type::point_to_vector ||
       type == node_type::float3_to_vector ||
       type == node_type::vector_to_normal ||
+      type == node_type::vector_to_point ||
       type == node_type::normal_to_vector ||
       type == node_type::scalar_to_color ||
       type == node_type::scalar_to_boolean ||

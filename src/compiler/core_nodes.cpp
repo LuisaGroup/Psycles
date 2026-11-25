@@ -852,6 +852,14 @@ NodeRegistry make_core_node_registry() {
                  .required_features = {}}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::vector_to_point,
+                 .inputs = {input("Vector", SocketType::vector,
+                                  SocketValue::vector({0.0f, 0.0f, 0.0f}))},
+                 .outputs = {output("Point", SocketType::point)},
+                 .properties = {},
+                 .required_features = {}}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::normal_to_vector,
                  .inputs = {input("Normal", SocketType::normal,
                                   SocketValue::normal({0.0f, 0.0f, 1.0f}))},

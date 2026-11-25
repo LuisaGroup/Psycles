@@ -58,6 +58,7 @@ inline constexpr auto color_to_vector = "psycles.convert.color_to_vector";
 inline constexpr auto point_to_vector = "psycles.convert.point_to_vector";
 inline constexpr auto float3_to_vector = "psycles.convert.float3_to_vector";
 inline constexpr auto vector_to_normal = "psycles.convert.vector_to_normal";
+inline constexpr auto vector_to_point = "psycles.convert.vector_to_point";
 inline constexpr auto normal_to_vector = "psycles.convert.normal_to_vector";
 inline constexpr auto object_info = "psycles.object_info";
 inline constexpr auto particle_info = "psycles.particle_info";

@@ -701,11 +701,275 @@ void test_blender_geometry_tangent_parametric_import() {
          "plain Geometry Tangent/Parametric did not select Cycles' opcode");
 }
 
+void test_blender_vector_rotate_linked_point_inputs_import() {
+  TemporaryDirectory temporary;
+  {
+    std::ofstream geometry{temporary.path() / "geometry.bin",
+                           std::ios::binary};
+    geometry.write("PSYGEO1\0", 8);
+  }
+  {
+    std::ofstream scene{temporary.path() / "scene.json"};
+    scene << R"JSON({
+  "schema":"psycles.blender-scene.v1",
+  "images":[],"node_groups":[],
+  "materials":[{
+    "name":"SVM Vector Rotate Linked Point Inputs",
+    "cycles_sync":{"shader_index":5},
+    "node_tree":{
+      "name":"SVM Vector Rotate Linked Point Inputs",
+      "surface_root":{"node":"Emission","socket":"Emission"},
+      "volume_root":null,"displacement_root":null,
+      "links":[
+        {"from_node":"Geometry","from_socket":"Normal",
+         "to_node":"Vector Rotate","to_socket":"Vector"},
+        {"from_node":"Geometry","from_socket":"Tangent",
+         "to_node":"Vector Rotate","to_socket":"Rotation"},
+        {"from_node":"Value","from_socket":"Value",
+         "to_node":"Vector Rotate","to_socket":"Center"},
+        {"from_node":"Vector Rotate","from_socket":"Vector",
+         "to_node":"Emission","to_socket":"Color"}
+      ],
+      "nodes":[
+        {
+          "name":"Emission","type":"EMISSION","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Color","name":"Color",
+             "type":"NodeSocketColor","linked":true,
+             "default":[1.0,1.0,1.0,1.0]},
+            {"identifier":"Strength","name":"Strength",
+             "type":"NodeSocketFloat","linked":false,"default":1.0}
+          ],
+          "outputs":[
+            {"identifier":"Emission","name":"Emission",
+             "type":"NodeSocketShader","linked":true}
+          ],
+          "properties":{},"special":{}
+        },
+        {
+          "name":"Geometry","type":"NEW_GEOMETRY","mute":false,
+          "internal_links":[],"inputs":[],
+          "outputs":[
+            {"identifier":"Normal","name":"Normal",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]},
+            {"identifier":"Tangent","name":"Tangent",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]}
+          ],
+          "properties":{},"special":{}
+        },
+        {
+          "name":"Value","type":"VALUE","mute":false,
+          "internal_links":[],"inputs":[],
+          "outputs":[
+            {"identifier":"Value","name":"Value",
+             "type":"NodeSocketFloat","linked":true,"default":0.25}
+          ],
+          "properties":{},"special":{}
+        },
+        {
+          "name":"Vector Rotate","type":"VECTOR_ROTATE","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Vector","name":"Vector",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]},
+            {"identifier":"Center","name":"Center",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]},
+            {"identifier":"Axis","name":"Axis",
+             "type":"NodeSocketVector","linked":false,
+             "default":[0.0,0.0,1.0]},
+            {"identifier":"Angle","name":"Angle",
+             "type":"NodeSocketFloatAngle","linked":false,
+             "default":0.0},
+            {"identifier":"Rotation","name":"Rotation",
+             "type":"NodeSocketVectorEuler","linked":true,
+             "default":[0.0,0.0,0.0]}
+          ],
+          "outputs":[
+            {"identifier":"Vector","name":"Vector",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]}
+          ],
+          "properties":{"rotation_type":"EULER_XYZ","invert":false},
+          "special":{}
+        }
+      ]
+    }
+  }],
+  "render":{"width":16,"height":16,"percentage":100,"cycles":{}},
+  "camera":{"name":"Camera","type":"PERSP",
+    "transform":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+    "clip_start":0.01,"clip_end":100.0},
+  "geometries":[],"curve_geometries":[],"instances":[],"lights":[],
+  "world":null,"world_environment":null
+})JSON";
+  }
+
+  const auto imported =
+      psycles::adapter::load_blender_scene_bundle(temporary.path());
+  expect(imported.ok(), "Vector Rotate linked point inputs scene did not import");
+  const psycles::contract::MaterialDesc *material = nullptr;
+  for (const auto &[id, candidate] : imported.scene->materials) {
+    static_cast<void>(id);
+    if (candidate.name == "SVM Vector Rotate Linked Point Inputs") {
+      material = &candidate;
+      break;
+    }
+  }
+  expect(material != nullptr,
+         "Vector Rotate linked point inputs material is absent");
+  const psycles::contract::ShaderNode *rotate = nullptr;
+  for (const auto &node : material->shader.nodes()) {
+    if (node.label == "Vector Rotate") {
+      rotate = &node;
+      break;
+    }
+  }
+  expect(rotate != nullptr, "Blender Vector Rotate node is absent");
+  const auto rot_source = rotate->inputs.at("Rotation").source.value();
+  const auto *rot_conv = material->shader.find(rot_source.node);
+  expect(rot_conv != nullptr &&
+             rot_conv->type == psycles::compiler::node_type::vector_to_point,
+         "Vector Rotate Rotation link did not insert vector_to_point");
+  const auto ctr_source = rotate->inputs.at("Center").source.value();
+  const auto *ctr_conv = material->shader.find(ctr_source.node);
+  expect(ctr_conv != nullptr &&
+             ctr_conv->type == psycles::compiler::node_type::vector_to_point,
+         "Vector Rotate Center float link did not insert vector_to_point");
+
+  const psycles::compiler::ShaderCompiler frontend{
+      psycles::compiler::make_core_node_registry()};
+  const auto shader = frontend.compile(material->shader);
+  expect(shader.ok(),
+         "imported Vector Rotate linked point inputs graph did not validate");
+  const auto image =
+      psycles::compiler::cycles_svm::compile_shader(*shader.program);
+  expect(image.valid,
+         "imported Vector Rotate linked point inputs did not compile to SVM");
+}
+
+void test_blender_vect_transform_rna_type_import() {
+  TemporaryDirectory temporary;
+  {
+    std::ofstream geometry{temporary.path() / "geometry.bin", std::ios::binary};
+    geometry.write("PSYGEO1\0", 8);
+  }
+  {
+    std::ofstream scene{temporary.path() / "scene.json"};
+    scene << R"JSON({
+  "schema":"psycles.blender-scene.v1",
+  "images":[],"node_groups":[],
+  "materials":[{
+    "name":"SVM VECT_TRANSFORM Import",
+    "cycles_sync":{"shader_index":5},
+    "node_tree":{
+      "name":"SVM VECT_TRANSFORM Import",
+      "surface_root":{"node":"Emission","socket":"Emission"},
+      "volume_root":null,"displacement_root":null,
+      "links":[
+        {"from_node":"Vector Transform","from_socket":"Vector",
+         "to_node":"Emission","to_socket":"Color"}
+      ],
+      "nodes":[
+        {
+          "name":"Emission","type":"EMISSION","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Color","name":"Color",
+             "type":"NodeSocketColor","linked":true,
+             "default":[1.0,1.0,1.0,1.0]},
+            {"identifier":"Strength","name":"Strength",
+             "type":"NodeSocketFloat","linked":false,"default":1.0}
+          ],
+          "outputs":[
+            {"identifier":"Emission","name":"Emission",
+             "type":"NodeSocketShader","linked":true}
+          ],
+          "properties":{},"special":{}
+        },
+        {
+          "name":"Vector Transform","type":"VECT_TRANSFORM",
+          "mute":false,"internal_links":[],
+          "inputs":[
+            {"identifier":"Vector","name":"Vector",
+             "type":"NodeSocketVector","linked":false,
+             "default":[0.37,-0.21,0.63]}
+          ],
+          "outputs":[
+            {"identifier":"Vector","name":"Vector",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]}
+          ],
+          "properties":{"vector_type":"NORMAL",
+                        "convert_from":"CAMERA",
+                        "convert_to":"OBJECT"},
+          "special":{}
+        }
+      ]
+    }
+  }],
+  "render":{"width":16,"height":16,"percentage":100,"cycles":{}},
+  "camera":{"name":"Camera","type":"PERSP",
+    "transform":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+    "clip_start":0.01,"clip_end":100.0},
+  "geometries":[],"curve_geometries":[],"instances":[],"lights":[],
+  "world":null,"world_environment":null
+})JSON";
+  }
+
+  const auto imported =
+      psycles::adapter::load_blender_scene_bundle(temporary.path());
+  expect(imported.ok(), "VECT_TRANSFORM scene did not import");
+  const psycles::contract::MaterialDesc *material = nullptr;
+  for (const auto &[id, candidate] : imported.scene->materials) {
+    static_cast<void>(id);
+    if (candidate.name == "SVM VECT_TRANSFORM Import") {
+      material = &candidate;
+      break;
+    }
+  }
+  expect(material != nullptr, "VECT_TRANSFORM imported material is absent");
+  const psycles::contract::ShaderNode *transform = nullptr;
+  for (const auto &node : material->shader.nodes()) {
+    if (node.label == "Vector Transform") {
+      transform = &node;
+      break;
+    }
+  }
+  expect(transform != nullptr &&
+             transform->type == psycles::compiler::node_type::vector_transform,
+         "Blender VECT_TRANSFORM type was not lowered to vector_transform");
+
+  const psycles::compiler::ShaderCompiler frontend{
+      psycles::compiler::make_core_node_registry()};
+  const auto shader = frontend.compile(material->shader);
+  expect(shader.ok(), "imported VECT_TRANSFORM graph did not validate");
+  const auto image =
+      psycles::compiler::cycles_svm::compile_shader(*shader.program);
+  expect(image.valid, "imported VECT_TRANSFORM graph did not compile to SVM");
+  static constexpr std::array cycles_5_2_1_oracle{
+      0x00000001u, 0x00000004u, 0x00000014u, 0x00000015u, 0x00000059u,
+      0x00000002u, 0x00000002u, 0x00000001u, 0x3ebd70a4u, 0xbe570a3du,
+      0x3f2147aeu, 0x00000000u, 0x00000007u, 0x7fc00000u, 0x00000000u,
+      0x00000000u, 0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
+  expect(image.words == std::vector<std::uint32_t>(cycles_5_2_1_oracle.begin(),
+                                                   cycles_5_2_1_oracle.end()),
+         "imported VECT_TRANSFORM stream differs from Cycles 5.2.1");
+}
+
 } // namespace
 
 void test_blender_vector_import() {
   test_blender_separate_combine_xyz_import();
   test_blender_vector_rotate_import();
+  test_blender_vector_rotate_linked_point_inputs_import();
   test_blender_vector_transform_import();
+  test_blender_vect_transform_rna_type_import();
   test_blender_geometry_tangent_parametric_import();
 }

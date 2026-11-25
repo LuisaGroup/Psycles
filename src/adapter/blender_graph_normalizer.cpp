@@ -471,6 +471,16 @@ private:
             input = "Vector";
             output = "Normal";
         } else if (
+            (source.type == SocketType::color ||
+             vector_like(source.type)) &&
+            target == SocketType::point) {
+            if (source.type != SocketType::vector) {
+                source = conversion(source, SocketType::vector);
+            }
+            node_type = compiler::node_type::vector_to_point;
+            input = "Vector";
+            output = "Point";
+        } else if (
             source.type == SocketType::normal &&
             target == SocketType::vector) {
             node_type = compiler::node_type::normal_to_vector;
@@ -500,6 +510,12 @@ private:
             return conversion(
                 conversion(source, SocketType::vector),
                 target);
+        } else if (
+            source.type == SocketType::floating &&
+            target == SocketType::point) {
+            return conversion(
+                conversion(source, SocketType::vector),
+                target);
         }
 
         if (node_type == nullptr) {
@@ -518,28 +534,36 @@ private:
             if (target == SocketType::volume_closure) {
                 return null_volume("Invalid Volume Conversion");
             }
-            const auto constant =
-                target == SocketType::floating
-                    ? _graph.add_node(
-                          compiler::node_type::constant_float)
-                    : _graph.add_node(
-                          compiler::node_type::constant_color);
-            if (target == SocketType::floating) {
+            if (target == SocketType::floating ||
+                target == SocketType::boolean) {
+                const auto constant = _graph.add_node(
+                    compiler::node_type::constant_float);
                 static_cast<void>(_graph.set_input(
                     constant,
                     "Value",
                     SocketValue::floating(0.0f)));
-                return {
+                TypedOutput zero_float{
                     .ref = {.node = constant, .socket = "Value"},
-                    .type = target};
+                    .type = SocketType::floating};
+                return target == SocketType::boolean
+                           ? conversion(zero_float, target)
+                           : zero_float;
             }
+            const auto constant = _graph.add_node(
+                compiler::node_type::constant_color);
             static_cast<void>(_graph.set_input(
                 constant,
                 "Color",
                 SocketValue::color({0.0f, 0.0f, 0.0f})));
-            return {
+            TypedOutput zero_color{
                 .ref = {.node = constant, .socket = "Color"},
                 .type = SocketType::color};
+            if (target == SocketType::vector ||
+                target == SocketType::point ||
+                target == SocketType::normal) {
+                return conversion(zero_color, target);
+            }
+            return zero_color;
         }
 
         const auto converted =

@@ -510,7 +510,7 @@ public:
                 .ref = {.node = id, .socket = "Vector"},
                 .type = SocketType::vector});
         }
-        if (type == "VECTOR_TRANSFORM") {
+        if (type == "VECT_TRANSFORM" || type == "VECTOR_TRANSFORM") {
             const auto id = context.graph().add_node(
                 compiler::node_type::vector_transform,
                 node_name);
