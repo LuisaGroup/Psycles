@@ -313,6 +313,17 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       static_cast<bool>(scene.device)
           ? std::string_view{scene.device.backend_name()}
           : std::string_view{};
+  std::size_t domain_active_nonempty = 0u;
+  for (std::uint32_t i = 0u; i < count; ++i) {
+    if (i < domain_mask.size() && domain_mask[i] == 0u) {
+      continue;
+    }
+    if (!compilation.table.ir.shaders[i]
+             .routine_for(abi::SHADER_TYPE_SURFACE)
+             .empty()) {
+      ++domain_active_nonempty;
+    }
+  }
   const SurfaceBucketMode effective_mode = [&]() noexcept {
     if (mode != SurfaceBucketMode::auto_select) {
       return mode;
@@ -321,12 +332,13 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       return SurfaceBucketMode::large_only;
     }
     // Multi-bucket splitting reduces shader I-cache/register pressure on
-    // CUDA and Metal, but on DX and Vulkan the extra per-bucket surface-sort
-    // and wavefront continuation dispatches outweigh I-cache savings on
-    // large shader tables (e.g. Classroom: +16-20% faster and ~2x faster
-    // warm JIT with a single surface bucket). Explicit
-    // PSYCLES_SURFACE_BUCKET_MODE overrides still take precedence.
-    if (backend_name == "dx" || backend_name == "vk") {
+    // CUDA and Metal, while on DX and Vulkan single-bucket dispatch avoids
+    // extra per-bucket surface-sort wave launches when active surface
+    // shaders fit within DirectJitTranslator's 80-shader budget. Beyond 80
+    // shaders (e.g. Barbershop), falling back to a single BytecodeVM bucket
+    // severely degrades DX/VK throughput, so split into <=80-shader buckets.
+    if ((backend_name == "dx" || backend_name == "vk") &&
+        domain_active_nonempty <= 80u) {
       return SurfaceBucketMode::off;
     }
     return SurfaceBucketMode::large_only;

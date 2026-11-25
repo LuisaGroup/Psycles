@@ -105,10 +105,12 @@ constexpr auto inverse_two_pi = 0.5f / pi;
           .dy = derivative * value.dy};
 }
 
-[[nodiscard]] Dual1 length_squared(const Dual3 &value) noexcept {
-  return {.val = dot(value.val, value.val),
-          .dx = 2.0f * dot(value.val, value.dx),
-          .dy = 2.0f * dot(value.val, value.dy)};
+[[nodiscard]] Dual1 safe_square_root(const Dual1 &value) noexcept {
+  const auto result = sqrt(value.val);
+  const auto derivative = select(0.0f, 0.5f / result, result > 0.0f);
+  return {.val = result,
+          .dx = derivative * value.dx,
+          .dy = derivative * value.dy};
 }
 
 [[nodiscard]] Dual1 atan2_dual(const Dual1 &y, const Dual1 &x) noexcept {
@@ -122,21 +124,6 @@ constexpr auto inverse_two_pi = 0.5f / pi;
   return {.val = value,
           .dx = derivative_x * x.dx + derivative_y * y.dx,
           .dy = derivative_x * x.dy + derivative_y * y.dy};
-}
-
-[[nodiscard]] Dual1 acos_dual(const Dual1 &value, bool safe) noexcept {
-  Float result = acos(safe ? clamp(value.val, -1.0f, 1.0f) : value.val);
-  Float derivative = 0.0f;
-  if (safe) {
-    $if(abs(value.val) < 1.0f) {
-      derivative = -rsqrt(1.0f - value.val * value.val);
-    };
-  } else {
-    derivative = -rsqrt(1.0f - value.val * value.val);
-  }
-  return {.val = result,
-          .dx = derivative * value.dx,
-          .dy = derivative * value.dy};
 }
 
 [[nodiscard]] Dual1 select_dual(Bool condition,
@@ -171,25 +158,26 @@ constexpr auto inverse_two_pi = 0.5f / pi;
   $if(l > 0.0f) {
     const auto u =
         0.5f - compatible_atan2(coordinate.x, coordinate.y) * inverse_two_pi;
-    const auto v =
-        1.0f - acos(clamp(coordinate.z * rsqrt(l), -1.0f, 1.0f)) * inverse_pi;
+    const auto radial = sqrt(coordinate.x * coordinate.x +
+                             coordinate.y * coordinate.y);
+    const auto v = 1.0f - atan2(radial, coordinate.z) * inverse_pi;
     result = make_float2(u, v);
   };
   return result;
 }
 
 [[nodiscard]] Dual2 map_to_sphere(const Dual3 &coordinate) noexcept {
-  const auto l = length_squared(coordinate);
+  const auto l = dot(coordinate.val, coordinate.val);
   Dual1 u{.val = 0.0f, .dx = 0.0f, .dy = 0.0f};
   Dual1 v{.val = 0.0f, .dx = 0.0f, .dy = 0.0f};
-  $if(l.val > 0.0f) {
+  $if(l > 0.0f) {
     const auto x = component(coordinate, 0u);
     const auto y = component(coordinate, 1u);
     const auto z = component(coordinate, 2u);
     u = add(scale(atan2_dual(x, y), -inverse_two_pi), 0.5f);
-    v = add(scale(acos_dual(multiply(z, inverse_sqrt(l)), true),
-                  -inverse_pi),
-            1.0f);
+    const auto radial =
+        safe_square_root(add(multiply(x, x), multiply(y, y)));
+    v = add(scale(atan2_dual(radial, z), -inverse_pi), 1.0f);
   };
   return make_dual2(u, v);
 }
@@ -280,8 +268,9 @@ constexpr auto inverse_two_pi = 0.5f / pi;
   $if(!is_zero(direction)) {
     const auto u =
         (compatible_atan2(direction.y, direction.x) - pi) / (-2.0f * pi);
-    const auto v =
-        (acos(direction.z / sqrt(dot(direction, direction))) - pi) / -pi;
+    const auto radial = sqrt(direction.x * direction.x +
+                             direction.y * direction.y);
+    const auto v = (atan2(radial, direction.z) - pi) / -pi;
     result = make_float2(u, v);
   };
   return result;
@@ -292,15 +281,13 @@ constexpr auto inverse_two_pi = 0.5f / pi;
   Dual1 u{.val = 0.0f, .dx = 0.0f, .dy = 0.0f};
   Dual1 v{.val = 0.0f, .dx = 0.0f, .dy = 0.0f};
   $if(!is_zero(direction.val)) {
-    u = scale(add(atan2_dual(component(direction, 1u),
-                             component(direction, 0u)),
-                  -pi),
-              -inverse_two_pi);
-    v = scale(add(acos_dual(divide(component(direction, 2u),
-                                   square_root(length_squared(direction))),
-                            false),
-                  -pi),
-              -inverse_pi);
+    const auto x = component(direction, 0u);
+    const auto y = component(direction, 1u);
+    const auto z = component(direction, 2u);
+    u = scale(add(atan2_dual(y, x), -pi), -inverse_two_pi);
+    const auto radial =
+        safe_square_root(add(multiply(x, x), multiply(y, y)));
+    v = scale(add(atan2_dual(radial, z), -pi), -inverse_pi);
   };
   return make_dual2(u, v);
 }

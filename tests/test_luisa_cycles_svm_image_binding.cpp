@@ -187,6 +187,49 @@ int main(int argc, char **argv) {
     }
     std::cout << "Shared image / 16 sampler descriptors: "
               << (backend == "hip" ? 640u : 320u) << " checks passed on " << backend << '\n';
+
+    // Verify unassigned TEX_IMAGE (resource_id == 0 absent from snapshot.images)
+    // compiles cleanly and marks its binding as load_failed instead of aborting.
+    {
+      SceneSnapshot missing_snapshot;
+      TriangleMeshDesc mesh;
+      mesh.positions = {{-1.0f, -1.0f, 0.0f}, {1.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}};
+      ShaderGraph graph;
+      const auto texture = graph.add_node(node_type::image_texture, "Empty Image");
+      const auto emission = graph.add_node(node_type::emission, "Emission");
+      require(graph.set_property(texture, "Image", SocketValue::unsigned_integer(0u)) &&
+                  graph.set_property(texture, "Interpolation", SocketValue::string("Linear")) &&
+                  graph.set_property(texture, "Extension", SocketValue::string("REPEAT")) &&
+                  graph.set_property(texture, "Projection", SocketValue::string("FLAT")) &&
+                  graph.set_property(texture, "ProjectionBlend", SocketValue::floating(0.0f)) &&
+                  graph.set_property(texture, "ColorSpace", SocketValue::string("Non-Color")) &&
+                  graph.set_property(texture, "UnassociateAlpha", SocketValue::boolean(false)) &&
+                  graph.set_input(texture, "Vector", SocketValue::vector({0.5f, 0.5f, 0.0f})) &&
+                  graph.connect({texture, "Color"}, emission, "Color"),
+              "cannot configure unassigned image handle");
+      graph.set_root(ShaderDomain::surface, OutputRef{emission, "Closure"});
+      const MaterialId material{1u};
+      missing_snapshot.materials.emplace(
+          material, MaterialDesc{.name = "EmptyImage", .shader = std::move(graph)});
+      mesh.material_slots.push_back(material);
+      mesh.triangles.push_back({0u, 1u, 2u});
+      mesh.triangle_material_slots.push_back(0u);
+      missing_snapshot.geometries.emplace(GeometryId{1u}, std::move(mesh));
+      missing_snapshot.instances.emplace(InstanceId{1u}, InstanceDesc{.geometry = GeometryId{1u}});
+      missing_snapshot.cameras.emplace(CameraId{1u}, CameraDesc{});
+      missing_snapshot.active_camera = CameraId{1u};
+      missing_snapshot.world_sampling = WorldSampling::none;
+      const auto empty_compiled = renderer.compile_scene(missing_snapshot);
+      require(empty_compiled.ok(), "unassigned image resource 0 was rejected");
+      const auto *empty_native =
+          dynamic_cast<const LuisaCompiledScene *>(empty_compiled.scene.get());
+      require(empty_native != nullptr && empty_native->data()->cycles_svm != nullptr &&
+                  empty_native->data()->cycles_svm->image_bindings.size() == 1u &&
+                  (empty_native->data()->cycles_svm->image_bindings[0u].sampler &
+                   cycles_svm_image_load_failed_flag) != 0u,
+              "unassigned image resource 0 did not produce load_failed binding");
+    }
+
     return EXIT_SUCCESS;
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

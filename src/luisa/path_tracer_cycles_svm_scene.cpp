@@ -388,6 +388,11 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
     }
     const contract::ImageId image_id{binding.resource_id};
     if (!snapshot.images.contains(image_id)) {
+      if (binding.resource_id == 0u) {
+        runtime->image_bindings.emplace_back(make_cycles_svm_image_binding(
+            texture_slot, binding.interpolation, binding.extension, true));
+        continue;
+      }
       diagnostic = "Cycles SVM image handle references unavailable scene "
                    "resource " +
                    std::to_string(binding.resource_id);
