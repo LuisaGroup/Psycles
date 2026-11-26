@@ -20,6 +20,7 @@
 #include <utility>
 
 #include <luisa/dsl/sugar.h>
+#include <luisa/runtime/command_list.h>
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -575,16 +576,22 @@ MeshDisplacementSceneComponent::build(
     const std::set<std::uint32_t> displaced{
         result.displaced_geometry_indices.begin(),
         result.displaced_geometry_indices.end()};
+    luisa::compute::CommandList mesh_build_list;
     for (std::size_t index = 0u;
          index < scene->geometries.size();
          ++index) {
-        auto &resource = scene->geometries[index];
         if (displaced.contains(static_cast<std::uint32_t>(index))) {
+            auto &resource = scene->geometries[index];
             auto &upload = uploads[index];
-            stream << resource.positions.copy_from(
+            mesh_build_list << resource.positions.copy_from(
                 luisa::span{upload.positions});
         }
-        stream << resource.mesh.build();
+    }
+    for (auto &resource : scene->geometries) {
+        mesh_build_list << resource.mesh.build();
+    }
+    if (!mesh_build_list.empty()) {
+        stream << mesh_build_list.commit();
     }
     return result;
 }
