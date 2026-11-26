@@ -535,6 +535,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     "Failed to probe image '" + image.name + "'.";
                 return;
             }
+            const auto [lim_w, lim_h] = compute_texture_limit_extent(
+                probed->width, probed->height, snapshot.texture_limit);
+            probed->width = lim_w;
+            probed->height = lim_h;
             slot.vt_probed = VtProbedSceneImage{
                 .id = image_id,
                 .name = image.name,
@@ -543,6 +547,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 .color_space = image.color_space,
                 .load_failed = false,
                 .force_direct = force_direct,
+                .texture_limit = snapshot.texture_limit,
                 .probed = *probed};
             if (!force_direct) {
                 slot.is_virtual = true;
@@ -556,7 +561,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             if (const auto probed =
                     probe_scene_image_info(image.encoded_data, image.name);
                 probed && probed->storage == io::DecodedImageStorage::unorm8 &&
-                probed->channels == 1u && !probed->has_alpha) {
+                probed->channels == 1u && !probed->has_alpha &&
+                compute_texture_limit_shift(
+                    probed->width, probed->height, snapshot.texture_limit) == 0u) {
                 if (auto gray = decode_scene_image_gray8(
                         image.encoded_data, image.name)) {
                     compacted = std::move(*gray);
@@ -573,6 +580,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             }
             apply_scene_image_alpha(
                 *decoded, image.alpha_type, image.color_space);
+            downscale_scene_image_to_limit(*decoded, snapshot.texture_limit);
             if (!use_vt) {
                 compacted = compact_decoded_scene_image(
                     std::move(*decoded), allow_opaque_gray);

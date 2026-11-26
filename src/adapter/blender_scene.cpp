@@ -640,6 +640,34 @@ using detail::unsigned_number;
             0.0f);
         result.integrator.ambient_occlusion_distance =
             scene.ambient_occlusion_distance;
+        auto *use_simplify_val = member(cycles, "use_simplify");
+        if (use_simplify_val == nullptr) {
+            use_simplify_val = member(render, "use_simplify");
+        }
+        const bool use_simplify = boolean(use_simplify_val, false);
+        std::uint32_t texture_limit_render = 0u;
+        if (auto *limit_val = member(cycles, "texture_limit_render")) {
+            if (auto parsed = optional_unsigned_number(limit_val)) {
+                texture_limit_render = *parsed;
+            } else {
+                const auto limit_text = text(limit_val);
+                if (!limit_text.empty() && limit_text != "OFF") {
+                    try {
+                        std::size_t consumed = 0u;
+                        const auto parsed_ul =
+                            std::stoul(limit_text, &consumed, 10);
+                        if (consumed == limit_text.size()) {
+                            texture_limit_render = static_cast<std::uint32_t>(
+                                std::min<unsigned long>(
+                                    parsed_ul,
+                                    std::numeric_limits<std::uint32_t>::max()));
+                        }
+                    } catch (...) {
+                    }
+                }
+            }
+        }
+        scene.texture_limit = use_simplify ? texture_limit_render : 0u;
         result.integrator.film_exposure = std::max(
             number(
                 member(cycles, "film_exposure"),

@@ -176,6 +176,8 @@ class PathCyclesSvmKernelGlobals final
         Expr<std::int32_t> offset) const noexcept override;
     [[nodiscard]] luisa::compute::UInt3 triangle_vertex_indices(
         Expr<std::uint32_t> prim) const noexcept override;
+    [[nodiscard]] UInt triangle_shader(
+        Expr<std::uint32_t> prim) const noexcept override;
     [[nodiscard]] Int object_normal_offset(
         Expr<std::uint32_t> object) const noexcept override;
     [[nodiscard]] UInt object_num_geom_steps(
@@ -268,6 +270,15 @@ class PathCyclesSvmKernelGlobals final
         const cycles_svm::ShaderData &shader_data,
         const Var<luisa::compute::Ray> &ray,
         Expr<bool> only_local) const noexcept override;
+    [[nodiscard]] Float bevel_min_ray_pdf() const noexcept override;
+    [[nodiscard]] UInt bevel_lcg_state_init() const noexcept override;
+    [[nodiscard]] Float2 bevel_sample_disk(
+        Expr<std::uint32_t> sample,
+        Expr<std::uint32_t> num_samples) const noexcept override;
+    [[nodiscard]] cycles_svm::BevelLocalHitReservoir trace_bevel_local(
+        const cycles_svm::ShaderData &shader_data,
+        const Var<luisa::compute::Ray> &ray,
+        UInt &lcg_state) const noexcept override;
 };
 
 } // namespace psycles::luisa_backend::detail

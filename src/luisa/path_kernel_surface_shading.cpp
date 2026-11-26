@@ -104,7 +104,12 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             const PathSurfaceAmbientOcclusionContext ao_ctx{
                 .traversal = _options.traversal,
                 .source = {.object = cycles_object_index,
-                           .primitive = cycles_primitive_index}};
+                           .primitive = cycles_primitive_index},
+                .sobol_table = &invocation.sobol_table,
+                .sample_index = sample.sample_index,
+                .rng_hash = sample.rng_hash,
+                .rng_offset = sample.cycles_rng_offset,
+                .minimum_bsdf_pdf = sample.minimum_bsdf_pdf};
             populated_surface = population_component->populate(
                 {.surface_tag = surface_tag,
                  .point = point,

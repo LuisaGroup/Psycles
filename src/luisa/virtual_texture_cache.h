@@ -145,6 +145,7 @@ struct VtProbedSceneImage {
   contract::ImageColorSpace color_space{contract::ImageColorSpace::data};
   bool load_failed{false};
   bool force_direct{false};
+  std::uint32_t texture_limit{0u};
   io::ProbedImageInfo probed{};
 };
 
@@ -278,6 +279,7 @@ public:
     contract::ImageColorSpace color_space{contract::ImageColorSpace::data};
     std::uint32_t width{};
     std::uint32_t height{};
+    std::uint32_t texture_limit{0u};
     io::DecodedImageStorage storage{io::DecodedImageStorage::unorm8};
     io::ProbedImageInfo probed_info{};
     bool load_failed{false};

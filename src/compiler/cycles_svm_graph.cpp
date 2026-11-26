@@ -411,14 +411,16 @@ projected_binary_math_operation(std::string_view type) noexcept {
   // corresponding Cycles 5.2.1 NODE_DEFINE blocks in shader_nodes.cpp.
   if (input == "Normal" &&
       (node == node_type::layer_weight || node == node_type::fresnel ||
-       node == node_type::ambient_occlusion || node == node_type::bump ||
-       node == node_type::displacement || is_surface_closure(node))) {
+       node == node_type::ambient_occlusion || node == node_type::bevel ||
+       node == node_type::bump || node == node_type::displacement ||
+       is_surface_closure(node))) {
     auto flags = static_cast<std::uint16_t>(graph_socket_link_normal);
-    // Fresnel and Layer Weight are the only Cycles 5.2 shader nodes whose
-    // Normal sockets combine LINK_NORMAL with OSL_INTERNAL. In SVM mode the
-    // latter suppresses ShaderGraph::default_inputs' Geometry.Normal edge;
-    // their handlers use sd->N when the explicit link remains absent.
-    if (node == node_type::layer_weight || node == node_type::fresnel) {
+    // Bevel, Fresnel, and Layer Weight combine LINK_NORMAL with OSL_INTERNAL in
+    // Cycles shader_nodes.cpp. In SVM mode the latter suppresses
+    // ShaderGraph::default_inputs' Geometry.Normal edge; their handlers use
+    // sd->N when an explicit normal link is absent.
+    if (node == node_type::layer_weight || node == node_type::fresnel ||
+        node == node_type::bevel) {
       flags |= graph_socket_osl_internal;
     }
     return flags;

@@ -1469,5 +1469,232 @@ int main(int argc, char **argv) {
       failed = true;
     }
   }
+  failed |= ![&]() -> bool {
+    // Verify trace_bevel_local preserves same-object multi-hit reservoir
+    // sampling (> 4 hits without excluding primitive 0), suppresses exact
+    // duplicate distances, isolates coincident instances, and works both with
+    // and without traversal_object_instance_buffer.
+    constexpr std::array bevel_vertices{
+        luisa::float3{-2.0f, -2.0f, 1.0f}, luisa::float3{2.0f, -2.0f, 1.0f},
+        luisa::float3{0.0f, 2.0f, 1.0f},   luisa::float3{-2.0f, -2.0f, 2.0f},
+        luisa::float3{2.0f, -2.0f, 2.0f},  luisa::float3{0.0f, 2.0f, 2.0f},
+        luisa::float3{-2.0f, -2.0f, 3.0f}, luisa::float3{2.0f, -2.0f, 3.0f},
+        luisa::float3{0.0f, 2.0f, 3.0f},   luisa::float3{-2.0f, -2.0f, 4.0f},
+        luisa::float3{2.0f, -2.0f, 4.0f},  luisa::float3{0.0f, 2.0f, 4.0f},
+        luisa::float3{-2.0f, -2.0f, 5.0f}, luisa::float3{2.0f, -2.0f, 5.0f},
+        luisa::float3{0.0f, 2.0f, 5.0f},   luisa::float3{-2.0f, -2.0f, 6.0f},
+        luisa::float3{2.0f, -2.0f, 6.0f},  luisa::float3{0.0f, 2.0f, 6.0f},
+        luisa::float3{-2.0f, -2.0f, 1.0f}, luisa::float3{2.0f, -2.0f, 1.0f},
+        luisa::float3{0.0f, 2.0f, 1.0f}};
+    constexpr std::array bevel_triangles{
+        Triangle{0u, 1u, 2u},    Triangle{3u, 4u, 5u},
+        Triangle{6u, 7u, 8u},    Triangle{9u, 10u, 11u},
+        Triangle{12u, 13u, 14u}, Triangle{15u, 16u, 17u},
+        Triangle{18u, 19u, 20u}};
+    constexpr std::array bevel_materials{
+        MaterialBindingGpu{.surface_tag = 0u,
+                           .parameter_block = 0u,
+                           .cycles_shader_index = 0u,
+                           .material_identity = 0u,
+                           .flags = 0u,
+                           .volume_sampling = 0u}};
+    constexpr std::array bevel_geometries{
+        GeometryGpu{.bindless_base = 0u,
+                    .material_offset = 0u,
+                    .material_count = 1u,
+                    .cycles_primitive_offset = 100u,
+                    .primitive_kind = geometry_kind_triangle},
+        GeometryGpu{.bindless_base = 0u,
+                    .material_offset = 0u,
+                    .material_count = 1u,
+                    .cycles_primitive_offset = 200u,
+                    .primitive_kind = geometry_kind_triangle}};
+    const auto id = luisa::make_float4x4(1.0f);
+    const std::array bevel_instances{
+        InstanceGpu{.geometry_index = 0u,
+                    .cycles_object_index = 10u,
+                    .cycles_primitive_offset = 100u,
+                    .cycles_world_to_object = id},
+        InstanceGpu{.geometry_index = 1u,
+                    .cycles_object_index = 20u,
+                    .cycles_primitive_offset = 200u,
+                    .cycles_world_to_object = id}};
+    const auto tables = build_scene_traversal_tables(
+        {.geometries = bevel_geometries,
+         .instances = bevel_instances,
+         .geometry_materials = bevel_materials,
+         .override_materials = {}});
+    if (!tables.ok()) {
+      std::cerr << "bevel traversal table build failed on " << backend << '\n';
+      return false;
+    }
+
+    auto b_scene = std::make_shared<LuisaSceneData>(device);
+    b_scene->geometry_buffer =
+        device.create_buffer<GeometryGpu>(bevel_geometries.size());
+    b_scene->instance_buffer =
+        device.create_buffer<InstanceGpu>(bevel_instances.size());
+    b_scene->geometry_material_buffer =
+        device.create_buffer<MaterialBindingGpu>(bevel_materials.size());
+    b_scene->traversal_instance_buffer =
+        device.create_buffer<SceneTraversalInstanceGpu>(
+            tables.instances.size());
+    b_scene->traversal_material_flags_buffer =
+        device.create_buffer<luisa::uint>(tables.material_flags.size());
+    b_scene->traversal_object_instance_count =
+        static_cast<std::uint32_t>(tables.object_to_instance.size());
+    b_scene->traversal_object_instance_buffer.emplace(
+        device.create_buffer<luisa::uint2>(tables.object_to_instance.size()));
+    auto b_verts =
+        device.create_buffer<luisa::float3>(bevel_vertices.size());
+    auto b_tris = device.create_buffer<Triangle>(bevel_triangles.size());
+    auto b_mesh = device.create_mesh(b_verts, b_tris);
+    b_scene->ambient_occlusion_local_accel.emplace(device.create_accel());
+    b_scene->ambient_occlusion_local_accel->emplace_back(
+        b_mesh, id, 0xffu, false, 0u);
+    b_scene->ambient_occlusion_local_accel->emplace_back(
+        b_mesh, id, 0xffu, false, 1u);
+
+    stream << b_scene->geometry_buffer.copy_from(luisa::span{bevel_geometries})
+           << b_scene->instance_buffer.copy_from(luisa::span{bevel_instances})
+           << b_scene->geometry_material_buffer.copy_from(
+                  luisa::span{bevel_materials})
+           << b_scene->traversal_instance_buffer.copy_from(
+                  luisa::span{tables.instances})
+           << b_scene->traversal_material_flags_buffer.copy_from(
+                  luisa::span{tables.material_flags})
+           << b_scene->traversal_object_instance_buffer->copy_from(
+                  luisa::span{tables.object_to_instance})
+           << b_verts.copy_from(luisa::span{bevel_vertices})
+           << b_tris.copy_from(luisa::span{bevel_triangles})
+           << b_mesh.build()
+           << b_scene->ambient_occlusion_local_accel->build();
+
+    auto b_scene_no_table = std::make_shared<LuisaSceneData>(device);
+    b_scene_no_table->geometry_buffer =
+        device.create_buffer<GeometryGpu>(bevel_geometries.size());
+    b_scene_no_table->instance_buffer =
+        device.create_buffer<InstanceGpu>(bevel_instances.size());
+    b_scene_no_table->geometry_material_buffer =
+        device.create_buffer<MaterialBindingGpu>(bevel_materials.size());
+    b_scene_no_table->traversal_instance_buffer =
+        device.create_buffer<SceneTraversalInstanceGpu>(
+            tables.instances.size());
+    b_scene_no_table->traversal_material_flags_buffer =
+        device.create_buffer<luisa::uint>(tables.material_flags.size());
+    b_scene_no_table->ambient_occlusion_local_accel.emplace(
+        device.create_accel());
+    b_scene_no_table->ambient_occlusion_local_accel->emplace_back(
+        b_mesh, id, 0xffu, false, 0u);
+    b_scene_no_table->ambient_occlusion_local_accel->emplace_back(
+        b_mesh, id, 0xffu, false, 1u);
+    stream
+        << b_scene_no_table->geometry_buffer.copy_from(
+               luisa::span{bevel_geometries})
+        << b_scene_no_table->instance_buffer.copy_from(
+               luisa::span{bevel_instances})
+        << b_scene_no_table->geometry_material_buffer.copy_from(
+               luisa::span{bevel_materials})
+        << b_scene_no_table->traversal_instance_buffer.copy_from(
+               luisa::span{tables.instances})
+        << b_scene_no_table->traversal_material_flags_buffer.copy_from(
+               luisa::span{tables.material_flags})
+        << b_scene_no_table->ambient_occlusion_local_accel->build();
+
+    auto out_buf = device.create_buffer<luisa::uint>(4u * 6u);
+    auto out_no_table = device.create_buffer<luisa::uint>(6u);
+    const auto bevel_trav = make_scene_traversal_component(
+        {.primitives = {.triangles = true}});
+    Kernel1D eval_bevel_fast =
+        [b_scene, bevel_trav](BufferUInt out) noexcept {
+          const auto idx = dispatch_x();
+          const auto obj = select(
+              select(select(10u, 20u, idx == 1u), 999u, idx == 2u), 10u,
+              idx == 3u);
+          UInt lcg = 0x12345678u + idx;
+          const auto origin_z = select(1.5f, 0.5f, idx == 3u);
+          const auto tmax = select(6.0f, 1.0f, idx == 3u);
+          const auto ray =
+              make_ray(make_float3(0.0f, 0.0f, origin_z),
+                       make_float3(0.0f, 0.0f, 1.0f), 0.0f, tmax);
+          const auto r = bevel_trav->trace_bevel_local(b_scene, ray, obj, lcg);
+          const auto base = idx * 6u;
+          out.write(base + 0u, r.num_hits);
+          out.write(base + 1u, r.prim[0u]);
+          out.write(base + 2u, r.prim[1u]);
+          out.write(base + 3u, r.prim[2u]);
+          out.write(base + 4u, r.prim[3u]);
+          out.write(base + 5u, lcg);
+        };
+    Kernel1D eval_bevel_slow =
+        [b_scene_no_table, bevel_trav](BufferUInt out) noexcept {
+          UInt lcg = 0x12345678u;
+          const auto ray = make_ray(make_float3(0.0f, 0.0f, 1.5f),
+                                    make_float3(0.0f, 0.0f, 1.0f), 0.0f, 6.0f);
+          const auto r =
+              bevel_trav->trace_bevel_local(b_scene_no_table, ray, 10u, lcg);
+          out.write(0u, r.num_hits);
+          out.write(1u, r.prim[0u]);
+          out.write(2u, r.prim[1u]);
+          out.write(3u, r.prim[2u]);
+          out.write(4u, r.prim[3u]);
+          out.write(5u, lcg);
+        };
+    auto fast_shader = device.compile(
+        eval_bevel_fast, luisa::compute::ShaderOption{.enable_cache = false});
+    auto slow_shader = device.compile(
+        eval_bevel_slow, luisa::compute::ShaderOption{.enable_cache = false});
+    std::array<std::uint32_t, 4u * 6u> fast_res{};
+    std::array<std::uint32_t, 6u> slow_res{};
+    stream << fast_shader(out_buf).dispatch(4u)
+           << slow_shader(out_no_table).dispatch(1u)
+           << out_buf.copy_to(luisa::span{fast_res})
+           << out_no_table.copy_to(luisa::span{slow_res}) << synchronize();
+
+    const auto check_reservoir = [&](std::span<const std::uint32_t> row,
+                                     std::uint32_t expected_hits,
+                                     std::uint32_t min_prim,
+                                     std::uint32_t max_prim,
+                                     std::string_view tag) -> bool {
+      if (row[0u] != expected_hits) {
+        std::cerr << "bevel local " << tag << " num_hits=" << row[0u]
+                  << ", expected " << expected_hits << " on " << backend << '\n';
+        return false;
+      }
+      if (expected_hits >= 4u) {
+        for (std::size_t i = 1u; i <= 4u; ++i) {
+          if (row[i] < min_prim || row[i] > max_prim) {
+            std::cerr << "bevel local " << tag << " prim[" << (i - 1u)
+                      << "]=" << row[i] << " out of [" << min_prim << ", "
+                      << max_prim << "] on " << backend << '\n';
+            return false;
+          }
+          for (std::size_t j = i + 1u; j <= 4u; ++j) {
+            if (row[i] == row[j]) {
+              std::cerr << "bevel local " << tag << " duplicate reservoir prim="
+                        << row[i] << " on " << backend << '\n';
+              return false;
+            }
+          }
+        }
+      }
+      return true;
+    };
+    const auto dup_row = std::span{fast_res}.subspan(18u, 6u);
+    const bool dup_ok =
+        dup_row[0u] == 1u && (dup_row[1u] == 100u || dup_row[1u] == 106u);
+    if (!dup_ok) {
+      std::cerr << "bevel local fast-dup num_hits=" << dup_row[0u]
+                << " prim0=" << dup_row[1u] << " on " << backend << '\n';
+    }
+    return check_reservoir(std::span{fast_res}.subspan(0u, 6u), 5u, 101u, 105u,
+                           "fast-obj10") &&
+           check_reservoir(std::span{fast_res}.subspan(6u, 6u), 5u, 201u, 205u,
+                           "fast-obj20") &&
+           check_reservoir(std::span{fast_res}.subspan(12u, 6u), 0u, 0u, 0u,
+                           "fast-miss") &&
+           dup_ok &&
+           check_reservoir(slow_res, 5u, 101u, 105u, "metadata-obj10");
+  }();
   return failed ? EXIT_FAILURE : EXIT_SUCCESS;
 }

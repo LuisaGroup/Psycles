@@ -67,10 +67,11 @@ void test_auto_direct_jit_weight_fallback() {
   table.words = {0u};
   table.shader_count = 3u;
   table.node_types_used[abi::NODE_TEX_VORONOI] = true;
-  // 70 Voronois = 2520 weight; 71 = 2556 weight (default limit = 5000).
-  table.ir.shaders.push_back(make_heavy_shader(70u));
-  table.ir.shaders.push_back(make_heavy_shader(70u));
-  table.ir.shaders.push_back(make_heavy_shader(71u));
+  // Derive Voronoi counts from direct_jit_max_weight() (36 per Voronoi op).
+  const std::size_t half_ops = svm::direct_jit_max_weight() / 72u + 1u;
+  table.ir.shaders.push_back(make_heavy_shader(half_ops));
+  table.ir.shaders.push_back(make_heavy_shader(half_ops));
+  table.ir.shaders.push_back(make_heavy_shader(half_ops + 1u));
 
   const auto check_strategy = [&](std::span<const std::uint8_t> mask,
                                   svm::SvmBackendStrategy preferred) {

@@ -17,6 +17,8 @@
 #include <psycles/luisa/native_vector_math.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <cstring>
 
 #include <luisa/dsl/sugar.h>
 
@@ -1313,6 +1315,171 @@ void node_closure_bsdf_skip(Cursor &cursor,
     $default{};
   };
   cursor.advance(words);
+}
+
+void node_closure_bsdf_shadow_only(const KernelGlobals &kernel_globals,
+                                   Cursor &cursor, Stack &stack,
+                                   Expr<luisa::float3> closure_weight,
+                                   ShaderType shader_type,
+                                   std::uint32_t kernel_features,
+                                   std::uint32_t node_feature_mask,
+                                   ShaderData &shader_data,
+                                   const PathState &path_state,
+                                   const EvaluationTransition &transition) noexcept {
+  if (shader_type != SHADER_TYPE_SURFACE || !cursor.is_static()) {
+    node_closure_bsdf(kernel_globals, cursor, stack, closure_weight, shader_type,
+                      kernel_features, node_feature_mask, shader_data,
+                      path_state, transition);
+    return;
+  }
+  const auto const_ct = try_const_uint(cursor.word_at(0u));
+  if (!const_ct) {
+    node_closure_bsdf(kernel_globals, cursor, stack, closure_weight, shader_type,
+                      kernel_features, node_feature_mask, shader_data,
+                      path_state, transition);
+    return;
+  }
+
+  static_cast<void>(cursor.word()); // closure_type
+  const auto packed = cursor.word();
+  const auto mix_weight_offset = cursor.byte(packed, 0u);
+  const auto mix_weight =
+      stack_load_float_default(stack, mix_weight_offset, 1.0f);
+
+  const auto is_const_float_at_least = [](std::uint32_t bits,
+                                          float threshold) noexcept {
+    if ((bits >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+      return false;
+    }
+    float value = 0.0f;
+    std::memcpy(&value, &bits, sizeof(value));
+    return !(value < threshold) && (value == value);
+  };
+  const auto is_const_float_at_most = [](std::uint32_t bits,
+                                         float threshold) noexcept {
+    if ((bits >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+      return false;
+    }
+    float value = 0.0f;
+    std::memcpy(&value, &bits, sizeof(value));
+    return value <= threshold;
+  };
+
+  const auto ct = static_cast<ClosureType>(*const_ct);
+  if (ct == CLOSURE_BSDF_TRANSPARENT_ID) {
+    cursor.advance(static_cast<std::uint32_t>(sizeof(SVMNodeSimpleBsdfData) /
+                                              sizeof(std::uint32_t)));
+    transparent_setup(shader_data, path_state, closure_weight * mix_weight);
+    return;
+  }
+  if (ct == CLOSURE_BSDF_RAY_PORTAL_ID) {
+    node_ray_portal(cursor, stack, closure_weight, mix_weight, shader_data);
+    return;
+  }
+  if (ct == CLOSURE_BSDF_PRINCIPLED_ID) {
+    constexpr std::uint32_t alpha_word = static_cast<std::uint32_t>(
+        offsetof(SVMNodePrincipledBsdfData, alpha) / sizeof(std::uint32_t));
+    constexpr std::uint32_t trans_word = static_cast<std::uint32_t>(
+        offsetof(SVMNodePrincipledBsdfData, transmission_weight) /
+        sizeof(std::uint32_t));
+    constexpr std::uint32_t thin_wall_word = static_cast<std::uint32_t>(
+        offsetof(SVMNodePrincipledBsdfData, thin_wall) / sizeof(std::uint32_t));
+    constexpr std::uint32_t total_words = static_cast<std::uint32_t>(
+        sizeof(SVMNodePrincipledBsdfData) / sizeof(std::uint32_t));
+
+    const auto tw_val = try_const_uint(cursor.word_at(thin_wall_word));
+    const auto tw_off = try_const_uint(cursor.word_at(thin_wall_word + 1u));
+    const auto trans_bits = try_const_uint(cursor.word_at(trans_word));
+    const bool thin_wall_inactive =
+        (tw_val && tw_off &&
+         (*tw_off & 0xffu) == static_cast<std::uint32_t>(SVM_STACK_INVALID) &&
+         *tw_val == 0u) ||
+        (trans_bits && is_const_float_at_most(*trans_bits, 0.0f));
+    if (!thin_wall_inactive) {
+      node_principled_bsdf(
+          kernel_globals, cursor, stack, mix_weight, true,
+          (kernel_features & kernel_feature_subsurface) != 0u, shader_data,
+          path_state, transition);
+      return;
+    }
+
+    const auto alpha_bits = try_const_uint(cursor.word_at(alpha_word));
+    if (alpha_bits && is_const_float_at_least(*alpha_bits, 1.0f)) {
+      cursor.advance(total_words);
+      return;
+    }
+    const auto alpha =
+        clamp(stack_load_input_float(stack, cursor.word_at(alpha_word)), 0.0f,
+              1.0f);
+    cursor.advance(total_words);
+    $if(alpha < 1.0f) {
+      transparent_setup(shader_data, path_state,
+                        make_float3(mix_weight) * (1.0f - alpha));
+    };
+    return;
+  }
+
+  std::uint32_t skip_words = 0u;
+  switch (ct) {
+    case CLOSURE_BSDF_DIFFUSE_ID:
+    case CLOSURE_BSDF_TRANSLUCENT_ID:
+      skip_words = static_cast<std::uint32_t>(
+          sizeof(SVMNodeDiffuseBsdfData) / sizeof(std::uint32_t));
+      break;
+    case CLOSURE_BSDF_ASHIKHMIN_VELVET_ID:
+    case CLOSURE_BSDF_SHEEN_ID:
+      skip_words = static_cast<std::uint32_t>(
+          sizeof(SVMNodeSimpleBsdfData) / sizeof(std::uint32_t));
+      break;
+    case CLOSURE_BSDF_PHYSICAL_CONDUCTOR:
+    case CLOSURE_BSDF_F82_CONDUCTOR:
+      skip_words = static_cast<std::uint32_t>(
+          sizeof(SVMNodeMetallicBsdfData) / sizeof(std::uint32_t));
+      break;
+    case CLOSURE_BSDF_MICROFACET_GGX_ID:
+    case CLOSURE_BSDF_MICROFACET_BECKMANN_ID:
+    case CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID:
+    case CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID:
+      skip_words = static_cast<std::uint32_t>(
+          sizeof(SVMNodeGlossyBsdfData) / sizeof(std::uint32_t));
+      break;
+    case CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID:
+    case CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID:
+      skip_words = static_cast<std::uint32_t>(
+          sizeof(SVMNodeRefractionBsdfData) / sizeof(std::uint32_t));
+      break;
+    case CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID:
+    case CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID:
+    case CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID:
+      skip_words = static_cast<std::uint32_t>(
+          sizeof(SVMNodeGlassBsdfData) / sizeof(std::uint32_t));
+      break;
+    case CLOSURE_BSDF_GLOSSY_TOON_ID:
+    case CLOSURE_BSDF_DIFFUSE_TOON_ID:
+      skip_words = static_cast<std::uint32_t>(
+          sizeof(SVMNodeToonBsdfData) / sizeof(std::uint32_t));
+      break;
+    case CLOSURE_BSDF_HAIR_REFLECTION_ID:
+    case CLOSURE_BSDF_HAIR_TRANSMISSION_ID:
+      skip_words = static_cast<std::uint32_t>(
+          sizeof(SVMNodeHairBsdfData) / sizeof(std::uint32_t));
+      break;
+    case CLOSURE_BSDF_HAIR_CHIANG_ID:
+    case CLOSURE_BSDF_HAIR_HUANG_ID:
+      skip_words = static_cast<std::uint32_t>(
+          sizeof(SVMNodePrincipledHairBsdfData) / sizeof(std::uint32_t));
+      break;
+    case CLOSURE_BSSRDF_BURLEY_ID:
+    case CLOSURE_BSSRDF_RANDOM_WALK_ID:
+    case CLOSURE_BSSRDF_RANDOM_WALK_LEGACY_ID:
+    case CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID:
+      skip_words = static_cast<std::uint32_t>(
+          sizeof(SVMNodeBssrdfData) / sizeof(std::uint32_t));
+      break;
+    default:
+      break;
+  }
+  cursor.advance(skip_words);
 }
 
 } // namespace detail

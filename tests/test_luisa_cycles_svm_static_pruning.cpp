@@ -37,7 +37,6 @@ static_assert(derivative_nodes.size() == 16u);
 // explicit so this test cannot silently count a missing handler as a win.
 constexpr bool implemented(ShaderNodeType node) noexcept {
   switch (node) {
-  case NODE_BEVEL:
   case NODE_RAYCAST:
   case NODE_AOV_START:
   case NODE_AOV_COLOR:

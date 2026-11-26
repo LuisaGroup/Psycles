@@ -1212,6 +1212,99 @@ private:
     return occluded;
   }
 
+  [[nodiscard]] cycles_svm::BevelLocalHitReservoir trace_bevel_local_impl(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<luisa::compute::Ray> &ray,
+      Expr<std::uint32_t> source_object,
+      UInt &lcg_state) const noexcept {
+    cycles_svm::BevelLocalHitReservoir out{};
+    if (!scene->ambient_occlusion_local_accel) {
+      return out;
+    }
+    const auto lcg_step_uint = [](UInt &state) noexcept {
+      state = 1103515245u * state + 12345u;
+      return state;
+    };
+    std::array<Float, 4u> distances{0.0f, 0.0f, 0.0f, 0.0f};
+    const bool has_object_table =
+        scene->traversal_object_instance_buffer.has_value();
+    UInt fast_inst = surface_ray::invalid_primitive;
+    UInt fast_prim_offset = 0u;
+    if (has_object_table) {
+      $if(source_object < scene->traversal_object_instance_count) {
+        const auto entry =
+            (*scene->traversal_object_instance_buffer)->read(source_object);
+        fast_inst = entry.x;
+        fast_prim_offset = entry.y;
+      };
+    }
+
+    const auto handle_bevel_surface =
+        [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+          const auto hit = candidate.hit();
+          const auto primary_instance =
+              (*scene->ambient_occlusion_local_accel)
+                  ->instance_user_id(hit->inst);
+          Bool matched = false;
+          UInt cycles_prim = 0u;
+          if (has_object_table) {
+            $if(fast_inst != surface_ray::invalid_primitive) {
+              matched = primary_instance == fast_inst;
+              cycles_prim = fast_prim_offset + hit->prim;
+            }
+            $else {
+              const auto metadata =
+                  emit_primitive_metadata(scene, primary_instance);
+              matched = metadata.instance.cycles_object_index == source_object;
+              cycles_prim =
+                  metadata.instance.cycles_primitive_offset + hit->prim;
+            };
+          } else {
+            const auto metadata =
+                emit_primitive_metadata(scene, primary_instance);
+            matched = metadata.instance.cycles_object_index == source_object;
+            cycles_prim =
+                metadata.instance.cycles_primitive_offset + hit->prim;
+          }
+          $if(matched) {
+            const auto hit_t = hit->committed_ray_t;
+            Bool duplicate = false;
+            for (std::size_t index = 0u; index < 4u; ++index) {
+              const auto idx = static_cast<std::uint32_t>(index);
+              duplicate |=
+                  (idx < min(out.num_hits, 4u)) & (distances[index] == hit_t);
+            }
+            $if(!duplicate) {
+              out.num_hits += 1u;
+              UInt slot = out.num_hits - 1u;
+              $if(out.num_hits > 4u) {
+                slot = lcg_step_uint(lcg_state) % out.num_hits;
+              };
+              const auto record_slot = [&](std::uint32_t i) noexcept {
+                $if(slot == i) {
+                  out.prim[i] = cycles_prim;
+                  out.u[i] = hit->bary.x;
+                  out.v[i] = hit->bary.y;
+                  distances[i] = hit_t;
+                };
+              };
+              record_slot(0u);
+              record_slot(1u);
+              record_slot(2u);
+              record_slot(3u);
+            };
+          };
+        };
+
+    const auto ignored =
+        (*scene->ambient_occlusion_local_accel)
+            ->traverse(ray, {.visibility_mask = 0xffu})
+            .on_surface_candidate(handle_bevel_surface)
+            .trace();
+    static_cast<void>(ignored);
+    return out;
+  }
+
 public:
   explicit UnifiedSceneTraversalComponent(SceneTraversalStagePlan plan)
       : _plan{plan},
@@ -1242,6 +1335,15 @@ public:
       const ScenePrimitiveIdentity &source,
       Expr<bool> only_local) const noexcept override {
     return trace_ambient_occlusion(scene, ray, source, only_local);
+  }
+
+  cycles_svm::BevelLocalHitReservoir trace_bevel_local(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<luisa::compute::Ray> &ray,
+      Expr<std::uint32_t> source_object,
+      UInt &lcg_state) const noexcept override {
+    return static_cast<const UnifiedSceneTraversalComponent *>(this)
+        ->trace_bevel_local_impl(scene, ray, source_object, lcg_state);
   }
 
   Var<ShadowIntersectionBatchCall> collect_shadow(

@@ -4,7 +4,10 @@
 #include "cycles_svm_internal.h"
 #include "virtual_texture_cache.h"
 
+#include <psycles/luisa/cycles_noise.h>
+#include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/cycles_transform.h>
+#include <psycles/sampling/tabulated_sobol.h>
 
 #include <algorithm>
 #include <cmath>
@@ -1334,6 +1337,51 @@ Bool PathCyclesSvmKernelGlobals::ambient_occluded(
   static_cast<void>(shader_data);
   return _ambient_occlusion->traversal->ambient_occluded(
       _scene, ray, _ambient_occlusion->source, only_local);
+}
+
+UInt PathCyclesSvmKernelGlobals::triangle_shader(
+    Expr<std::uint32_t> prim) const noexcept {
+  return _scene->cycles_svm->geometry->triangle_shader_buffer->read(prim);
+}
+
+Float PathCyclesSvmKernelGlobals::bevel_min_ray_pdf() const noexcept {
+  if (_ambient_occlusion == nullptr) {
+    return 1.0e30f;
+  }
+  return _ambient_occlusion->minimum_bsdf_pdf;
+}
+
+UInt PathCyclesSvmKernelGlobals::bevel_lcg_state_init() const noexcept {
+  if (_ambient_occlusion == nullptr) {
+    return 0u;
+  }
+  return cycles_noise::hash_uint3(
+      _ambient_occlusion->rng_hash ^ 0x64c6a40eu,
+      _ambient_occlusion->rng_offset, _ambient_occlusion->sample_index);
+}
+
+Float2 PathCyclesSvmKernelGlobals::bevel_sample_disk(
+    Expr<std::uint32_t> sample,
+    Expr<std::uint32_t> num_samples) const noexcept {
+  if (_ambient_occlusion == nullptr ||
+      _ambient_occlusion->sobol_table == nullptr) {
+    return make_float2(0.0f);
+  }
+  return cycles_sampler::sample_branched_2d(
+      *_ambient_occlusion->sobol_table, _parameters.sobol_sequence_size,
+      _ambient_occlusion->sample_index, _ambient_occlusion->rng_hash,
+      _ambient_occlusion->rng_offset, sample, num_samples,
+      sampling::tabulated_sobol::surface_bevel_dimension);
+}
+
+svm::BevelLocalHitReservoir PathCyclesSvmKernelGlobals::trace_bevel_local(
+    const svm::ShaderData &shader_data, const Var<luisa::compute::Ray> &ray,
+    UInt &lcg_state) const noexcept {
+  LUISA_ASSERT(_ambient_occlusion != nullptr &&
+                   _ambient_occlusion->traversal != nullptr,
+               "NODE_BEVEL requires a local traversal context.");
+  return _ambient_occlusion->traversal->trace_bevel_local(
+      _scene, ray, shader_data.object, lcg_state);
 }
 
 } // namespace psycles::luisa_backend::detail

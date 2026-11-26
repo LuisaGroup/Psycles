@@ -40,6 +40,7 @@ using DecodedSourcePayload = VirtualTextureCache::DecodedSourcePayload;
     return out;
   }
   apply_scene_image_alpha(*decoded, src.alpha_type, src.color_space);
+  downscale_scene_image_to_limit(*decoded, src.texture_limit);
   out.ok = true;
   out.width = decoded->width;
   out.height = decoded->height;

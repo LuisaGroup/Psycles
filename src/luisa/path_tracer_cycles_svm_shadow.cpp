@@ -216,7 +216,8 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
                                                       : std::size_t{0u}),
                 .max_chunk_jit_weight =
                     is_simd_wide ? std::size_t{180u} : std::size_t{900u},
-                .outline_chunk_dispatcher = !is_simd_wide},
+                .outline_chunk_dispatcher = !is_simd_wide,
+                .shadow_eval_only = true},
             cpu_backend ? svm::SvmBackendStrategy::direct_jit
                         : svm::SvmBackendStrategy::auto_select);
       };

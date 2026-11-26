@@ -278,6 +278,23 @@ NodeRegistry make_core_node_registry() {
                            feature_bit(ShaderFeature::ambient_occlusion)}));
 
   static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::bevel,
+      .inputs = {input("Radius", SocketType::floating,
+                       SocketValue::floating(0.05f)),
+                 input("Normal", SocketType::normal,
+                       SocketValue::normal({0.0f, 0.0f, 0.0f}))},
+      .outputs = {output("Normal", SocketType::normal)},
+      // Samples is material data, clamped in Blender import/SVM to [1, 128].
+      .properties = {
+          runtime_property("Samples", SocketType::unsigned_integer,
+                           SocketValue::unsigned_integer(4u)),
+          property("NormalLinked", SocketType::boolean,
+                   SocketValue::boolean(false))},
+      .required_features = feature_bit(ShaderFeature::surface) |
+                           feature_bit(ShaderFeature::ray_state) |
+                           feature_bit(ShaderFeature::ambient_occlusion)}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::mapping,
       .inputs = {input("Vector", SocketType::vector,
                        SocketValue::vector({0.0f, 0.0f, 0.0f})),

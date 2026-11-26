@@ -632,6 +632,9 @@ struct SceneSnapshot {
     // into kernel_data.integrator.ao_bounces_distance; shader AO nodes with
     // Global Radius enabled read it instead of their authored Distance.
     float ambient_occlusion_distance{10.0f};
+    // Blender RenderSettings.use_simplify + CyclesRenderSettings.texture_limit_render
+    // (0 = unlimited).
+    std::uint32_t texture_limit{0u};
 };
 
 struct UpsertMaterial {

@@ -7,6 +7,7 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace psycles::luisa_backend::detail {
@@ -51,5 +52,20 @@ void apply_scene_image_alpha(
     io::DecodedImageRgba &image,
     contract::ImageAlphaType alpha_type,
     contract::ImageColorSpace color_space) noexcept;
+
+[[nodiscard]] std::uint32_t compute_texture_limit_shift(
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t texture_limit) noexcept;
+
+[[nodiscard]] std::pair<std::uint32_t, std::uint32_t>
+compute_texture_limit_extent(
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t texture_limit) noexcept;
+
+void downscale_scene_image_to_limit(
+    io::DecodedImageRgba &image,
+    std::uint32_t texture_limit);
 
 }// namespace psycles::luisa_backend::detail

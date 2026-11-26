@@ -119,6 +119,36 @@ public:
   }
 };
 
+class BevelNode final : public GraphNode {
+public:
+  [[nodiscard]] bool has_spatial_varying() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
+    return GraphNode::get_feature() | kernel_feature_node_raytrace;
+  }
+
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_BEVEL;
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    if (!output_is_live(this, "Normal")) {
+      return;
+    }
+    const auto samples = static_cast<std::uint8_t>(std::clamp<std::uint64_t>(
+        uint_property(this, "Samples", 4u), 1u, 128u));
+    compiler.add_node(
+        this, NODE_BEVEL,
+        SVMNodeBevel{.radius = compiler.input_float("Radius"),
+                     .num_samples = samples,
+                     .normal_offset = compiler.input_link("Normal"),
+                     .out_offset = compiler.output("Normal"),
+                     ._pad = {0u}});
+  }
+};
+
 class ObjectInfoNode final : public GraphNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
@@ -331,6 +361,9 @@ std::unique_ptr<GraphNode> make_info_graph_node(std::string_view type) {
   }
   if (type == node_type::ambient_occlusion) {
     return std::make_unique<AmbientOcclusionNode>();
+  }
+  if (type == node_type::bevel) {
+    return std::make_unique<BevelNode>();
   }
   return nullptr;
 }

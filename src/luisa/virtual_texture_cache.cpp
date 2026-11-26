@@ -461,6 +461,7 @@ VirtualTextureCache::VirtualTextureCache(
     entry.color_space = src.color_space;
     entry.width = src.probed.width;
     entry.height = src.probed.height;
+    entry.texture_limit = src.texture_limit;
     entry.storage = src.probed.storage;
     entry.probed_info = src.probed;
     if (entry.probed_info.channels == 0u) {

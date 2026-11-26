@@ -847,6 +847,25 @@ void eval_nodes_impl(
           }
         };
       }
+      if (node_types_used[NODE_BEVEL] &&
+          (kernel_features & kernel_feature_node_raytrace) != 0u) {
+        PSYCLES_SVM_CASE(NODE_BEVEL) {
+          if ((node_feature_mask & kernel_feature_node_raytrace) == 0u) {
+            cursor.advance(2u);
+          } else if (const auto *services =
+                         kernel_globals.ambient_occlusion_services()) {
+            PSYCLES_SVM_OUTLINE_NODE(
+                "svm_node_bevel",
+                detail::node_bevel(
+                    cursor, stack, kernel_globals, transform_state, *services,
+                    shader_data,
+                    (kernel_features & kernel_feature_object_motion) != 0u));
+          } else {
+            cursor.advance(2u);
+            transition.unsupported();
+          }
+        };
+      }
       if (node_types_used[NODE_INVERT]) {
         PSYCLES_SVM_CASE(NODE_INVERT) {
           PSYCLES_SVM_OUTLINE_NODE(

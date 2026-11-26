@@ -318,7 +318,14 @@ public:
   point_radius(const ShaderData &shader_data) const noexcept = 0;
 };
 
-/* Scene traversal and AO-radius services consumed by Cycles' NODE_AMBIENT_OCCLUSION. */
+/* Scene traversal and AO/Bevel services consumed by NODE_AMBIENT_OCCLUSION and NODE_BEVEL. */
+struct BevelLocalHitReservoir {
+  std::array<luisa::compute::UInt, 4u> prim{0u, 0u, 0u, 0u};
+  std::array<luisa::compute::Float, 4u> u{0.0f, 0.0f, 0.0f, 0.0f};
+  std::array<luisa::compute::Float, 4u> v{0.0f, 0.0f, 0.0f, 0.0f};
+  luisa::compute::UInt num_hits{0u};
+};
+
 class AmbientOcclusionServices {
 public:
   virtual ~AmbientOcclusionServices() noexcept = default;
@@ -329,6 +336,33 @@ public:
   ambient_occluded(const ShaderData &shader_data,
                    const luisa::compute::Var<luisa::compute::Ray> &ray,
                    luisa::compute::Expr<bool> only_local) const noexcept = 0;
+
+  [[nodiscard]] virtual luisa::compute::Float
+  bevel_min_ray_pdf() const noexcept {
+    return 1.0e30f;
+  }
+  [[nodiscard]] virtual luisa::compute::UInt
+  bevel_lcg_state_init() const noexcept {
+    return 0u;
+  }
+  [[nodiscard]] virtual luisa::compute::Float2
+  bevel_sample_disk(
+      luisa::compute::Expr<std::uint32_t> sample,
+      luisa::compute::Expr<std::uint32_t> num_samples) const noexcept {
+    static_cast<void>(sample);
+    static_cast<void>(num_samples);
+    return luisa::compute::make_float2(0.0f);
+  }
+  [[nodiscard]] virtual BevelLocalHitReservoir
+  trace_bevel_local(
+      const ShaderData &shader_data,
+      const luisa::compute::Var<luisa::compute::Ray> &ray,
+      luisa::compute::UInt &lcg_state) const noexcept {
+    static_cast<void>(shader_data);
+    static_cast<void>(ray);
+    static_cast<void>(lcg_state);
+    return {};
+  }
 };
 
 struct SurfaceAttributeSummary {
@@ -595,6 +629,11 @@ public:
       luisa::compute::Expr<std::int32_t> offset) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::UInt3 triangle_vertex_indices(
       luisa::compute::Expr<std::uint32_t> prim) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::UInt triangle_shader(
+      luisa::compute::Expr<std::uint32_t> prim) const noexcept {
+    static_cast<void>(prim);
+    return 0u;
+  }
   [[nodiscard]] virtual luisa::compute::Int object_normal_offset(
       luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::UInt object_num_geom_steps(

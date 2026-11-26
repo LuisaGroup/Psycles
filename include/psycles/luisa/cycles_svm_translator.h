@@ -50,6 +50,10 @@ struct SvmTranslationRequest {
   // When sub-chunk outlining is active, also outline the outer chunk binary
   // tree dispatcher. Setting false avoids double io_frame marshalling on SIMD.
   bool outline_chunk_dispatcher{true};
+  // When true (shadow-transparency evaluation with no ClosurePool), only
+  // transparency-capable closures (Transparent, Ray Portal, Principled alpha/thin-wall)
+  // affect shader output, so opaque BSDFs and dead feeding graphs can be pruned.
+  bool shadow_eval_only{false};
 };
 
 // Re-targetable SVM backend translator interface. Concrete translators lower
@@ -89,7 +93,15 @@ public:
 };
 
 [[nodiscard]] std::size_t svm_block_jit_weight(
-    const compiler::cycles_svm::SvmBlockIr &block) noexcept;
+    const compiler::cycles_svm::SvmBlockIr &block,
+    std::uint32_t node_feature_mask = ~0u) noexcept;
+
+[[nodiscard]] std::size_t svm_block_jit_weight(
+    const compiler::cycles_svm::SvmBlockIr &block,
+    std::span<const std::uint32_t> words,
+    compiler::cycles_svm::ShaderType shader_type,
+    std::uint32_t node_feature_mask = ~0u,
+    bool shadow_eval_only = false) noexcept;
 
 [[nodiscard]] std::size_t direct_jit_max_shaders() noexcept;
 

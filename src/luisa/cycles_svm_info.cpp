@@ -333,6 +333,214 @@ void node_ambient_occlusion(Cursor &cursor, Stack &stack,
   }
 }
 
+namespace {
+
+[[nodiscard]] Float bevel_cubic_pdf(Expr<float> radius,
+                                    Expr<float> r) noexcept {
+  const auto rm5 = (radius * radius) * (radius * radius) * radius;
+  const auto f = radius - r;
+  const auto num = f * f * f;
+  return select(0.0f, (10.0f * num) / (rm5 * cycles_sample_mapping::pi),
+                (r < radius) & (rm5 > 0.0f));
+}
+
+[[nodiscard]] Float bevel_cubic_quintic_root_find(Expr<float> xi) noexcept {
+  constexpr float tolerance = 1.0e-6f;
+  Float x = 0.25f;
+  UInt iteration = 0u;
+  $while(iteration < 10u) {
+    const auto x2 = x * x;
+    const auto x3 = x2 * x;
+    const auto nx = 1.0f - x;
+    const auto f =
+        10.0f * x2 - 20.0f * x3 + 15.0f * x2 * x2 - 4.0f * x2 * x3 - xi;
+    const auto df = 20.0f * (x * nx) * (nx * nx);
+    $if((abs(f) < tolerance) | (df == 0.0f)) { $break; };
+    x = clamp(x - f / df, 0.0f, 1.0f);
+    iteration += 1u;
+  };
+  return x;
+}
+
+} // namespace
+
+void node_bevel(Cursor &cursor, Stack &stack,
+                const KernelGlobals &kernel_globals,
+                const TransformState &transform_state,
+                const AmbientOcclusionServices &services,
+                const ShaderData &shader_data,
+                bool object_motion_enabled) noexcept {
+  const auto radius_word = cursor.word();
+  const auto packed = cursor.word();
+
+  const auto num_samples = cursor.byte(packed, 0u);
+  const auto normal_offset = cursor.byte(packed, 1u);
+  const auto out_offset = cursor.byte(packed, 2u);
+
+  const auto radius = stack_load_input_float(stack, radius_word);
+  Float3 bevel_N = shader_data.N;
+
+  $if((radius > 0.0f) & (num_samples >= 1u) &
+      (shader_data.object != object_none) &
+      ((shader_data.type & primitive_triangle) != 0u) &
+      (services.bevel_min_ray_pdf() >= 8.0f)) {
+    UInt lcg_state = services.bevel_lcg_state_init();
+    Float3 sum_N = make_float3(0.0f);
+
+    const auto object_flag = shader_data.object_flag;
+    const auto transform_applied =
+        (object_flag & shader_data_object_transform_applied) != 0u;
+    const auto negative_scale_applied =
+        transform_applied &
+        ((object_flag &
+          static_cast<std::uint32_t>(
+              compiler::cycles_svm::SD_OBJECT_NEGATIVE_SCALE)) != 0u);
+    constexpr float two_pi = 2.0f * cycles_sample_mapping::pi;
+
+    UInt sample = 0u;
+    $while(sample < num_samples) {
+      const auto rand_disk = services.bevel_sample_disk(sample, num_samples);
+
+      Float3 disk_N = shader_data.Ng;
+      const auto basis = cycles_sample_mapping::make_orthonormals(disk_N);
+      Float3 disk_T = basis.tangent;
+      Float3 disk_B = basis.bitangent;
+      Float pick_pdf_N = 0.5f;
+      Float pick_pdf_T = 0.25f;
+      Float pick_pdf_B = 0.25f;
+      Float disk_u = rand_disk.x;
+
+      $if(disk_u < 0.5f) {
+        disk_u *= 2.0f;
+      }
+      $elif(disk_u < 0.75f) {
+        const auto tmp = disk_N;
+        disk_N = disk_T;
+        disk_T = tmp;
+        pick_pdf_N = 0.25f;
+        pick_pdf_T = 0.5f;
+        pick_pdf_B = 0.25f;
+        disk_u = (disk_u - 0.5f) * 4.0f;
+      }
+      $else {
+        const auto tmp = disk_N;
+        disk_N = disk_B;
+        disk_B = tmp;
+        pick_pdf_N = 0.25f;
+        pick_pdf_T = 0.25f;
+        pick_pdf_B = 0.5f;
+        disk_u = (disk_u - 0.75f) * 4.0f;
+      };
+
+      const auto phi = two_pi * disk_u;
+      const auto disk_r = bevel_cubic_quintic_root_find(rand_disk.y) * radius;
+      const auto disk_height = sqrt(max(radius * radius - disk_r * disk_r, 0.0f));
+      const auto disk_P =
+          disk_T * (disk_r * cos(phi)) + disk_B * (disk_r * sin(phi));
+
+      const auto ray =
+          make_ray(shader_data.P + disk_N * disk_height + disk_P, -disk_N,
+                   0.0f, 2.0f * disk_height);
+      const auto reservoir =
+          services.trace_bevel_local(shader_data, ray, lcg_state);
+      const auto num_hits = reservoir.num_hits;
+      const auto num_eval_hits = min(num_hits, 4u);
+      const auto disk_pdf = bevel_cubic_pdf(radius, disk_r);
+
+      UInt hit_index = 0u;
+      $while(hit_index < num_eval_hits) {
+        UInt hit_prim = reservoir.prim[0u];
+        Float hit_u = reservoir.u[0u];
+        Float hit_v = reservoir.v[0u];
+        for (std::size_t slot = 1u; slot < 4u; ++slot) {
+          $if(hit_index == static_cast<std::uint32_t>(slot)) {
+            hit_prim = reservoir.prim[slot];
+            hit_u = reservoir.u[slot];
+            hit_v = reservoir.v[slot];
+          };
+        }
+
+        TriangleVertices hit_verts;
+        if (object_motion_enabled) {
+          $if((shader_data.type & primitive_motion) != 0u) {
+            hit_verts = kernel_globals.motion_triangle_vertices(
+                shader_data.object, hit_prim, shader_data.time);
+          }
+          $else {
+            hit_verts =
+                kernel_globals.triangle_vertices(shader_data.object, hit_prim);
+          };
+        } else {
+          hit_verts =
+              kernel_globals.triangle_vertices(shader_data.object, hit_prim);
+        }
+
+        const auto dPdu = hit_verts.v1 - hit_verts.v0;
+        const auto dPdv = hit_verts.v2 - hit_verts.v0;
+        Float3 hit_P = hit_verts.v0 + hit_u * dPdu + hit_v * dPdv;
+        Float3 hit_Ng = normalize_cycles(
+            select(cross(dPdu, dPdv), cross(dPdv, dPdu), negative_scale_applied));
+
+        Float3 N = hit_Ng;
+        const auto hit_shader = kernel_globals.triangle_shader(hit_prim);
+        $if((hit_shader & shader_smooth_normal) != 0u) {
+          ShaderData hit_sd = shader_data;
+          hit_sd.prim = hit_prim;
+          hit_sd.u = hit_u;
+          hit_sd.v = hit_v;
+          hit_sd.shader = hit_shader;
+          const auto normals = triangle_normals(kernel_globals, hit_sd);
+          const auto smooth = safe_normalize_cycles(
+              (1.0f - hit_u - hit_v) * normals.n0 + hit_u * normals.n1 +
+              hit_v * normals.n2);
+          N = select(smooth, hit_Ng, all(smooth == 0.0f));
+        };
+
+        $if(!transform_applied) {
+          object_position_transform(hit_P, transform_state, shader_data,
+                                    object_motion_enabled);
+          object_normal_transform(N, transform_state, shader_data,
+                                  object_motion_enabled);
+          object_normal_transform(hit_Ng, transform_state, shader_data,
+                                  object_motion_enabled);
+        };
+
+        const auto pdf_N = pick_pdf_N * abs(dot(disk_N, hit_Ng));
+        const auto pdf_T = pick_pdf_T * abs(dot(disk_T, hit_Ng));
+        const auto pdf_B = pick_pdf_B * abs(dot(disk_B, hit_Ng));
+        const auto denom = pdf_N * pdf_N + pdf_T * pdf_T + pdf_B * pdf_B;
+        Float w = select(0.0f, pdf_N / denom, denom > 0.0f);
+        $if(num_hits > 4u) { w *= num_hits.cast<float>() * 0.25f; };
+        const auto r = length(hit_P - shader_data.P);
+        const auto pdf = bevel_cubic_pdf(radius, r);
+        w *= select(0.0f, pdf / disk_pdf, disk_pdf > 0.0f);
+        sum_N += w * N;
+        hit_index += 1u;
+      };
+      sample += 1u;
+    };
+
+    const auto norm_sum = safe_normalize_cycles(sum_N);
+    const auto has_bevel = any(norm_sum != 0.0f);
+    const auto oriented =
+        select(norm_sum, -norm_sum,
+               (shader_data.flag & shader_data_backfacing) != 0u);
+    bevel_N = select(shader_data.N, oriented, has_bevel);
+  };
+
+  if (const auto normal_slot = try_const_uint(normal_offset);
+      !normal_slot.has_value() || *normal_slot != SVM_STACK_INVALID) {
+    $if(normal_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      const auto ref_N = stack_load_float3(stack, normal_offset);
+      const auto shifted =
+          safe_normalize_cycles(ref_N + (bevel_N - shader_data.N));
+      bevel_N = select(shifted, shader_data.N, all(shifted == 0.0f));
+    };
+  }
+
+  stack_store_float3_if_valid(stack, out_offset, bevel_N);
+}
+
 } // namespace psycles::luisa_backend::cycles_svm::detail
 
 #undef PSYCLES_SVM_CASE

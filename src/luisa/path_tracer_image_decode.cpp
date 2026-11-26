@@ -1,9 +1,12 @@
 #include "path_tracer_image_decode.h"
 
+#include <psycles/core/parallel.h>
+
 #include <algorithm>
 #include <array>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 #include <stb/stb_image.h>
 
@@ -43,6 +46,59 @@ namespace {
         pos += step;
     }
     return false;
+}
+
+template<typename Pixel, typename Accum, typename ReduceFn>
+void downscale_rgba_box(
+    const Pixel *src,
+    std::uint32_t src_w,
+    std::uint32_t src_h,
+    std::uint32_t dst_w,
+    std::uint32_t dst_h,
+    std::uint64_t step,
+    Pixel *dst,
+    ReduceFn &&reduce) {
+    // Cycles stores images bottom-up and truncates top remainder rows on odd heights.
+    const std::uint64_t rem_h =
+        (static_cast<std::uint64_t>(src_h) > static_cast<std::uint64_t>(dst_h) * step)
+            ? (static_cast<std::uint64_t>(src_h) - static_cast<std::uint64_t>(dst_h) * step)
+            : 0ull;
+    auto process_row = [&](std::size_t dy) {
+        const std::uint64_t y0 = rem_h + static_cast<std::uint64_t>(dy) * step;
+        const std::uint64_t y1 = std::min<std::uint64_t>(src_h, y0 + step);
+        for (std::uint32_t dx = 0u; dx < dst_w; ++dx) {
+            const std::uint64_t x0 = static_cast<std::uint64_t>(dx) * step;
+            const std::uint64_t x1 = std::min<std::uint64_t>(src_w, x0 + step);
+            std::array<Accum, 4u> sum{};
+            std::uint64_t count = 0u;
+            for (std::uint64_t y = y0; y < y1; ++y) {
+                const auto row_off = static_cast<std::size_t>(y) * src_w;
+                for (std::uint64_t x = x0; x < x1; ++x) {
+                    const std::size_t off =
+                        (row_off + static_cast<std::size_t>(x)) * 4u;
+                    for (std::size_t c = 0u; c < 4u; ++c) {
+                        sum[c] += static_cast<Accum>(src[off + c]);
+                    }
+                    ++count;
+                }
+            }
+            if (count == 0u) {
+                continue;
+            }
+            const std::size_t dst_off =
+                (dy * dst_w + static_cast<std::size_t>(dx)) * 4u;
+            for (std::size_t c = 0u; c < 4u; ++c) {
+                dst[dst_off + c] = reduce(sum[c], count);
+            }
+        }
+    };
+    if (dst_h >= 64u) {
+        psycles::parallel_for(static_cast<std::size_t>(dst_h), process_row);
+    } else {
+        for (std::uint32_t dy = 0u; dy < dst_h; ++dy) {
+            process_row(dy);
+        }
+    }
 }
 
 } // namespace
@@ -464,6 +520,93 @@ void apply_scene_image_alpha(
             image.float_pixels[offset + 2u] *= alpha;
         }
     }
+}
+
+std::uint32_t compute_texture_limit_shift(
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t texture_limit) noexcept {
+    if (texture_limit == 0u || width == 0u || height == 0u) {
+        return 0u;
+    }
+    const auto max_size = static_cast<std::uint64_t>(std::max(width, height));
+    const auto limit = static_cast<std::uint64_t>(texture_limit);
+    std::uint32_t shift = 0u;
+    while (shift < 31u && max_size > (limit << shift)) {
+        ++shift;
+    }
+    return shift;
+}
+
+std::pair<std::uint32_t, std::uint32_t> compute_texture_limit_extent(
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t texture_limit) noexcept {
+    if (width == 0u || height == 0u) {
+        return {width, height};
+    }
+    const std::uint32_t shift =
+        compute_texture_limit_shift(width, height, texture_limit);
+    if (shift == 0u) {
+        return {width, height};
+    }
+    return {
+        std::max(1u, width >> shift),
+        std::max(1u, height >> shift)};
+}
+
+void downscale_scene_image_to_limit(
+    io::DecodedImageRgba &image,
+    std::uint32_t texture_limit) {
+    const std::uint32_t shift =
+        compute_texture_limit_shift(image.width, image.height, texture_limit);
+    if (shift == 0u) {
+        return;
+    }
+    const auto [dst_w, dst_h] =
+        compute_texture_limit_extent(image.width, image.height, texture_limit);
+    const std::size_t expected_src =
+        static_cast<std::size_t>(image.width) * image.height * 4u;
+    const std::uint64_t step = 1ull << shift;
+    if (image.storage == io::DecodedImageStorage::unorm8) {
+        if (image.unorm8_pixels.size() != expected_src) {
+            return;
+        }
+        std::vector<std::uint8_t> dst(
+            static_cast<std::size_t>(dst_w) * dst_h * 4u);
+        downscale_rgba_box<std::uint8_t, std::uint64_t>(
+            image.unorm8_pixels.data(),
+            image.width,
+            image.height,
+            dst_w,
+            dst_h,
+            step,
+            dst.data(),
+            [](std::uint64_t sum, std::uint64_t count) noexcept {
+                return static_cast<std::uint8_t>((sum + count / 2u) / count);
+            });
+        image.unorm8_pixels = std::move(dst);
+    } else {
+        if (image.float_pixels.size() != expected_src) {
+            return;
+        }
+        std::vector<float> dst(
+            static_cast<std::size_t>(dst_w) * dst_h * 4u);
+        downscale_rgba_box<float, double>(
+            image.float_pixels.data(),
+            image.width,
+            image.height,
+            dst_w,
+            dst_h,
+            step,
+            dst.data(),
+            [](double sum, std::uint64_t count) noexcept {
+                return static_cast<float>(sum / static_cast<double>(count));
+            });
+        image.float_pixels = std::move(dst);
+    }
+    image.width = dst_w;
+    image.height = dst_h;
 }
 
 }// namespace psycles::luisa_backend::detail

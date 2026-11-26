@@ -4,11 +4,18 @@
 #include "path_kernel_scene_traversal.h"
 #include "cycles_svm_bsdf.h"
 
+#include <limits>
+
 namespace psycles::luisa_backend::detail {
 
 struct PathSurfaceAmbientOcclusionContext {
     std::shared_ptr<const SceneTraversalComponent> traversal;
     ScenePrimitiveIdentity source;
+    const luisa::compute::BufferFloat4 *sobol_table{nullptr};
+    luisa::compute::UInt sample_index{0u};
+    luisa::compute::UInt rng_hash{0u};
+    luisa::compute::UInt rng_offset{0u};
+    luisa::compute::Float minimum_bsdf_pdf{std::numeric_limits<float>::max()};
 };
 
 struct SurfacePopulationContext {

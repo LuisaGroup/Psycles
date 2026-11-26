@@ -325,6 +325,12 @@ void node_point_info(Cursor &cursor, Stack &stack, const InfoServices &services,
 void node_ambient_occlusion(Cursor &cursor, Stack &stack,
                             const AmbientOcclusionServices &services,
                             ShaderData &shader_data) noexcept;
+void node_bevel(Cursor &cursor, Stack &stack,
+                const KernelGlobals &kernel_globals,
+                const TransformState &transform_state,
+                const AmbientOcclusionServices &services,
+                const ShaderData &shader_data,
+                bool object_motion_enabled) noexcept;
 void node_normal(Cursor &cursor, Stack &stack) noexcept;
 void node_normal_map(Cursor &cursor, Stack &stack,
                      const KernelGlobals &kernel_globals,
@@ -519,6 +525,13 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                        std::uint32_t node_feature_mask, ShaderData &shader_data,
                        const PathState &path_state,
                        const EvaluationTransition &transition) noexcept;
+void node_closure_bsdf_shadow_only(
+    const KernelGlobals &kernel_globals, Cursor &cursor, Stack &stack,
+    luisa::compute::Expr<luisa::float3> closure_weight,
+    compiler::cycles_svm::ShaderType shader_type, std::uint32_t kernel_features,
+    std::uint32_t node_feature_mask, ShaderData &shader_data,
+    const PathState &path_state,
+    const EvaluationTransition &transition) noexcept;
 void node_closure_bsdf_skip(
     Cursor &cursor, luisa::compute::Expr<std::uint32_t> closure_type,
     std::uint64_t svm_bsdf_node_mask = ~0ull) noexcept;

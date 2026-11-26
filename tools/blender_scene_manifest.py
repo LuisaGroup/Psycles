@@ -562,6 +562,17 @@ def _cycles_settings(scene: Any) -> dict[str, Any]:
     result["ao_distance"] = float(
         getattr(lighting, "distance", 10.0)
     )
+    render = getattr(scene, "render", None)
+    use_simplify = (
+        bool(getattr(render, "use_simplify", False)) if render else False
+    )
+    raw_texture_limit = getattr(cycles, "texture_limit_render", "OFF")
+    try:
+        texture_limit_render = int(raw_texture_limit)
+    except (TypeError, ValueError):
+        texture_limit_render = 0
+    result["use_simplify"] = use_simplify
+    result["texture_limit_render"] = max(texture_limit_render, 0)
     return result
 
 

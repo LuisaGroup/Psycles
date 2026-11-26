@@ -335,14 +335,46 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
           ? std::string_view{scene.device.backend_name()}
           : std::string_view{};
   std::size_t domain_active_nonempty = 0u;
+  std::size_t domain_unique_jit_weight = 0u;
+  const auto host_words = std::span<const std::uint32_t>{compilation.table.words};
+  luisa::vector<const abi::SvmBlockIr *> domain_unique_routines;
   for (std::uint32_t i = 0u; i < count; ++i) {
     if (i < domain_mask.size() && domain_mask[i] == 0u) {
       continue;
     }
-    if (!compilation.table.ir.shaders[i]
-             .routine_for(abi::SHADER_TYPE_SURFACE)
-             .empty()) {
+    const auto &routine =
+        compilation.table.ir.shaders[i].routine_for(abi::SHADER_TYPE_SURFACE);
+    if (!routine.empty()) {
       ++domain_active_nonempty;
+      bool merged = false;
+      for (const abi::SvmBlockIr *existing : domain_unique_routines) {
+        if (abi::same_linked_svm_block(host_words, *existing, routine)) {
+          merged = true;
+          break;
+        }
+      }
+      if (!merged) {
+        domain_unique_routines.push_back(&routine);
+        domain_unique_jit_weight += svm::svm_block_jit_weight(
+            routine, host_words, abi::SHADER_TYPE_SURFACE,
+            svm::kernel_feature_node_mask_surface, false);
+      }
+    }
+  }
+  const std::size_t jit_weight_cap =
+      std::max<std::size_t>(svm::direct_jit_max_weight(), 1u);
+  const bool explicit_weight_env = []() noexcept {
+    const char *raw = std::getenv("PSYCLES_SVM_JIT_MAX_WEIGHT");
+    return raw != nullptr && *raw != '\0';
+  }();
+  std::size_t bucket_weight_cap = jit_weight_cap;
+  if (!explicit_weight_env) {
+    if (backend_name == "hip") {
+      bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 9000u);
+    } else if (backend_name == "dx") {
+      bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 7000u);
+    } else if (backend_name == "vk") {
+      bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 5000u);
     }
   }
   const SurfaceBucketMode effective_mode = [&]() noexcept {
@@ -358,8 +390,13 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
     // shaders fit within DirectJitTranslator's 80-shader budget. Beyond 80
     // shaders (e.g. Barbershop), falling back to a single BytecodeVM bucket
     // severely degrades DX/VK throughput, so split into <=80-shader buckets.
-    if ((backend_name == "dx" || backend_name == "vk") &&
-        domain_active_nonempty <= 80u) {
+    if (backend_name == "dx" &&
+        domain_active_nonempty <= svm::direct_jit_max_shaders() &&
+        domain_unique_jit_weight <= bucket_weight_cap) {
+      return SurfaceBucketMode::off;
+    }
+    if (backend_name == "vk" &&
+        domain_active_nonempty <= svm::direct_jit_max_shaders()) {
       return SurfaceBucketMode::off;
     }
     return SurfaceBucketMode::large_only;
@@ -378,8 +415,6 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
     return plan;
   }
 
-  const auto host_words =
-      std::span<const std::uint32_t>{compilation.table.words};
   std::vector<RoutineGroup> groups;
   std::vector<std::uint32_t> inactive_or_empty_shaders;
 
@@ -421,7 +456,12 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       g.routine = &routine;
       g.max_closures = meta.surface_num_closures;
       g.ir_ops = count_ir_ops(routine);
-      g.jit_weight = std::max<std::size_t>(svm::svm_block_jit_weight(routine), 1u);
+      g.jit_weight = std::max<std::size_t>(
+          svm::svm_block_jit_weight(routine, host_words,
+                                    abi::SHADER_TYPE_SURFACE,
+                                    svm::kernel_feature_node_mask_surface,
+                                    false),
+          1u);
       g.has_bssrdf = meta.has_surface_bssrdf;
       g.has_emission = has_emit;
       g.has_holdout = has_hold;
@@ -469,8 +509,6 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
   const std::size_t max_per_bucket = configured_bucket_max_shaders();
   const std::size_t jit_shader_cap =
       std::max<std::size_t>(svm::direct_jit_max_shaders(), 1u);
-  const std::size_t jit_weight_cap =
-      std::max<std::size_t>(svm::direct_jit_max_weight(), 1u);
 
   std::vector<std::size_t> suffix_min_buckets(groups.size() + 1u, 0u);
   for (std::size_t i = groups.size(); i-- > 0u;) {
@@ -479,7 +517,7 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
     std::size_t j = i + 1u;
     while (j < groups.size() &&
            s + groups[j].shader_ids.size() <= jit_shader_cap &&
-           w + groups[j].jit_weight <= jit_weight_cap) {
+           w + groups[j].jit_weight <= bucket_weight_cap) {
       s += groups[j].shader_ids.size();
       w += groups[j].jit_weight;
       ++j;
@@ -526,7 +564,7 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
     std::size_t cut = groups.size() / 2u;
     const auto fits_slice = [&](std::size_t shaders,
                                 std::size_t weight) noexcept {
-      return shaders <= jit_shader_cap && weight <= jit_weight_cap;
+      return shaders <= jit_shader_cap && weight <= bucket_weight_cap;
     };
     if (pure_simple_groups >= 1u &&
         pure_simple_groups < groups.size() &&
@@ -599,7 +637,7 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
           const std::size_t next_w = groups[end].jit_weight;
           if (acc_weight >= target_weight ||
               acc_shaders + next_s > jit_shader_cap ||
-              acc_weight + next_w > jit_weight_cap) {
+              acc_weight + next_w > bucket_weight_cap) {
             break;
           }
           acc_weight += next_w;

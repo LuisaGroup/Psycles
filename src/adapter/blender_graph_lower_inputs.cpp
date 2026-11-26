@@ -368,6 +368,36 @@ public:
       return finish({.ref = {.node = id, .socket = "Factor"},
                      .type = SocketType::floating});
     }
+    if (type == "BEVEL") {
+      constexpr auto bevel_semantic = "bevel.normal";
+      auto bevel = context.shared_output(node_name, bevel_semantic);
+      if (!bevel) {
+        const auto id =
+            context.graph().add_node(compiler::node_type::bevel, node_name);
+        const auto normal_linked =
+            context.input_source(node, "Normal").has_value();
+        const auto raw_samples = static_cast<std::int64_t>(
+            context.node_property_number(node, "samples", 4.0f));
+        const auto samples = static_cast<std::uint8_t>(
+            std::clamp<std::int64_t>(raw_samples, 1, 128));
+        static_cast<void>(context.bind(
+            id, "Radius", node, "Radius", SocketType::floating));
+        static_cast<void>(context.bind(
+            id, "Normal", node, "Normal", SocketType::normal));
+        static_cast<void>(context.graph().set_property(
+            id, "Samples", SocketValue::unsigned_integer(samples)));
+        static_cast<void>(context.graph().set_property(
+            id, "NormalLinked", SocketValue::boolean(normal_linked)));
+        bevel = TypedOutput{
+            .ref = {.node = id, .socket = "Normal"},
+            .type = SocketType::normal};
+        context.remember_shared_output(node_name, bevel_semantic, *bevel);
+      }
+      if (socket.empty() || socket == "Normal") {
+        return finish(*bevel);
+      }
+      return std::nullopt;
+    }
     if (type == "AMBIENT_OCCLUSION") {
       constexpr auto ao_semantic = "ambient_occlusion.factor";
       auto ao = context.shared_output(node_name, ao_semantic);

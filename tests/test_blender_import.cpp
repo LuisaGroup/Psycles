@@ -2074,10 +2074,63 @@ void test_cycles_boolean_and_closure_conversions() {
   expect(int_shader.ok(), "integer conversion graph did not validate");
 }
 
+void test_texture_limit_import() {
+  const auto load_case = [](std::string_view cycles_fields) {
+    TemporaryDirectory temporary;
+    {
+      std::ofstream geometry{temporary.path() / "geometry.bin", std::ios::binary};
+      geometry.write("PSYGEO1\0", 8);
+    }
+    {
+      std::ofstream scene{temporary.path() / "scene.json"};
+      scene << R"JSON({
+  "schema": "psycles.blender-scene.v1",
+  "images": [],
+  "node_groups": [],
+  "materials": [],
+  "render": {
+    "resolution_x": 64,
+    "resolution_y": 64,
+    "resolution_percentage": 100,
+    "cycles": {
+      "samples": 1,
+      "use_adaptive_sampling": false,
+      "adaptive_threshold": 0.01,
+      "adaptive_min_samples": 0)JSON";
+      if (!cycles_fields.empty()) {
+        scene << ",\n" << cycles_fields;
+      }
+      scene << R"JSON(
+    }
+  },
+  "camera":{"name":"Camera","type":"PERSP",
+    "transform":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+    "clip_start":0.01,"clip_end":100.0},
+  "geometries":[],"curve_geometries":[],"instances":[],"lights":[],
+  "world":null,"world_environment":null
+})JSON";
+    }
+    const auto imported = load_blender_scene_bundle(temporary.path());
+    expect(imported.ok(), "texture_limit test scene did not import");
+    return imported.scene->texture_limit;
+  };
+
+  expect(load_case(R"("use_simplify": true, "texture_limit_render": 2048)") == 2048u,
+         "integer texture_limit_render with simplify enabled mismatch");
+  expect(load_case(R"("use_simplify": false, "texture_limit_render": 2048)") == 0u,
+         "texture_limit should be 0 when simplify is disabled");
+  expect(load_case(R"("use_simplify": true, "texture_limit_render": "1024")") == 1024u,
+         "string texture_limit_render with simplify enabled mismatch");
+  expect(load_case(R"("use_simplify": true, "texture_limit_render": "OFF")") == 0u,
+         "string OFF texture_limit_render should map to 0");
+  expect(load_case("") == 0u, "omitted texture_limit_render should default to 0");
+}
+
 } // namespace
 int main() {
   try {
     test_integrator_settings_round_trip();
+    test_texture_limit_import();
     test_cycles_float_to_boolean_conversion();
     test_cycles_default_microfacet_tangent_import();
     test_cycles_boolean_and_closure_conversions();

@@ -385,12 +385,182 @@ void test_closure_zone_import() {
   require(table.table.valid, "Closure Zone SVM shader table failed to compile");
 }
 
+void write_bevel_bundle(const std::filesystem::path &directory) {
+  {
+    std::ofstream geometry{directory / "geometry.bin", std::ios::binary};
+    geometry.write("PSYGEO1\0", 8);
+  }
+  std::ofstream scene{directory / "scene.json"};
+  scene << R"JSON({
+  "schema":"psycles.blender-scene.v1",
+  "images":[],
+  "node_groups":[],
+  "materials":[
+    {
+      "name":"Bevel Unlinked",
+      "cycles_sync":{"shader_index":5},
+      "node_tree":{
+        "name":"Bevel Unlinked",
+        "surface_root":{"node":"BSDF","socket":"BSDF"},
+        "volume_root":null,
+        "displacement_root":null,
+        "links":[
+          {"from_node":"Bevel","from_socket":"Normal","to_node":"BSDF","to_socket":"Normal"}
+        ],
+        "nodes":[
+          {
+            "name":"Bevel","type":"BEVEL","mute":false,"internal_links":[],
+            "inputs":[
+              {"identifier":"Radius","name":"Radius","type":"NodeSocketFloat","linked":false,"default":0.05},
+              {"identifier":"Normal","name":"Normal","type":"NodeSocketVector","linked":false,"default":[0.0,0.0,0.0]}
+            ],
+            "outputs":[{"identifier":"Normal","name":"Normal","type":"NodeSocketVector","linked":true,"default":[0.0,0.0,0.0]}],
+            "properties":{"samples":0},"special":{}
+          },
+          {
+            "name":"BSDF","type":"BSDF_DIFFUSE","mute":false,"internal_links":[],
+            "inputs":[
+              {"identifier":"Color","name":"Color","type":"NodeSocketColor","linked":false,"default":[0.8,0.8,0.8,1.0]},
+              {"identifier":"Roughness","name":"Roughness","type":"NodeSocketFloat","linked":false,"default":0.0},
+              {"identifier":"Normal","name":"Normal","type":"NodeSocketVector","linked":true,"default":[0.0,0.0,0.0]}
+            ],
+            "outputs":[{"identifier":"BSDF","name":"BSDF","type":"NodeSocketShader","linked":true}],
+            "properties":{},"special":{}
+          }
+        ]
+      }
+    },
+    {
+      "name":"Bevel Linked",
+      "cycles_sync":{"shader_index":6},
+      "node_tree":{
+        "name":"Bevel Linked",
+        "surface_root":{"node":"BSDF","socket":"BSDF"},
+        "volume_root":null,
+        "displacement_root":null,
+        "links":[
+          {"from_node":"Geometry","from_socket":"Normal","to_node":"Bevel","to_socket":"Normal"},
+          {"from_node":"Bevel","from_socket":"Normal","to_node":"BSDF","to_socket":"Normal"}
+        ],
+        "nodes":[
+          {
+            "name":"Geometry","type":"NEW_GEOMETRY","mute":false,"internal_links":[],
+            "inputs":[],
+            "outputs":[{"identifier":"Normal","name":"Normal","type":"NodeSocketVector","linked":true,"default":[0.0,0.0,0.0]}],
+            "properties":{},"special":{}
+          },
+          {
+            "name":"Bevel","type":"BEVEL","mute":false,"internal_links":[],
+            "inputs":[
+              {"identifier":"Radius","name":"Radius","type":"NodeSocketFloat","linked":false,"default":0.02},
+              {"identifier":"Normal","name":"Normal","type":"NodeSocketVector","linked":true,"default":[0.0,0.0,0.0]}
+            ],
+            "outputs":[{"identifier":"Normal","name":"Normal","type":"NodeSocketVector","linked":true,"default":[0.0,0.0,0.0]}],
+            "properties":{"samples":200},"special":{}
+          },
+          {
+            "name":"BSDF","type":"BSDF_DIFFUSE","mute":false,"internal_links":[],
+            "inputs":[
+              {"identifier":"Color","name":"Color","type":"NodeSocketColor","linked":false,"default":[0.8,0.8,0.8,1.0]},
+              {"identifier":"Roughness","name":"Roughness","type":"NodeSocketFloat","linked":false,"default":0.0},
+              {"identifier":"Normal","name":"Normal","type":"NodeSocketVector","linked":true,"default":[0.0,0.0,0.0]}
+            ],
+            "outputs":[{"identifier":"BSDF","name":"BSDF","type":"NodeSocketShader","linked":true}],
+            "properties":{},"special":{}
+          }
+        ]
+      }
+    }
+  ],
+  "render":{"width":16,"height":16,"percentage":100,"cycles":{}},
+  "camera":{"name":"Camera","type":"PERSP",
+    "transform":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+    "clip_start":0.01,"clip_end":100.0},
+  "geometries":[],"curve_geometries":[],"instances":[],"lights":[],
+  "world":null,"world_environment":null
+})JSON";
+}
+
+void test_bevel_import() {
+  TemporaryDirectory temporary;
+  write_bevel_bundle(temporary.path());
+
+  const auto imported = load_blender_scene_bundle(temporary.path());
+  require(imported.ok(), "Bevel scene did not import");
+  require(imported.diagnostics.empty(),
+          "Bevel import emitted unexpected diagnostics");
+
+  const psycles::contract::MaterialDesc *unlinked = nullptr;
+  const psycles::contract::MaterialDesc *linked = nullptr;
+  for (const auto &[id, candidate] : imported.scene->materials) {
+    static_cast<void>(id);
+    if (candidate.name == "Bevel Unlinked") {
+      unlinked = &candidate;
+    } else if (candidate.name == "Bevel Linked") {
+      linked = &candidate;
+    }
+  }
+  require(unlinked != nullptr && linked != nullptr,
+          "Expected Bevel materials are missing");
+
+  psycles::compiler::ShaderCompiler compiler{
+      psycles::compiler::make_core_node_registry()};
+  const auto shader_unlinked = compiler.compile(unlinked->shader);
+  const auto shader_linked = compiler.compile(linked->shader);
+  require(shader_unlinked.ok() && shader_linked.ok(),
+          "Bevel shader graphs did not validate");
+
+  namespace abi = psycles::compiler::cycles_svm;
+  const std::array units{
+      abi::ShaderTableCompileUnit{.shader_index = 0u,
+                                  .shader = shader_unlinked.program.get()},
+      abi::ShaderTableCompileUnit{.shader_index = 1u,
+                                  .shader = shader_linked.program.get()}};
+  const auto table = abi::compile_shader_table(units);
+  require(table.table.valid, "Bevel SVM shader table failed to compile");
+  require(table.table.node_types_used[abi::NODE_BEVEL],
+          "NODE_BEVEL was not emitted into SVM bytecode");
+  require((table.kernel_features & abi::kernel_feature_node_raytrace) != 0u,
+          "NODE_BEVEL did not request kernel_feature_node_raytrace");
+
+  const auto check_bevel_op = [&](std::uint32_t shader_index,
+                                  std::uint32_t expected_samples,
+                                  bool expected_linked) {
+    const auto &routine =
+        table.table.ir.shaders.at(shader_index).routine_for(abi::SHADER_TYPE_SURFACE);
+    bool found = false;
+    for (const auto &op : routine) {
+      if (!op.is_conditional && op.instruction.opcode == abi::NODE_BEVEL) {
+        found = true;
+        require(op.instruction.payload_word_count == 2u,
+                "SVMNodeBevel payload size mismatch");
+        const auto word1 =
+            table.table.words.at(op.instruction.payload_offset + 1u);
+        const auto num_samples = word1 & 0xffu;
+        const auto normal_offset = (word1 >> 8u) & 0xffu;
+        const auto out_offset = (word1 >> 16u) & 0xffu;
+        require(num_samples == expected_samples,
+                "NODE_BEVEL samples clamping mismatch");
+        require((normal_offset != abi::SVM_STACK_INVALID) == expected_linked,
+                "NODE_BEVEL normal link mismatch");
+        require(out_offset != abi::SVM_STACK_INVALID,
+                "NODE_BEVEL out_offset must be valid");
+      }
+    }
+    require(found, "NODE_BEVEL op missing from surface IR");
+  };
+
+  check_bevel_op(0u, 1u, false);
+  check_bevel_op(1u, 128u, true);
+}
+
 } // namespace
 
 int main() {
   try {
     test_ambient_occlusion_import();
     test_closure_zone_import();
+    test_bevel_import();
   } catch (const std::exception &exception) {
     std::cerr << "test failure: " << exception.what() << '\n';
     return EXIT_FAILURE;

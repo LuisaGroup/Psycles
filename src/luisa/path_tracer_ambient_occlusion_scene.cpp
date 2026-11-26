@@ -40,12 +40,16 @@ AmbientOcclusionSceneComponent::AmbientOcclusionSceneComponent(
     const compiler::cycles_svm::CompiledShaderTable &compilation,
     std::uint32_t triangle_instance_count) noexcept {
     const auto &table = compilation.table;
+    const bool uses_bevel =
+        table.valid &&
+        table.node_types_used[compiler::cycles_svm::NODE_BEVEL];
     _plan.enabled =
         table.valid &&
-        table.node_types_used[compiler::cycles_svm::NODE_AMBIENT_OCCLUSION];
+        (table.node_types_used[compiler::cycles_svm::NODE_AMBIENT_OCCLUSION] ||
+         uses_bevel);
     _plan.triangle_instance_count = triangle_instance_count;
     if (_plan.enabled) {
-        if (!table.ir.valid) {
+        if (!table.ir.valid || uses_bevel) {
             _plan.local_requested = true;
         } else {
             const auto words = std::span<const std::uint32_t>{table.words};

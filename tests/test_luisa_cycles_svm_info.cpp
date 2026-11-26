@@ -79,7 +79,7 @@ constexpr auto point_types = std::array{
     std::uint32_t{NODE_INFO_POINT_RANDOM},
 };
 
-class ProbeKernelGlobals final
+class ProbeKernelGlobals
     : public psycles::test_support::DefaultCyclesSvmKernelGlobals,
       public device_svm::InfoServices,
       public device_svm::AmbientOcclusionServices {
@@ -888,6 +888,302 @@ int main(int argc, char **argv) {
                    if (!ok) {
                      std::cerr << "Cycles AO Info test mismatch on " << backend
                                << '\n';
+                   }
+                   return ok;
+                 }() &&
+                 [&] {
+                   class BevelProbeKernelGlobals final
+                       : public ProbeKernelGlobals {
+                   public:
+                     Float min_ray_pdf{10.0f};
+                     UInt tri_shader{0u};
+
+                     [[nodiscard]] device_svm::TriangleVertices
+                     triangle_vertices(Expr<std::uint32_t>,
+                                       Expr<std::uint32_t> prim) const noexcept
+                         override {
+                       device_svm::TriangleVertices v{
+                           .v0 = make_float3(0.0f, 0.0f, 0.0f),
+                           .v1 = make_float3(0.0f, 1.0f, 0.0f),
+                           .v2 = make_float3(0.0f, 0.0f, 1.0f)};
+                       $if(prim == 1u) {
+                         v.v0 = make_float3(0.0f, 0.0f, 0.0f);
+                         v.v1 = make_float3(0.0f, 1.0f, 0.0f);
+                         v.v2 = make_float3(-1.0f, 0.0f, 1.0f);
+                       };
+                       return v;
+                     }
+
+                     [[nodiscard]] UInt
+                     triangle_shader(Expr<std::uint32_t>) const noexcept
+                         override {
+                       return tri_shader;
+                     }
+
+                     [[nodiscard]] Var<packed_normal>
+                     attribute_normal(Expr<std::int32_t> offset) const noexcept
+                         override {
+                       Var<packed_normal> packed;
+                       // (65535, 32768) decodes to (+1, 0, 0), whereas
+                       // (32768, 32768) decodes to ~ (0, 0, +1).
+                       packed.value = select(
+                           static_cast<std::uint32_t>(32768u | (32768u << 16u)),
+                           static_cast<std::uint32_t>(65535u | (32768u << 16u)),
+                           offset == 0);
+                       return packed;
+                     }
+
+                     [[nodiscard]] Float bevel_min_ray_pdf() const noexcept
+                         override {
+                       return min_ray_pdf;
+                     }
+
+                     [[nodiscard]] UInt bevel_lcg_state_init() const noexcept
+                         override {
+                       return 1234u;
+                     }
+
+                     [[nodiscard]] Float2
+                     bevel_sample_disk(Expr<std::uint32_t>,
+                                       Expr<std::uint32_t>) const noexcept
+                         override {
+                       return make_float2(0.1f, 0.02f);
+                     }
+
+                     [[nodiscard]] device_svm::BevelLocalHitReservoir
+                     trace_bevel_local(const device_svm::ShaderData &sd,
+                                       const Var<luisa::compute::Ray> &,
+                                       UInt &) const noexcept override {
+                       device_svm::BevelLocalHitReservoir out{};
+                       out.prim[0u] = 0u;
+                       out.u[0u] = 0.25f;
+                       out.v[0u] = 0.05f;
+                       out.num_hits = select(1u, 2u, sd.dPdu.z > 0.5f);
+                       out.prim[1u] = 1u;
+                       out.u[1u] = 0.25f;
+                       out.v[1u] = 0.05f;
+                       return out;
+                     }
+                   };
+
+                   const auto make_unlinked_word = [](float radius) {
+                     BytecodeBuilder b;
+                     b.add_node_data(SVMNodeBevel{
+                         .radius = input_float(radius),
+                         .num_samples = 1u,
+                         .normal_offset = SVM_STACK_INVALID,
+                         .out_offset = 0u,
+                         ._pad = {0u}});
+                     const auto words = b.words();
+                     return std::vector<std::uint32_t>{words.begin(),
+                                                       words.end()};
+                   };
+                   const auto make_linked_word = [](float radius) {
+                     BytecodeBuilder b;
+                     b.add_node_data(SVMNodeBevel{
+                         .radius = input_float(radius),
+                         .num_samples = 1u,
+                         .normal_offset = 4u,
+                         .out_offset = 0u,
+                         ._pad = {0u}});
+                     const auto words = b.words();
+                     return std::vector<std::uint32_t>{words.begin(),
+                                                       words.end()};
+                   };
+
+                   const auto unlinked_words = make_unlinked_word(0.5f);
+                   const auto linked_words = make_linked_word(0.5f);
+                   auto word_buf_unlinked =
+                       device.create_buffer<std::uint32_t>(unlinked_words.size());
+                   auto word_buf_linked =
+                       device.create_buffer<std::uint32_t>(linked_words.size());
+                   auto out_buf = device.create_buffer<luisa::float4>(6u);
+
+                   Kernel1D bevel_k =
+                       [](BufferUInt wu, BufferUInt wl,
+                          BufferFloat4 out) noexcept {
+                         const UInt idx = dispatch_x();
+                         svm_detail::Stack stack{SVM_STACK_SIZE};
+                         svm_detail::stack_store_float3(
+                             stack, 4u, make_float3(0.0f, 1.0f, 0.0f));
+                         auto sd = make_shader_data(
+                             device_svm::primitive_triangle);
+                         sd.type = device_svm::primitive_triangle;
+                         sd.object = 0u;
+                         sd.prim = 0u;
+                         sd.u = 0.25f;
+                         sd.v = 0.05f;
+                         sd.P = make_float3(0.0f, 0.25f, 0.05f);
+                         sd.N = make_float3(1.0f, 0.0f, 0.0f);
+                         sd.Ng = make_float3(1.0f, 0.0f, 0.0f);
+                         sd.object_flag =
+                             device_svm::shader_data_object_transform_applied;
+                         sd.dPdu.z = select(0.0f, 1.0f,
+                                            (idx >= 1u) & (idx <= 4u));
+                         sd.flag = select(0u,
+                                          device_svm::shader_data_backfacing,
+                                          idx == 3u);
+
+                         BevelProbeKernelGlobals kg;
+                         kg.min_ray_pdf = select(10.0f, 7.5f, idx == 4u);
+                         kg.tri_shader = select(
+                             0u, device_svm::shader_smooth_normal, idx == 5u);
+
+                         const auto identity = make_float4x4(1.0f);
+                         const device_svm::TransformState transforms{
+                             identity, identity, identity, identity};
+                         UInt pc = 0u;
+                         $if((idx == 2u) | (idx == 4u)) {
+                           svm_detail::Cursor c{wl, pc};
+                           svm_detail::node_bevel(c, stack, kg, transforms, kg,
+                                                  sd, false);
+                         }
+                         $else {
+                           svm_detail::Cursor c{wu, pc};
+                           svm_detail::node_bevel(c, stack, kg, transforms, kg,
+                                                  sd, false);
+                         };
+                         const auto out_n =
+                             svm_detail::stack_load_float3(stack, 0u);
+                         out.write(idx, make_float4(out_n, pc.cast<float>()));
+                       };
+
+                   auto shader = device.compile(
+                       bevel_k, ShaderOption{.enable_cache = false,
+                                             .enable_fast_math = false});
+                   std::array<luisa::float4, 6u> actual{};
+                   stream << word_buf_unlinked.copy_from(unlinked_words.data())
+                          << word_buf_linked.copy_from(linked_words.data())
+                          << shader(word_buf_unlinked, word_buf_linked, out_buf)
+                                 .dispatch(6u)
+                          << out_buf.copy_to(actual.data()) << synchronize();
+
+                   const auto unit_len = [](luisa::float4 v) noexcept {
+                     const float l = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+                     return std::abs(l - 1.0f) <= 1.0e-4f;
+                   };
+                   const auto norm3 = [](float x, float y, float z) noexcept {
+                     const float inv = 1.0f / std::sqrt(x * x + y * y + z * z);
+                     return luisa::make_float4(x * inv, y * inv, z * inv, 2.0f);
+                   };
+                   const luisa::float4 flat = actual[0u];
+                   const luisa::float4 corner = actual[1u];
+                   const luisa::float4 linked = actual[2u];
+                   const luisa::float4 backfacing = actual[3u];
+                   const luisa::float4 low_pdf = actual[4u];
+                   const luisa::float4 smooth_hit = actual[5u];
+
+                   const auto expected_linked = norm3(
+                       0.0f + (corner.x - 1.0f),
+                       1.0f + (corner.y - 0.0f),
+                       0.0f + (corner.z - 0.0f));
+                   bool ok =
+                       equal(flat, {1.0f, 0.0f, 0.0f, 2.0f}) &&
+                       unit_len(corner) && corner.x > 0.1f && corner.z > 0.01f &&
+                       is_near(corner.y, 0.0f) && is_near(corner.w, 2.0f) &&
+                       equal(linked, expected_linked) &&
+                       equal(backfacing, {-corner.x, -corner.y, -corner.z, 2.0f}) &&
+                       equal(low_pdf, {0.0f, 1.0f, 0.0f, 2.0f}) &&
+                       unit_len(smooth_hit) && smooth_hit.x > 0.85f &&
+                       smooth_hit.z > 0.35f && smooth_hit.z < 0.45f &&
+                       is_near(smooth_hit.w, 2.0f);
+
+                   // Check NODE_BEVEL missing service gate transitions to unsupported_node.
+                   BytecodeBuilder gate_builder;
+                   const auto jump = gate_builder.add_node(
+                       NODE_SHADER_JUMP,
+                       SVMNodeShaderJump{.offset_surface = 0u,
+                                         .offset_volume = 0u,
+                                         .offset_displacement = 0u});
+                   const auto surface = static_cast<std::uint32_t>(
+                       gate_builder.size());
+                   static_cast<void>(gate_builder.add_node(
+                       NODE_BEVEL, SVMNodeBevel{.radius = input_float(0.05f),
+                                                .num_samples = 4u,
+                                                .normal_offset = SVM_STACK_INVALID,
+                                                .out_offset = 0u,
+                                                ._pad = {0u}}));
+                   const auto after = static_cast<std::uint32_t>(
+                       gate_builder.size());
+                   static_cast<void>(gate_builder.add_node(NODE_END));
+                   const auto vol = static_cast<std::uint32_t>(
+                       gate_builder.size());
+                   static_cast<void>(gate_builder.add_node(NODE_END));
+                   const auto disp = static_cast<std::uint32_t>(
+                       gate_builder.size());
+                   static_cast<void>(gate_builder.add_node(NODE_END));
+                   gate_builder.set_word(jump + 1u, surface);
+                   gate_builder.set_word(jump + 2u, vol);
+                   gate_builder.set_word(jump + 3u, disp);
+                   GatedProgram bevel_prog;
+                   bevel_prog.words.assign(gate_builder.words().begin(),
+                                           gate_builder.words().end());
+                   bevel_prog.surface_offset = surface;
+                   bevel_prog.after_info_offset = after;
+                   bevel_prog.node_types[NODE_END] = true;
+                   bevel_prog.node_types[NODE_SHADER_JUMP] = true;
+                   bevel_prog.node_types[NODE_BEVEL] = true;
+                   ok = ok &&
+                        run_gate(device, stream, backend,
+                                 "Bevel raytrace mask off", bevel_prog,
+                                 device_svm::kernel_feature_node_raytrace,
+                                 false, device_svm::primitive_triangle,
+                                 device_svm::EvaluationStatus::ended,
+                                 after + 1u) &&
+                        [&]() {
+                          auto wbuf = device.create_buffer<std::uint32_t>(
+                              bevel_prog.words.size());
+                          auto sbuf = device.create_buffer<std::uint32_t>(2u);
+                          Kernel1D gate_raytrace =
+                              [nt = bevel_prog.node_types](
+                                  BufferUInt w, BufferUInt st) noexcept {
+                                auto sd = make_shader_data(
+                                    device_svm::primitive_triangle);
+                                sd.shader = 0u;
+                                const auto id = make_float4x4(1.0f);
+                                const device_svm::TransformState tf{
+                                    id, id, id, id};
+                                const device_svm::PathState ps{0u, 0u, 0u};
+                                const psycles::test_support::
+                                    DefaultCyclesSvmKernelGlobals kg;
+                                device_svm::EvaluationResult res;
+                                device_svm::eval_nodes(
+                                    kg, w, SHADER_TYPE_SURFACE,
+                                    device_svm::kernel_feature_node_raytrace,
+                                    device_svm::kernel_feature_node_raytrace,
+                                    nt, tf, sd, ps, res);
+                                st.write(0u, res.status);
+                                st.write(1u, res.final_offset);
+                              };
+                          auto sh = device.compile(
+                              gate_raytrace,
+                              ShaderOption{.enable_cache = false,
+                                           .enable_fast_math = false});
+                          std::array<std::uint32_t, 2u> st{};
+                          stream << wbuf.copy_from(bevel_prog.words.data())
+                                 << sh(wbuf, sbuf).dispatch(1u)
+                                 << sbuf.copy_to(st.data()) << synchronize();
+                          return st[0u] ==
+                                     static_cast<std::uint32_t>(
+                                         device_svm::EvaluationStatus::
+                                             unsupported_node) &&
+                                 st[1u] == after;
+                        }();
+                   if (!ok) {
+                     std::cerr << "Cycles Bevel Info test mismatch on " << backend
+                               << ": flat=(" << flat.x << ',' << flat.y << ','
+                               << flat.z << ',' << flat.w << ") corner=("
+                               << corner.x << ',' << corner.y << ',' << corner.z
+                               << ',' << corner.w << ") linked=(" << linked.x
+                               << ',' << linked.y << ',' << linked.z << ','
+                               << linked.w << ") backfacing=(" << backfacing.x
+                               << ',' << backfacing.y << ',' << backfacing.z
+                               << ',' << backfacing.w << ") low_pdf=("
+                               << low_pdf.x << ',' << low_pdf.y << ','
+                               << low_pdf.z << ',' << low_pdf.w
+                               << ") smooth=(" << smooth_hit.x << ','
+                               << smooth_hit.y << ',' << smooth_hit.z << ','
+                               << smooth_hit.w << ")\n";
                    }
                    return ok;
                  }()

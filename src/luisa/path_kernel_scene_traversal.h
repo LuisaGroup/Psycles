@@ -3,6 +3,8 @@
 #include "path_kernel_scene_geometry_plan.h"
 #include "path_tracer_internal.h"
 
+#include <psycles/luisa/cycles_svm.h>
+
 #include <memory>
 
 namespace psycles::luisa_backend::detail {
@@ -57,6 +59,15 @@ public:
                    const Var<luisa::compute::Ray> &ray,
                    const ScenePrimitiveIdentity &source,
                    Expr<bool> only_local) const noexcept = 0;
+
+  // Cycles' NODE_BEVEL samples up to LOCAL_MAX_HITS = 4 intersections on the
+  // current object (including the originating triangle, ray.self = NONE) using
+  // reservoir sampling over ambient_occlusion_local_accel.
+  [[nodiscard]] virtual cycles_svm::BevelLocalHitReservoir
+  trace_bevel_local(const std::shared_ptr<LuisaSceneData> &scene,
+                    const Var<luisa::compute::Ray> &ray,
+                    Expr<std::uint32_t> source_object,
+                    UInt &lcg_state) const noexcept = 0;
 
   // Enumerates one backend-native RayQuery and reduces its order-independent
   // candidate stream to the nearest fixed-capacity batch used by the shadow
