@@ -445,11 +445,33 @@ void store_image_sample(Stack &stack, Expr<std::uint32_t> color_offset,
   }
 }
 
+[[nodiscard]] Dual2 apply_bump_sample_derivatives(
+    const Dual2 &uv, Expr<std::uint32_t> flags,
+    const PathState &path_state) noexcept {
+  constexpr float bump_derivative_scale = 0.25f;
+  if (const auto cf = try_const_uint(flags)) {
+    if ((*cf & static_cast<std::uint32_t>(NODE_IMAGE_BUMP_SAMPLE)) == 0u) {
+      return uv;
+    }
+    const Bool sharpen_bump =
+        (path_state.visibility & path_ray_visibility_diffuse) == 0u;
+    return {.val = uv.val,
+            .dx = select(uv.dx, uv.dx * bump_derivative_scale, sharpen_bump),
+            .dy = select(uv.dy, uv.dy * bump_derivative_scale, sharpen_bump)};
+  }
+  const Bool sharpen_bump =
+      ((flags & static_cast<std::uint32_t>(NODE_IMAGE_BUMP_SAMPLE)) != 0u) &
+      ((path_state.visibility & path_ray_visibility_diffuse) == 0u);
+  return {.val = uv.val,
+          .dx = select(uv.dx, uv.dx * bump_derivative_scale, sharpen_bump),
+          .dy = select(uv.dy, uv.dy * bump_derivative_scale, sharpen_bump)};
+}
+
 } // namespace
 
 void node_tex_image(Cursor &cursor, Stack &stack,
                     const KernelGlobals &kernel_globals,
-                    ShaderData &shader_data,
+                    ShaderData &shader_data, const PathState &path_state,
                     bool use_derivatives) noexcept {
   const auto image_w = cursor.word();
   const auto image_id = [&]() noexcept -> Expr<std::int32_t> {
@@ -468,7 +490,8 @@ void node_tex_image(Cursor &cursor, Stack &stack,
       load_coordinate(stack, coordinate_offset, use_derivatives);
   const Dual2 uv =
       use_derivatives
-          ? image_mapping(coordinate, projection)
+          ? apply_bump_sample_derivatives(
+                image_mapping(coordinate, projection), flags, path_state)
           : Dual2{.val = image_mapping(coordinate.val, projection),
                   .dx = make_float2(0.0f),
                   .dy = make_float2(0.0f)};
@@ -480,7 +503,7 @@ void node_tex_image(Cursor &cursor, Stack &stack,
 void node_tex_image_box(Cursor &cursor, Stack &stack,
                         const KernelGlobals &kernel_globals,
                         const TransformState &transform_state,
-                        ShaderData &shader_data,
+                        ShaderData &shader_data, const PathState &path_state,
                         bool use_derivatives,
                         bool object_motion_enabled) noexcept {
   const auto image_w = cursor.word();
@@ -541,10 +564,11 @@ void node_tex_image_box(Cursor &cursor, Stack &stack,
     const auto uv_z = make_dual2(uz, x);
     const Bool is_y = axis == 1u;
     const Bool is_z = axis == 2u;
-    const Dual2 tap_uv{
-        .val = select(select(uv_x.val, uv_y.val, is_y), uv_z.val, is_z),
-        .dx = select(select(uv_x.dx, uv_y.dx, is_y), uv_z.dx, is_z),
-        .dy = select(select(uv_x.dy, uv_y.dy, is_y), uv_z.dy, is_z)};
+    const Dual2 tap_uv = apply_bump_sample_derivatives(
+        Dual2{.val = select(select(uv_x.val, uv_y.val, is_y), uv_z.val, is_z),
+              .dx = select(select(uv_x.dx, uv_y.dx, is_y), uv_z.dx, is_z),
+              .dy = select(select(uv_x.dy, uv_y.dy, is_y), uv_z.dy, is_z)},
+        flags, path_state);
     store_image_sample(
         stack, color_offset, alpha_offset,
         sample_image(kernel_globals, shader_data, image_id, tap_uv, flags));
@@ -628,8 +652,11 @@ void node_tex_image_box(Cursor &cursor, Stack &stack,
             tap_w = weight.y;
           };
         };
-        sampled += tap_w * sample_image(kernel_globals, shader_data, image_id,
-                                        tap_uv, flags);
+        sampled += tap_w * sample_image(
+                               kernel_globals, shader_data, image_id,
+                               apply_bump_sample_derivatives(
+                                   tap_uv, flags, path_state),
+                               flags);
       };
     };
   }

@@ -796,6 +796,14 @@ NodeRegistry make_core_node_registry() {
                  .required_features = {}}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::boolean_to_scalar,
+                 .inputs = {input("Boolean", SocketType::boolean,
+                                  SocketValue::boolean(false))},
+                 .outputs = {output("Value", SocketType::floating)},
+                 .properties = {},
+                 .required_features = {}}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::color_to_scalar,
                  .inputs = {input("Color", SocketType::color,
                                   SocketValue::color({0.0f, 0.0f, 0.0f}))},
@@ -1500,6 +1508,51 @@ NodeRegistry make_core_node_registry() {
                  .properties = {property(
                      "Component", SocketType::string,
                      SocketValue::string("REFLECTION"))},
+                 .required_features = feature_bit(ShaderFeature::surface)}));
+
+  static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::principled_hair_bsdf,
+                 .inputs = {input("Color", SocketType::color,
+                                  SocketValue::color(
+                                      {0.017513f, 0.005763f, 0.002059f})),
+                            input("Melanin", SocketType::floating,
+                                  SocketValue::floating(0.8f)),
+                            input("MelaninRedness", SocketType::floating,
+                                  SocketValue::floating(1.0f)),
+                            input("Tint", SocketType::color,
+                                  SocketValue::color({1.0f, 1.0f, 1.0f})),
+                            input("AbsorptionCoefficient", SocketType::vector,
+                                  SocketValue::vector(
+                                      {0.245531f, 0.52f, 1.365f})),
+                            input("AspectRatio", SocketType::floating,
+                                  SocketValue::floating(0.85f)),
+                            input("Roughness", SocketType::floating,
+                                  SocketValue::floating(0.3f)),
+                            input("RadialRoughness", SocketType::floating,
+                                  SocketValue::floating(0.3f)),
+                            input("Coat", SocketType::floating,
+                                  SocketValue::floating(0.0f)),
+                            input("IOR", SocketType::floating,
+                                  SocketValue::floating(1.55f)),
+                            input("Offset", SocketType::floating,
+                                  SocketValue::floating(0.034906585f)),
+                            input("RandomColor", SocketType::floating,
+                                  SocketValue::floating(0.0f)),
+                            input("RandomRoughness", SocketType::floating,
+                                  SocketValue::floating(0.0f)),
+                            input("Random", SocketType::floating,
+                                  SocketValue::floating(0.0f)),
+                            input("R", SocketType::floating,
+                                  SocketValue::floating(1.0f)),
+                            input("TT", SocketType::floating,
+                                  SocketValue::floating(1.0f)),
+                            input("TRT", SocketType::floating,
+                                  SocketValue::floating(1.0f))},
+                 .outputs = {output("Closure", SocketType::closure)},
+                 .properties = {property("Model", SocketType::string,
+                                         SocketValue::string("CHIANG")),
+                                property("Parametrization", SocketType::string,
+                                         SocketValue::string("COLOR"))},
                  .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(

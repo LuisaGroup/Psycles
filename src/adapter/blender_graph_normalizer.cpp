@@ -519,6 +519,45 @@ private:
             return conversion(
                 conversion(source, SocketType::vector),
                 target);
+        } else if (
+            source.type == SocketType::boolean &&
+            target == SocketType::floating) {
+            node_type = compiler::node_type::boolean_to_scalar;
+            input = "Boolean";
+            output = "Value";
+        } else if (
+            source.type == SocketType::boolean &&
+            (target == SocketType::color || vector_like(target))) {
+            return conversion(
+                conversion(source, SocketType::floating),
+                target);
+        } else if (
+            (source.type == SocketType::color || vector_like(source.type)) &&
+            target == SocketType::boolean) {
+            return conversion(
+                conversion(source, SocketType::floating),
+                SocketType::boolean);
+        } else if (
+            (source.type == SocketType::color ||
+             vector_like(source.type) ||
+             source.type == SocketType::floating ||
+             source.type == SocketType::boolean) &&
+            target == SocketType::closure) {
+            const auto color = conversion(source, SocketType::color);
+            const auto emission = _graph.add_node(
+                compiler::node_type::emission,
+                "Implicit Emission");
+            static_cast<void>(_graph.set_input(
+                emission,
+                "Strength",
+                SocketValue::floating(1.0f)));
+            static_cast<void>(_graph.connect(
+                color.ref,
+                emission,
+                "Color"));
+            return {
+                .ref = {.node = emission, .socket = "Closure"},
+                .type = SocketType::closure};
         }
 
         if (node_type == nullptr) {

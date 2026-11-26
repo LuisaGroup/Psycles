@@ -51,6 +51,8 @@ inline constexpr auto wireframe = "psycles.wireframe";
 inline constexpr auto scalar_to_color = "psycles.convert.scalar_to_color";
 inline constexpr auto scalar_to_boolean =
     "psycles.convert.scalar_to_boolean";
+inline constexpr auto boolean_to_scalar =
+    "psycles.convert.boolean_to_scalar";
 inline constexpr auto color_to_scalar = "psycles.convert.color_to_scalar";
 inline constexpr auto vector_to_scalar = "psycles.convert.vector_to_scalar";
 inline constexpr auto vector_to_color = "psycles.convert.vector_to_color";
@@ -109,6 +111,8 @@ inline constexpr auto sheen_bsdf = "psycles.closure.sheen";
 inline constexpr auto toon_bsdf = "psycles.closure.toon";
 inline constexpr auto ray_portal_bsdf = "psycles.closure.ray_portal";
 inline constexpr auto hair_bsdf = "psycles.closure.hair";
+inline constexpr auto principled_hair_bsdf =
+    "psycles.closure.principled_hair";
 inline constexpr auto glass_bsdf = "psycles.closure.glass";
 inline constexpr auto refraction_bsdf = "psycles.closure.refraction";
 inline constexpr auto emission = "psycles.closure.emission";

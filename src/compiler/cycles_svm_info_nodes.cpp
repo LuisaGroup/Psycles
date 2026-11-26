@@ -46,6 +46,79 @@ constexpr auto particle_outputs = std::array{
   return out != nullptr && !out->links.empty();
 }
 
+[[nodiscard]] bool bool_property(const GraphNode *node, std::string_view name,
+                                 bool fallback = false) noexcept {
+  const auto iter = node->properties.find(name);
+  if (iter == node->properties.end() ||
+      iter->second.type != contract::SocketType::boolean) {
+    return fallback;
+  }
+  if (const auto *value = std::get_if<bool>(&iter->second.value)) {
+    return *value;
+  }
+  return fallback;
+}
+
+[[nodiscard]] std::uint64_t uint_property(const GraphNode *node,
+                                          std::string_view name,
+                                          std::uint64_t fallback = 0u) noexcept {
+  const auto iter = node->properties.find(name);
+  if (iter == node->properties.end() ||
+      iter->second.type != contract::SocketType::unsigned_integer) {
+    return fallback;
+  }
+  if (const auto *value = std::get_if<std::uint64_t>(&iter->second.value)) {
+    return *value;
+  }
+  return fallback;
+}
+
+class AmbientOcclusionNode final : public GraphNode {
+public:
+  [[nodiscard]] bool has_spatial_varying() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
+    return GraphNode::get_feature() | kernel_feature_node_raytrace;
+  }
+
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_AMBIENT_OCCLUSION;
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    if (!output_is_live(this, "AO")) {
+      return;
+    }
+    const bool normal_linked = bool_property(this, "NormalLinked", false);
+    std::uint8_t flags = 0u;
+    if (bool_property(this, "OnlyLocal", false)) {
+      flags |= NODE_AO_ONLY_LOCAL;
+    }
+    if (bool_property(this, "Inside", false)) {
+      flags |= NODE_AO_INSIDE;
+    }
+    if (bool_property(this, "GlobalRadius", false)) {
+      flags |= NODE_AO_GLOBAL_RADIUS;
+    }
+    const auto samples = static_cast<std::uint8_t>(
+        uint_property(this, "Samples", 16u));
+    const auto normal_offset =
+        normal_linked ? compiler.input_link("Normal") : SVM_STACK_INVALID;
+    compiler.add_node(
+        this, NODE_AMBIENT_OCCLUSION,
+        SVMNodeAmbientOcclusion{.color = input_float3(1.0f, 1.0f, 1.0f),
+                                .dist = compiler.input_float("Distance"),
+                                .flags = flags,
+                                .samples = samples,
+                                .normal_offset = normal_offset,
+                                .out_ao_offset = compiler.output("AO"),
+                                .out_color_offset = SVM_STACK_INVALID,
+                                ._pad = {0u, 0u, 0u}});
+  }
+};
+
 class ObjectInfoNode final : public GraphNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
@@ -255,6 +328,9 @@ std::unique_ptr<GraphNode> make_info_graph_node(std::string_view type) {
   }
   if (type == node_type::point_info) {
     return std::make_unique<PointInfoNode>();
+  }
+  if (type == node_type::ambient_occlusion) {
+    return std::make_unique<AmbientOcclusionNode>();
   }
   return nullptr;
 }

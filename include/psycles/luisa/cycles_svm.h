@@ -318,6 +318,19 @@ public:
   point_radius(const ShaderData &shader_data) const noexcept = 0;
 };
 
+/* Scene traversal and AO-radius services consumed by Cycles' NODE_AMBIENT_OCCLUSION. */
+class AmbientOcclusionServices {
+public:
+  virtual ~AmbientOcclusionServices() noexcept = default;
+
+  [[nodiscard]] virtual luisa::compute::Float
+  global_ao_distance(const ShaderData &shader_data) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Bool
+  ambient_occluded(const ShaderData &shader_data,
+                   const luisa::compute::Var<luisa::compute::Ray> &ray,
+                   luisa::compute::Expr<bool> only_local) const noexcept = 0;
+};
+
 struct SurfaceAttributeSummary {
   std::uint32_t element_mask{~0u};
   std::uint32_t type_mask{~0u};
@@ -528,6 +541,11 @@ public:
   }
 
   [[nodiscard]] virtual const InfoServices *info_services() const noexcept {
+    return nullptr;
+  }
+
+  [[nodiscard]] virtual const AmbientOcclusionServices *
+  ambient_occlusion_services() const noexcept {
     return nullptr;
   }
 

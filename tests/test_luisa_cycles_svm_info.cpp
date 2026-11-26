@@ -81,11 +81,29 @@ constexpr auto point_types = std::array{
 
 class ProbeKernelGlobals final
     : public psycles::test_support::DefaultCyclesSvmKernelGlobals,
-      public device_svm::InfoServices {
+      public device_svm::InfoServices,
+      public device_svm::AmbientOcclusionServices {
 public:
   [[nodiscard]] const device_svm::InfoServices *
   info_services() const noexcept override {
     return this;
+  }
+
+  [[nodiscard]] const device_svm::AmbientOcclusionServices *
+  ambient_occlusion_services() const noexcept override {
+    return this;
+  }
+
+  [[nodiscard]] Float global_ao_distance(
+      const device_svm::ShaderData &) const noexcept override {
+    return 5.0f;
+  }
+
+  [[nodiscard]] Bool ambient_occluded(
+      const device_svm::ShaderData &,
+      const Var<luisa::compute::Ray> &ray,
+      Expr<bool> only_local) const noexcept override {
+    return only_local | (ray->direction().z < 0.0f) | (ray->t_max() < 4.0f);
   }
 
   [[nodiscard]] Float3 object_location(
@@ -798,7 +816,81 @@ int main(int argc, char **argv) {
   auto stream = device.create_stream();
   return test_direct_handlers(device, stream, backend) &&
                  test_interpreter(device, stream, backend) &&
-                 test_feature_gates(device, stream, backend)
+                 test_feature_gates(device, stream, backend) &&
+                 [&] {
+                   BytecodeBuilder builder;
+                   builder.add_node_data(
+                       SVMNodeAmbientOcclusion{
+                           .color = input_float3(0.5f, 0.25f, 0.75f),
+                           .dist = input_float(1.0f),
+                           .flags = NODE_AO_GLOBAL_RADIUS,
+                           .samples = 4u,
+                           .normal_offset = SVM_STACK_INVALID,
+                           .out_ao_offset = 0u,
+                           .out_color_offset = 1u,
+                           ._pad = {0u, 0u, 0u}});
+                   builder.add_node_data(
+                       SVMNodeAmbientOcclusion{
+                           .color = input_float3(1.0f, 1.0f, 1.0f),
+                           .dist = input_float(5.0f),
+                           .flags = NODE_AO_INSIDE,
+                           .samples = 4u,
+                           .normal_offset = SVM_STACK_INVALID,
+                           .out_ao_offset = 4u,
+                           .out_color_offset = SVM_STACK_INVALID,
+                           ._pad = {0u, 0u, 0u}});
+                   builder.add_node_data(
+                       SVMNodeAmbientOcclusion{
+                           .color = input_float3(1.0f, 1.0f, 1.0f),
+                           .dist = input_float(5.0f),
+                           .flags = NODE_AO_ONLY_LOCAL,
+                           .samples = 4u,
+                           .normal_offset = SVM_STACK_INVALID,
+                           .out_ao_offset = 5u,
+                           .out_color_offset = SVM_STACK_INVALID,
+                           ._pad = {0u, 0u, 0u}});
+                   std::vector<std::uint32_t> words(builder.words().begin(),
+                                                    builder.words().end());
+                   auto word_buffer =
+                       device.create_buffer<std::uint32_t>(words.size());
+                   auto out_buffer = device.create_buffer<luisa::float4>(2u);
+                   Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>> k =
+                       [](BufferUInt w, BufferFloat4 out) noexcept {
+                         svm_detail::Stack stack{SVM_STACK_SIZE};
+                         auto sd = make_shader_data(device_svm::primitive_triangle);
+                         const ProbeKernelGlobals kg;
+                         UInt pc = 0u;
+                         svm_detail::Cursor cursor{w, pc};
+                         svm_detail::node_ambient_occlusion(cursor, stack, kg, sd);
+                         svm_detail::node_ambient_occlusion(cursor, stack, kg, sd);
+                         svm_detail::node_ambient_occlusion(cursor, stack, kg, sd);
+                         out.write(0u, make_float4(
+                                           svm_detail::stack_load_float(stack, 0u),
+                                           svm_detail::stack_load_float(stack, 1u),
+                                           svm_detail::stack_load_float(stack, 2u),
+                                           svm_detail::stack_load_float(stack, 3u)));
+                         out.write(1u, make_float4(
+                                           svm_detail::stack_load_float(stack, 4u),
+                                           svm_detail::stack_load_float(stack, 5u),
+                                           pc.cast<float>(),
+                                           0.0f));
+                       };
+                   auto shader = device.compile(
+                       k, ShaderOption{.enable_cache = false,
+                                       .enable_fast_math = false});
+                   std::array<luisa::float4, 2u> actual{};
+                   stream << word_buffer.copy_from(words.data())
+                          << shader(word_buffer, out_buffer).dispatch(1u)
+                          << out_buffer.copy_to(actual.data()) << synchronize();
+                   const bool ok =
+                       equal(actual[0u], {1.0f, 0.5f, 0.25f, 0.75f}) &&
+                       equal(actual[1u], {0.0f, 0.0f, 18.0f, 0.0f});
+                   if (!ok) {
+                     std::cerr << "Cycles AO Info test mismatch on " << backend
+                               << '\n';
+                   }
+                   return ok;
+                 }()
              ? EXIT_SUCCESS
              : EXIT_FAILURE;
 }

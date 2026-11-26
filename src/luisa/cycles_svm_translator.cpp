@@ -25,8 +25,11 @@ namespace {
 // DirectJitTranslator crossover: direct structured dispatch wins decisively up
 // through ~80 active non-empty shaders per specialized bucket/domain (covering
 // Monster 19, BMW27 23, Lone Monk 34, Classroom 76, and 4-bucket Barbershop ~70),
-// while unpartitioned mega-tables (> 80 shaders) stay compact in BytecodeVmTranslator.
+// while unpartitioned mega-tables (> 80 shaders) or extreme procedural graphs
+// (> 5000 JIT weight, which blow up Vulkan/DX PSO compilation) stay compact in
+// BytecodeVmTranslator.
 inline constexpr std::size_t default_auto_direct_jit_max_shaders = 80u;
+inline constexpr std::size_t default_auto_direct_jit_max_weight = 5000u;
 
 [[nodiscard]] std::size_t configured_direct_jit_max_shaders() noexcept {
   const char *raw = std::getenv("PSYCLES_SVM_JIT_MAX_SHADERS");
@@ -38,6 +41,18 @@ inline constexpr std::size_t default_auto_direct_jit_max_shaders = 80u;
     }
   }
   return default_auto_direct_jit_max_shaders;
+}
+
+[[nodiscard]] std::size_t configured_direct_jit_max_weight() noexcept {
+  const char *raw = std::getenv("PSYCLES_SVM_JIT_MAX_WEIGHT");
+  if (raw != nullptr && *raw != '\0') {
+    char *end = nullptr;
+    const unsigned long parsed = std::strtoul(raw, &end, 10);
+    if (end != raw && *end == '\0' && parsed > 0ul) {
+      return static_cast<std::size_t>(parsed);
+    }
+  }
+  return default_auto_direct_jit_max_weight;
 }
 
 [[nodiscard]] SvmBackendStrategy env_backend_override() noexcept {
@@ -309,21 +324,25 @@ void emit_jit_instruction(const SvmTranslationRequest &req,
       }
       return;
     case NODE_TEX_IMAGE:
-      detail::node_tex_image(cursor, stack, kg, req.shader_data, false);
+      detail::node_tex_image(cursor, stack, kg, req.shader_data, req.path_state,
+                             false);
       return;
     case NODE_TEX_IMAGE_DERIVATIVE:
       if (!is_volume_mask) {
-        detail::node_tex_image(cursor, stack, kg, req.shader_data, true);
+        detail::node_tex_image(cursor, stack, kg, req.shader_data,
+                               req.path_state, true);
       }
       return;
     case NODE_TEX_IMAGE_BOX:
       detail::node_tex_image_box(cursor, stack, kg, req.transform_state,
-                                 req.shader_data, false, object_motion);
+                                 req.shader_data, req.path_state, false,
+                                 object_motion);
       return;
     case NODE_TEX_IMAGE_BOX_DERIVATIVE:
       if (!is_volume_mask) {
         detail::node_tex_image_box(cursor, stack, kg, req.transform_state,
-                                   req.shader_data, true, object_motion);
+                                   req.shader_data, req.path_state, true,
+                                   object_motion);
       }
       return;
     case NODE_TEX_NOISE: {
@@ -545,6 +564,17 @@ void emit_jit_instruction(const SvmTranslationRequest &req,
         }
       }
       return;
+    case NODE_AMBIENT_OCCLUSION:
+      if ((kernel_features & kernel_feature_node_raytrace) != 0u &&
+          (req.node_feature_mask & kernel_feature_node_raytrace) != 0u) {
+        if (const auto *services = kg.ambient_occlusion_services()) {
+          detail::node_ambient_occlusion(cursor, stack, *services,
+                                         req.shader_data);
+        } else {
+          transition.unsupported();
+        }
+      }
+      return;
     case NODE_INVERT:
       detail::node_invert(cursor, stack);
       return;
@@ -677,6 +707,7 @@ void emit_jit_block(const SvmTranslationRequest &req, const SvmBlockIr &block,
       case NODE_TEX_VORONOI: w += 36u; break;
       case NODE_TEX_GABOR: w += 32u; break;
       case NODE_PRINCIPLED_VOLUME: w += 20u; break;
+      case NODE_AMBIENT_OCCLUSION: w += 20u; break;
       case NODE_TEX_SKY: w += 16u; break;
       case NODE_CLOSURE_BSDF: w += 14u; break;
       case NODE_TEX_NOISE: w += 12u; break;
@@ -958,9 +989,49 @@ SvmBackendStrategy resolve_svm_backend_strategy(
     return SvmBackendStrategy::direct_jit;
   }
   const auto active_nonempty = count_active_nonempty_shaders(request);
-  return active_nonempty <= configured_direct_jit_max_shaders()
-             ? SvmBackendStrategy::direct_jit
-             : SvmBackendStrategy::bytecode_vm;
+  if (active_nonempty > configured_direct_jit_max_shaders()) {
+    return SvmBackendStrategy::bytecode_vm;
+  }
+  const auto unique_jit_weight = [&]() noexcept -> std::size_t {
+    if (!can_direct_jit(request)) {
+      return 0u;
+    }
+    const auto sc = static_cast<std::size_t>(request.table.shader_count);
+    const bool has_mask = request.active_shader_mask.size() == sc;
+    const auto host_words = std::span<const std::uint32_t>{request.table.words};
+    luisa::vector<const SvmBlockIr *> unique_routines;
+    std::size_t total_weight = 0u;
+    for (std::size_t i = 0u; i < sc; ++i) {
+      if (has_mask && request.active_shader_mask[i] == 0u) {
+        continue;
+      }
+      const auto &routine =
+          request.table.ir.shaders[i].routine_for(request.shader_type);
+      if (routine.empty()) {
+        continue;
+      }
+      bool merged = false;
+      for (const SvmBlockIr *existing : unique_routines) {
+        if (same_linked_svm_block(host_words, *existing, routine)) {
+          merged = true;
+          break;
+        }
+      }
+      if (!merged) {
+        unique_routines.push_back(&routine);
+        total_weight += svm_block_jit_weight(routine);
+      }
+    }
+    return total_weight;
+  }();
+  const auto max_weight = configured_direct_jit_max_weight();
+  if (unique_jit_weight > max_weight) {
+    LUISA_INFO("Cycles SVM auto_select: falling back to BytecodeVm "
+               "(active_nonempty={}, unique_jit_weight={}, limit={}).",
+               active_nonempty, unique_jit_weight, max_weight);
+    return SvmBackendStrategy::bytecode_vm;
+  }
+  return SvmBackendStrategy::direct_jit;
 }
 
 const SvmTranslator &svm_translator_for(SvmBackendStrategy strategy) noexcept {

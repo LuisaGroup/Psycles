@@ -39,7 +39,6 @@ constexpr bool implemented(ShaderNodeType node) noexcept {
   switch (node) {
   case NODE_RADIAL_TILING:
   case NODE_BEVEL:
-  case NODE_AMBIENT_OCCLUSION:
   case NODE_RAYCAST:
   case NODE_AOV_START:
   case NODE_AOV_COLOR:

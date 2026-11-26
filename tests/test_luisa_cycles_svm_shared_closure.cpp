@@ -45,10 +45,91 @@ bool within_one_ulp(float actual, float expected) {
          actual ==
              std::nextafter(expected, -std::numeric_limits<float>::infinity());
 }
+
+void test_auto_direct_jit_weight_fallback() {
+  if (std::getenv("PSYCLES_SVM_BACKEND") != nullptr ||
+      std::getenv("PSYCLES_SVM_JIT_MAX_WEIGHT") != nullptr) {
+    return;
+  }
+  auto make_heavy_shader = [](std::size_t voronoi_count) {
+    abi::SvmShaderIr shader_ir;
+    auto &surface =
+        shader_ir.routines[static_cast<std::size_t>(abi::SHADER_TYPE_SURFACE)];
+    surface.resize(voronoi_count);
+    for (auto &op : surface) {
+      op.instruction.opcode = abi::NODE_TEX_VORONOI;
+    }
+    return shader_ir;
+  };
+  abi::ShaderTableImage table;
+  table.valid = true;
+  table.ir.valid = true;
+  table.words = {0u};
+  table.shader_count = 3u;
+  table.node_types_used[abi::NODE_TEX_VORONOI] = true;
+  // 70 Voronois = 2520 weight; 71 = 2556 weight (default limit = 5000).
+  table.ir.shaders.push_back(make_heavy_shader(70u));
+  table.ir.shaders.push_back(make_heavy_shader(70u));
+  table.ir.shaders.push_back(make_heavy_shader(71u));
+
+  const auto check_strategy = [&](std::span<const std::uint8_t> mask,
+                                  svm::SvmBackendStrategy preferred) {
+    svm::SvmBackendStrategy actual = svm::SvmBackendStrategy::auto_select;
+    const Kernel1D<Buffer<unsigned>> ast_only = [&](BufferUInt words) {
+      const auto identity = make_float4x4(1.0f);
+      const auto normal = make_float3(0.0f, 0.0f, 1.0f);
+      svm::ClosurePool pool{0u};
+      svm::ShaderData sd{make_float3(0.0f), normal, normal, normal,
+                         svm::primitive_triangle, 0u, 0u, 0u, 0u, 0.0f, 0.0f,
+                         0u, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                         make_float3(1.0f, 0.0f, 0.0f),
+                         make_float3(0.0f, 1.0f, 0.0f), identity, identity, 0u,
+                         &pool};
+      const svm::PathState path{svm::path_ray_visibility_camera, 0u};
+      const svm::TransformState transforms{identity, identity, identity,
+                                           identity};
+      const psycles::test_support::DefaultCyclesSvmKernelGlobals globals;
+      actual = svm::resolve_svm_backend_strategy(
+          svm::SvmTranslationRequest{
+              .kernel_globals = globals,
+              .table = table,
+              .words = words,
+              .shader_type = abi::SHADER_TYPE_SURFACE,
+              .kernel_features = 0u,
+              .node_feature_mask = svm::kernel_feature_node_mask_surface,
+              .node_types_used = table.node_types_used,
+              .transform_state = transforms,
+              .shader_data = sd,
+              .path_state = path,
+              .stack_size = 1u,
+              .active_shader_mask = mask},
+          preferred);
+    };
+    (void)ast_only;
+    return actual;
+  };
+
+  constexpr std::array<std::uint8_t, 3u> identical_pair{1u, 1u, 0u};
+  constexpr std::array<std::uint8_t, 3u> distinct_pair{1u, 0u, 1u};
+  constexpr std::array<std::uint8_t, 3u> single_heavy{0u, 0u, 1u};
+  require(check_strategy(identical_pair, svm::SvmBackendStrategy::auto_select) ==
+              svm::SvmBackendStrategy::direct_jit,
+          "auto_select failed to deduplicate identical heavy routines");
+  require(check_strategy(single_heavy, svm::SvmBackendStrategy::auto_select) ==
+              svm::SvmBackendStrategy::direct_jit,
+          "auto_select rejected single routine under weight limit");
+  require(check_strategy(distinct_pair, svm::SvmBackendStrategy::auto_select) ==
+              svm::SvmBackendStrategy::bytecode_vm,
+          "auto_select failed to fall back to bytecode_vm above unique weight limit");
+  require(check_strategy(distinct_pair, svm::SvmBackendStrategy::direct_jit) ==
+              svm::SvmBackendStrategy::direct_jit,
+          "explicit direct_jit preference was overridden by auto weight limit");
+}
 } // namespace
 
 int main(int argc, char **argv) {
   try {
+    test_auto_direct_jit_weight_fallback();
     const std::string_view backend{argc > 1 ? argv[1] : "fallback"};
     Context context{argv[0]};
     auto device = context.create_device(backend);

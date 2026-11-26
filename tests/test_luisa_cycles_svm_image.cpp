@@ -356,11 +356,13 @@ make_sampling_kernel() {
           make_float3(-0.017f, 0.009f, 0.0f));
 
       auto shader_data = make_shader_data(make_float3(0.0f, 0.0f, 1.0f));
+      const device_svm::PathState path_state{
+          device_svm::path_ray_visibility_camera, 0u};
       const ImageKernelGlobals kernel_globals{textures, image_bindings};
       UInt cursor_offset = index * node_word_count;
       svm_detail::Cursor cursor{words, cursor_offset};
       svm_detail::node_tex_image(
-          cursor, stack, kernel_globals, shader_data, true);
+          cursor, stack, kernel_globals, shader_data, path_state, true);
 
       const auto color = svm_detail::stack_load_float3(stack, color_offset);
       const auto alpha = svm_detail::stack_load_float(stack, alpha_offset);
@@ -481,13 +483,15 @@ make_projection_kernel() {
       const auto identity = make_float4x4(1.0f);
       const device_svm::TransformState transforms{
           identity, identity, identity, identity};
+      const device_svm::PathState path_state{
+          device_svm::path_ray_visibility_camera, 0u};
       const ImageKernelGlobals kernel_globals{textures, image_bindings};
       UInt cursor_offset = index * node_word_count;
       svm_detail::Cursor cursor{words, cursor_offset};
       $if(handler == static_cast<std::uint32_t>(ProjectionHandler::box)) {
         svm_detail::node_tex_image_box(
-            cursor, stack, kernel_globals, transforms, shader_data, true,
-            false);
+            cursor, stack, kernel_globals, transforms, shader_data, path_state,
+            true, false);
       }
       $elif(handler ==
             static_cast<std::uint32_t>(ProjectionHandler::environment)) {
@@ -496,7 +500,7 @@ make_projection_kernel() {
       }
       $else {
         svm_detail::node_tex_image(
-            cursor, stack, kernel_globals, shader_data, true);
+            cursor, stack, kernel_globals, shader_data, path_state, true);
       };
 
       const auto color = svm_detail::stack_load_float3(stack, color_offset);
@@ -807,6 +811,130 @@ make_dual_pole_kernel() {
   return true;
 }
 
+[[nodiscard]] bool test_bump_sample_mip0_visibility(
+    Device &device, Stream &stream, std::string_view backend) {
+  static constexpr std::uint32_t bump_case_count = 6u;
+  const std::array words{
+      // 0: flat bump sample
+      std::uint32_t{0u},
+      static_cast<std::uint32_t>(NODE_IMAGE_PROJ_FLAT),
+      pack_image_offsets(static_cast<std::uint8_t>(NODE_IMAGE_BUMP_SAMPLE)),
+      // 1: flat bump sample (diffuse)
+      std::uint32_t{0u},
+      static_cast<std::uint32_t>(NODE_IMAGE_PROJ_FLAT),
+      pack_image_offsets(static_cast<std::uint8_t>(NODE_IMAGE_BUMP_SAMPLE)),
+      // 2: flat non-bump sample (camera)
+      std::uint32_t{0u},
+      static_cast<std::uint32_t>(NODE_IMAGE_PROJ_FLAT),
+      pack_image_offsets(0u),
+      // 3: box single-tap bump sample (camera)
+      std::uint32_t{0u},
+      std::bit_cast<std::uint32_t>(0.0f),
+      pack_image_offsets(static_cast<std::uint8_t>(NODE_IMAGE_BUMP_SAMPLE)),
+      // 4: box single-tap bump sample (diffuse)
+      std::uint32_t{0u},
+      std::bit_cast<std::uint32_t>(0.0f),
+      pack_image_offsets(static_cast<std::uint8_t>(NODE_IMAGE_BUMP_SAMPLE)),
+      // 5: box multi-tap bump sample (camera)
+      std::uint32_t{0u},
+      std::bit_cast<std::uint32_t>(0.5f),
+      pack_image_offsets(static_cast<std::uint8_t>(NODE_IMAGE_BUMP_SAMPLE)),
+  };
+  const std::array<std::uint32_t, bump_case_count> handlers{
+      0u, 0u, 0u, 1u, 1u, 1u,
+  };
+  const std::array<std::uint32_t, bump_case_count> visibilities{
+      device_svm::path_ray_visibility_camera,
+      device_svm::path_ray_visibility_diffuse,
+      device_svm::path_ray_visibility_camera,
+      device_svm::path_ray_visibility_camera,
+      device_svm::path_ray_visibility_diffuse,
+      device_svm::path_ray_visibility_camera,
+  };
+  const std::array<luisa::float3, bump_case_count> normals{
+      luisa::float3{0.0f, 0.0f, 1.0f},
+      luisa::float3{0.0f, 0.0f, 1.0f},
+      luisa::float3{0.0f, 0.0f, 1.0f},
+      luisa::float3{1.0f, 0.0f, 0.0f},
+      luisa::float3{1.0f, 0.0f, 0.0f},
+      luisa::float3{0.7f, 0.3f, 0.0f},
+  };
+  auto word_buffer = device.create_buffer<std::uint32_t>(words.size());
+  auto handler_buffer = device.create_buffer<std::uint32_t>(bump_case_count);
+  auto vis_buffer = device.create_buffer<std::uint32_t>(bump_case_count);
+  auto normal_buffer = device.create_buffer<luisa::float3>(bump_case_count);
+  auto output_buffer = device.create_buffer<luisa::float4>(bump_case_count);
+
+  const auto kernel = Kernel1D<
+      Buffer<std::uint32_t>, Buffer<std::uint32_t>, Buffer<std::uint32_t>,
+      Buffer<luisa::float3>, Buffer<luisa::float4>>{
+      [](BufferUInt words_var, BufferUInt handlers_var, BufferUInt vis_var,
+         BufferFloat3 normals_var, BufferFloat4 out_var) noexcept {
+        const UInt index = dispatch_x();
+        svm_detail::Stack stack{SVM_STACK_SIZE};
+        svm_detail::stack_store_float3(
+            stack, coordinate_offset, make_float3(0.4f, 0.6f, 0.2f));
+        svm_detail::stack_store_float3(
+            stack, coordinate_offset + 3u, make_float3(0.013f, -0.021f, 0.011f));
+        svm_detail::stack_store_float3(
+            stack, coordinate_offset + 6u, make_float3(-0.017f, 0.009f, -0.007f));
+        auto shader_data = make_shader_data(normals_var.read(index));
+        const auto identity = make_float4x4(1.0f);
+        const device_svm::TransformState transforms{
+            identity, identity, identity, identity};
+        const device_svm::PathState path_state{vis_var.read(index), 0u};
+        const DerivativeProbeKernelGlobals kernel_globals;
+        UInt cursor_offset = index * node_word_count;
+        svm_detail::Cursor cursor{words_var, cursor_offset};
+        $if(handlers_var.read(index) == 0u) {
+          svm_detail::node_tex_image(
+              cursor, stack, kernel_globals, shader_data, path_state, true);
+        }
+        $else {
+          svm_detail::node_tex_image_box(
+              cursor, stack, kernel_globals, transforms, shader_data,
+              path_state, true, false);
+        };
+        const auto c = svm_detail::stack_load_float3(stack, color_offset);
+        const auto a = svm_detail::stack_load_float(stack, alpha_offset);
+        out_var.write(index, make_float4(c, a));
+      }};
+  auto shader = device.compile(
+      kernel, ShaderOption{.enable_cache = false, .enable_fast_math = false});
+  std::array<luisa::float4, bump_case_count> actual{};
+  stream << word_buffer.copy_from(luisa::span{words})
+         << handler_buffer.copy_from(luisa::span{handlers})
+         << vis_buffer.copy_from(luisa::span{visibilities})
+         << normal_buffer.copy_from(luisa::span{normals})
+         << shader(word_buffer, handler_buffer, vis_buffer, normal_buffer,
+                   output_buffer)
+                .dispatch(bump_case_count)
+         << output_buffer.copy_to(luisa::span{actual})
+         << synchronize();
+
+  const std::array<luisa::float4, bump_case_count> expected{
+      luisa::float4{0.00325f, -0.00525f, -0.00425f, 0.00225f},
+      luisa::float4{0.013f, -0.021f, -0.017f, 0.009f},
+      luisa::float4{0.013f, -0.021f, -0.017f, 0.009f},
+      luisa::float4{-0.00525f, 0.00275f, 0.00225f, -0.00175f},
+      luisa::float4{-0.021f, 0.011f, 0.009f, -0.007f},
+      luisa::float4{-0.00505f, 0.00275f, 0.00245f, -0.00175f},
+  };
+  for (std::size_t i = 0u; i < bump_case_count; ++i) {
+    const auto d = actual[i] - expected[i];
+    if (std::abs(d.x) > 1.0e-5f || std::abs(d.y) > 1.0e-5f ||
+        std::abs(d.z) > 1.0e-5f || std::abs(d.w) > 1.0e-5f) {
+      std::cerr << "Cycles bump mip0 visibility case " << i << " mismatch on "
+                << backend << ": (" << actual[i].x << ", " << actual[i].y
+                << ", " << actual[i].z << ", " << actual[i].w << ") != ("
+                << expected[i].x << ", " << expected[i].y << ", "
+                << expected[i].z << ", " << expected[i].w << ")\n";
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -819,7 +947,8 @@ int main(int argc, char **argv) {
   auto stream = device.create_stream();
   return test_sampling_modes(device, stream, backend) &&
                  test_projections(device, stream, backend) &&
-                 test_dual_mirrorball_pole(device, stream, backend)
+                 test_dual_mirrorball_pole(device, stream, backend) &&
+                 test_bump_sample_mip0_visibility(device, stream, backend)
              ? EXIT_SUCCESS
              : EXIT_FAILURE;
 }

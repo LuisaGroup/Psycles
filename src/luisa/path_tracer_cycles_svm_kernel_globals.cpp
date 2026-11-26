@@ -276,7 +276,9 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
           PathCyclesSvmShaderDomain::surface_only,
           explicit_shader_mask,
           force_direct_textures,
-          vt_miss_page != nullptr ? vt_miss_page : context.vt_miss_page) {}
+          vt_miss_page != nullptr ? vt_miss_page : context.vt_miss_page) {
+  _ambient_occlusion = context.ambient_occlusion;
+}
 
 PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     std::shared_ptr<LuisaSceneData> scene,
@@ -634,6 +636,14 @@ Float PathCyclesSvmKernelGlobals::ies(
 const svm::InfoServices *
 PathCyclesSvmKernelGlobals::info_services() const noexcept {
   return this;
+}
+
+const svm::AmbientOcclusionServices *
+PathCyclesSvmKernelGlobals::ambient_occlusion_services() const noexcept {
+  return (_ambient_occlusion != nullptr &&
+          _ambient_occlusion->traversal != nullptr)
+             ? this
+             : nullptr;
 }
 
 Float PathCyclesSvmKernelGlobals::cycles_bsdf_data(
@@ -1287,6 +1297,43 @@ Float PathCyclesSvmKernelGlobals::point_radius(
     };
   };
   return result;
+}
+
+Float PathCyclesSvmKernelGlobals::global_ao_distance(
+    const svm::ShaderData &shader_data) const noexcept {
+  Float distance = _parameters.ambient_occlusion_distance;
+  if (_scene->ambient_occlusion_distance_buffer) {
+    const Expr<Buffer<float>> distance_buffer{
+        *_scene->ambient_occlusion_distance_buffer};
+    distance = distance_buffer->read(0u);
+  }
+  if (_scene->ambient_occlusion_object_distance_buffer) {
+    const Expr<Buffer<float>> object_distance_buffer{
+        _scene->ambient_occlusion_object_distance_buffer};
+    const auto has_object_distance =
+        (_parameters.ambient_occlusion_object_distance_count != 0u) &
+        (shader_data.object != svm::object_none) &
+        (shader_data.object <
+         _parameters.ambient_occlusion_object_distance_count);
+    $if(has_object_distance) {
+      const auto object_distance =
+          object_distance_buffer->read(shader_data.object);
+      distance = select(distance, object_distance, object_distance != 0.0f);
+    };
+  }
+  return distance;
+}
+
+Bool PathCyclesSvmKernelGlobals::ambient_occluded(
+    const svm::ShaderData &shader_data,
+    const Var<luisa::compute::Ray> &ray,
+    Expr<bool> only_local) const noexcept {
+  LUISA_ASSERT(_ambient_occlusion != nullptr &&
+                   _ambient_occlusion->traversal != nullptr,
+               "NODE_AMBIENT_OCCLUSION requires an AmbientOcclusion traversal context.");
+  static_cast<void>(shader_data);
+  return _ambient_occlusion->traversal->ambient_occluded(
+      _scene, ray, _ambient_occlusion->source, only_local);
 }
 
 } // namespace psycles::luisa_backend::detail

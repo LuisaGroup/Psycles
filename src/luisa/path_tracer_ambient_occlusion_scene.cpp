@@ -1,17 +1,65 @@
 #include "path_tracer_ambient_occlusion_scene.h"
 
+#include <psycles/compiler/cycles_svm_node_types.h>
+
 #include <array>
+#include <span>
 
 namespace psycles::luisa_backend::detail {
 
+namespace {
+
+[[nodiscard]] bool block_has_local_ao(
+    std::span<const std::uint32_t> words,
+    const compiler::cycles_svm::SvmBlockIr &block) noexcept {
+  for (const auto &op : block) {
+    if (op.is_conditional) {
+      if (block_has_local_ao(words, op.children)) {
+        return true;
+      }
+      continue;
+    }
+    if (op.instruction.opcode == compiler::cycles_svm::NODE_AMBIENT_OCCLUSION) {
+      const auto flags_word_index =
+          static_cast<std::size_t>(op.instruction.payload_offset) + 4u;
+      if (flags_word_index >= words.size()) {
+        return true;
+      }
+      const auto flags = words[flags_word_index] & 0xffu;
+      if ((flags & compiler::cycles_svm::NODE_AO_ONLY_LOCAL) != 0u) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+} // namespace
+
 AmbientOcclusionSceneComponent::AmbientOcclusionSceneComponent(
-    const compiler::cycles_svm::CompiledShaderTable &compilation) noexcept {
-    // Native AO is not admitted by the compiler yet. Do not consult an
-    // unrelated SurfaceProgram to silently supply raytrace state. Adding the
-    // native opcode must also implement its scene/provider boundary here.
-    LUISA_ASSERT(!compilation.table.node_types_used[
-        compiler::cycles_svm::NODE_AMBIENT_OCCLUSION],
-        "Native SVM AO requires its native scene/provider implementation.");
+    const compiler::cycles_svm::CompiledShaderTable &compilation,
+    std::uint32_t triangle_instance_count) noexcept {
+    const auto &table = compilation.table;
+    _plan.enabled =
+        table.valid &&
+        table.node_types_used[compiler::cycles_svm::NODE_AMBIENT_OCCLUSION];
+    _plan.triangle_instance_count = triangle_instance_count;
+    if (_plan.enabled) {
+        if (!table.ir.valid) {
+            _plan.local_requested = true;
+        } else {
+            const auto words = std::span<const std::uint32_t>{table.words};
+            for (const auto &shader : table.ir.shaders) {
+                if (block_has_local_ao(
+                        words,
+                        shader.routine_for(
+                            compiler::cycles_svm::SHADER_TYPE_SURFACE))) {
+                    _plan.local_requested = true;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 void AmbientOcclusionSceneComponent::initialize(

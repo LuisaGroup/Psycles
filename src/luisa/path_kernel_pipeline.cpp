@@ -1,5 +1,6 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_coro_transitions.h"
+#include "path_kernel_scene_traversal.h"
 #include "path_kernel_cycles_svm_surface_scatter.h"
 #include "path_kernel_direct_light_task.h"
 #include "path_kernel_direct_light_trace.h"
@@ -80,7 +81,13 @@ public:
           surface_queue_key_range(*config.scene) != 0u) {
         surface_queue_key = make_surface_queue_key_stage(primitive_plan);
       }
-      surface_shading = make_surface_shading_stage();
+      const auto ao_traversal =
+          config.scene->has_ambient_occlusion
+              ? std::shared_ptr<const SceneTraversalComponent>{
+                    make_scene_traversal_component(traversal_plan)}
+              : nullptr;
+      surface_shading = make_surface_shading_stage(
+          SurfaceShadingStageOptions{.traversal = ao_traversal});
       bucket_surface_shading.reserve(surface_buckets.buckets.size());
       for (const auto &spec : surface_buckets.buckets) {
         if (surface_buckets.native_specialized && config.surfaces.population) {
@@ -93,10 +100,12 @@ public:
           bucket_surface_shading.push_back(make_surface_shading_stage(
               SurfaceShadingStageOptions{
                   .population = std::move(pop),
+                  .traversal = ao_traversal,
                   .may_have_emission = spec.may_have_emission,
                   .may_have_holdout = spec.may_have_holdout}));
         } else {
-          bucket_surface_shading.push_back(make_surface_shading_stage());
+          bucket_surface_shading.push_back(make_surface_shading_stage(
+              SurfaceShadingStageOptions{.traversal = ao_traversal}));
         }
       }
       surface_scatter = make_surface_scatter_stage();

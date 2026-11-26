@@ -905,6 +905,16 @@ public:
         }
       }
     });
+    _clear_count_slot.set_name("aux_shadow_clear_count");
+    _initialize.set_name("aux_shadow_init");
+    _set_extent_and_clear_reloc.set_name("aux_shadow_set_extent");
+    _gather.set_name("aux_shadow_gather");
+    _collect_relocations.set_name("aux_shadow_collect_reloc");
+    _compact.set_name("aux_shadow_compact");
+    for (auto stage = 0u; stage < active_stages; ++stage) {
+      _consumers[stage].set_name(
+          luisa::string{"aux_shadow_stage_"} + luisa::string{stage_name(stage)});
+    }
     if (device.impl()->query("vk_timeline_active") == "1") {
       auto lbl = [&](const char *name, std::uint64_t handle) noexcept {
         if (handle == 0ull || handle == luisa::compute::invalid_resource_handle) {

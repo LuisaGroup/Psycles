@@ -130,8 +130,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     const SubsurfaceSceneComponent subsurface_scene;
     const auto subsurface_scene_plan = subsurface_scene.plan(
         snapshot, surface_bssrdf_materials);
+    std::uint32_t ao_triangle_instance_count = 0u;
+    for (const auto &[instance_id, instance] : snapshot.instances) {
+        static_cast<void>(instance_id);
+        if (snapshot.geometries.contains(instance.geometry)) {
+            ++ao_triangle_instance_count;
+        }
+    }
     const AmbientOcclusionSceneComponent ambient_occlusion_scene{
-        data->cycles_svm->compilation};
+        data->cycles_svm->compilation, ao_triangle_instance_count};
     ambient_occlusion_scene.initialize(data);
     auto cycles_instance_intersection_plan =
         build_cycles_instance_intersection_plan(
@@ -172,6 +179,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             data->device.create_accel(static_scene_accel_option()));
         data->primary_to_volume_local_host.assign(
             snapshot.instances.size(), ~luisa::uint{0u});
+    }
+    if (data->volume_metadata.has_volumes()) {
+        data->volume_shadow_guard_hits.emplace(
+            data->device.create_buffer<luisa::uint>(1u));
     }
     data->volume_metadata
         .closure_allocation_budget =

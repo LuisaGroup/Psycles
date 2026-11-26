@@ -215,6 +215,31 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
         .outputs = {{"BSDF", "Closure"}},
         .properties = {{"component", "Component"}}});
     add({
+        .cycles_type = "principled_hair_bsdf",
+        .cycles_variant = {},
+        .psycles_type = node_type::principled_hair_bsdf,
+        .inputs = {
+            {"Color", "Color"},
+            {"Melanin", "Melanin"},
+            {"Melanin Redness", "MelaninRedness"},
+            {"Tint", "Tint"},
+            {"Absorption Coefficient", "AbsorptionCoefficient"},
+            {"Aspect Ratio", "AspectRatio"},
+            {"Roughness", "Roughness"},
+            {"Radial Roughness", "RadialRoughness"},
+            {"Coat", "Coat"},
+            {"IOR", "IOR"},
+            {"Offset", "Offset"},
+            {"Random Color", "RandomColor"},
+            {"Random Roughness", "RandomRoughness"},
+            {"Random", "Random"},
+            {"R", "R"},
+            {"TT", "TT"},
+            {"TRT", "TRT"}},
+        .outputs = {{"BSDF", "Closure"}},
+        .properties = {{"model", "Model"},
+                       {"parametrization", "Parametrization"}}});
+    add({
         .cycles_type = "principled_bsdf",
         .cycles_variant = {},
         .psycles_type = node_type::principled_bsdf,

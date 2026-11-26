@@ -98,6 +98,7 @@ struct PathKernelConfig {
   std::shared_ptr<const DirectLightTaskSink> direct_light_task_sink;
     std::uint32_t volume_stack_size{};
     std::uint32_t transparent_max_bounces{~0u};
+    std::uint32_t max_volume_shadow_steps{1024u};
     bool camera_may_be_inside_volume{};
   std::shared_ptr<const PathVolumeStateComponent> volume_state;
     LightTransportCallables light_transport;
@@ -887,8 +888,11 @@ make_path_volume_segment_stage(const PathKernelConfig &config);
 make_background_event_stage(bool ambient_occlusion_bounce_approximation);
 [[nodiscard]] std::unique_ptr<SurfaceGeometryStage>
 make_surface_geometry_stage(ScenePrimitiveStagePlan plan);
+class SceneTraversalComponent;
+
 struct SurfaceShadingStageOptions {
     std::shared_ptr<const SurfacePopulationComponent> population;
+    std::shared_ptr<const SceneTraversalComponent> traversal;
     bool may_have_emission{true};
     bool may_have_holdout{true};
 };

@@ -607,31 +607,30 @@ VirtualTextureCache::prepare_chunk_staging(
       pack_range(0u, chunk_count);
     }
   } else {
-    {
-      const auto first_src =
-          _pages[plan.misses[chunk_begin].page].source_index;
-      std::uint32_t prev_src = first_src;
-      std::size_t queued_cnt = 0u;
-      for (std::size_t k = 1u; k < chunk_count && queued_cnt < 1u; ++k) {
-        const auto pid = plan.misses[chunk_begin + k].page;
-        const auto &pm = _pages[pid];
-        const auto src_idx = pm.source_index;
-        if (src_idx != prev_src) {
-          prev_src = src_idx;
-          const auto &src = _sources[src_idx];
-          const bool disk_ok =
-              use_disk_prepack &&
-              _prepack_disk->has_valid_file(_page_prepack_keys[pid].image,
-                                            pm.tiles_x, pm.tiles_y);
-          if (!src.decoded && !src.load_failed && !disk_ok) {
-            enqueue_bg_decode(src_idx);
-            ++queued_cnt;
-          }
-        }
-      }
-    }
     run_disk_reads();
     copy_prepack_hits_chunk();
+
+    struct SrcRun {
+      std::size_t begin_k{};
+      std::size_t end_k{};
+      std::uint32_t src_idx{};
+      bool needs_decode{false};
+      std::uint64_t est_bytes{};
+    };
+    auto estimate_src_bytes = [&](std::uint32_t src_idx) noexcept -> std::uint64_t {
+      const auto &src = _sources[src_idx];
+      const bool is_f = (src.storage == io::DecodedImageStorage::float32) ||
+                        src.probed_info.is_floating_point;
+      const std::uint64_t base_b =
+          static_cast<std::uint64_t>(std::max(src.width, 1u)) *
+          static_cast<std::uint64_t>(std::max(src.height, 1u)) *
+          (is_f ? 16ull : 4ull);
+      return (_options.mip_mode == LuisaTextureMipMode::isotropic)
+                 ? (base_b + (base_b / 3ull))
+                 : base_b;
+    };
+
+    std::vector<SrcRun> runs;
     for (std::size_t run_begin = 0u; run_begin < chunk_count;) {
       const auto src_idx =
           _pages[plan.misses[chunk_begin + run_begin].page].source_index;
@@ -648,24 +647,121 @@ VirtualTextureCache::prepare_chunk_staging(
           break;
         }
       }
-      if (run_needs_decode) {
-        decode_source_on_demand(src_idx);
-        ensure_disk_files_for_range(run_begin, run_end);
+      runs.push_back(SrcRun{
+          .begin_k = run_begin,
+          .end_k = run_end,
+          .src_idx = src_idx,
+          .needs_decode = run_needs_decode,
+          .est_bytes = run_needs_decode ? estimate_src_bytes(src_idx) : 0ull});
+      run_begin = run_end;
+    }
+
+    const std::uint64_t batch_budget = std::max<std::uint64_t>(
+        _options.host_decoded_cache_budget_bytes / 2ull, 1ull);
+    std::vector<std::uint32_t> batch_unique_sources;
+    std::vector<std::uint32_t> protected_sources;
+    for (std::size_t r_begin = 0u; r_begin < runs.size();) {
+      batch_unique_sources.clear();
+      std::size_t r_end = r_begin;
+      std::uint64_t batch_est_bytes = 0ull;
+      bool batch_needs_decode = false;
+      while (r_end < runs.size()) {
+        const auto &run = runs[r_end];
+        if (!run.needs_decode) {
+          ++r_end;
+          continue;
+        }
+        const bool already_in =
+            std::find(batch_unique_sources.begin(), batch_unique_sources.end(),
+                      run.src_idx) != batch_unique_sources.end();
+        const auto &src = _sources[run.src_idx];
+        const bool need_decode_src =
+            !already_in && !src.decoded && !src.load_failed;
+        const std::uint64_t add_bytes =
+            need_decode_src ? run.est_bytes : 0ull;
+        if (!batch_unique_sources.empty() &&
+            ((need_decode_src && batch_unique_sources.size() >= 8u) ||
+             (add_bytes > 0ull && batch_est_bytes + add_bytes > batch_budget))) {
+          break;
+        }
+        if (need_decode_src) {
+          batch_unique_sources.push_back(run.src_idx);
+          batch_est_bytes += add_bytes;
+        }
+        batch_needs_decode = true;
+        ++r_end;
       }
-      for (std::size_t k = run_begin; k < run_end; ++k) {
-        assign_tile(k);
-      }
-      if (run_needs_decode) {
-        pack_range(run_begin, run_end);
-        const bool chunk_continues_src =
-            (chunk_end < total_load) &&
-            (run_end == chunk_count) &&
-            (_pages[plan.misses[chunk_end].page].source_index == src_idx);
-        if (!chunk_continues_src) {
-          trim_host_decoded_cache(src_idx);
+
+      const std::size_t batch_begin_k = runs[r_begin].begin_k;
+      const std::size_t batch_end_k = runs[r_end - 1u].end_k;
+
+      // Enqueue lookahead decode for the next source beyond this mini-batch.
+      if (r_end < runs.size()) {
+        for (std::size_t nr = r_end; nr < runs.size(); ++nr) {
+          if (!runs[nr].needs_decode) {
+            continue;
+          }
+          const auto nsrc = runs[nr].src_idx;
+          const auto &s = _sources[nsrc];
+          if (!s.decoded && !s.load_failed) {
+            enqueue_bg_decode(nsrc);
+            break;
+          }
+        }
+      } else if (chunk_end < total_load) {
+        const std::size_t lookahead_end =
+            std::min(total_load, chunk_end + staging_cap);
+        std::uint32_t next_prev_src = std::numeric_limits<std::uint32_t>::max();
+        for (std::size_t idx = chunk_end; idx < lookahead_end; ++idx) {
+          const auto pid = plan.misses[idx].page;
+          const auto &pm = _pages[pid];
+          const auto src_idx = pm.source_index;
+          if (src_idx != next_prev_src) {
+            next_prev_src = src_idx;
+            const auto &s = _sources[src_idx];
+            const bool disk_ok =
+                use_disk_prepack &&
+                _prepack_disk->has_valid_file(_page_prepack_keys[pid].image,
+                                              pm.tiles_x, pm.tiles_y);
+            if (!s.decoded && !s.load_failed && !disk_ok) {
+              enqueue_bg_decode(src_idx);
+              break;
+            }
+          }
         }
       }
-      run_begin = run_end;
+
+      if (!batch_unique_sources.empty()) {
+        decode_unique_parallel(batch_unique_sources);
+      }
+      if (batch_needs_decode) {
+        ensure_disk_files_for_range(batch_begin_k, batch_end_k);
+      }
+      for (std::size_t k = batch_begin_k; k < batch_end_k; ++k) {
+        assign_tile(k);
+      }
+      if (batch_needs_decode) {
+        pack_range(batch_begin_k, batch_end_k);
+        protected_sources.clear();
+        for (std::size_t r = r_begin; r < r_end; ++r) {
+          if (runs[r].needs_decode) {
+            protected_sources.push_back(runs[r].src_idx);
+          }
+        }
+        if (r_end < runs.size()) {
+          for (std::size_t r = r_end; r < runs.size(); ++r) {
+            if (runs[r].needs_decode) {
+              protected_sources.push_back(runs[r].src_idx);
+              break;
+            }
+          }
+        } else if (chunk_end < total_load) {
+          protected_sources.push_back(
+              _pages[plan.misses[chunk_end].page].source_index);
+        }
+        trim_host_decoded_cache(protected_sources);
+      }
+      r_begin = r_end;
     }
   }
 

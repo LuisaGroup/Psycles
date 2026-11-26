@@ -483,6 +483,8 @@ struct LuisaSceneData {
     // distinction explicit. Curves are intentionally absent.
     std::optional<Accel> ambient_occlusion_local_accel;
     std::optional<Accel> volume_boundary_accel;
+    std::optional<Buffer<luisa::uint>> volume_shadow_guard_hits;
+    std::uint64_t last_volume_shadow_guard_hits{0ull};
     Accel accel;
     std::shared_ptr<const struct FilmPassAccessorGpu> film_pass_accessor;
     CameraDesc camera;

@@ -151,6 +151,9 @@ image_flags(const GraphNode *node, bool include_alpha) noexcept {
       flags |= NODE_IMAGE_ALPHA_UNASSOCIATE;
     }
   }
+  if (include_alpha && node->bump != SHADER_BUMP_NONE) {
+    flags |= NODE_IMAGE_BUMP_SAMPLE;
+  }
   return flags;
 }
 

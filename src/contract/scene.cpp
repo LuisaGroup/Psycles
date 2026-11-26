@@ -129,6 +129,25 @@ template<typename Id>
                 attribute,
                 true);
         }
+        const auto validate_named_map =
+            [&](std::string_view label, const auto &attributes) {
+                for (const auto &[name, attribute] : attributes) {
+                    if (name.empty()) {
+                        diagnose(
+                            SceneDiagnosticCode::invalid_mesh,
+                            "mesh '" + mesh.name + "' has an unnamed " +
+                                std::string{label});
+                    } else {
+                        validate_attribute(
+                            std::string{label} + " '" + name + "'",
+                            attribute,
+                            true);
+                    }
+                }
+            };
+        validate_named_map("float attribute", mesh.float_attributes);
+        validate_named_map("float2 attribute", mesh.float2_attributes);
+        validate_named_map("float3 attribute", mesh.float3_attributes);
         if (mesh.default_color_attribute &&
             !mesh.color_attributes.contains(
                 *mesh.default_color_attribute) &&

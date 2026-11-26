@@ -5,6 +5,7 @@
 #include "cycles_svm_internal.h"
 
 #include <psycles/luisa/cycles_noise.h>
+#include <psycles/luisa/cycles_sample_mapping.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -263,6 +264,73 @@ void node_point_info(Cursor &cursor, Stack &stack,
     PSYCLES_SVM_CASE(NODE_INFO_POINT_RANDOM) {};
     $default {};
   };
+}
+
+void node_ambient_occlusion(Cursor &cursor, Stack &stack,
+                            const AmbientOcclusionServices &services,
+                            ShaderData &shader_data) noexcept {
+  const auto color_x = cursor.word();
+  const auto color_y = cursor.word();
+  const auto color_z = cursor.word();
+  const auto dist_word = cursor.word();
+  const auto packed4 = cursor.word();
+  const auto packed5 = cursor.word();
+
+  const auto flags = cursor.byte(packed4, 0u);
+  const auto samples = cursor.byte(packed4, 1u);
+  const auto normal_offset = cursor.byte(packed4, 2u);
+  const auto out_ao_offset = cursor.byte(packed4, 3u);
+  const auto out_color_offset = cursor.byte(packed5, 0u);
+
+  Float max_dist = stack_load_input_float(stack, dist_word);
+  $if((flags & static_cast<std::uint32_t>(NODE_AO_GLOBAL_RADIUS)) != 0u) {
+    max_dist = services.global_ao_distance(shader_data);
+  };
+
+  const auto raw_normal =
+      stack_load_float3_default(stack, normal_offset, shader_data.N);
+  const auto n_len2 = dot(raw_normal, raw_normal);
+  Float3 normal = select(shader_data.N, raw_normal * rsqrt(n_len2), n_len2 > 0.0f);
+  normal = select(normal, -normal,
+                  (flags & static_cast<std::uint32_t>(NODE_AO_INSIDE)) != 0u);
+  const Bool only_local =
+      (flags & static_cast<std::uint32_t>(NODE_AO_ONLY_LOCAL)) != 0u;
+
+  const auto lcg_step_float = [](UInt &state) noexcept {
+    state = 1103515245u * state + 12345u;
+    return state.cast<float>() * (1.0f / 4294967295.0f);
+  };
+
+  Float ao = 1.0f;
+  $if((samples > 0u) & (max_dist > 0.0f)) {
+    const auto inv_samples = 1.0f / samples.cast<float>();
+    UInt unoccluded = 0u;
+    UInt sample = 0u;
+    $while(sample < samples) {
+      const auto u = lcg_step_float(shader_data.lcg_state);
+      const auto v = lcg_step_float(shader_data.lcg_state);
+      const auto randu = (sample.cast<float>() + u) * inv_samples;
+      const auto dir = cycles_sample_mapping::sample_cosine_hemisphere(
+                           normal, make_float2(randu, v))
+                           .direction;
+      const auto ray = make_ray(shader_data.P, dir, 0.0f, max_dist);
+      $if(!services.ambient_occluded(shader_data, ray, only_local)) {
+        unoccluded += 1u;
+      };
+      sample += 1u;
+    };
+    ao = unoccluded.cast<float>() * inv_samples;
+  };
+
+  stack_store_float_if_valid(stack, out_ao_offset, ao);
+  if (const auto out_color = try_const_uint(out_color_offset);
+      !out_color.has_value() || *out_color != SVM_STACK_INVALID) {
+    $if(out_color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      const auto color =
+          stack_load_input_float3(stack, color_x, color_y, color_z);
+      stack_store_float3(stack, out_color_offset, color * ao);
+    };
+  }
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

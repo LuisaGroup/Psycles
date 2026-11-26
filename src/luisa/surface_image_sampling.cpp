@@ -49,10 +49,15 @@ Float4 decode_surface_image_sample(
             (alpha != 0.0f) & (alpha != 1.0f);
         const auto safe_alpha =
             select(1.0f, alpha, should_unassociate);
+        const auto unassoc = sampled.xyz() / safe_alpha;
+        // Clamp sRGB cutout textures after unassociation so lossy BC7 alpha/color
+        // reconstruction noise near alpha == 0 cannot blow up pow(x, 2.4).
+        const auto safe_unassoc =
+            select(unassoc, clamp(unassoc, 0.0f, 1.0f), encoded_as_srgb);
         sampled = make_float4(
             select(
                 sampled.xyz(),
-                sampled.xyz() / safe_alpha,
+                safe_unassoc,
                 should_unassociate),
             alpha);
     };

@@ -194,11 +194,89 @@ void test_hair_svm_import() {
   require_words(image.words, expected);
 }
 
+void test_principled_hair_svm_import() {
+  TemporaryDirectory temporary;
+  {
+    std::ofstream geometry{temporary.path() / "geometry.bin", std::ios::binary};
+    geometry.write("PSYGEO1\0", 8);
+  }
+  {
+    std::ofstream scene{temporary.path() / "scene.json"};
+    scene << R"JSON({
+  "schema":"psycles.blender-scene.v1",
+  "images":[],"node_groups":[],
+  "materials":[{
+    "name":"Principled Hair SVM Material",
+    "cycles_sync":{"shader_index":5},
+    "node_tree":{
+      "name":"Principled Hair SVM Material",
+      "surface_root":{"node":"Hair","socket":"BSDF"},
+      "volume_root":null,"displacement_root":null,
+      "links":[],
+      "nodes":[{
+        "name":"Hair","type":"BSDF_HAIR_PRINCIPLED","mute":false,
+        "internal_links":[],"special":{},
+        "properties":{"model":"CHIANG","parametrization":"COLOR"},
+        "inputs":[
+          {"identifier":"Color","name":"Color","type":"NodeSocketColor","linked":false,"default":[0.5,0.25,0.125,1.0]},
+          {"identifier":"Melanin","name":"Melanin","type":"NodeSocketFloatFactor","linked":false,"default":0.8},
+          {"identifier":"Melanin Redness","name":"Melanin Redness","type":"NodeSocketFloatFactor","linked":false,"default":1.0},
+          {"identifier":"Tint","name":"Tint","type":"NodeSocketColor","linked":false,"default":[1.0,1.0,1.0,1.0]},
+          {"identifier":"Absorption Coefficient","name":"Absorption Coefficient","type":"NodeSocketVector","linked":false,"default":[0.245531,0.52,1.365]},
+          {"identifier":"Aspect Ratio","name":"Aspect Ratio","type":"NodeSocketFloatFactor","linked":false,"default":0.85},
+          {"identifier":"Roughness","name":"Roughness","type":"NodeSocketFloatFactor","linked":false,"default":0.4},
+          {"identifier":"Radial Roughness","name":"Radial Roughness","type":"NodeSocketFloatFactor","linked":false,"default":0.3},
+          {"identifier":"Coat","name":"Coat","type":"NodeSocketFloatFactor","linked":false,"default":0.1},
+          {"identifier":"IOR","name":"IOR","type":"NodeSocketFloat","linked":false,"default":1.55},
+          {"identifier":"Offset","name":"Offset","type":"NodeSocketFloatAngle","linked":false,"default":0.0349},
+          {"identifier":"Random Color","name":"Random Color","type":"NodeSocketFloatFactor","linked":false,"default":0.0},
+          {"identifier":"Random Roughness","name":"Random Roughness","type":"NodeSocketFloatFactor","linked":false,"default":0.2},
+          {"identifier":"Random","name":"Random","type":"NodeSocketFloat","linked":false,"default":0.0},
+          {"identifier":"R lobe","name":"Reflection","type":"NodeSocketFloatFactor","linked":false,"default":1.0},
+          {"identifier":"TT lobe","name":"Transmission","type":"NodeSocketFloatFactor","linked":false,"default":1.0},
+          {"identifier":"TRT lobe","name":"Secondary Reflection","type":"NodeSocketFloatFactor","linked":false,"default":1.0}
+        ],
+        "outputs":[{"identifier":"BSDF","name":"BSDF","type":"NodeSocketShader","linked":true}]
+      }]
+    }
+  }],
+  "render":{"width":16,"height":16,"percentage":100,"cycles":{}},
+  "camera":{"name":"Camera","type":"PERSP","transform":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],"clip_start":0.01,"clip_end":100},
+  "geometries":[],"curve_geometries":[],"instances":[],"lights":[],"world":null,"world_environment":null
+})JSON";
+  }
+  const auto imported = load_blender_scene_bundle(temporary.path());
+  require(imported.ok(), "Principled Hair SVM scene did not import");
+  const MaterialDesc *material = nullptr;
+  for (const auto &[id, candidate] : imported.scene->materials) {
+    static_cast<void>(id);
+    if (candidate.name == "Principled Hair SVM Material") {
+      material = &candidate;
+      break;
+    }
+  }
+  require(material != nullptr, "Principled Hair SVM material is missing");
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(material->shader);
+  require(shader.ok(), "Principled Hair graph did not validate");
+  AttributeIDMap attributes;
+  ImageIDMap images;
+  const auto image = compile_shader(*shader.program, attributes, images,
+                                    ShaderCompileContext{.background = false});
+  require(image.valid, image.diagnostic);
+  require((image.metadata.kernel_features & kernel_feature_node_principled_hair) != 0u,
+          "Principled Hair omitted kernel_feature_node_principled_hair");
+  require(image.node_types_used[NODE_CLOSURE_SET_WEIGHT] &&
+              image.node_types_used[NODE_CLOSURE_BSDF],
+          "Principled Hair omitted expected closure opcodes");
+}
+
 } // namespace
 
 int main() {
   try {
     test_hair_svm_import();
+    test_principled_hair_svm_import();
   } catch (const std::exception &exception) {
     std::cerr << "test failure: " << exception.what() << '\n';
     return EXIT_FAILURE;

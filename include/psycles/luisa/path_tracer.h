@@ -290,7 +290,7 @@ struct LuisaVirtualTextureCacheOptions {
   // closest, linear, and cubic B-spline filtering never sample outside a tile).
   // Supported values are 64 (60x60 logical interior) and 128 (124x124 interior).
   std::uint32_t physical_tile_size{64u};
-  std::uint64_t host_decoded_cache_budget_bytes{1024ull * 1024ull * 1024ull};
+  std::uint64_t host_decoded_cache_budget_bytes{6ull * 1024ull * 1024ull * 1024ull};
   bool report_stats{false};
   LuisaVirtualTexturePrepackMode prepack_mode{
       LuisaVirtualTexturePrepackMode::off};

@@ -527,6 +527,13 @@ bool LuisaRenderSession::render_samples(const SampleRange &samples,
     return false;
   }
   _total_aa_samples = samples.total;
+  if (_scene && _scene->volume_shadow_guard_hits) {
+    const luisa::uint zero = 0u;
+    _scene->last_volume_shadow_guard_hits = 0ull;
+    _stream << _scene->volume_shadow_guard_hits->copy_from(
+                   luisa::span{&zero, 1u})
+            << synchronize();
+  }
   const bool tl_active =
       _scene && _scene->device &&
       (_scene->device.impl()->query("vk_timeline_active") == "1");
@@ -619,6 +626,19 @@ bool LuisaRenderSession::render_samples(const SampleRange &samples,
     static_cast<void>(
         _scene->device.impl()->query("vk_timeline_mark:integration_end"));
     static_cast<void>(_scene->device.impl()->query("vk_timeline_flush"));
+  }
+  if (_scene && _scene->volume_shadow_guard_hits) {
+    luisa::uint guard_hits = 0u;
+    _stream << _scene->volume_shadow_guard_hits->copy_to(
+                   luisa::span{&guard_hits, 1u})
+            << synchronize();
+    _scene->last_volume_shadow_guard_hits = guard_hits;
+    if (guard_hits > 0u) {
+      LUISA_WARNING(
+          "Psycles volume shadow step guard triggered {} time(s) during render.",
+          guard_hits);
+    }
+    LUISA_INFO("PSYCLES_VOLUME_SHADOW_GUARD_HITS={}", guard_hits);
   }
   if (_scene && _scene->virtual_texture_cache) {
     _scene->virtual_texture_cache->dump_profile_if_enabled();

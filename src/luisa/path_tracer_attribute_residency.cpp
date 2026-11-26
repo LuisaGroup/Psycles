@@ -22,6 +22,20 @@ namespace {
                : static_cast<std::uint64_t>(count) * 8u;
 }
 
+[[nodiscard]] std::uint64_t float3_bytes(std::size_t count) noexcept {
+    const auto maximum = std::numeric_limits<std::uint64_t>::max();
+    return count > maximum / 12u
+               ? maximum
+               : static_cast<std::uint64_t>(count) * 12u;
+}
+
+[[nodiscard]] std::uint64_t float_bytes(std::size_t count) noexcept {
+    const auto maximum = std::numeric_limits<std::uint64_t>::max();
+    return count > maximum / 4u
+               ? maximum
+               : static_cast<std::uint64_t>(count) * 4u;
+}
+
 void add_bytes(std::uint64_t &total, std::uint64_t bytes) noexcept {
     const auto maximum = std::numeric_limits<std::uint64_t>::max();
     total = bytes > maximum - total ? maximum : total + bytes;
@@ -61,6 +75,21 @@ void measure_geometry(
     for (const auto &[name, attribute] : geometry.color_attributes) {
         measure(contract::attribute_id(name), attribute.values.size());
     }
+    const auto measure_typed = [&](const auto &attributes, auto bytes_fn) {
+        for (const auto &[name, attribute] : attributes) {
+            const auto id = contract::attribute_id(name);
+            const auto bytes = bytes_fn(attribute.values.size());
+            ++plan.source_binding_count;
+            add_bytes(plan.source_device_bytes, bytes);
+            if (residency.contains(id)) {
+                ++plan.resident_binding_count;
+                add_bytes(plan.resident_device_bytes, bytes);
+            }
+        }
+    };
+    measure_typed(geometry.float_attributes, float_bytes);
+    measure_typed(geometry.float2_attributes, float2_bytes);
+    measure_typed(geometry.float3_attributes, float3_bytes);
     for (const auto &[name, attribute] : geometry.uv_layers) {
         measure(contract::uv_attribute_id(name), attribute.values.size());
     }
@@ -153,20 +182,26 @@ SceneAttributeResidencyPlan build_scene_attribute_residency_plan(
             }
             if (geometry.color_attributes.contains(name)) {
                 demand.ids.emplace(contract::attribute_id(name));
-            } else if constexpr (requires { geometry.uv_tangent_layers; }) {
-                constexpr std::array<std::pair<std::string_view, bool>, 4u> suffixes{{
-                    {".undisplaced_tangent_sign", true}, {".undisplaced_tangent", true},
-                    {".tangent_sign", false}, {".tangent", false}}};
-                for (const auto &[suffix, undisplaced] : suffixes) {
-                    if (!name.ends_with(suffix)) { continue; }
-                    const auto base = name.substr(0u, name.size() - suffix.size());
-                    if (geometry.uv_layers.contains(base)) {
-                        demand.ids.emplace(undisplaced
-                            ? contract::uv_undisplaced_tangent_attribute_id(base)
-                            : contract::uv_tangent_attribute_id(base));
-                        demand.ids.emplace(contract::uv_attribute_id(base));
+            } else if constexpr (requires { geometry.float_attributes; }) {
+                if (geometry.float_attributes.contains(name) ||
+                    geometry.float2_attributes.contains(name) ||
+                    geometry.float3_attributes.contains(name)) {
+                    demand.ids.emplace(contract::attribute_id(name));
+                } else {
+                    constexpr std::array<std::pair<std::string_view, bool>, 4u> suffixes{{
+                        {".undisplaced_tangent_sign", true}, {".undisplaced_tangent", true},
+                        {".tangent_sign", false}, {".tangent", false}}};
+                    for (const auto &[suffix, undisplaced] : suffixes) {
+                        if (!name.ends_with(suffix)) { continue; }
+                        const auto base = name.substr(0u, name.size() - suffix.size());
+                        if (geometry.uv_layers.contains(base)) {
+                            demand.ids.emplace(undisplaced
+                                ? contract::uv_undisplaced_tangent_attribute_id(base)
+                                : contract::uv_tangent_attribute_id(base));
+                            demand.ids.emplace(contract::uv_attribute_id(base));
+                        }
+                        break;
                     }
-                    break;
                 }
             }
         }

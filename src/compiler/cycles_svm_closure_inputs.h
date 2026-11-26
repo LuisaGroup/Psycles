@@ -29,6 +29,11 @@ inline std::span<const std::string_view> closure_input_order(std::string_view ty
   static constexpr std::string_view subsurface[]{"Color", "Normal", "SurfaceMixWeight", "Scale",
                                                "Radius", "IOR", "Roughness", "Anisotropy"};
   static constexpr std::string_view hair[]{"Color", "SurfaceMixWeight", "Offset", "RoughnessU", "RoughnessV", "Tangent"};
+  static constexpr std::string_view principled_hair[]{
+      "Color", "Melanin", "MelaninRedness", "Tint", "AbsorptionCoefficient",
+      "AspectRatio", "Roughness", "RadialRoughness", "Coat", "IOR", "Offset",
+      "RandomColor", "RandomRoughness", "Random", "R", "TT", "TRT",
+      "SurfaceMixWeight"};
   static constexpr std::string_view portal[]{"Color", "SurfaceMixWeight", "Position", "Direction"};
   static constexpr std::string_view principled[]{"BaseColor", "Metallic", "Roughness", "IOR", "Alpha",
       "ThinWall", "Normal", "DiffuseRoughness", "SubsurfaceWeight", "SubsurfaceScale",
@@ -50,6 +55,7 @@ inline std::span<const std::string_view> closure_input_order(std::string_view ty
   if (type == node_type::toon_bsdf) { return toon; }
   if (type == node_type::subsurface_scattering) { return subsurface; }
   if (type == node_type::hair_bsdf) { return hair; }
+  if (type == node_type::principled_hair_bsdf) { return principled_hair; }
   if (type == node_type::ray_portal_bsdf) { return portal; }
   if (type == node_type::principled_bsdf) { return principled; }
   if (type == node_type::emission) { return emission; }

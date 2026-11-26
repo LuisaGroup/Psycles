@@ -1888,12 +1888,111 @@ void test_cycles_default_microfacet_tangent_import() {
   }
 }
 
+void test_cycles_boolean_and_closure_conversions() {
+  TemporaryDirectory temporary;
+  {
+    std::ofstream geometry{temporary.path() / "geometry.bin",
+                           std::ios::binary};
+    geometry.write("PSYGEO1\0", 8);
+  }
+  {
+    std::ofstream scene{temporary.path() / "scene.json"};
+    scene << R"JSON({
+  "schema":"psycles.blender-scene.v1",
+  "images":[],
+  "node_groups":[],
+  "materials":[
+    {
+      "name":"Boolean And Color To Surface",
+      "cycles_sync":{"shader_index":9},
+      "node_tree":{
+        "name":"Boolean And Color To Surface",
+        "surface_root":{"node":"Math","socket":"Value"},
+        "volume_root":null,
+        "displacement_root":null,
+        "links":[],
+        "nodes":[{
+          "name":"Math","type":"MATH","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Value","name":"Value","type":"NodeSocketFloat","linked":false,"default":true},
+            {"identifier":"Value_001","name":"Value","type":"NodeSocketFloat","linked":false,"default":1.0}
+          ],
+          "outputs":[{"identifier":"Value","name":"Value","type":"NodeSocketFloat","linked":true}],
+          "properties":{"operation":"ADD","use_clamp":false},
+          "special":{}
+        }]
+      }
+    }
+  ],
+  "render":{"width":16,"height":16,"percentage":100,"cycles":{}},
+  "camera":{"name":"Camera","type":"PERSP",
+    "transform":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+    "clip_start":0.01,"clip_end":100.0},
+  "geometries":[],"curve_geometries":[],"instances":[],"lights":[],
+  "world":null,"world_environment":null
+})JSON";
+  }
+
+  const auto imported = load_blender_scene_bundle(temporary.path());
+  expect(imported.ok(), "boolean/color conversion scene did not import");
+  const psycles::contract::MaterialDesc *material = nullptr;
+  for (const auto &[id, candidate] : imported.scene->materials) {
+    static_cast<void>(id);
+    if (candidate.name == "Boolean And Color To Surface") {
+      material = &candidate;
+      break;
+    }
+  }
+  expect(material != nullptr, "Boolean And Color To Surface material missing");
+  bool has_one_input = false;
+  bool has_emission = false;
+  for (const auto &node : material->shader.nodes()) {
+    if (node.type == psycles::compiler::node_type::math) {
+      const auto it = node.inputs.find("A");
+      if (it != node.inputs.end() && !it->second.source &&
+          it->second.value &&
+          it->second.value->type ==
+              psycles::contract::SocketType::floating &&
+          std::get<float>(it->second.value->value) == 1.0f) {
+        has_one_input = true;
+      }
+    }
+    has_emission |=
+        node.type == psycles::compiler::node_type::emission;
+  }
+  expect(has_one_input, "JSON boolean true did not coerce to 1.0f");
+  expect(has_emission, "implicit Emission wrap for non-closure Surface was not materialized");
+  for (const auto &diagnostic : imported.diagnostics) {
+    expect(diagnostic.message.find("unsupported implicit socket conversion") ==
+               std::string::npos,
+           "supported boolean/closure conversion emitted a warning: " +
+               diagnostic.message);
+  }
+  const auto surface_root =
+      material->shader.root(psycles::contract::ShaderDomain::surface);
+  expect(surface_root.has_value(), "surface root missing");
+  const auto *emission_node = material->shader.find(surface_root->node);
+  expect(emission_node != nullptr &&
+             emission_node->type == psycles::compiler::node_type::emission,
+         "surface root is not wrapped in Emission");
+  const auto color_input = emission_node->inputs.find("Color");
+  expect(color_input != emission_node->inputs.end() &&
+             color_input->second.source.has_value(),
+         "Emission Color input is not linked");
+  psycles::compiler::ShaderCompiler compiler{
+      psycles::compiler::make_core_node_registry()};
+  const auto shader = compiler.compile(material->shader);
+  expect(shader.ok(), "boolean/closure converted graph did not validate");
+}
+
 } // namespace
 int main() {
   try {
     test_integrator_settings_round_trip();
     test_cycles_float_to_boolean_conversion();
     test_cycles_default_microfacet_tangent_import();
+    test_cycles_boolean_and_closure_conversions();
     test_blender_light_path_portal_depth_import();
     test_blender_legacy_mix_import();
     test_blender_vector_import();

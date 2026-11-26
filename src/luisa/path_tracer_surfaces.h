@@ -1,11 +1,15 @@
 #pragma once
 
 #include "path_tracer_internal.h"
+#include "path_kernel_scene_traversal.h"
 #include "cycles_svm_bsdf.h"
 
 namespace psycles::luisa_backend::detail {
 
-struct PathSurfaceAmbientOcclusionContext;
+struct PathSurfaceAmbientOcclusionContext {
+    std::shared_ptr<const SceneTraversalComponent> traversal;
+    ScenePrimitiveIdentity source;
+};
 
 struct SurfacePopulationContext {
     Expr<std::uint32_t> surface_tag;

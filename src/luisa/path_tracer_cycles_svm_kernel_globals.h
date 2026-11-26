@@ -42,7 +42,8 @@ cycles_svm_domain_shader_mask(const LuisaSceneData &scene,
 // object enters device memory.
 class PathCyclesSvmKernelGlobals final
     : public cycles_svm::KernelGlobals,
-      public cycles_svm::InfoServices {
+      public cycles_svm::InfoServices,
+      public cycles_svm::AmbientOcclusionServices {
 
   private:
     std::shared_ptr<LuisaSceneData> _scene;
@@ -77,6 +78,7 @@ class PathCyclesSvmKernelGlobals final
     bool _force_direct_textures{false};
     UInt *_vt_miss_page{nullptr};
     const UInt *_vt_preflight_weight{nullptr};
+    const PathSurfaceAmbientOcclusionContext *_ambient_occlusion{nullptr};
     Bool _caustics_reflective;
     Bool _caustics_refractive;
     luisa::compute::Float4x4 _camera_to_world;
@@ -132,6 +134,8 @@ class PathCyclesSvmKernelGlobals final
         Expr<std::uint32_t> offset) const noexcept override;
     [[nodiscard]] const cycles_svm::InfoServices *
     info_services() const noexcept override;
+    [[nodiscard]] const cycles_svm::AmbientOcclusionServices *
+    ambient_occlusion_services() const noexcept override;
 
     [[nodiscard]] Float cycles_bsdf_data(
         Expr<std::uint32_t> index) const noexcept override;
@@ -258,6 +262,12 @@ class PathCyclesSvmKernelGlobals final
         const cycles_svm::ShaderData &shader_data) const noexcept override;
     [[nodiscard]] Float point_radius(
         const cycles_svm::ShaderData &shader_data) const noexcept override;
+    [[nodiscard]] Float global_ao_distance(
+        const cycles_svm::ShaderData &shader_data) const noexcept override;
+    [[nodiscard]] Bool ambient_occluded(
+        const cycles_svm::ShaderData &shader_data,
+        const Var<luisa::compute::Ray> &ray,
+        Expr<bool> only_local) const noexcept override;
 };
 
 } // namespace psycles::luisa_backend::detail

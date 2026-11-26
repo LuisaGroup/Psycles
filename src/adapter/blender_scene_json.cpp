@@ -36,9 +36,16 @@ void DocumentDeleter::operator()(
 [[nodiscard]] std::uint64_t unsigned_number(
     yyjson_val *value,
     std::uint64_t fallback) noexcept {
-    return value != nullptr && yyjson_is_uint(value)
-               ? yyjson_get_uint(value)
-               : fallback;
+    if (value == nullptr) {
+        return fallback;
+    }
+    if (yyjson_is_uint(value)) {
+        return yyjson_get_uint(value);
+    }
+    if (yyjson_is_bool(value)) {
+        return yyjson_get_bool(value) ? 1u : 0u;
+    }
+    return fallback;
 }
 
 [[nodiscard]] std::optional<std::uint32_t>
@@ -69,15 +76,25 @@ optional_unsigned_number(yyjson_val *value) noexcept {
         return static_cast<std::int64_t>(
             yyjson_get_uint(value));
     }
+    if (yyjson_is_bool(value)) {
+        return yyjson_get_bool(value) ? 1 : 0;
+    }
     return fallback;
 }
 
 [[nodiscard]] float number(
     yyjson_val *value,
     float fallback) noexcept {
-    return value != nullptr && yyjson_is_num(value)
-               ? static_cast<float>(yyjson_get_num(value))
-               : fallback;
+    if (value == nullptr) {
+        return fallback;
+    }
+    if (yyjson_is_num(value)) {
+        return static_cast<float>(yyjson_get_num(value));
+    }
+    if (yyjson_is_bool(value)) {
+        return yyjson_get_bool(value) ? 1.0f : 0.0f;
+    }
+    return fallback;
 }
 
 [[nodiscard]] bool boolean(

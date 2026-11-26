@@ -322,6 +322,9 @@ void node_hair_info(Cursor &cursor, Stack &stack, const InfoServices *services,
                     const EvaluationTransition &transition) noexcept;
 void node_point_info(Cursor &cursor, Stack &stack, const InfoServices &services,
                      const ShaderData &shader_data) noexcept;
+void node_ambient_occlusion(Cursor &cursor, Stack &stack,
+                            const AmbientOcclusionServices &services,
+                            ShaderData &shader_data) noexcept;
 void node_normal(Cursor &cursor, Stack &stack) noexcept;
 void node_normal_map(Cursor &cursor, Stack &stack,
                      const KernelGlobals &kernel_globals,
@@ -349,11 +352,13 @@ void node_tex_coord(Cursor &cursor, Stack &stack,
                     std::uint32_t tex_coord_mask = ~0u) noexcept;
 void node_tex_image(Cursor &cursor, Stack &stack,
                     const KernelGlobals &kernel_globals,
-                    ShaderData &shader_data, bool use_derivatives) noexcept;
+                    ShaderData &shader_data, const PathState &path_state,
+                    bool use_derivatives) noexcept;
 void node_tex_image_box(Cursor &cursor, Stack &stack,
                         const KernelGlobals &kernel_globals,
                         const TransformState &transform_state,
-                        ShaderData &shader_data, bool use_derivatives,
+                        ShaderData &shader_data, const PathState &path_state,
+                        bool use_derivatives,
                         bool object_motion_enabled) noexcept;
 void node_tex_environment(Cursor &cursor, Stack &stack,
                           const KernelGlobals &kernel_globals,
@@ -621,6 +626,10 @@ public:
   }
   [[nodiscard]] const InfoServices *info_services() const noexcept override {
     return _inner.info_services();
+  }
+  [[nodiscard]] const AmbientOcclusionServices *
+  ambient_occlusion_services() const noexcept override {
+    return _inner.ambient_occlusion_services();
   }
   [[nodiscard]] TriangleVertices triangle_vertices(
       luisa::compute::Expr<std::uint32_t> object,

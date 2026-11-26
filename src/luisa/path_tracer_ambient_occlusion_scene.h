@@ -23,7 +23,8 @@ private:
 
 public:
     explicit AmbientOcclusionSceneComponent(
-        const compiler::cycles_svm::CompiledShaderTable &compilation) noexcept;
+        const compiler::cycles_svm::CompiledShaderTable &compilation,
+        std::uint32_t triangle_instance_count) noexcept;
 
     void initialize(
         const std::shared_ptr<LuisaSceneData> &scene) const;

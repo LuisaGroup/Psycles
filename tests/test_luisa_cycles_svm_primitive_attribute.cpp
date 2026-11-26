@@ -264,7 +264,7 @@ public:
   }
 };
 
-class TrackingBufferKernelGlobals final : public BufferKernelGlobals {
+class TrackingBufferKernelGlobals : public BufferKernelGlobals {
 private:
   Expr<Buffer<std::uint32_t>> _attribute_float4_reads;
 
@@ -965,6 +965,188 @@ int main(int argc, char **argv) {
               << vertex_color_stream_state.y << ", "
               << vertex_color_stream_state.z << ")\n";
     return EXIT_FAILURE;
+  }
+
+  // Verify mixed NODE_ATTR_RGBA FLOAT_COLOR (ATTR_ELEMENT_CORNER) and
+  // BYTE_COLOR (ATTR_ELEMENT_CORNER_BYTE) evaluation when NODE_ATTR_FLOAT4
+  // is absent from SurfaceAttributeSummary::type_mask.
+  {
+    class SummaryOverrideKernelGlobals final : public TrackingBufferKernelGlobals {
+    private:
+      bool _has_float4_data;
+
+    public:
+      SummaryOverrideKernelGlobals(
+          Expr<Buffer<AttributeMap>> attribute_map,
+          Expr<Buffer<float>> attribute_float,
+          Expr<Buffer<luisa::float2>> attribute_float2,
+          Expr<Buffer<packed_float3>> attribute_float3,
+          Expr<Buffer<luisa::float4>> attribute_float4,
+          Expr<Buffer<uchar4>> attribute_uchar4,
+          Expr<Buffer<packed_normal>> attribute_normal,
+          Expr<Buffer<luisa::uint3>> triangle_indices,
+          Expr<Buffer<KernelCurve>> curves,
+          Expr<Buffer<std::uint32_t>> object_map_offsets,
+          Expr<bool> film_is_rec709,
+          Expr<Buffer<std::uint32_t>> attribute_float4_reads,
+          bool has_float4_data) noexcept
+          : TrackingBufferKernelGlobals{attribute_map, attribute_float,
+                                        attribute_float2, attribute_float3,
+                                        attribute_float4, attribute_uchar4,
+                                        attribute_normal, triangle_indices,
+                                        curves, object_map_offsets,
+                                        film_is_rec709,
+                                        attribute_float4_reads},
+            _has_float4_data{has_float4_data} {}
+
+      [[nodiscard]] device_svm::SurfaceAttributeSummary
+      surface_attribute_summary() const noexcept override {
+        device_svm::SurfaceAttributeSummary summary{};
+        summary.element_mask =
+            ATTR_ELEMENT_CORNER | ATTR_ELEMENT_CORNER_BYTE;
+        summary.type_mask = 1u << NODE_ATTR_RGBA;
+        summary.has_float4 = _has_float4_data;
+        summary.has_curves = false;
+        summary.has_points = false;
+        return summary;
+      }
+    };
+
+    static constexpr auto rgba_f4_id = static_cast<std::uint64_t>(ATTR_STD_NUM) + 20u;
+    static constexpr auto rgba_u8_id = static_cast<std::uint64_t>(ATTR_STD_NUM) + 21u;
+    static const std::array<AttributeMap, 8u> mixed_maps{
+        terminator(true, 2),
+        terminator(true, 2),
+        map_entry(rgba_f4_id, 0, ATTR_ELEMENT_CORNER, NODE_ATTR_RGBA),
+        terminator(false, 0),
+        map_entry(rgba_u8_id, 0, ATTR_ELEMENT_CORNER_BYTE, NODE_ATTR_RGBA),
+        terminator(false, 0),
+        terminator(false, 0),
+        terminator(false, 0),
+    };
+    static constexpr std::array<luisa::float4, 3u> mixed_float4_values{
+        luisa::float4{0.10f, 0.20f, 0.30f, 0.40f},
+        luisa::float4{0.50f, 0.60f, 0.70f, 0.80f},
+        luisa::float4{0.90f, 0.10f, 0.20f, 1.00f},
+    };
+    static constexpr std::uint32_t mixed_case_count = 4u;
+    static constexpr auto out_color_offset = std::uint8_t{4u};
+    static constexpr auto out_alpha_offset = std::uint8_t{7u};
+    auto pack_attr_node = [](std::uint8_t out_off,
+                             NodeAttributeOutputType out_ty) noexcept {
+      return static_cast<std::uint32_t>(out_off) |
+             (static_cast<std::uint32_t>(out_ty) << 8u) |
+             (static_cast<std::uint32_t>(NODE_BUMP_OFFSET_CENTER) << 16u);
+    };
+    static const std::array<std::uint32_t, mixed_case_count * 3u> mixed_words{
+        static_cast<std::uint32_t>(rgba_f4_id),
+        pack_attr_node(out_color_offset, NODE_ATTR_OUTPUT_FLOAT3),
+        0u,
+        static_cast<std::uint32_t>(rgba_f4_id),
+        pack_attr_node(out_alpha_offset, NODE_ATTR_OUTPUT_FLOAT_ALPHA),
+        0u,
+        static_cast<std::uint32_t>(rgba_u8_id),
+        pack_attr_node(out_color_offset, NODE_ATTR_OUTPUT_FLOAT3),
+        0u,
+        static_cast<std::uint32_t>(rgba_u8_id),
+        pack_attr_node(out_color_offset, NODE_ATTR_OUTPUT_FLOAT3),
+        0u,
+    };
+    auto mixed_map_buf = device.create_buffer<AttributeMap>(mixed_maps.size());
+    auto mixed_f4_buf =
+        device.create_buffer<luisa::float4>(mixed_float4_values.size());
+    auto mixed_word_buf =
+        device.create_buffer<std::uint32_t>(mixed_words.size());
+    auto mixed_out_buf = device.create_buffer<luisa::float4>(mixed_case_count);
+    auto mixed_reads_buf = device.create_buffer<std::uint32_t>(mixed_case_count);
+
+    const auto mixed_kernel = Kernel1D<
+        Buffer<AttributeMap>, Buffer<float>, Buffer<luisa::float2>,
+        Buffer<packed_float3>, Buffer<luisa::float4>, Buffer<uchar4>,
+        Buffer<packed_normal>, Buffer<luisa::uint3>, Buffer<KernelCurve>,
+        Buffer<std::uint32_t>, Buffer<std::uint32_t>, Buffer<luisa::float4>,
+        Buffer<std::uint32_t>>{
+        [](BufferVar<AttributeMap> attribute_map, BufferFloat attribute_float,
+           BufferVar<luisa::float2> attribute_float2,
+           BufferVar<packed_float3> attribute_float3,
+           BufferFloat4 attribute_float4, BufferVar<uchar4> attribute_uchar4,
+           BufferVar<packed_normal> attribute_normal,
+           BufferVar<luisa::uint3> triangle_indices,
+           BufferVar<KernelCurve> curves, BufferUInt object_map_offsets,
+           BufferUInt words, BufferFloat4 output,
+           BufferUInt attribute_float4_reads) noexcept {
+          const UInt index = dispatch_x();
+          auto shader_data =
+              make_shader_data(0u, 0u, device_svm::primitive_triangle);
+          device_svm::detail::Stack stack{SVM_STACK_SIZE};
+          UInt offset = index * 3u;
+          device_svm::detail::Cursor cursor{words, offset};
+          $if(index < 3u) {
+            SummaryOverrideKernelGlobals kg{
+                attribute_map, attribute_float, attribute_float2,
+                attribute_float3, attribute_float4, attribute_uchar4,
+                attribute_normal, triangle_indices, curves,
+                object_map_offsets, true, attribute_float4_reads, true};
+            device_svm::detail::node_attr_surface(cursor, stack, kg, shader_data);
+          }
+          $else {
+            SummaryOverrideKernelGlobals kg{
+                attribute_map, attribute_float, attribute_float2,
+                attribute_float3, attribute_float4, attribute_uchar4,
+                attribute_normal, triangle_indices, curves,
+                object_map_offsets, true, attribute_float4_reads, false};
+            device_svm::detail::node_attr_surface(cursor, stack, kg, shader_data);
+          };
+          output.write(
+              index,
+              make_float4(
+                  device_svm::detail::stack_load_float3(
+                      stack, static_cast<std::uint32_t>(out_color_offset)),
+                  device_svm::detail::stack_load_float(
+                      stack, static_cast<std::uint32_t>(out_alpha_offset))));
+        }};
+    auto mixed_shader =
+        device.compile(mixed_kernel, ShaderOption{.enable_cache = false});
+    std::array<luisa::float4, mixed_case_count> mixed_actual{};
+    std::array<std::uint32_t, mixed_case_count> mixed_reads{};
+    static constexpr std::array<std::uint32_t, mixed_case_count> zero_reads{};
+    stream << mixed_map_buf.copy_from(luisa::span{mixed_maps})
+           << mixed_f4_buf.copy_from(luisa::span{mixed_float4_values})
+           << mixed_word_buf.copy_from(luisa::span{mixed_words})
+           << mixed_reads_buf.copy_from(luisa::span{zero_reads})
+           << mixed_shader(mixed_map_buf, float_buffer, float2_buffer,
+                           float3_buffer, mixed_f4_buf, byte_buffer,
+                           normal_buffer, triangle_buffer, curve_buffer,
+                           object_offset_buffer, mixed_word_buf, mixed_out_buf,
+                           mixed_reads_buf)
+                  .dispatch(mixed_case_count)
+           << mixed_out_buf.copy_to(luisa::span{mixed_actual})
+           << mixed_reads_buf.copy_to(luisa::span{mixed_reads})
+           << synchronize();
+
+    if (!is_near(mixed_actual[0].x, 0.42f) ||
+        !is_near(mixed_actual[0].y, 0.25f) ||
+        !is_near(mixed_actual[0].z, 0.35f) ||
+        !is_near(mixed_actual[1].w, 0.66f) ||
+        !is_near(mixed_actual[2].x, 0.204333156f) ||
+        !is_near(mixed_actual[2].y, 0.242081016f) ||
+        !is_near(mixed_actual[2].z, 0.119094752f) ||
+        !is_near(mixed_actual[3].x, 0.204333156f) ||
+        !is_near(mixed_actual[3].y, 0.242081016f) ||
+        !is_near(mixed_actual[3].z, 0.119094752f) ||
+        mixed_reads[0] != 1u || mixed_reads[1] != 1u ||
+        mixed_reads[3] != 0u) {
+      std::cerr << "Cycles mixed NODE_ATTR_RGBA float/byte test failed on "
+                << backend << ": c0=(" << mixed_actual[0].x << ","
+                << mixed_actual[0].y << "," << mixed_actual[0].z
+                << ") c1.a=" << mixed_actual[1].w << " c2=("
+                << mixed_actual[2].x << "," << mixed_actual[2].y << ","
+                << mixed_actual[2].z << ") c3=(" << mixed_actual[3].x << ","
+                << mixed_actual[3].y << "," << mixed_actual[3].z
+                << ") reads=(" << mixed_reads[0] << "," << mixed_reads[1]
+                << "," << mixed_reads[3] << ")\n";
+      return EXIT_FAILURE;
+    }
   }
   return EXIT_SUCCESS;
 }

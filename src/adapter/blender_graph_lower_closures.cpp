@@ -499,6 +499,65 @@ public:
                 .ref = {.node = id, .socket = "Closure"},
                 .type = SocketType::closure});
         }
+        if (type == "BSDF_HAIR_PRINCIPLED") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::principled_hair_bsdf,
+                node_name);
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Model",
+                SocketValue::string(context.node_property_text(
+                    node, "model", "CHIANG"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Parametrization",
+                SocketValue::string(context.node_property_text(
+                    node, "parametrization", "COLOR"))));
+            for (const auto &[target, source, socket_type] : {
+                     std::tuple{"Color", "Color", SocketType::color},
+                     std::tuple{"Melanin", "Melanin", SocketType::floating},
+                     std::tuple{
+                         "MelaninRedness",
+                         "Melanin Redness",
+                         SocketType::floating},
+                     std::tuple{"Tint", "Tint", SocketType::color},
+                     std::tuple{
+                         "AbsorptionCoefficient",
+                         "Absorption Coefficient",
+                         SocketType::vector},
+                     std::tuple{
+                         "AspectRatio",
+                         "Aspect Ratio",
+                         SocketType::floating},
+                     std::tuple{"Roughness", "Roughness", SocketType::floating},
+                     std::tuple{
+                         "RadialRoughness",
+                         "Radial Roughness",
+                         SocketType::floating},
+                     std::tuple{"Coat", "Coat", SocketType::floating},
+                     std::tuple{"IOR", "IOR", SocketType::floating},
+                     std::tuple{"Offset", "Offset", SocketType::floating},
+                     std::tuple{
+                         "RandomColor",
+                         "Random Color",
+                         SocketType::floating},
+                     std::tuple{
+                         "RandomRoughness",
+                         "Random Roughness",
+                         SocketType::floating},
+                     std::tuple{"Random", "Random", SocketType::floating},
+                     std::tuple{"R", "R lobe", SocketType::floating},
+                     std::tuple{"TT", "TT lobe", SocketType::floating},
+                     std::tuple{"TRT", "TRT lobe", SocketType::floating}}) {
+                if (context.raw_input(node, source) != nullptr) {
+                    static_cast<void>(context.bind(
+                        id, target, node, source, socket_type));
+                }
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
         if (type == "BSDF_GLASS" || type == "BSDF_REFRACTION") {
             const auto id = context.graph().add_node(
                 type == "BSDF_GLASS"

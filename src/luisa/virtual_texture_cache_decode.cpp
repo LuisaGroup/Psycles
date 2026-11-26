@@ -285,6 +285,12 @@ void VirtualTextureCache::decode_source_on_demand(
 
 void VirtualTextureCache::trim_host_decoded_cache(
     std::uint32_t protect_source_index) noexcept {
+  const std::array<std::uint32_t, 1u> single{protect_source_index};
+  trim_host_decoded_cache(std::span<const std::uint32_t>{single});
+}
+
+void VirtualTextureCache::trim_host_decoded_cache(
+    std::span<const std::uint32_t> protected_sources) noexcept {
   const auto budget = _options.host_decoded_cache_budget_bytes;
   if (budget == 0ull || _host_decoded_bytes <= budget) {
     return;
@@ -293,7 +299,8 @@ void VirtualTextureCache::trim_host_decoded_cache(
     std::uint32_t victim = std::numeric_limits<std::uint32_t>::max();
     std::uint64_t best_seq = std::numeric_limits<std::uint64_t>::max();
     for (std::uint32_t i = 0u; i < _sources.size(); ++i) {
-      if (i == protect_source_index) {
+      if (std::find(protected_sources.begin(), protected_sources.end(), i) !=
+          protected_sources.end()) {
         continue;
       }
       const auto &s = _sources[i];

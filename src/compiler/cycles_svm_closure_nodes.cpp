@@ -507,6 +507,146 @@ public:
   }
 };
 
+[[nodiscard]] std::optional<ClosureType>
+principled_hair_model(const GraphNode *node) noexcept {
+  const auto model = string_property(node, "Model");
+  if (!model || enum_token_is(*model, "CHIANG")) {
+    return CLOSURE_BSDF_HAIR_CHIANG_ID;
+  }
+  if (enum_token_is(*model, "HUANG")) {
+    return CLOSURE_BSDF_HAIR_HUANG_ID;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<NodePrincipledHairParametrization>
+principled_hair_parametrization(const GraphNode *node) noexcept {
+  const auto param = string_property(node, "Parametrization");
+  if (!param || enum_token_is(*param, "COLOR") ||
+      enum_token_is(*param, "REFLECTANCE")) {
+    return NODE_PRINCIPLED_HAIR_REFLECTANCE;
+  }
+  if (enum_token_is(*param, "MELANIN") ||
+      enum_token_is(*param, "PIGMENT_CONCENTRATION")) {
+    return NODE_PRINCIPLED_HAIR_PIGMENT_CONCENTRATION;
+  }
+  if (enum_token_is(*param, "ABSORPTION") ||
+      enum_token_is(*param, "DIRECT_ABSORPTION")) {
+    return NODE_PRINCIPLED_HAIR_DIRECT_ABSORPTION;
+  }
+  return std::nullopt;
+}
+
+class PrincipledHairBsdfNode final : public GraphNode {
+public:
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return principled_hair_model(this).value_or(CLOSURE_NONE_ID);
+  }
+
+  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
+    return GraphNode::get_feature() | kernel_feature_node_bsdf |
+           kernel_feature_node_principled_hair;
+  }
+
+  [[nodiscard]] bool equals(const GraphNode &) const noexcept override {
+    return false;
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] bool has_spatial_varying() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] bool has_attribute_dependency() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_CLOSURE_BSDF;
+  }
+
+  [[nodiscard]] ClosureUsage
+  get_surface_closure_usage() const noexcept override {
+    const auto model = principled_hair_model(this);
+    if (!model) {
+      return ClosureUsage{};
+    }
+    auto usage = ClosureUsage::none();
+    usage.svm_bsdf_node_mask = ClosureUsage::bit(*model);
+    usage.surface_closure_mask = ClosureUsage::bit(*model);
+    if (*model == CLOSURE_BSDF_HAIR_HUANG_ID) {
+      usage.surface_closure_mask |=
+          ClosureUsage::bit(CLOSURE_BSDF_TRANSPARENT_ID);
+    }
+    return usage;
+  }
+
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    const auto *random = input("Random");
+    if (context.has_surface_link() && random != nullptr &&
+        random->link == nullptr) {
+      requests.add(ATTR_STD_CURVE_RANDOM);
+    }
+    if (context.has_surface_link() &&
+        principled_hair_model(this) == CLOSURE_BSDF_HAIR_HUANG_ID) {
+      requests.add(ATTR_STD_VERTEX_NORMAL);
+    }
+    GraphNode::attributes(context, requests);
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto model = principled_hair_model(this);
+    const auto parametrization = principled_hair_parametrization(this);
+    if (!model || !parametrization) {
+      compiler.fail(
+          "Cycles Principled Hair BSDF property is not migrated exactly");
+      return;
+    }
+    compiler.add_node(this, NODE_CLOSURE_SET_WEIGHT,
+                      SVMNodeClosureSetWeight{.rgb = {1.0f, 1.0f, 1.0f}});
+    const auto *random = input("Random");
+    const auto attr_random =
+        (random != nullptr && random->link == nullptr)
+            ? static_cast<int>(compiler.attribute(ATTR_STD_CURVE_RANDOM))
+            : static_cast<int>(ATTR_STD_NONE);
+    const auto attr_normal =
+        (*model == CLOSURE_BSDF_HAIR_HUANG_ID)
+            ? static_cast<int>(compiler.attribute(ATTR_STD_VERTEX_NORMAL))
+            : static_cast<int>(ATTR_STD_NONE);
+    compiler.add_bsdf_node(
+        SVMNodeClosureBsdf{
+            .closure_type = *model,
+            .mix_weight_offset = compiler.closure_mix_weight_offset(),
+            ._pad = {0u, 0u, 0u}},
+        SVMNodePrincipledHairBsdfData{
+            .parametrization = *parametrization,
+            .color = compiler.input_float3("Color"),
+            .tint = compiler.input_float3("Tint"),
+            .absorption_coefficient =
+                compiler.input_float3("AbsorptionCoefficient"),
+            .roughness = compiler.input_float("Roughness"),
+            .random_roughness = compiler.input_float("RandomRoughness"),
+            .offset = compiler.input_float("Offset"),
+            .ior = compiler.input_float("IOR"),
+            .random = compiler.input_float("Random"),
+            .melanin = compiler.input_float("Melanin"),
+            .melanin_redness = compiler.input_float("MelaninRedness"),
+            .coat = compiler.input_float("Coat"),
+            .aspect_ratio = compiler.input_float("AspectRatio"),
+            .radial_roughness = compiler.input_float("RadialRoughness"),
+            .random_color = compiler.input_float("RandomColor"),
+            .R = compiler.input_float("R"),
+            .TT = compiler.input_float("TT"),
+            .TRT = compiler.input_float("TRT"),
+            .attr_random = attr_random,
+            .attr_normal = attr_normal});
+  }
+};
+
 class GlassBsdfNode final : public BsdfNode {
 public:
   GlassBsdfNode() noexcept
@@ -1512,6 +1652,9 @@ make_closure_graph_node(std::string_view type) {
   }
   if (type == node_type::hair_bsdf) {
     return std::make_unique<HairBsdfNode>();
+  }
+  if (type == node_type::principled_hair_bsdf) {
+    return std::make_unique<PrincipledHairBsdfNode>();
   }
   if (type == node_type::emission) {
     return std::make_unique<EmissionNode>();

@@ -242,6 +242,7 @@ std::unique_ptr<GraphNode> make_convert_graph_node(std::string_view type) {
       type == node_type::normal_to_vector ||
       type == node_type::scalar_to_color ||
       type == node_type::scalar_to_boolean ||
+      type == node_type::boolean_to_scalar ||
       type == node_type::color_to_scalar ||
       type == node_type::vector_to_scalar) {
     return std::make_unique<ConvertNode>();

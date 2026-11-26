@@ -523,25 +523,46 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
     }
     group_cuts = {0u, cut, groups.size()};
   } else {
+    std::size_t total_ir_weight = 0u;
+    for (const auto &g : groups) {
+      total_ir_weight += std::max<std::size_t>(g.ir_ops, 1u);
+    }
     group_cuts.push_back(0u);
     std::size_t start = 0u;
+    std::size_t remaining_weight = total_ir_weight;
     std::size_t remaining_shaders = total_active_nonempty;
     for (std::size_t b = 0u; b + 1u < bucket_count; ++b) {
       const std::size_t buckets_left = bucket_count - b;
-      const std::size_t target =
-          (remaining_shaders + buckets_left - 1u) / buckets_left;
-      std::size_t acc = 0u;
+      const std::size_t target_weight =
+          (remaining_weight + buckets_left - 1u) / buckets_left;
+      const std::size_t min_slice_shaders =
+          remaining_shaders > (buckets_left - 1u) * jit_safe_cap
+              ? remaining_shaders - (buckets_left - 1u) * jit_safe_cap
+              : 0u;
+      std::size_t acc_weight = 0u;
+      std::size_t acc_shaders = 0u;
       std::size_t end = start + 1u;
       const std::size_t max_end = groups.size() - (buckets_left - 1u);
-      while (end < max_end && acc + groups[end - 1u].shader_ids.size() < target) {
-        acc += groups[end - 1u].shader_ids.size();
+      auto group_w = [&](std::size_t idx) noexcept -> std::size_t {
+        return std::max<std::size_t>(groups[idx].ir_ops, 1u);
+      };
+      acc_weight = group_w(start);
+      acc_shaders = groups[start].shader_ids.size();
+      while (end < max_end) {
+        const std::size_t next_s = groups[end].shader_ids.size();
+        const std::size_t next_w = group_w(end);
+        const bool need_min_shaders = acc_shaders < min_slice_shaders;
+        const bool under_target_weight = acc_weight < target_weight;
+        if (!need_min_shaders &&
+            (!under_target_weight || acc_shaders + next_s > jit_safe_cap)) {
+          break;
+        }
+        acc_weight += next_w;
+        acc_shaders += next_s;
         ++end;
       }
-      std::size_t slice_sum = 0u;
-      for (std::size_t k = start; k < end; ++k) {
-        slice_sum += groups[k].shader_ids.size();
-      }
-      remaining_shaders -= slice_sum;
+      remaining_weight -= acc_weight;
+      remaining_shaders -= acc_shaders;
       group_cuts.push_back(end);
       start = end;
     }

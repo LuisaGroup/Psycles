@@ -101,6 +101,10 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                     surface.path_surface_query.glossy_filter_roughness,
                 .include_runtime_flags = include_runtime_flags,
                 .include_aov = include_aov};
+            const PathSurfaceAmbientOcclusionContext ao_ctx{
+                .traversal = _options.traversal,
+                .source = {.object = cycles_object_index,
+                           .primitive = cycles_primitive_index}};
             populated_surface = population_component->populate(
                 {.surface_tag = surface_tag,
                  .point = point,
@@ -119,7 +123,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                  .rng_offset = sample.cycles_rng_offset,
                  .parameters = kernel_parameters,
                  .camera_projection = config.camera_projection,
-                 .ambient_occlusion = nullptr,
+                 .ambient_occlusion =
+                     _options.traversal ? &ao_ctx : nullptr,
                  .cycles_shader_flags =
                      surface.cycles_shader_flags
                          ? std::optional<Expr<std::uint32_t>>{

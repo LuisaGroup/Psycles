@@ -360,7 +360,7 @@ void eval_nodes_impl(
           PSYCLES_SVM_OUTLINE_NODE(
               "svm_node_tex_image",
               detail::node_tex_image(cursor, stack, kernel_globals,
-                                     shader_data, false));
+                                     shader_data, path_state, false));
         };
       }
       if (node_types_used[NODE_TEX_IMAGE_DERIVATIVE]) {
@@ -369,7 +369,7 @@ void eval_nodes_impl(
             PSYCLES_SVM_OUTLINE_NODE(
                 "svm_node_tex_image_derivative",
                 detail::node_tex_image(cursor, stack, kernel_globals,
-                                       shader_data, true));
+                                       shader_data, path_state, true));
           }
         };
       }
@@ -379,7 +379,7 @@ void eval_nodes_impl(
               "svm_node_tex_image_box",
               detail::node_tex_image_box(
                   cursor, stack, kernel_globals, transform_state, shader_data,
-                  false,
+                  path_state, false,
                   (kernel_features & kernel_feature_object_motion) != 0u));
         };
       }
@@ -390,7 +390,7 @@ void eval_nodes_impl(
                 "svm_node_tex_image_box_derivative",
                 detail::node_tex_image_box(
                     cursor, stack, kernel_globals, transform_state, shader_data,
-                    true,
+                    path_state, true,
                     (kernel_features & kernel_feature_object_motion) != 0u));
           }
         };
@@ -819,6 +819,23 @@ void eval_nodes_impl(
                                         shader_data));
           } else {
             cursor.advance(2u);
+            transition.unsupported();
+          }
+        };
+      }
+      if (node_types_used[NODE_AMBIENT_OCCLUSION] &&
+          (kernel_features & kernel_feature_node_raytrace) != 0u) {
+        PSYCLES_SVM_CASE(NODE_AMBIENT_OCCLUSION) {
+          if ((node_feature_mask & kernel_feature_node_raytrace) == 0u) {
+            cursor.advance(6u);
+          } else if (const auto *services =
+                         kernel_globals.ambient_occlusion_services()) {
+            PSYCLES_SVM_OUTLINE_NODE(
+                "svm_node_ambient_occlusion",
+                detail::node_ambient_occlusion(cursor, stack, *services,
+                                               shader_data));
+          } else {
+            cursor.advance(6u);
             transition.unsupported();
           }
         };

@@ -1015,6 +1015,8 @@ private:
 
   void decode_source_on_demand(std::uint32_t source_index) noexcept;
   void trim_host_decoded_cache(std::uint32_t protect_source_index) noexcept;
+  void trim_host_decoded_cache(
+      std::span<const std::uint32_t> protected_sources) noexcept;
   void apply_decoded_source_payload(
       SourceImageEntry &src,
       DecodedSourcePayload &&payload) noexcept;
