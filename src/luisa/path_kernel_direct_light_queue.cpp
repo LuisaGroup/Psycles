@@ -129,7 +129,7 @@ public:
         _shadow_storage{shadow_storage
                             ? std::move(shadow_storage)
                             : std::make_shared<ShadowIntersectionBatchStorage>(
-                                  device, capacity)},
+                                  device, may_have_shade_shadow ? capacity : 1u)},
         _tokens{device.create_buffer<luisa::uint>(capacity)},
         _indices{device.create_buffer<luisa::uint>(capacity)},
         _chained_indices{fuse_unoccluded_shadow
@@ -1354,8 +1354,8 @@ make_direct_light_task_queue(luisa::compute::Device &device,
   const bool may_continue_shadow =
       !fast_triangle_shadow_domain ||
       config.transparent_max_bounces >= shadow_intersection_batch_capacity;
-  auto shadow_storage =
-      std::make_shared<ShadowIntersectionBatchStorage>(device, capacity);
+  auto shadow_storage = std::make_shared<ShadowIntersectionBatchStorage>(
+      device, may_have_shade_shadow ? capacity : 1u);
   auto evaluator = make_direct_light_task_evaluator(config);
   evaluator.intersect_shadow = make_shadow_intersection_component(
       config.scene, shadow_storage, config.transparent_max_bounces);

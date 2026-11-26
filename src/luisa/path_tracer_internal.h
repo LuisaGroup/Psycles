@@ -220,25 +220,21 @@ struct MaterialBinding {
             multiple_importance};
 };
 
+[[nodiscard]] inline constexpr luisa::compute::AccelOption
+static_scene_accel_option() noexcept {
+    return {
+        .hint = luisa::compute::AccelOption::UsageHint::FAST_TRACE,
+        .allow_compaction = true,
+        .allow_update = false};
+}
+
 struct GeometryResource {
     Buffer<luisa::float3> positions;
-    Buffer<luisa::float3> normals;
-    Buffer<luisa::float2> uv;
-    Buffer<luisa::float4> uv_tangents;
-    Buffer<luisa::float3> generated;
     Buffer<Triangle> triangles;
     Buffer<luisa::uint> triangle_material_slots;
-    Buffer<float> triangle_random_per_island;
     Buffer<luisa::uint> triangle_smooth;
-    std::vector<Buffer<luisa::float4>> attributes;
     std::optional<Buffer<luisa::float3>>
         cycles_intersection_positions;
-    std::optional<Buffer<luisa::float3>>
-        undisplaced_positions;
-    std::optional<Buffer<luisa::float3>>
-        undisplaced_normals;
-    std::optional<Buffer<luisa::float4>>
-        undisplaced_uv_tangents;
     Mesh mesh;
 };
 
@@ -246,12 +242,7 @@ struct CurveGeometryResource {
     Buffer<luisa::compute::AABB> bounds;
     Buffer<CurveSegmentGpu> segments;
     Buffer<luisa::float4> keys;
-    std::vector<Buffer<luisa::float2>> uv_layers;
-    std::vector<Buffer<luisa::float4>> attributes;
     Buffer<luisa::uint> material_slots;
-    Buffer<float> intercept;
-    Buffer<float> length;
-    Buffer<float> random;
     ProceduralPrimitive primitive;
 };
 

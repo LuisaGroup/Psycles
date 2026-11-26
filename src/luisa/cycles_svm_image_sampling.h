@@ -60,6 +60,25 @@ template<typename TextureHeap>
       image_sampling_extension(extension));
 }
 
+[[nodiscard]] inline luisa::compute::Float4
+expand_cycles_svm_image_channels(
+    luisa::compute::Float4 sample,
+    luisa::compute::Expr<std::uint32_t> sampler_bits) noexcept {
+  namespace scene_detail = ::psycles::luisa_backend::detail;
+  const luisa::compute::UInt channel_mode =
+      (sampler_bits & scene_detail::cycles_svm_image_channel_mode_mask) >>
+      scene_detail::cycles_svm_image_channel_mode_shift;
+  luisa::compute::Float4 expanded = sample;
+  $if(channel_mode == scene_detail::cycles_svm_image_channel_mode_gray_opaque) {
+    expanded = luisa::compute::make_float4(sample.x, sample.x, sample.x, 1.0f);
+  }
+  $elif(channel_mode == scene_detail::cycles_svm_image_channel_mode_gray_alpha) {
+    expanded =
+        luisa::compute::make_float4(sample.x, sample.x, sample.x, sample.y);
+  };
+  return expanded;
+}
+
 // Cycles kernel/device/gpu/image.h: the ImageManager handle selects a texture
 // object with an immutable sampler. Only ordinary versus bicubic sampling
 // changes the device algebra; filter/extension do not clone shader branches.
@@ -73,13 +92,15 @@ template<typename TextureHeap, typename ImageBindingBuffer>
     bool has_load_failed = true,
     bool contiguous_slots = false,
     std::uint32_t base_slot = 0u,
-    std::uint32_t image_count = ~0u) noexcept {
+    std::uint32_t image_count = ~0u,
+    bool has_compact_channel_images = false) noexcept {
   namespace scene_detail = ::psycles::luisa_backend::detail;
 
   // Original kernel/device/gpu/image.h: both an absent image handle and a
   // failed full-image load return before UV wrapping or any texture access.
   luisa::compute::Float4 result = luisa::compute::make_float4(1.0f, 0.0f, 1.0f, 1.0f);
-  if (!has_bicubic && !has_load_failed && contiguous_slots) {
+  if (!has_bicubic && !has_load_failed && !has_compact_channel_images &&
+      contiguous_slots) {
     if (image_count == 0u) {
       return result;
     }
@@ -112,6 +133,9 @@ template<typename TextureHeap, typename ImageBindingBuffer>
       } else {
         result = texture.sample(sample_uv);
       }
+      if (has_compact_channel_images) {
+        result = expand_cycles_svm_image_channels(result, binding.sampler);
+      }
     };
     if (has_load_failed) {
       $if((binding.sampler & scene_detail::cycles_svm_image_load_failed_flag) == 0u) {
@@ -131,7 +155,8 @@ template<typename TextureHeap, typename ImageBindingBuffer, typename MipDescBuff
     const MipDescBuffer &mip_descs,
     luisa::compute::Expr<std::int32_t> image_id,
     const Dual2 &uv,
-    bool has_load_failed = true) noexcept {
+    bool has_load_failed = true,
+    bool has_compact_channel_images = false) noexcept {
   namespace scene_detail = ::psycles::luisa_backend::detail;
   luisa::compute::Float4 result = luisa::compute::make_float4(1.0f, 0.0f, 1.0f, 1.0f);
   $if((image_id >= 0) &
@@ -150,6 +175,9 @@ template<typename TextureHeap, typename ImageBindingBuffer, typename MipDescBuff
       result = scene_detail::sample_direct_texture_2d_isotropic(
           texture, sample_uv, duv_dx, duv_dy, mip_desc.x, mip_desc.y,
           mip_desc.z, interpolation);
+      if (has_compact_channel_images) {
+        result = expand_cycles_svm_image_channels(result, binding.sampler);
+      }
     };
     if (has_load_failed) {
       $if((binding.sampler & scene_detail::cycles_svm_image_load_failed_flag) == 0u) {

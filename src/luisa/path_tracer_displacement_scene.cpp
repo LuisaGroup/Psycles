@@ -284,7 +284,6 @@ MeshDisplacementSceneComponent::build(
         }
 
         auto &upload = uploads[geometry_index];
-        auto &resource = scene->geometries[geometry_index];
         // Cycles Mesh::add_undisplaced snapshots these attributes before
         // any vertex is moved. BOTH's bump-eval state and Normal Map's
         // ORIGINAL base must read the immutable representation even when a
@@ -292,33 +291,6 @@ MeshDisplacementSceneComponent::build(
         upload.undisplaced_positions = upload.positions;
         upload.undisplaced_normals = upload.normals;
         upload.undisplaced_uv_tangents = upload.uv_tangents;
-        resource.undisplaced_positions.emplace(
-            scene->device.create_buffer<luisa::float3>(
-                upload.undisplaced_positions.size()));
-        resource.undisplaced_normals.emplace(
-            scene->device.create_buffer<luisa::float3>(
-                upload.undisplaced_normals.size()));
-        resource.undisplaced_uv_tangents.emplace(
-            scene->device.create_buffer<luisa::float4>(
-                upload.undisplaced_uv_tangents.size()));
-        const auto bindless_base =
-            geometry_index * geometry_bindless_stride;
-        scene->heap.emplace_on_update(
-            bindless_base + 10u,
-            *resource.undisplaced_positions);
-        scene->heap.emplace_on_update(
-            bindless_base + 11u,
-            *resource.undisplaced_normals);
-        scene->heap.emplace_on_update(
-            bindless_base + 12u,
-            *resource.undisplaced_uv_tangents);
-        stream
-            << resource.undisplaced_positions->copy_from(
-                   luisa::span{upload.undisplaced_positions})
-            << resource.undisplaced_normals->copy_from(
-                   luisa::span{upload.undisplaced_normals})
-            << resource.undisplaced_uv_tangents->copy_from(
-                   luisa::span{upload.undisplaced_uv_tangents});
 
         std::vector<luisa::float3> pre_displacement_vertex_normals;
         if ((upload.attribute_domains & geometry_normal_corner) != 0u) {
@@ -609,28 +581,8 @@ MeshDisplacementSceneComponent::build(
         auto &resource = scene->geometries[index];
         if (displaced.contains(static_cast<std::uint32_t>(index))) {
             auto &upload = uploads[index];
-            stream
-                << resource.positions.copy_from(
-                       luisa::span{upload.positions})
-                << resource.normals.copy_from(
-                       luisa::span{upload.normals})
-                << resource.uv_tangents.copy_from(
-                       luisa::span{upload.uv_tangents});
-            for (const auto &layer : upload.uv_tangent_layers) {
-                if (!layer.tangent_attribute_index ||
-                    *layer.tangent_attribute_index >=
-                        upload.attributes.size() ||
-                    *layer.tangent_attribute_index >=
-                        resource.attributes.size()) {
-                    continue;
-                }
-                stream << resource.attributes[
-                              *layer.tangent_attribute_index]
-                              .copy_from(luisa::span{
-                                  upload.attributes[
-                                      *layer.tangent_attribute_index]
-                                      .values});
-            }
+            stream << resource.positions.copy_from(
+                luisa::span{upload.positions});
         }
         stream << resource.mesh.build();
     }

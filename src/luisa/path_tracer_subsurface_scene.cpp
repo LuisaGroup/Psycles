@@ -44,7 +44,7 @@ void SubsurfaceSceneComponent::initialize_accel(
     }
     if (plan.triangle_instance_count != 0u) {
         scene->subsurface_accel.emplace(
-            scene->device.create_accel());
+            scene->device.create_accel(static_scene_accel_option()));
     }
 }
 

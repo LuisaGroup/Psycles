@@ -25,68 +25,12 @@ public:
             primitive_index);
         auto &geometry = primitive.geometry;
         auto &triangle = primitive.triangle;
-        const auto corner = primitive_index * 3u;
-        const auto attribute_index =
-            [&](UInt point_index,
-                std::uint32_t corner_offset,
-                std::uint32_t corner_flag) noexcept {
-                return select(
-                    point_index,
-                    corner + corner_offset,
-                    (geometry.attribute_domains &
-                     corner_flag) != 0u);
-            };
-        const auto normal_i0 = attribute_index(
-            triangle.i0, 0u, geometry_normal_corner);
-        const auto normal_i1 = attribute_index(
-            triangle.i1, 1u, geometry_normal_corner);
-        const auto normal_i2 = attribute_index(
-            triangle.i2, 2u, geometry_normal_corner);
-        const auto uv_i0 = attribute_index(
-            triangle.i0, 0u, geometry_uv_corner);
-        const auto uv_i1 = attribute_index(
-            triangle.i1, 1u, geometry_uv_corner);
-        const auto uv_i2 = attribute_index(
-            triangle.i2, 2u, geometry_uv_corner);
-        const auto tangent_i0 = attribute_index(
-            triangle.i0, 0u, geometry_uv_tangent_corner);
-        const auto tangent_i1 = attribute_index(
-            triangle.i1, 1u, geometry_uv_tangent_corner);
-        const auto tangent_i2 = attribute_index(
-            triangle.i2, 2u, geometry_uv_tangent_corner);
-        const auto generated_i0 = attribute_index(
-            triangle.i0, 0u, geometry_generated_corner);
-        const auto generated_i1 = attribute_index(
-            triangle.i1, 1u, geometry_generated_corner);
-        const auto generated_i2 = attribute_index(
-            triangle.i2, 2u, geometry_generated_corner);
         const auto positions =
             scene->heap->buffer<luisa::float3>(
                 geometry.bindless_base + 1u);
         const auto cycles_intersection_positions =
             scene->heap->buffer<luisa::float3>(
                 geometry.bindless_base + 9u);
-        const auto normals =
-            scene->heap->buffer<luisa::float3>(
-                geometry.bindless_base + 2u);
-        const auto uv =
-            scene->heap->buffer<luisa::float2>(
-                geometry.bindless_base + 3u);
-        const auto generated =
-            scene->heap->buffer<luisa::float3>(
-                geometry.bindless_base + 5u);
-        const auto tangents =
-            scene->heap->buffer<luisa::float4>(
-                geometry.bindless_base + 7u);
-        const auto undisplaced_positions =
-            scene->heap->buffer<luisa::float3>(
-                geometry.bindless_base + 10u);
-        const auto undisplaced_normals =
-            scene->heap->buffer<luisa::float3>(
-                geometry.bindless_base + 11u);
-        const auto undisplaced_tangents =
-            scene->heap->buffer<luisa::float4>(
-                geometry.bindless_base + 12u);
         return {
             .primitive = std::move(primitive),
             .p0 = positions.read(triangle.i0),
@@ -97,42 +41,7 @@ public:
             .cycles_intersection_p1 =
                 cycles_intersection_positions.read(triangle.i1),
             .cycles_intersection_p2 =
-                cycles_intersection_positions.read(triangle.i2),
-            .n0 = normals.read(normal_i0),
-            .n1 = normals.read(normal_i1),
-            .n2 = normals.read(normal_i2),
-            .uv0 = uv.read(uv_i0),
-            .uv1 = uv.read(uv_i1),
-            .uv2 = uv.read(uv_i2),
-            .tangent0 = tangents.read(tangent_i0),
-            .tangent1 = tangents.read(tangent_i1),
-            .tangent2 = tangents.read(tangent_i2),
-            .undisplaced_p0 =
-                undisplaced_positions.read(triangle.i0),
-            .undisplaced_p1 =
-                undisplaced_positions.read(triangle.i1),
-            .undisplaced_p2 =
-                undisplaced_positions.read(triangle.i2),
-            .undisplaced_n0 =
-                undisplaced_normals.read(normal_i0),
-            .undisplaced_n1 =
-                undisplaced_normals.read(normal_i1),
-            .undisplaced_n2 =
-                undisplaced_normals.read(normal_i2),
-            .undisplaced_tangent0 =
-                undisplaced_tangents.read(tangent_i0),
-            .undisplaced_tangent1 =
-                undisplaced_tangents.read(tangent_i1),
-            .undisplaced_tangent2 =
-                undisplaced_tangents.read(tangent_i2),
-            .generated0 = generated.read(generated_i0),
-            .generated1 = generated.read(generated_i1),
-            .generated2 = generated.read(generated_i2),
-            .random_per_island =
-                scene->heap
-                    ->buffer<float>(
-                        geometry.bindless_base + 6u)
-                    .read(primitive_index)};
+                cycles_intersection_positions.read(triangle.i2)};
     }
 };
 

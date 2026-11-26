@@ -70,6 +70,7 @@ class PathCyclesSvmKernelGlobals final
     bool _has_curves{true};
     bool _has_bicubic_images{true};
     bool _has_failed_images{true};
+    bool _has_compact_channel_images{false};
     bool _contiguous_texture_slots{false};
     std::uint32_t _base_texture_slot{};
     std::uint32_t _image_binding_count{};

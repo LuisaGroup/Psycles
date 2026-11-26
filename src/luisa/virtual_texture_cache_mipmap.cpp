@@ -79,12 +79,13 @@ linear_to_srgb_lut() noexcept {
 }
 
 // Downsamples a 1D row or column slice via area-preserving box filtering.
-void downsample_line_rgba(const float *src,
-                          std::size_t src_stride_floats,
-                          std::uint32_t src_len,
-                          float *dst,
-                          std::size_t dst_stride_floats,
-                          std::uint32_t dst_len) noexcept {
+template<std::size_t N>
+void downsample_line_float(const float *src,
+                           std::size_t src_stride_floats,
+                           std::uint32_t src_len,
+                           float *dst,
+                           std::size_t dst_stride_floats,
+                           std::uint32_t dst_len) noexcept {
   if (dst_len == 0u || src_len == 0u) {
     return;
   }
@@ -92,10 +93,9 @@ void downsample_line_rgba(const float *src,
     for (std::uint32_t i = 0u; i < dst_len; ++i) {
       const float *s = src + static_cast<std::size_t>(i) * src_stride_floats;
       float *d = dst + static_cast<std::size_t>(i) * dst_stride_floats;
-      d[0] = s[0];
-      d[1] = s[1];
-      d[2] = s[2];
-      d[3] = s[3];
+      for (std::size_t c = 0u; c < N; ++c) {
+        d[c] = s[c];
+      }
     }
     return;
   }
@@ -105,10 +105,9 @@ void downsample_line_rgba(const float *src,
           src + static_cast<std::size_t>(i * 2u) * src_stride_floats;
       const float *s1 = s0 + src_stride_floats;
       float *d = dst + static_cast<std::size_t>(i) * dst_stride_floats;
-      d[0] = 0.5f * (s0[0] + s1[0]);
-      d[1] = 0.5f * (s0[1] + s1[1]);
-      d[2] = 0.5f * (s0[2] + s1[2]);
-      d[3] = 0.5f * (s0[3] + s1[3]);
+      for (std::size_t c = 0u; c < N; ++c) {
+        d[c] = 0.5f * (s0[c] + s1[c]);
+      }
     }
     return;
   }
@@ -124,24 +123,25 @@ void downsample_line_rgba(const float *src,
     const float *s2 =
         src + std::min<std::size_t>(base + 2u, src_len - 1u) * src_stride_floats;
     float *d = dst + static_cast<std::size_t>(i) * dst_stride_floats;
-    for (std::size_t c = 0u; c < 4u; ++c) {
+    for (std::size_t c = 0u; c < N; ++c) {
       d[c] = w0 * s0[c] + w1 * s1[c] + w2 * s2[c];
     }
   }
 }
 
-void downsample_image_float4(const float *src,
-                             std::uint32_t src_w,
-                             std::uint32_t src_h,
-                             std::uint32_t dst_w,
-                             std::uint32_t dst_h,
-                             std::vector<float> &horiz_scratch,
-                             std::vector<float> &dst) {
-  horiz_scratch.resize(static_cast<std::size_t>(dst_w) * src_h * 4u);
+template<std::size_t N>
+void downsample_image_float(const float *src,
+                            std::uint32_t src_w,
+                            std::uint32_t src_h,
+                            std::uint32_t dst_w,
+                            std::uint32_t dst_h,
+                            std::vector<float> &horiz_scratch,
+                            std::vector<float> &dst) {
+  horiz_scratch.resize(static_cast<std::size_t>(dst_w) * src_h * N);
   auto do_horiz_row = [&](std::size_t y) {
-    downsample_line_rgba(
-        src + y * src_w * 4u, 4u, src_w,
-        horiz_scratch.data() + y * dst_w * 4u, 4u, dst_w);
+    downsample_line_float<N>(
+        src + y * src_w * N, N, src_w,
+        horiz_scratch.data() + y * dst_w * N, N, dst_w);
   };
   if (src_h >= 64u) {
     psycles::parallel_for(static_cast<std::size_t>(src_h), do_horiz_row);
@@ -151,8 +151,8 @@ void downsample_image_float4(const float *src,
     }
   }
 
-  dst.resize(static_cast<std::size_t>(dst_w) * dst_h * 4u);
-  const std::size_t row_floats = static_cast<std::size_t>(dst_w) * 4u;
+  dst.resize(static_cast<std::size_t>(dst_w) * dst_h * N);
+  const std::size_t row_floats = static_cast<std::size_t>(dst_w) * N;
   if (src_h == dst_h) {
     std::memcpy(dst.data(), horiz_scratch.data(), dst.size() * sizeof(float));
     return;
@@ -201,6 +201,30 @@ void downsample_image_float4(const float *src,
   }
 }
 
+void downsample_image_channels(const float *src,
+                               std::uint32_t src_w,
+                               std::uint32_t src_h,
+                               std::uint32_t dst_w,
+                               std::uint32_t dst_h,
+                               std::uint32_t channels,
+                               std::vector<float> &horiz_scratch,
+                               std::vector<float> &dst) {
+  switch (channels) {
+  case 1u:
+    downsample_image_float<1u>(src, src_w, src_h, dst_w, dst_h, horiz_scratch,
+                               dst);
+    return;
+  case 2u:
+    downsample_image_float<2u>(src, src_w, src_h, dst_w, dst_h, horiz_scratch,
+                               dst);
+    return;
+  default:
+    downsample_image_float<4u>(src, src_w, src_h, dst_w, dst_h, horiz_scratch,
+                               dst);
+    return;
+  }
+}
+
 void append_u64_array(std::string &out,
                       std::string_view key,
                       std::span<const std::uint64_t> values) {
@@ -223,37 +247,41 @@ void append_u64_array(std::string &out,
 
 } // namespace
 
-std::vector<VtUnorm8MipLevel> vt_build_unorm8_tail_mips(
-    std::span<const std::uint8_t> base_rgba,
+std::vector<VtUnorm8MipLevel> vt_build_unorm8_channel_tail_mips(
+    std::span<const std::uint8_t> base_pixels,
     std::uint32_t width,
     std::uint32_t height,
+    std::uint32_t channels,
     bool is_srgb) {
   std::vector<VtUnorm8MipLevel> out;
+  if (channels != 1u && channels != 2u && channels != 4u) {
+    return out;
+  }
   const std::uint32_t mip_count = vt_compute_mip_count(width, height);
   if (mip_count <= 1u ||
-      base_rgba.size() < static_cast<std::size_t>(width) * height * 4u) {
+      base_pixels.size() < static_cast<std::size_t>(width) * height * channels) {
     return out;
   }
   out.reserve(mip_count - 1u);
 
-  const std::size_t base_pixels = static_cast<std::size_t>(width) * height;
-  std::vector<float> cur_linear(base_pixels * 4u);
+  const std::size_t base_pixels_count = static_cast<std::size_t>(width) * height;
+  std::vector<float> cur_linear(base_pixels_count * channels);
   constexpr float inv255 = 1.0f / 255.0f;
   const auto &lut = srgb_to_linear_lut();
+  const std::uint32_t color_channels = channels == 4u ? 3u : 1u;
   auto decode_base_row = [&](std::size_t y) {
-    const std::size_t row_off = y * width * 4u;
+    const std::size_t row_off = y * width * channels;
     for (std::uint32_t x = 0u; x < width; ++x) {
-      const std::size_t off = row_off + static_cast<std::size_t>(x) * 4u;
-      if (is_srgb) {
-        cur_linear[off] = lut[base_rgba[off]];
-        cur_linear[off + 1u] = lut[base_rgba[off + 1u]];
-        cur_linear[off + 2u] = lut[base_rgba[off + 2u]];
-      } else {
-        cur_linear[off] = static_cast<float>(base_rgba[off]) * inv255;
-        cur_linear[off + 1u] = static_cast<float>(base_rgba[off + 1u]) * inv255;
-        cur_linear[off + 2u] = static_cast<float>(base_rgba[off + 2u]) * inv255;
+      const std::size_t off = row_off + static_cast<std::size_t>(x) * channels;
+      for (std::uint32_t c = 0u; c < color_channels; ++c) {
+        cur_linear[off + c] = is_srgb
+                                  ? lut[base_pixels[off + c]]
+                                  : static_cast<float>(base_pixels[off + c]) * inv255;
       }
-      cur_linear[off + 3u] = static_cast<float>(base_rgba[off + 3u]) * inv255;
+      if (channels == 2u || channels == 4u) {
+        cur_linear[off + channels - 1u] =
+            static_cast<float>(base_pixels[off + channels - 1u]) * inv255;
+      }
     }
   };
   if (height >= 64u) {
@@ -271,27 +299,25 @@ std::vector<VtUnorm8MipLevel> vt_build_unorm8_tail_mips(
   for (std::uint32_t m = 1u; m < mip_count; ++m) {
     const std::uint32_t dst_w = vt_mip_extent(width, m);
     const std::uint32_t dst_h = vt_mip_extent(height, m);
-    downsample_image_float4(cur_linear.data(), cur_w, cur_h, dst_w, dst_h,
-                            horiz_scratch, next_linear);
+    downsample_image_channels(cur_linear.data(), cur_w, cur_h, dst_w, dst_h,
+                              channels, horiz_scratch, next_linear);
     VtUnorm8MipLevel level;
     level.width = dst_w;
     level.height = dst_h;
     const std::size_t n_pixels = static_cast<std::size_t>(dst_w) * dst_h;
-    level.rgba.resize(n_pixels * 4u);
+    level.rgba.resize(n_pixels * channels);
     auto encode_mip_row = [&](std::size_t y) {
-      const std::size_t row_off = y * dst_w * 4u;
+      const std::size_t row_off = y * dst_w * channels;
       for (std::uint32_t x = 0u; x < dst_w; ++x) {
-        const std::size_t off = row_off + static_cast<std::size_t>(x) * 4u;
-        if (is_srgb) {
-          level.rgba[off] = linear_to_srgb_u8(next_linear[off]);
-          level.rgba[off + 1u] = linear_to_srgb_u8(next_linear[off + 1u]);
-          level.rgba[off + 2u] = linear_to_srgb_u8(next_linear[off + 2u]);
-        } else {
-          level.rgba[off] = linear_to_unorm8(next_linear[off]);
-          level.rgba[off + 1u] = linear_to_unorm8(next_linear[off + 1u]);
-          level.rgba[off + 2u] = linear_to_unorm8(next_linear[off + 2u]);
+        const std::size_t off = row_off + static_cast<std::size_t>(x) * channels;
+        for (std::uint32_t c = 0u; c < color_channels; ++c) {
+          level.rgba[off + c] = is_srgb ? linear_to_srgb_u8(next_linear[off + c])
+                                        : linear_to_unorm8(next_linear[off + c]);
         }
-        level.rgba[off + 3u] = linear_to_unorm8(next_linear[off + 3u]);
+        if (channels == 2u || channels == 4u) {
+          level.rgba[off + channels - 1u] =
+              linear_to_unorm8(next_linear[off + channels - 1u]);
+        }
       }
     };
     if (dst_h >= 64u) {
@@ -309,38 +335,57 @@ std::vector<VtUnorm8MipLevel> vt_build_unorm8_tail_mips(
   return out;
 }
 
-std::vector<VtFloat4MipLevel> vt_build_float4_tail_mips(
-    std::span<const float> base_rgba,
+std::vector<VtFloat4MipLevel> vt_build_float_channel_tail_mips(
+    std::span<const float> base_pixels,
     std::uint32_t width,
-    std::uint32_t height) {
+    std::uint32_t height,
+    std::uint32_t channels) {
   std::vector<VtFloat4MipLevel> out;
+  if (channels != 1u && channels != 2u && channels != 4u) {
+    return out;
+  }
   const std::uint32_t mip_count = vt_compute_mip_count(width, height);
   if (mip_count <= 1u ||
-      base_rgba.size() < static_cast<std::size_t>(width) * height * 4u) {
+      base_pixels.size() < static_cast<std::size_t>(width) * height * channels) {
     return out;
   }
   out.reserve(mip_count - 1u);
 
   std::vector<float> horiz_scratch;
-  std::vector<float> next_rgba;
-  const float *cur_ptr = base_rgba.data();
+  std::vector<float> next_pixels;
+  const float *cur_ptr = base_pixels.data();
   std::uint32_t cur_w = width;
   std::uint32_t cur_h = height;
   for (std::uint32_t m = 1u; m < mip_count; ++m) {
     const std::uint32_t dst_w = vt_mip_extent(width, m);
     const std::uint32_t dst_h = vt_mip_extent(height, m);
-    downsample_image_float4(cur_ptr, cur_w, cur_h, dst_w, dst_h, horiz_scratch,
-                            next_rgba);
+    downsample_image_channels(cur_ptr, cur_w, cur_h, dst_w, dst_h, channels,
+                              horiz_scratch, next_pixels);
     VtFloat4MipLevel level;
     level.width = dst_w;
     level.height = dst_h;
-    level.rgba = std::move(next_rgba);
+    level.rgba = std::move(next_pixels);
     cur_ptr = level.rgba.data();
     out.push_back(std::move(level));
     cur_w = dst_w;
     cur_h = dst_h;
   }
   return out;
+}
+
+std::vector<VtUnorm8MipLevel> vt_build_unorm8_tail_mips(
+    std::span<const std::uint8_t> base_rgba,
+    std::uint32_t width,
+    std::uint32_t height,
+    bool is_srgb) {
+  return vt_build_unorm8_channel_tail_mips(base_rgba, width, height, 4u, is_srgb);
+}
+
+std::vector<VtFloat4MipLevel> vt_build_float4_tail_mips(
+    std::span<const float> base_rgba,
+    std::uint32_t width,
+    std::uint32_t height) {
+  return vt_build_float_channel_tail_mips(base_rgba, width, height, 4u);
 }
 
 std::string VirtualTextureCache::stats_json() const {

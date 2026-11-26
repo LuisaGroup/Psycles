@@ -466,6 +466,7 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
   const auto &bindings = _scene->cycles_svm->image_bindings;
   _has_bicubic_images = false;
   _has_failed_images = false;
+  _has_compact_channel_images = false;
   _contiguous_texture_slots = !bindings.empty();
   _base_texture_slot = bindings.empty() ? 0u : bindings.front().texture_slot;
   _image_binding_count = static_cast<std::uint32_t>(bindings.size());
@@ -476,6 +477,9 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     }
     if ((b.sampler & cycles_svm_image_load_failed_flag) != 0u) {
       _has_failed_images = true;
+    }
+    if ((b.sampler & cycles_svm_image_channel_mode_mask) != 0u) {
+      _has_compact_channel_images = true;
     }
     if (b.texture_slot != _base_texture_slot + static_cast<std::uint32_t>(i)) {
       _contiguous_texture_slots = false;
@@ -1063,20 +1067,32 @@ Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
                  : vt->sample_2d_const(*cid, sample_uv, _vt_miss_page, false);
     }
     auto texture = _scene->texture_heap->tex2d(b.texture_slot);
+    const std::uint32_t ch_mode =
+        (b.sampler & cycles_svm_image_channel_mode_mask) >>
+        cycles_svm_image_channel_mode_shift;
+    const auto expand_channels = [&](Float4 s) noexcept -> Float4 {
+      if (ch_mode == cycles_svm_image_channel_mode_gray_opaque) {
+        return make_float4(s.x, s.x, s.x, 1.0f);
+      }
+      if (ch_mode == cycles_svm_image_channel_mode_gray_alpha) {
+        return make_float4(s.x, s.x, s.x, s.y);
+      }
+      return s;
+    };
     if (direct_isotropic && _scene->direct_image_mip_descs) {
       const auto mip_desc = _scene->direct_image_mip_descs->read(
           static_cast<luisa::uint>(*cid));
-      return sample_direct_texture_2d_isotropic(
+      return expand_channels(sample_direct_texture_2d_isotropic(
           texture, sample_uv, duv_dx, duv_dy, mip_desc.x, mip_desc.y,
-          mip_desc.z, UInt(b.sampler & cycles_svm_image_interpolation_mask));
+          mip_desc.z, UInt(b.sampler & cycles_svm_image_interpolation_mask)));
     }
     if ((b.sampler & cycles_svm_image_interpolation_mask) == 2u) {
-      return sample_cycles_texture_2d_bicubic(
+      return expand_channels(sample_cycles_texture_2d_bicubic(
           texture, sample_uv, [&](Float u, Float v) noexcept {
             return texture.sample(make_float2(u, v));
-          });
+          }));
     }
-    return texture.sample(sample_uv);
+    return expand_channels(texture.sample(sample_uv));
   }
   if (use_vt && vt->has_virtual_images()) {
     return vt_isotropic
@@ -1098,7 +1114,7 @@ Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
         *_scene->cycles_svm->image_binding_buffer,
         _scene->direct_image_mip_descs,
         image_texture_id, uv,
-        _has_failed_images);
+        _has_failed_images, _has_compact_channel_images);
   }
   return svm_detail::sample_scene_image_2d(
       _scene->texture_heap,
@@ -1106,7 +1122,7 @@ Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
       image_texture_id, uv,
       _has_bicubic_images, _has_failed_images,
       _contiguous_texture_slots, _base_texture_slot,
-      _image_binding_count);
+      _image_binding_count, _has_compact_channel_images);
 }
 
 Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_3d(

@@ -17,6 +17,8 @@ struct PathSurfaceBucketSpec {
   compiler::cycles_svm::ShaderEntryUsage entry_usage{};
   std::vector<std::uint32_t> membership_words;
   std::vector<std::uint32_t> prefix_popcounts;
+  std::vector<std::uint32_t> sort_key_words;
+  std::vector<std::uint32_t> sort_key_prefix_popcounts;
   std::uint32_t key_count{1u};
   std::uint32_t active_nonempty_shaders{0u};
   std::uint32_t unique_routine_groups{0u};

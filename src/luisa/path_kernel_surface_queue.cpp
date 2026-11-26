@@ -64,6 +64,8 @@ class SurfaceSortHandler final
   unsigned _subblocks_per_partition{1u};
   bool _use_fused_partition_sort{false};
   bool _warp32{false};
+  luisa::compute::Device *_device{nullptr};
+  unsigned _frame_capacity{0u};
   luisa::compute::coro::radix_sort::instance<luisa::compute::Buffer<luisa::uint>,
                                              luisa::compute::ByteBuffer, luisa::uint,
                                              luisa::uint, luisa::uint>
@@ -74,7 +76,9 @@ public:
                      unsigned partition, unsigned composite_range)
       : _range{std::max(range, 1u)}, _partition{partition},
         _composite_range{std::max(composite_range, 1u)},
-        _warp32{context.device.compute_warp_size() == 32u} {
+        _warp32{context.device.compute_warp_size() == 32u},
+        _device{&context.device},
+        _frame_capacity{context.frame_capacity} {
     using namespace luisa::compute;
     using namespace luisa::compute::coro;
     _use_fused_partition_sort =
@@ -124,8 +128,6 @@ public:
           context.device.create_buffer<luisa::uint>(max_total_buckets);
       _bucket_offsets =
           context.device.create_buffer<luisa::uint>(_composite_range);
-      _keys[0] =
-          context.device.create_buffer<luisa::uint>(context.frame_capacity);
 
       const auto shader_range = _range;
       Kernel1D fused_single_block_sort_kernel =
@@ -570,6 +572,9 @@ public:
       }
       if (context.frame_count <= 1u || _composite_range <= 1u) {
         return context.frame_indices;
+      }
+      if (!_keys[0]) {
+        _keys[0] = _device->create_buffer<luisa::uint>(_frame_capacity);
       }
       auto out_indices = _indices.view().subview(0u, context.frame_count);
       auto hist_view = _bucket_offsets.view().subview(0u, _composite_range);

@@ -249,6 +249,8 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
       geometry_materials.emplace_back(inert_material_binding());
     }
 
+    static_cast<void>(attribute_residency);
+    static_cast<void>(next_attribute_slot);
     const auto resource_index =
         static_cast<std::uint32_t>(data->curve_geometries.size());
     auto &resource = data->curve_geometries.emplace_back();
@@ -260,56 +262,20 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
         data->device.create_buffer<luisa::float4>(upload.keys.size());
     resource.material_slots =
         data->device.create_buffer<luisa::uint>(upload.material_slots.size());
-    resource.intercept =
-        data->device.create_buffer<float>(upload.intercept.size());
-    resource.length = data->device.create_buffer<float>(upload.length.size());
-    resource.random = data->device.create_buffer<float>(upload.random.size());
-    resource.primitive =
-        data->device.create_procedural_primitive(resource.bounds);
+    resource.primitive = data->device.create_procedural_primitive(
+        resource.bounds, static_scene_accel_option());
 
     data->heap.emplace_on_update(bindless_base, resource.segments);
     data->heap.emplace_on_update(bindless_base + 1u, resource.keys);
-    data->heap.emplace_on_update(bindless_base + 3u, resource.intercept);
     data->heap.emplace_on_update(bindless_base + 4u, resource.material_slots);
-    data->heap.emplace_on_update(bindless_base + 5u, resource.length);
-    data->heap.emplace_on_update(bindless_base + 6u, resource.random);
-    const auto &resident = attribute_residency.geometry(geometry_id);
-    bool default_uv_available = false;
-    for (const auto &[name, values] : upload.uv_layers) {
-      const auto is_default =
-          upload.default_uv_layer && *upload.default_uv_layer == name;
-      const auto id = contract::uv_attribute_id(name);
-      const auto retain_named = resident.contains(id);
-      if (!is_default && !retain_named) {
-        continue;
-      }
-      auto &buffer = resource.uv_layers.emplace_back(
-          data->device.create_buffer<luisa::float2>(values.size()));
-      const auto slot = is_default ? bindless_base + 2u
-                                   : next_attribute_slot++;
-      data->heap.emplace_on_update(slot, buffer);
-      stream << buffer.copy_from(luisa::span{values});
-      default_uv_available |= is_default;
-    }
-    for (const auto &[name, values] : upload.color_attributes) {
-      const auto id = contract::attribute_id(name);
-      if (!resident.contains(id)) {
-        continue;
-      }
-      auto &buffer = resource.attributes.emplace_back(
-          data->device.create_buffer<luisa::float4>(values.size()));
-      const auto slot = next_attribute_slot++;
-      data->heap.emplace_on_update(slot, buffer);
-      stream << buffer.copy_from(luisa::span{values});
-    }
+    const bool default_uv_available =
+        upload.default_uv_layer &&
+        upload.uv_layers.contains(*upload.default_uv_layer);
     stream << resource.bounds.copy_from(luisa::span{upload.bounds})
            << resource.segments.copy_from(luisa::span{upload.segments})
            << resource.keys.copy_from(luisa::span{upload.keys})
            << resource.material_slots.copy_from(
                   luisa::span{upload.material_slots})
-           << resource.intercept.copy_from(luisa::span{upload.intercept})
-           << resource.length.copy_from(luisa::span{upload.length})
-           << resource.random.copy_from(luisa::span{upload.random})
            << resource.primitive.build();
 
     geometry_indices.emplace(geometry_id, geometry_index);

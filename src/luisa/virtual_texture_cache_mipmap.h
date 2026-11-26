@@ -51,6 +51,19 @@ struct VtFloat4MipLevel {
 // For sRGB inputs, RGB is linearized via IEC 61966-2-1 before filtering and
 // re-encoded per stored unorm8 mip level while preserving linear accumulation
 // across successive downsamples. Alpha is always filtered linearly.
+[[nodiscard]] std::vector<VtUnorm8MipLevel> vt_build_unorm8_channel_tail_mips(
+    std::span<const std::uint8_t> base_pixels,
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t channels,
+    bool is_srgb);
+
+[[nodiscard]] std::vector<VtFloat4MipLevel> vt_build_float_channel_tail_mips(
+    std::span<const float> base_pixels,
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t channels);
+
 [[nodiscard]] std::vector<VtUnorm8MipLevel> vt_build_unorm8_tail_mips(
     std::span<const std::uint8_t> base_rgba,
     std::uint32_t width,

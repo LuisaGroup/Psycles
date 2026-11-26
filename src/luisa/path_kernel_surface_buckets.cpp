@@ -102,23 +102,39 @@ struct RoutineGroup {
 };
 
 void populate_bucket_bitmasks(PathSurfaceBucketSpec &spec,
-                              std::uint32_t shader_count) noexcept {
+                              std::uint32_t shader_count,
+                              const compiler::cycles_svm::ShaderTableImage *table = nullptr) noexcept {
   const std::size_t word_count =
       (static_cast<std::size_t>(shader_count) + 31u) / 32u;
+  const bool has_ir =
+      table != nullptr && table->ir.valid &&
+      table->ir.shaders.size() == static_cast<std::size_t>(shader_count);
   spec.membership_words.assign(word_count, 0u);
   spec.prefix_popcounts.assign(word_count, 0u);
+  spec.sort_key_words.assign(word_count, 0u);
+  spec.sort_key_prefix_popcounts.assign(word_count, 0u);
   for (std::uint32_t i = 0u; i < shader_count; ++i) {
     if (i < spec.active_shader_mask.size() && spec.active_shader_mask[i] != 0u) {
       spec.membership_words[i >> 5u] |= (1u << (i & 31u));
+      if (!has_ir ||
+          !table->ir.shaders[i].routine_for(abi::SHADER_TYPE_SURFACE).empty()) {
+        spec.sort_key_words[i >> 5u] |= (1u << (i & 31u));
+      }
     }
   }
-  std::uint32_t running = 0u;
+  std::uint32_t membership_running = 0u;
+  std::uint32_t sort_key_running = 0u;
   for (std::size_t w = 0u; w < word_count; ++w) {
-    spec.prefix_popcounts[w] = running;
-    running += static_cast<std::uint32_t>(
+    spec.prefix_popcounts[w] = membership_running;
+    membership_running += static_cast<std::uint32_t>(
         std::popcount(spec.membership_words[w]));
+    spec.sort_key_prefix_popcounts[w] = sort_key_running;
+    sort_key_running += static_cast<std::uint32_t>(
+        std::popcount(spec.sort_key_words[w]));
   }
-  spec.key_count = std::max(running, 1u);
+  const bool has_collapsed_empty = membership_running > sort_key_running;
+  spec.key_count = std::max<std::uint32_t>(
+      sort_key_running + (has_collapsed_empty ? 1u : 0u), 1u);
 }
 
 void finalize_bucket_metadata(const LuisaSceneData &scene,
@@ -180,7 +196,7 @@ void finalize_bucket_metadata(const LuisaSceneData &scene,
   spec.may_have_transparent = may_transparent;
   spec.may_have_ray_portal = may_portal;
   spec.active_nonempty_shaders = active_nonempty;
-  populate_bucket_bitmasks(spec, count);
+  populate_bucket_bitmasks(spec, count, &compilation.table);
 }
 
 [[nodiscard]] UInt select_constant_word_range(
@@ -262,10 +278,12 @@ UInt PathSurfaceBucketPlan::emit_dense_sort_key(
   }
   const UInt s = min(UInt{shader_id}, UInt{shader_count - 1u});
   const UInt word_idx = s >> 5u;
-  const UInt low_mask = (1u << (s & 31u)) - 1u;
-  const UInt w = select_constant_word(spec.membership_words, word_idx);
-  const UInt base = select_constant_word(spec.prefix_popcounts, word_idx);
-  return min(base + popcount(w & low_mask), UInt{spec.key_count - 1u});
+  const UInt bit_mask = 1u << (s & 31u);
+  const UInt low_mask = bit_mask - 1u;
+  const UInt w = select_constant_word(spec.sort_key_words, word_idx);
+  const UInt base = select_constant_word(spec.sort_key_prefix_popcounts, word_idx);
+  const UInt dense = min(base + popcount(w & low_mask), UInt{spec.key_count - 1u});
+  return select(UInt{spec.key_count - 1u}, dense, (w & bit_mask) != 0u);
 }
 
 PathSurfaceBucketPlan make_path_surface_bucket_plan(

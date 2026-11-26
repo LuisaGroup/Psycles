@@ -26,7 +26,9 @@
 #include <psycles/luisa/cycles_nishita.h>
 
 #include <cstdlib>
+#include <cstring>
 #include <string_view>
+#include <unordered_map>
 
 namespace psycles::luisa_backend {
 using namespace detail;
@@ -166,7 +168,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         volume_object_instances.emplace(vobj.instance);
     }
     if (!volume_object_instances.empty()) {
-        data->volume_boundary_accel.emplace(data->device.create_accel());
+        data->volume_boundary_accel.emplace(
+            data->device.create_accel(static_scene_accel_option()));
         data->primary_to_volume_local_host.assign(
             snapshot.instances.size(), ~luisa::uint{0u});
     }
@@ -236,7 +239,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         geometry_bindless_stride;
     const auto bindless_slots =
         std::max<std::size_t>(
-            fixed_geometry_slots + attribute_count,
+            fixed_geometry_slots,
             1u);
     data->heap =
         data->device.create_bindless_array(bindless_slots);
@@ -331,21 +334,22 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         snapshot.images.size() +
         data->cycles_svm->nishita_images.size() +
         (snapshot.environment ? 2u : 1u));
-    std::vector<luisa::vector<std::byte>> texture_uploads;
-    texture_uploads.reserve(snapshot.images.size() + 1u);
+    std::vector<std::vector<std::uint8_t>> compact_byte_uploads;
+    compact_byte_uploads.reserve(snapshot.images.size() + 1u);
+    std::vector<std::vector<float>> compact_float_uploads;
+    compact_float_uploads.reserve(snapshot.images.size());
     std::vector<luisa::vector<luisa::float4>>
         float_texture_uploads;
     float_texture_uploads.reserve(
-        snapshot.images.size() +
         data->cycles_svm->nishita_images.size() +
         (snapshot.environment ? 1u : 0u));
     std::vector<luisa::uint4> direct_mip_desc_upload;
 
-    auto &dummy_pixels = texture_uploads.emplace_back(4u);
-    dummy_pixels[0u] = std::byte{255u};
-    dummy_pixels[1u] = std::byte{0u};
-    dummy_pixels[2u] = std::byte{255u};
-    dummy_pixels[3u] = std::byte{255u};
+    auto &dummy_pixels = compact_byte_uploads.emplace_back(4u);
+    dummy_pixels[0u] = 255u;
+    dummy_pixels[1u] = 0u;
+    dummy_pixels[2u] = 255u;
+    dummy_pixels[3u] = 255u;
     auto &dummy_image = data->images.emplace_back(
         data->device.create_image<float>(
             luisa::compute::PixelStorage::BYTE4, 1u, 1u));
@@ -400,18 +404,34 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     struct DecodedImageSlot {
         contract::ImageId id{};
         bool skip{false};
+        bool has_clip{false};
+        std::optional<std::size_t> duplicate_of;
+        std::uint64_t encoded_hash{};
         std::string diagnostic;
         bool is_unorm8{false};
+        std::uint8_t channels{4u};
+        DecodedImageChannelMode channel_mode{DecodedImageChannelMode::rgba};
         std::uint32_t width{};
         std::uint32_t height{};
         std::uint32_t mip_count{1u};
-        luisa::vector<std::byte> byte_pixels;
-        luisa::vector<luisa::float4> float_pixels;
+        std::vector<std::uint8_t> byte_pixels;
+        std::vector<float> float_pixels;
         std::vector<VtUnorm8MipLevel> unorm8_mips;
-        std::vector<VtFloat4MipLevel> float4_mips;
+        std::vector<VtFloat4MipLevel> float_mips;
         bool is_virtual{false};
         VtProbedSceneImage vt_probed{};
     };
+    std::set<contract::ImageId> clip_extension_image_ids;
+    if (data->cycles_svm) {
+        for (const auto &handle : data->cycles_svm->compilation.images) {
+            if (!handle.nishita &&
+                handle.extension ==
+                    compiler::cycles_svm::ImageExtension::clip) {
+                clip_extension_image_ids.emplace(
+                    contract::ImageId{handle.resource_id});
+            }
+        }
+    }
     std::vector<std::pair<contract::ImageId, const contract::ImageDesc *>>
         image_entries;
     image_entries.reserve(snapshot.images.size());
@@ -419,11 +439,66 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         image_entries.emplace_back(image_id, &image);
     }
     std::vector<DecodedImageSlot> decoded_images(image_entries.size());
+    if (!use_vt) {
+        psycles::parallel_for(image_entries.size(), [&](std::size_t i) {
+            const auto [image_id, image_ptr] = image_entries[i];
+            const auto &image = *image_ptr;
+            auto &slot = decoded_images[i];
+            slot.id = image_id;
+            slot.has_clip = clip_extension_image_ids.contains(image_id);
+            if (image.load_failed) {
+                slot.skip = true;
+                return;
+            }
+            if (image.encoded_data.empty() ||
+                image.encoded_data.size() >
+                    static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+                slot.diagnostic =
+                    "Image '" + image.name + "' has no decodable payload.";
+                return;
+            }
+            std::uint64_t h = 14695981039346656037ull;
+            for (const std::uint8_t b : image.encoded_data) {
+                h ^= static_cast<std::uint64_t>(b);
+                h *= 1099511628211ull;
+            }
+            slot.encoded_hash = h;
+        });
+        std::unordered_map<std::uint64_t, std::vector<std::size_t>> hash_buckets;
+        hash_buckets.reserve(image_entries.size());
+        for (std::size_t i = 0u; i < image_entries.size(); ++i) {
+            auto &slot = decoded_images[i];
+            if (slot.skip || !slot.diagnostic.empty()) {
+                continue;
+            }
+            const auto &img = *image_entries[i].second;
+            auto &bucket = hash_buckets[slot.encoded_hash];
+            for (const std::size_t canonical : bucket) {
+                const auto &c_img = *image_entries[canonical].second;
+                if (decoded_images[canonical].has_clip == slot.has_clip &&
+                    c_img.alpha_type == img.alpha_type &&
+                    c_img.color_space == img.color_space &&
+                    c_img.encoded_data.size() == img.encoded_data.size() &&
+                    std::memcmp(c_img.encoded_data.data(),
+                                img.encoded_data.data(),
+                                img.encoded_data.size()) == 0) {
+                    slot.duplicate_of = canonical;
+                    break;
+                }
+            }
+            if (!slot.duplicate_of) {
+                bucket.push_back(i);
+            }
+        }
+    }
     psycles::parallel_for(image_entries.size(), [&](std::size_t i) {
         const auto [image_id, image_ptr] = image_entries[i];
         const auto &image = *image_ptr;
         auto &slot = decoded_images[i];
         slot.id = image_id;
+        if (slot.skip || !slot.diagnostic.empty() || slot.duplicate_of) {
+            return;
+        }
         if (image.load_failed) {
             slot.skip = true;
             if (use_vt) {
@@ -463,57 +538,72 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 return;
             }
         }
-        auto decoded = decode_scene_image(image.encoded_data, image.name);
-        if (!decoded) {
-            slot.diagnostic =
-                "Failed to decode image '" + image.name + "'.";
-            return;
+        CompactDecodedImage compacted;
+        bool decoded_ok = false;
+        const bool allow_opaque_gray = !use_vt && !slot.has_clip;
+        if (!use_vt && !slot.has_clip) {
+            if (const auto probed =
+                    probe_scene_image_info(image.encoded_data, image.name);
+                probed && probed->storage == io::DecodedImageStorage::unorm8 &&
+                probed->channels == 1u && !probed->has_alpha) {
+                if (auto gray = decode_scene_image_gray8(
+                        image.encoded_data, image.name)) {
+                    compacted = std::move(*gray);
+                    decoded_ok = true;
+                }
+            }
         }
-        apply_scene_image_alpha(*decoded, image.alpha_type, image.color_space);
-        slot.width = decoded->width;
-        slot.height = decoded->height;
-        if (decoded->storage == io::DecodedImageStorage::unorm8) {
-            slot.is_unorm8 = true;
-            const auto pixel_bytes = decoded->unorm8_pixels.size();
-            slot.byte_pixels.resize(pixel_bytes);
-            if (pixel_bytes > 0u) {
-                std::memcpy(
-                    slot.byte_pixels.data(),
-                    decoded->unorm8_pixels.data(),
-                    pixel_bytes);
+        if (!decoded_ok) {
+            auto decoded = decode_scene_image(image.encoded_data, image.name);
+            if (!decoded) {
+                slot.diagnostic =
+                    "Failed to decode image '" + image.name + "'.";
+                return;
             }
+            apply_scene_image_alpha(
+                *decoded, image.alpha_type, image.color_space);
+            if (!use_vt) {
+                compacted = compact_decoded_scene_image(
+                    std::move(*decoded), allow_opaque_gray);
+            } else {
+                compacted.width = decoded->width;
+                compacted.height = decoded->height;
+                compacted.is_unorm8 =
+                    decoded->storage == io::DecodedImageStorage::unorm8;
+                compacted.channels = 4u;
+                compacted.channel_mode = DecodedImageChannelMode::rgba;
+                if (compacted.is_unorm8) {
+                    compacted.byte_pixels = std::move(decoded->unorm8_pixels);
+                } else {
+                    compacted.float_pixels = std::move(decoded->float_pixels);
+                }
+            }
+        }
+        slot.width = compacted.width;
+        slot.height = compacted.height;
+        slot.is_unorm8 = compacted.is_unorm8;
+        slot.channels = compacted.channels;
+        slot.channel_mode = compacted.channel_mode;
+        if (slot.is_unorm8) {
+            slot.byte_pixels = std::move(compacted.byte_pixels);
         } else {
-            slot.is_unorm8 = false;
-            const auto pixel_count = decoded->float_pixels.size() / 4u;
-            slot.float_pixels.reserve(pixel_count);
-            for (std::size_t pixel = 0u; pixel < pixel_count; ++pixel) {
-                const auto offset = pixel * 4u;
-                slot.float_pixels.emplace_back(luisa::make_float4(
-                    decoded->float_pixels[offset],
-                    decoded->float_pixels[offset + 1u],
-                    decoded->float_pixels[offset + 2u],
-                    decoded->float_pixels[offset + 3u]));
-            }
+            slot.float_pixels = std::move(compacted.float_pixels);
         }
         if (build_direct_mips) {
             slot.mip_count = vt_compute_mip_count(slot.width, slot.height);
             if (slot.is_unorm8) {
-                slot.unorm8_mips = vt_build_unorm8_tail_mips(
-                    std::span<const std::uint8_t>{
-                        reinterpret_cast<const std::uint8_t *>(
-                            slot.byte_pixels.data()),
-                        slot.byte_pixels.size()},
+                slot.unorm8_mips = vt_build_unorm8_channel_tail_mips(
+                    std::span<const std::uint8_t>{slot.byte_pixels},
                     slot.width,
                     slot.height,
+                    slot.channels,
                     image.color_space == contract::ImageColorSpace::srgb);
             } else {
-                slot.float4_mips = vt_build_float4_tail_mips(
-                    std::span<const float>{
-                        reinterpret_cast<const float *>(
-                            slot.float_pixels.data()),
-                        slot.float_pixels.size() * 4u},
+                slot.float_mips = vt_build_float_channel_tail_mips(
+                    std::span<const float>{slot.float_pixels},
                     slot.width,
-                    slot.height);
+                    slot.height,
+                    slot.channels);
             }
         }
     });
@@ -521,7 +611,17 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     if (use_vt) {
         vt_entries.reserve(decoded_images.size());
     }
-    for (auto &slot : decoded_images) {
+    std::vector<std::size_t> slot_image_index(
+        decoded_images.size(), std::numeric_limits<std::size_t>::max());
+    std::size_t dedup_count = 0u;
+    std::size_t byte1_count = 0u;
+    std::size_t byte2_count = 0u;
+    std::size_t float1_count = 0u;
+    std::size_t float2_count = 0u;
+    std::size_t saved_base_bytes = 0u;
+    for (std::size_t slot_idx = 0u; slot_idx < decoded_images.size();
+         ++slot_idx) {
+        auto &slot = decoded_images[slot_idx];
         if (!slot.diagnostic.empty()) {
             diagnose(result.diagnostics, std::move(slot.diagnostic));
             continue;
@@ -540,13 +640,52 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         if (use_vt) {
             vt_entries.push_back(std::move(slot.vt_probed));
         }
+        if (slot.duplicate_of) {
+            const auto canonical_idx = *slot.duplicate_of;
+            const auto img_idx = slot_image_index[canonical_idx];
+            if (img_idx < data->images.size()) {
+                const auto &c_slot = decoded_images[canonical_idx];
+                slot.width = c_slot.width;
+                slot.height = c_slot.height;
+                slot.mip_count = c_slot.mip_count;
+                slot.is_unorm8 = c_slot.is_unorm8;
+                slot.channels = c_slot.channels;
+                slot.channel_mode = c_slot.channel_mode;
+                slot_image_index[slot_idx] = img_idx;
+                bind_scene_image(slot.id, data->images[img_idx]);
+                ++dedup_count;
+                saved_base_bytes +=
+                    static_cast<std::size_t>(slot.width) *
+                    static_cast<std::size_t>(slot.height) *
+                    (slot.is_unorm8 ? 4u : 16u);
+            }
+            continue;
+        }
+        const auto px_count =
+            static_cast<std::size_t>(slot.width) *
+            static_cast<std::size_t>(slot.height);
         if (slot.is_unorm8) {
-            auto &pixels = texture_uploads.emplace_back(std::move(slot.byte_pixels));
+            auto &pixels =
+                compact_byte_uploads.emplace_back(std::move(slot.byte_pixels));
             const std::uint32_t mip_levels =
                 static_cast<std::uint32_t>(1u + slot.unorm8_mips.size());
+            const auto storage =
+                slot.channels == 1u
+                    ? luisa::compute::PixelStorage::BYTE1
+                    : (slot.channels == 2u
+                           ? luisa::compute::PixelStorage::BYTE2
+                           : luisa::compute::PixelStorage::BYTE4);
+            if (slot.channels == 1u) {
+                ++byte1_count;
+                saved_base_bytes += px_count * 3u;
+            } else if (slot.channels == 2u) {
+                ++byte2_count;
+                saved_base_bytes += px_count * 2u;
+            }
+            slot_image_index[slot_idx] = data->images.size();
             auto &resource = data->images.emplace_back(
                 data->device.create_image<float>(
-                    luisa::compute::PixelStorage::BYTE4,
+                    storage,
                     slot.width,
                     slot.height,
                     mip_levels));
@@ -555,50 +694,57 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             for (std::size_t m = 0u; m < slot.unorm8_mips.size(); ++m) {
                 const auto &src_mip = slot.unorm8_mips[m];
                 auto &mip_upload =
-                    texture_uploads.emplace_back(src_mip.rgba.size());
-                if (!src_mip.rgba.empty()) {
-                    std::memcpy(
-                        mip_upload.data(),
-                        src_mip.rgba.data(),
-                        src_mip.rgba.size());
-                }
+                    compact_byte_uploads.emplace_back(src_mip.rgba);
                 stream << resource.view(static_cast<std::uint32_t>(m + 1u))
                               .copy_from(luisa::span{mip_upload});
             }
         } else {
             auto &pixels =
-                float_texture_uploads.emplace_back(std::move(slot.float_pixels));
+                compact_float_uploads.emplace_back(std::move(slot.float_pixels));
             const std::uint32_t mip_levels =
-                static_cast<std::uint32_t>(1u + slot.float4_mips.size());
+                static_cast<std::uint32_t>(1u + slot.float_mips.size());
+            const auto storage =
+                slot.channels == 1u
+                    ? luisa::compute::PixelStorage::FLOAT1
+                    : (slot.channels == 2u
+                           ? luisa::compute::PixelStorage::FLOAT2
+                           : luisa::compute::PixelStorage::FLOAT4);
+            if (slot.channels == 1u) {
+                ++float1_count;
+                saved_base_bytes += px_count * 12u;
+            } else if (slot.channels == 2u) {
+                ++float2_count;
+                saved_base_bytes += px_count * 8u;
+            }
+            slot_image_index[slot_idx] = data->images.size();
             auto &resource = data->images.emplace_back(
                 data->device.create_image<float>(
-                    luisa::compute::PixelStorage::FLOAT4,
+                    storage,
                     slot.width,
                     slot.height,
                     mip_levels));
             bind_scene_image(slot.id, resource);
             stream << resource.view(0u).copy_from(luisa::span{pixels});
-            for (std::size_t m = 0u; m < slot.float4_mips.size(); ++m) {
-                const auto &src_mip = slot.float4_mips[m];
-                const auto px_count = src_mip.rgba.size() / 4u;
-                auto &mip_upload = float_texture_uploads.emplace_back();
-                mip_upload.reserve(px_count);
-                for (std::size_t p = 0u; p < px_count; ++p) {
-                    const auto off = p * 4u;
-                    mip_upload.emplace_back(luisa::make_float4(
-                        src_mip.rgba[off],
-                        src_mip.rgba[off + 1u],
-                        src_mip.rgba[off + 2u],
-                        src_mip.rgba[off + 3u]));
-                }
+            for (std::size_t m = 0u; m < slot.float_mips.size(); ++m) {
+                const auto &src_mip = slot.float_mips[m];
+                auto &mip_upload =
+                    compact_float_uploads.emplace_back(src_mip.rgba);
                 stream << resource.view(static_cast<std::uint32_t>(m + 1u))
                               .copy_from(luisa::span{mip_upload});
             }
         }
     }
+    if (dedup_count != 0u || byte1_count != 0u || byte2_count != 0u ||
+        float1_count != 0u || float2_count != 0u) {
+        LUISA_INFO(
+            "Psycles scene images: byte1={}, byte2={}, float1={}, float2={}, "
+            "dedup={}, saved_mip0_mb={:.1f}.",
+            byte1_count, byte2_count, float1_count, float2_count,
+            dedup_count, static_cast<double>(saved_base_bytes) / 1.0e6);
+    }
     if (data->cycles_svm) {
         const auto &handles = data->cycles_svm->compilation.images;
-        const auto &bindings = data->cycles_svm->image_bindings;
+        auto &bindings = data->cycles_svm->image_bindings;
         const std::size_t mip_desc_count =
             std::max<std::size_t>(handles.size(), 1u);
         direct_mip_desc_upload.assign(
@@ -612,11 +758,12 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             id_to_slot.begin(),
             id_to_slot.end(),
             [](const auto &a, const auto &b) { return a.first < b.first; });
+        bool updated_bindings = false;
         for (std::size_t i = 0u; i < handles.size(); ++i) {
             const auto &h = handles[i];
-            const std::uint32_t sampler_bits =
-                i < bindings.size() ? bindings[i].sampler : 0u;
             if (h.nishita) {
+                const std::uint32_t sampler_bits =
+                    i < bindings.size() ? bindings[i].sampler : 0u;
                 direct_mip_desc_upload[i] = luisa::make_uint4(
                     compiler::cycles_svm::nishita_texture_width,
                     compiler::cycles_svm::nishita_texture_height,
@@ -632,6 +779,19 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     });
                 if (it != id_to_slot.end() && it->first == h.resource_id) {
                     const auto &s = decoded_images[it->second];
+                    if (i < bindings.size() &&
+                        s.channel_mode != DecodedImageChannelMode::rgba) {
+                        const auto mode_bits =
+                            static_cast<std::uint32_t>(s.channel_mode)
+                            << cycles_svm_image_channel_mode_shift;
+                        bindings[i].sampler =
+                            (bindings[i].sampler &
+                             ~cycles_svm_image_channel_mode_mask) |
+                            mode_bits;
+                        updated_bindings = true;
+                    }
+                    const std::uint32_t sampler_bits =
+                        i < bindings.size() ? bindings[i].sampler : 0u;
                     direct_mip_desc_upload[i] = luisa::make_uint4(
                         std::max(s.width, 1u),
                         std::max(s.height, 1u),
@@ -639,6 +799,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         sampler_bits);
                 }
             }
+        }
+        if (updated_bindings && data->cycles_svm->image_binding_buffer) {
+            stream << data->cycles_svm->image_binding_buffer->copy_from(
+                luisa::span{bindings});
         }
         data->direct_image_mip_descs =
             data->device.create_buffer<luisa::uint4>(mip_desc_count);
@@ -1173,32 +1337,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         resource.positions =
             data->device.create_buffer<luisa::float3>(
                 upload.positions.size());
-        resource.normals =
-            data->device.create_buffer<luisa::float3>(
-                upload.normals.size());
-        resource.uv =
-            data->device.create_buffer<luisa::float2>(
-                upload.uv.size());
-        resource.uv_tangents =
-            data->device.create_buffer<luisa::float4>(
-                upload.uv_tangents.size());
-        resource.generated =
-            data->device.create_buffer<luisa::float3>(
-                upload.generated.size());
         resource.triangles =
             data->device.create_buffer<Triangle>(
                 upload.triangles.size());
         resource.triangle_material_slots =
             data->device.create_buffer<luisa::uint>(
                 upload.triangle_material_slots.size());
-        resource.triangle_random_per_island =
-            data->device.create_buffer<float>(
-                upload.triangle_random_per_island.size());
         resource.triangle_smooth =
             data->device.create_buffer<luisa::uint>(
                 upload.triangle_smooth.size());
-        resource.attributes.reserve(
-            upload.attributes.size());
         if (!upload.cycles_intersection_positions.empty()) {
             resource.cycles_intersection_positions.emplace(
                 data->device.create_buffer<luisa::float3>(
@@ -1208,27 +1355,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             (apply_static_mesh_bvh && resource.cycles_intersection_positions)
                 ? *resource.cycles_intersection_positions
                 : resource.positions,
-            resource.triangles);
+            resource.triangles,
+            static_scene_accel_option());
         data->heap.emplace_on_update(
             bindless_base, resource.triangles);
         data->heap.emplace_on_update(
             bindless_base + 1u, resource.positions);
         data->heap.emplace_on_update(
-            bindless_base + 2u, resource.normals);
-        data->heap.emplace_on_update(
-            bindless_base + 3u, resource.uv);
-        data->heap.emplace_on_update(
             bindless_base + 4u,
             resource.triangle_material_slots);
-        data->heap.emplace_on_update(
-            bindless_base + 5u,
-            resource.generated);
-        data->heap.emplace_on_update(
-            bindless_base + 6u,
-            resource.triangle_random_per_island);
-        data->heap.emplace_on_update(
-            bindless_base + 7u,
-            resource.uv_tangents);
         data->heap.emplace_on_update(
             bindless_base + 8u,
             resource.triangle_smooth);
@@ -1241,52 +1376,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 bindless_base + 9u,
                 resource.positions);
         }
-        // The pre-displacement representation is a total geometry
-        // interface. Ordinary meshes alias it to their live buffers;
-        // MeshDisplacementSceneComponent replaces these bindings with saved
-        // immutable buffers before modifying the mesh.
-        data->heap.emplace_on_update(
-            bindless_base + 10u,
-            resource.positions);
-        data->heap.emplace_on_update(
-            bindless_base + 11u,
-            resource.normals);
-        data->heap.emplace_on_update(
-            bindless_base + 12u,
-            resource.uv_tangents);
-        for (const auto &attribute :
-             upload.attributes) {
-            auto &attribute_resource =
-                resource.attributes.emplace_back(
-                    data->device.create_buffer<luisa::float4>(
-                        attribute.values.size()));
-            const auto attribute_slot =
-                next_attribute_slot++;
-            data->heap.emplace_on_update(
-                attribute_slot, attribute_resource);
-            stream << attribute_resource.copy_from(
-                luisa::span{attribute.values});
-        }
         stream << resource.positions.copy_from(
                       luisa::span{upload.positions})
-               << resource.normals.copy_from(
-                      luisa::span{upload.normals})
-               << resource.uv.copy_from(
-                      luisa::span{upload.uv})
-               << resource.uv_tangents.copy_from(
-                      luisa::span{upload.uv_tangents})
-               << resource.generated.copy_from(
-                      luisa::span{upload.generated})
                << resource.triangles.copy_from(
                       luisa::span{upload.triangles})
                << resource.triangle_material_slots.copy_from(
                       luisa::span{
                           upload.triangle_material_slots})
-               << resource.triangle_random_per_island
-                      .copy_from(
-                          luisa::span{
-                              upload
-                                  .triangle_random_per_island})
                << resource.triangle_smooth.copy_from(
                       luisa::span{
                           upload.triangle_smooth});
@@ -1342,6 +1438,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         diagnose(result.diagnostics, displacement.diagnostic);
         return result;
     }
+    if (!data->geometries.empty() || !data->curve_geometries.empty()) {
+        // Sync BLAS builds before TLAS emplace so backends compact in place and
+        // release build scratch buffers prior to TLAS allocation.
+        stream << synchronize();
+    }
     std::string cycles_svm_geometry_diagnostic;
     if (!finalize_cycles_svm_scene_runtime(
             data,
@@ -1359,6 +1460,22 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
     upload_cycles_svm_scene_runtime(
         stream, *data->cycles_svm);
+    for (auto &upload : uploads) {
+        auto release = [](auto &vec) {
+            std::remove_reference_t<decltype(vec)>{}.swap(vec);
+        };
+        release(upload.normals);
+        release(upload.uv);
+        release(upload.uv_tangents);
+        release(upload.undisplaced_positions);
+        release(upload.undisplaced_normals);
+        release(upload.undisplaced_uv_tangents);
+        release(upload.generated);
+        release(upload.triangle_random_per_island);
+        release(upload.triangle_smooth);
+        release(upload.attributes);
+        release(upload.uv_tangent_layers);
+    }
     const auto material_may_emit =
         collect_emission_sampling_materials(*data);
 
@@ -1368,7 +1485,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     luisa::vector<MaterialBindingGpu> override_materials;
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
     std::vector<float> emissive_triangle_areas;
-    data->accel = data->device.create_accel();
+    data->accel = data->device.create_accel(static_scene_accel_option());
     subsurface_scene.initialize_accel(data, subsurface_scene_plan);
     source_instance_index = 0u;
     for (const auto &[instance_id, instance] :
@@ -1649,7 +1766,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             data->device.create_buffer<Triangle>(
                 dummy_triangles.size());
         dummy.mesh = data->device.create_mesh(
-            dummy.positions, dummy.triangles);
+            dummy.positions, dummy.triangles, static_scene_accel_option());
         stream << dummy.positions.copy_from(
                       luisa::span{dummy_positions})
                << dummy.triangles.copy_from(

@@ -111,6 +111,181 @@ probe_scene_image_info(
     return std::nullopt;
 }
 
+std::optional<CompactDecodedImage>
+decode_scene_image_gray8(
+    std::span<const std::uint8_t> encoded,
+    std::string_view filename_hint) {
+    if (encoded.empty() ||
+        encoded.size() > static_cast<std::size_t>(
+                             std::numeric_limits<int>::max())) {
+        return std::nullopt;
+    }
+
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    const auto is_hdr =
+        stbi_is_hdr_from_memory(
+            encoded.data(),
+            static_cast<int>(encoded.size())) != 0;
+    const auto is_sixteen_bit =
+        stbi_is_16_bit_from_memory(
+            encoded.data(),
+            static_cast<int>(encoded.size())) != 0;
+    if (is_hdr || is_sixteen_bit) {
+        return std::nullopt;
+    }
+#if defined(PSYCLES_WITH_OPENIMAGEIO)
+    // Preserve libjpeg integer IDCT parity with Blender ImBuf on JPEGs.
+    const auto is_jpeg = encoded.size() >= 3u && encoded[0] == 0xffu &&
+                         encoded[1] == 0xd8u && encoded[2] == 0xffu;
+    if (is_jpeg) {
+        io::DecodedImageRgba rgba;
+        if (io::decode_image_rgba(
+                encoded,
+                filename_hint.empty() ? std::string_view{"texture.jpg"}
+                                      : filename_hint,
+                rgba) &&
+            rgba.storage == io::DecodedImageStorage::unorm8) {
+            const auto pixel_count =
+                static_cast<std::size_t>(rgba.width) *
+                static_cast<std::size_t>(rgba.height);
+            if (rgba.unorm8_pixels.size() == pixel_count * 4u) {
+                CompactDecodedImage gray{
+                    .width = rgba.width,
+                    .height = rgba.height,
+                    .is_unorm8 = true,
+                    .channels = 1u,
+                    .channel_mode = DecodedImageChannelMode::gray_opaque};
+                gray.byte_pixels.resize(pixel_count);
+                for (std::size_t i = 0u; i < pixel_count; ++i) {
+                    gray.byte_pixels[i] = rgba.unorm8_pixels[i * 4u];
+                }
+                return gray;
+            }
+        }
+        return std::nullopt;
+    }
+#else
+    static_cast<void>(filename_hint);
+#endif
+    auto *pixels = stbi_load_from_memory(
+        encoded.data(),
+        static_cast<int>(encoded.size()),
+        &width,
+        &height,
+        &channels,
+        STBI_grey);
+    if (pixels != nullptr && width > 0 && height > 0) {
+        const auto pixel_count =
+            static_cast<std::size_t>(width) *
+            static_cast<std::size_t>(height);
+        CompactDecodedImage gray{
+            .width = static_cast<std::uint32_t>(width),
+            .height = static_cast<std::uint32_t>(height),
+            .is_unorm8 = true,
+            .channels = 1u,
+            .channel_mode = DecodedImageChannelMode::gray_opaque};
+        gray.byte_pixels.resize(pixel_count);
+        std::memcpy(gray.byte_pixels.data(), pixels, pixel_count);
+        stbi_image_free(pixels);
+        return gray;
+    }
+    stbi_image_free(pixels);
+    return std::nullopt;
+}
+
+CompactDecodedImage
+compact_decoded_scene_image(
+    io::DecodedImageRgba &&image,
+    bool allow_opaque_gray) noexcept {
+    CompactDecodedImage out{
+        .width = image.width,
+        .height = image.height,
+        .is_unorm8 = image.storage == io::DecodedImageStorage::unorm8};
+    const std::size_t pixel_count =
+        static_cast<std::size_t>(image.width) *
+        static_cast<std::size_t>(image.height);
+    if (out.is_unorm8) {
+        if (pixel_count != 0u &&
+            image.unorm8_pixels.size() == pixel_count * 4u) {
+            bool all_gray = true;
+            bool all_opaque = true;
+            const auto *src = image.unorm8_pixels.data();
+            for (std::size_t i = 0u; i < pixel_count; ++i) {
+                const auto off = i * 4u;
+                const auto r = src[off];
+                if (r != src[off + 1u] || r != src[off + 2u]) {
+                    all_gray = false;
+                    break;
+                }
+                all_opaque = all_opaque && (src[off + 3u] == 255u);
+            }
+            if (all_gray && all_opaque && allow_opaque_gray) {
+                out.channels = 1u;
+                out.channel_mode = DecodedImageChannelMode::gray_opaque;
+                out.byte_pixels.resize(pixel_count);
+                for (std::size_t i = 0u; i < pixel_count; ++i) {
+                    out.byte_pixels[i] = src[i * 4u];
+                }
+                return out;
+            }
+            if (all_gray) {
+                out.channels = 2u;
+                out.channel_mode = DecodedImageChannelMode::gray_alpha;
+                out.byte_pixels.resize(pixel_count * 2u);
+                for (std::size_t i = 0u; i < pixel_count; ++i) {
+                    out.byte_pixels[i * 2u] = src[i * 4u];
+                    out.byte_pixels[i * 2u + 1u] = src[i * 4u + 3u];
+                }
+                return out;
+            }
+        }
+        out.channels = 4u;
+        out.channel_mode = DecodedImageChannelMode::rgba;
+        out.byte_pixels = std::move(image.unorm8_pixels);
+        return out;
+    }
+
+    if (pixel_count != 0u && image.float_pixels.size() == pixel_count * 4u) {
+        bool all_gray = true;
+        bool all_opaque = true;
+        const auto *src = image.float_pixels.data();
+        for (std::size_t i = 0u; i < pixel_count; ++i) {
+            const auto off = i * 4u;
+            const float r = src[off];
+            if (r != src[off + 1u] || r != src[off + 2u]) {
+                all_gray = false;
+                break;
+            }
+            all_opaque = all_opaque && (src[off + 3u] == 1.0f);
+        }
+        if (all_gray && all_opaque && allow_opaque_gray) {
+            out.channels = 1u;
+            out.channel_mode = DecodedImageChannelMode::gray_opaque;
+            out.float_pixels.resize(pixel_count);
+            for (std::size_t i = 0u; i < pixel_count; ++i) {
+                out.float_pixels[i] = src[i * 4u];
+            }
+            return out;
+        }
+        if (all_gray) {
+            out.channels = 2u;
+            out.channel_mode = DecodedImageChannelMode::gray_alpha;
+            out.float_pixels.resize(pixel_count * 2u);
+            for (std::size_t i = 0u; i < pixel_count; ++i) {
+                out.float_pixels[i * 2u] = src[i * 4u];
+                out.float_pixels[i * 2u + 1u] = src[i * 4u + 3u];
+            }
+            return out;
+        }
+    }
+    out.channels = 4u;
+    out.channel_mode = DecodedImageChannelMode::rgba;
+    out.float_pixels = std::move(image.float_pixels);
+    return out;
+}
+
 std::optional<io::DecodedImageRgba>
 decode_scene_image(
     std::span<const std::uint8_t> encoded,

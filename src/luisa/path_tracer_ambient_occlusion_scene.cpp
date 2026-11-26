@@ -27,7 +27,7 @@ void AmbientOcclusionSceneComponent::initialize(
             "Psycles Only Local AO domain: triangle_instances={}.",
             _plan.triangle_instance_count);
         scene->ambient_occlusion_local_accel.emplace(
-            scene->device.create_accel());
+            scene->device.create_accel(static_scene_accel_option()));
     }
 }
 

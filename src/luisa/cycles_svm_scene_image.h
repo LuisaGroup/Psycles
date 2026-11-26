@@ -120,6 +120,12 @@ inline constexpr std::uint32_t cycles_svm_image_extension_mask =
 // Projection of full-image KernelImageTexture::image_info_id == KERNEL_IMAGE_NONE.
 // The low four bits remain the immutable sampler; no SVM word is rewritten.
 inline constexpr std::uint32_t cycles_svm_image_load_failed_flag = 1u << 4u;
+inline constexpr std::uint32_t cycles_svm_image_channel_mode_shift = 5u;
+inline constexpr std::uint32_t cycles_svm_image_channel_mode_mask =
+    0x3u << cycles_svm_image_channel_mode_shift;
+inline constexpr std::uint32_t cycles_svm_image_channel_mode_rgba = 0u;
+inline constexpr std::uint32_t cycles_svm_image_channel_mode_gray_opaque = 1u;
+inline constexpr std::uint32_t cycles_svm_image_channel_mode_gray_alpha = 2u;
 
 [[nodiscard]] constexpr std::uint32_t cycles_svm_image_sampling_family(
     compiler::cycles_svm::ImageInterpolation interpolation) noexcept {
