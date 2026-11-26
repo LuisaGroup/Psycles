@@ -34,7 +34,8 @@ Float3 xyz_to_rgb(const KernelGlobals &kernel_globals,
 }
 
 void node_blackbody(Cursor &cursor, Stack &stack,
-                    const KernelGlobals &kernel_globals) noexcept {
+                    const KernelGlobals &kernel_globals,
+                    const ShaderData *shader_data) noexcept {
   const auto temperature_input = cursor.word();
   const auto packed_output = cursor.word();
   const auto color_offset = cursor.byte(packed_output, 0u);
@@ -45,10 +46,19 @@ void node_blackbody(Cursor &cursor, Stack &stack,
                     cycles_color_nodes::blackbody_rec709(temperature)),
       make_float3(0.0f));
   stack_store_float3(stack, color_offset, color);
+  if (shader_data != nullptr && kernel_globals.is_spectral() &&
+      shader_data->spectral.has_value() && stack.is_spectral()) {
+    const auto &sc = *shader_data->spectral;
+    stack.record_spectral_slot(
+        color_offset,
+        cycles_spectrum::blackbody_spd(
+            *sc.tables, temperature, sc.wavelengths.lambdas));
+  }
 }
 
 void node_wavelength(Cursor &cursor, Stack &stack,
-                     const KernelGlobals &kernel_globals) noexcept {
+                     const KernelGlobals &kernel_globals,
+                     const ShaderData *shader_data) noexcept {
   const auto wavelength_input = cursor.word();
   const auto packed_output = cursor.word();
   const auto color_offset = cursor.byte(packed_output, 0u);
@@ -60,6 +70,13 @@ void node_wavelength(Cursor &cursor, Stack &stack,
           (1.0f / 2.52f),
       make_float3(0.0f));
   stack_store_float3(stack, color_offset, color);
+  if (shader_data != nullptr && kernel_globals.is_spectral() &&
+      shader_data->spectral.has_value() && stack.is_spectral()) {
+    stack.record_spectral_slot(
+        color_offset,
+        cycles_spectrum::wavelength_spd(
+            wavelength, shader_data->spectral->wavelengths.lambdas));
+  }
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

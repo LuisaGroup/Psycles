@@ -141,7 +141,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                                *surface.cycles_object_flags}
                          : std::nullopt,
                  .may_filter_glossy = config.has_filter_glossy,
-                 .vt_miss_page = sample.vt_miss_page});
+                 .vt_miss_page = sample.vt_miss_page,
+                 .spectral = sample.spectral_context()});
         }
         LUISA_ASSERT(populated_surface != nullptr,
                      "Native surface population returned null.");
@@ -180,8 +181,20 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                      ((sd.object_flag & unsigned(abi::SD_OBJECT_HOLDOUT_MASK)) != 0u)) &
                     ((path_flags & cycles_path_state::flag_transparent_background) != 0u)) {
                     const auto weight = cycles_svm::detail::surface_shader_apply_holdout(sd);
-                    const auto weighted = weight * throughput;
-                    sample.accumulate_transparency((weighted.x + weighted.y + weighted.z) * (1.0f / 3.0f));
+                    if (sample.is_spectral()) {
+                        const auto ctx = sample.spectral_context();
+                        const auto weight_spec =
+                            cycles_spectrum::Spectrum::from_rgb_reflectance(
+                                ctx->tables, weight, &ctx->wavelengths, true);
+                        const auto weighted = weight_spec * throughput;
+                        sample.accumulate_transparency(
+                            cycles_spectrum::average(
+                                weighted,
+                                sample.spectral_secondary_terminated()));
+                    } else {
+                        const auto weighted = weight * throughput.rgb();
+                        sample.accumulate_transparency((weighted.x + weighted.y + weighted.z) * (1.0f / 3.0f));
+                    }
                     if (sample_terminated_out == nullptr) {
                         $if(all(weight == make_float3(1.0f))) { $break; };
                     } else {
@@ -234,14 +247,17 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             // A BSSRDF exit skips them along with duplicate roulette.
             $if(path_depth == 0u) {
                 const auto &aov = preparation.aov;
+                const Float3 throughput_aov =
+                    sample.is_spectral() ? sample.reflectance_to_rgb(throughput)
+                                         : throughput.rgb();
                 sample.accumulate_albedo_pass(
-                    throughput * aov.albedo);
+                    throughput_aov * aov.albedo);
                 sample.accumulate_light_pass(
                     LightPassBuffer::glossy_color,
-                    throughput * aov.glossy_albedo);
+                    throughput_aov * aov.glossy_albedo);
                 sample.accumulate_light_pass(
                     LightPassBuffer::transmission_color,
-                    throughput * aov.transmission_albedo);
+                    throughput_aov * aov.transmission_albedo);
                 auto surface_alpha = clamp(
                     make_float3(1.0f) - aov.transparency,
                     make_float3(0.0f),
@@ -311,7 +327,9 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                                           continuation_probability));
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::throughput,
-                              throughput);
+                              sample.is_spectral()
+                                  ? sample.reflectance_to_rgb(throughput)
+                                  : throughput.rgb());
             trace_write_event(
                 path_step, path_trace_schema::EventSlot::ray_p, ray->origin());
             trace_write_event(path_step,

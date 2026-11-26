@@ -253,6 +253,19 @@ class PathEmissiveTriangleComponent final
         return emission;
     }
 
+    Float4 evaluate_constant_emission_spectral(
+        PathSampleContext &sample,
+        const EmissiveTriangleLightProposal
+            &proposal) const noexcept override {
+        const Float3 rgb = evaluate_constant_emission(sample, proposal);
+        if (!sample.is_spectral()) {
+            return make_float4(rgb, 0.0f);
+        }
+        const auto ctx = sample.spectral_context();
+        return cycles_spectrum::rgb_to_spectrum_illuminant(
+            *ctx->tables, rgb, ctx->wavelengths.lambdas);
+    }
+
     EmissiveTrianglePdf
     from_intersection(
         Float selection_pdf,

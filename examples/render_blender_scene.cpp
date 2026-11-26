@@ -236,6 +236,10 @@ int main(int argc, char **argv) {
     psycles::luisa_backend::LuisaVirtualTextureCacheOptions vt_options{};
     auto direct_texture_mip_mode =
         psycles::luisa_backend::LuisaTextureMipMode::mip0;
+    std::optional<bool> spectral_override;
+    std::optional<psycles::contract::CausticsMethod> caustics_override;
+    std::optional<bool> sms_unbiased_override;
+    std::optional<std::uint32_t> sms_max_trials_override;
     std::vector<char *> positional_argv;
     positional_argv.reserve(static_cast<std::size_t>(argc));
     if (argc > 0) {
@@ -517,6 +521,61 @@ int main(int argc, char **argv) {
             }
             continue;
         }
+        if (arg == "--spectral") {
+            spectral_override = true;
+            continue;
+        }
+        if (arg == "--no-spectral") {
+            spectral_override = false;
+            continue;
+        }
+        if (arg == "--sms-unbiased") {
+            sms_unbiased_override = true;
+            continue;
+        }
+        if (arg == "--sms-biased") {
+            sms_unbiased_override = false;
+            continue;
+        }
+        if (arg == "--sms-max-trials") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --sms-max-trials requires a value\n";
+                return EXIT_FAILURE;
+            }
+            const auto v = parse_unsigned<std::uint32_t>(argv[++i]);
+            if (!v || *v == 0u) {
+                std::cerr << "error: --sms-max-trials must be >= 1\n";
+                return EXIT_FAILURE;
+            }
+            sms_max_trials_override = *v;
+            continue;
+        }
+        if (arg.starts_with("--caustics")) {
+            std::string_view mode;
+            if (arg == "--caustics") {
+                if (i + 1 >= argc) {
+                    std::cerr << "error: --caustics requires none|mnee|sms\n";
+                    return EXIT_FAILURE;
+                }
+                mode = argv[++i];
+            } else if (arg.starts_with("--caustics=")) {
+                mode = arg.substr(11u);
+            } else {
+                std::cerr << "error: unknown option " << arg << '\n';
+                return EXIT_FAILURE;
+            }
+            if (mode == "none") {
+                caustics_override = psycles::contract::CausticsMethod::none;
+            } else if (mode == "mnee") {
+                caustics_override = psycles::contract::CausticsMethod::mnee;
+            } else if (mode == "sms") {
+                caustics_override = psycles::contract::CausticsMethod::sms;
+            } else {
+                std::cerr << "error: --caustics must be none, mnee, or sms\n";
+                return EXIT_FAILURE;
+            }
+            continue;
+        }
         positional_argv.push_back(argv[i]);
     }
     argc = static_cast<int>(positional_argv.size());
@@ -605,6 +664,18 @@ int main(int argc, char **argv) {
     }
     if (!imported.ok()) {
         return EXIT_FAILURE;
+    }
+    if (spectral_override.has_value()) {
+        imported.integrator.spectral_rendering = *spectral_override;
+    }
+    if (caustics_override.has_value()) {
+        imported.integrator.caustics_method = *caustics_override;
+    }
+    if (sms_unbiased_override.has_value()) {
+        imported.integrator.sms_unbiased = *sms_unbiased_override;
+    }
+    if (sms_max_trials_override.has_value()) {
+        imported.integrator.sms_max_trials = *sms_max_trials_override;
     }
 
     auto width = imported.width;
@@ -1183,6 +1254,12 @@ int main(int argc, char **argv) {
                "width=" + std::to_string(width) +
                    " height=" + std::to_string(height) +
                    " samples=" + std::to_string(sample_count) +
+                   " spectral=" +
+                   std::string{imported.integrator.spectral_rendering ? "1"
+                                                                      : "0"} +
+                   " caustics=" +
+                   std::to_string(static_cast<unsigned>(
+                       imported.integrator.caustics_method)) +
                    " scheduler=" +
                    std::string{psycles::luisa_backend::luisa_path_scheduler_name(
                        scheduler)});

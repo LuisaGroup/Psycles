@@ -93,4 +93,49 @@ namespace psycles::luisa_backend::cycles_svm::detail {
     luisa::compute::Expr<luisa::float3> wi,
     luisa::compute::Expr<luisa::float3> random) noexcept;
 
+[[nodiscard]] BsdfSpectralEvaluation bsdf_microfacet_ggx_eval_spectral(
+    const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<luisa::float3> wo,
+    const cycles_spectrum::SpectralContext &spectral,
+    luisa::compute::Expr<float> dispersion_abbe) noexcept;
+
+[[nodiscard]] BsdfSpectralSample bsdf_microfacet_ggx_sample_spectral(
+    const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
+    luisa::compute::Expr<luisa::float3> Ng,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<luisa::float3> random,
+    const cycles_spectrum::SpectralContext &spectral,
+    luisa::compute::Expr<float> dispersion_abbe) noexcept;
+
+[[nodiscard]] BsdfSpectralEvaluation bsdf_microfacet_beckmann_eval_spectral(
+    const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<luisa::float3> wo,
+    const cycles_spectrum::SpectralContext &spectral,
+    luisa::compute::Expr<float> dispersion_abbe) noexcept;
+
+[[nodiscard]] BsdfSpectralSample bsdf_microfacet_beckmann_sample_spectral(
+    const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
+    luisa::compute::Expr<luisa::float3> Ng,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<luisa::float3> random,
+    const cycles_spectrum::SpectralContext &spectral,
+    luisa::compute::Expr<float> dispersion_abbe) noexcept;
+
+[[nodiscard]] BsdfSpectralEvaluation bsdf_thin_glass_transmission_eval_spectral(
+    const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<luisa::float3> wo,
+    const cycles_spectrum::SpectralContext &spectral,
+    luisa::compute::Expr<float> dispersion_abbe) noexcept;
+
+[[nodiscard]] BsdfSpectralSample bsdf_thin_glass_transmission_sample_spectral(
+    const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
+    luisa::compute::Expr<luisa::float3> Ng,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<luisa::float3> random,
+    const cycles_spectrum::SpectralContext &spectral,
+    luisa::compute::Expr<float> dispersion_abbe) noexcept;
+
 } // namespace psycles::luisa_backend::cycles_svm::detail

@@ -57,8 +57,13 @@ class BackgroundEventStageImpl final
         Bool competing =
             (path_depth > 0u) &
             (!mis_competition_skipped);
+        const auto spectral = sample.is_spectral();
         Float environment_weight = 1.0f;
         Float3 environment_radiance = make_float3(0.0f);
+        std::optional<Float4> environment_radiance_spec;
+        if (spectral) {
+            environment_radiance_spec.emplace(make_float4(0.0f));
+        }
         // Cycles rejects invisible background shaders before evaluating SVM,
         // and non-competing rays (primary / delta) always receive unit MIS
         // weight so environment PDF evaluation is not needed.
@@ -101,13 +106,26 @@ class BackgroundEventStageImpl final
                         competing,
                         environment_pdf > 0.0f);
             };
-            if (scene->environment_emission_is_constant) {
-                environment_radiance =
-                    _environment_light->evaluate_constant_emission(sample);
+            if (spectral) {
+                if (scene->environment_emission_is_constant) {
+                    *environment_radiance_spec =
+                        _environment_light->evaluate_constant_emission_spectral(
+                            sample);
+                } else {
+                    *environment_radiance_spec =
+                        _environment_light->evaluate_emission_spectral(
+                            sample, ray->origin(), ray->direction(), sample.ray_dD,
+                            CyclesSvmBackgroundEvaluation::forward);
+                }
             } else {
-                environment_radiance = _environment_light->evaluate_emission(
-                    sample, ray->origin(), ray->direction(), sample.ray_dD,
-                    CyclesSvmBackgroundEvaluation::forward);
+                if (scene->environment_emission_is_constant) {
+                    environment_radiance =
+                        _environment_light->evaluate_constant_emission(sample);
+                } else {
+                    environment_radiance = _environment_light->evaluate_emission(
+                        sample, ray->origin(), ray->direction(), sample.ray_dD,
+                        CyclesSvmBackgroundEvaluation::forward);
+                }
             }
         };
         const auto commit_background = [&]() noexcept {
@@ -118,18 +136,35 @@ class BackgroundEventStageImpl final
                         transmission_depth,
                         glossy_depth,
                         invocation.parameters.ambient_occlusion_bounces);
-                environment_radiance *= select(
+                const auto ao_scale = select(
                     1.0f,
                     invocation.parameters.ambient_occlusion_factor,
                     ambient_occlusion_bounce);
+                if (spectral) {
+                    *environment_radiance_spec *= ao_scale;
+                } else {
+                    environment_radiance *= ao_scale;
+                }
             }
-            Float3 environment_contribution =
-                invocation
-                    .clamp_emission_contribution(
-                        throughput *
-                            environment_radiance *
-                            environment_weight,
-                        path_depth);
+            Float3 environment_contribution = make_float3(0.0f);
+            if (spectral) {
+                const auto spectral_contrib =
+                    throughput *
+                    cycles_spectrum::Spectrum::from_lanes(
+                        *environment_radiance_spec) *
+                    environment_weight;
+                environment_contribution =
+                    invocation.clamp_emission_contribution(
+                        sample.spectrum_to_rgb(spectral_contrib), path_depth);
+            } else {
+                environment_contribution =
+                    invocation
+                        .clamp_emission_contribution(
+                            throughput.rgb() *
+                                environment_radiance *
+                                environment_weight,
+                            path_depth);
+            }
             environment_contribution =
                 select(
                     make_float3(0.0f),
@@ -144,11 +179,7 @@ class BackgroundEventStageImpl final
                       flag_transparent_background) !=
                  0u);
             $if(transparent_background_ray) {
-                sample.accumulate_transparency(
-                    (throughput.x +
-                     throughput.y +
-                     throughput.z) *
-                    (1.0f / 3.0f));
+                sample.accumulate_transparency(sample.throughput_average());
             }
             $else {
                 sample.accumulate_radiance(

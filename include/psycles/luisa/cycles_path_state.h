@@ -8,6 +8,7 @@
 
 #include <psycles/contract/scene.h>
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/cycles_spectrum.h>
 #include <psycles/luisa/surface.h>
 
 #include <luisa/dsl/sugar.h>
@@ -47,6 +48,8 @@ inline constexpr std::uint32_t flag_surface_pass = 1u << 18u;
 inline constexpr std::uint32_t flag_volume_pass = 1u << 19u;
 inline constexpr std::uint32_t
     flag_volume_primary_transmit = 1u << 24u;
+inline constexpr std::uint32_t
+    flag_spectral_secondary_terminated = 1u << 25u;
 inline constexpr std::uint32_t flag_any_pass =
     flag_surface_pass | flag_volume_pass;
 
@@ -477,6 +480,32 @@ continuation_probability(
         roulette,
         1.0f,
         before_minimum);
+}
+
+[[nodiscard]] inline luisa::compute::Float
+continuation_probability(
+    luisa::compute::UInt flag,
+    luisa::compute::UInt bounce,
+    luisa::compute::UInt transparent_bounce,
+    luisa::compute::UInt minimum,
+    luisa::compute::UInt transparent_minimum,
+    const cycles_spectrum::Spectrum &throughput,
+    luisa::compute::Expr<bool> secondary_terminated = false) noexcept {
+    using namespace luisa::compute;
+    if (!throughput.is_spectral()) {
+        return continuation_probability(
+            flag, bounce, transparent_bounce, minimum, transparent_minimum,
+            throughput.rgb());
+    }
+    const auto transparent = (flag & flag_transparent) != 0u;
+    const auto before_minimum =
+        select(bounce <= minimum,
+               transparent_bounce <= transparent_minimum, transparent);
+    const auto roulette =
+        min(sqrt(cycles_spectrum::max_abs_component(throughput,
+                                                    secondary_terminated)),
+            1.0f);
+    return select(roulette, 1.0f, before_minimum);
 }
 
 // Exact path_state_ao_bounce() projection. Cycles deliberately counts only

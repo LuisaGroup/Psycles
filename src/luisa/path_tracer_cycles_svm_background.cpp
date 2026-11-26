@@ -147,4 +147,90 @@ Float3 evaluate_cycles_svm_background_emission(
   return emission;
 }
 
+Float4 evaluate_cycles_svm_background_emission_spectral(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const Var<RenderKernelParameters> &parameters,
+    Float3 origin, Float3 direction, Float differential, Float time,
+    const svm::PathState &state, UInt lcg_state,
+    CyclesSvmBackgroundEvaluation evaluation,
+    const cycles_spectrum::SpectralContext &spectral,
+    UInt *vt_miss_page,
+    bool force_direct_textures) noexcept {
+  Float3 constant_rgb = make_float3(0.0f);
+  Bool constant = false;
+  const bool has_domain_meta = cycles_svm_has_domain_metadata(*scene);
+  if (evaluation != CyclesSvmBackgroundEvaluation::importance_bake) {
+    if (has_domain_meta && scene->cycles_background_shader_id != ~0u) {
+      const auto bg_idx = scene->cycles_background_shader_id & svm::shader_mask;
+      const auto &compilation = scene->cycles_svm->compilation;
+      if (bg_idx < compilation.kernel_shaders.size()) {
+        const auto &bg_shader = compilation.kernel_shaders[bg_idx];
+        if ((bg_shader.flags &
+             static_cast<int>(abi::SD_HAS_CONSTANT_EMISSION)) != 0) {
+          const auto ce = bg_shader.constant_emission;
+          return cycles_spectrum::rgb_to_spectrum_illuminant(
+              *spectral.tables, make_float3(ce.x, ce.y, ce.z),
+              spectral.wavelengths.lambdas);
+        }
+      } else {
+        constant = cycles_svm_constant_emission(
+            *scene, scene->cycles_background_shader_id, constant_rgb);
+      }
+    } else {
+      constant = cycles_svm_constant_emission(
+          *scene, scene->cycles_background_shader_id, constant_rgb);
+    }
+  }
+  Float4 emission = make_float4(0.0f);
+  $if(constant) {
+    emission = cycles_spectrum::rgb_to_spectrum_illuminant(
+        *spectral.tables, constant_rgb, spectral.wavelengths.lambdas);
+  }
+  $else {
+    const PathCyclesSvmKernelGlobals kg{
+        scene, parameters, scene->camera.projection, true, true,
+        PathCyclesSvmShaderDomain::background, {},
+        force_direct_textures, vt_miss_page, nullptr, true};
+    auto sd = setup_cycles_svm_background_shader_data(
+        *scene, origin, direction, differential, time, state.visibility,
+        evaluation);
+    sd.lcg_state = lcg_state;
+    sd.spectral = spectral;
+    sd.spectral_emission_background.emplace(make_float4(0.0f));
+    const auto identity = make_float4x4(1.0f);
+    const svm::TransformState transforms{parameters.camera_transform,
+                                         parameters.camera_inverse_transform,
+                                         identity, identity};
+    const auto usage = cycles_svm_domain_entry_usage(
+        *scene, PathCyclesSvmShaderDomain::background);
+    const auto active_mask = cycles_svm_domain_shader_mask(
+        *scene, PathCyclesSvmShaderDomain::background);
+    const auto backend_name = scene->device.backend_name();
+    const bool cpu_backend =
+        backend_name == "fallback" || backend_name == "simd";
+    svm::translate_svm_nodes_assume_valid(
+        svm::SvmTranslationRequest{
+            .kernel_globals = kg,
+            .table = scene->cycles_svm->compilation.table,
+            .words = *scene->cycles_svm->word_buffer,
+            .shader_type = abi::SHADER_TYPE_SURFACE,
+            .kernel_features = scene->cycles_svm->kernel_features,
+            .node_feature_mask = cycles_svm_background_feature_mask(evaluation),
+            .node_types_used = usage.node_types_used,
+            .transform_state = transforms,
+            .shader_data = sd,
+            .path_state = state,
+            .stack_size = std::max<std::size_t>(1u, usage.peak_stack_usage),
+            .noise_usage = usage.noise_usage,
+            .active_shader_mask = active_mask,
+            .max_groups_per_outlined_chunk = std::size_t{0u}},
+        cpu_backend ? svm::SvmBackendStrategy::direct_jit
+                    : svm::SvmBackendStrategy::auto_select);
+    $if((sd.flag & svm::shader_data_emission) != 0u) {
+      emission = *sd.spectral_emission_background;
+    };
+  };
+  return emission;
+}
+
 } // namespace psycles::luisa_backend::detail

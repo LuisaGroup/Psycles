@@ -41,8 +41,20 @@ class EnvironmentLightComponent {
         PathSampleContext &sample)
         const noexcept = 0;
 
+    [[nodiscard]] virtual Float4
+    evaluate_constant_emission_spectral(
+        PathSampleContext &sample)
+        const noexcept = 0;
+
     [[nodiscard]] virtual Float3
     evaluate_emission(
+        PathSampleContext &sample,
+        Float3 origin, Float3 direction, Float differential,
+        CyclesSvmBackgroundEvaluation evaluation)
+        const noexcept = 0;
+
+    [[nodiscard]] virtual Float4
+    evaluate_emission_spectral(
         PathSampleContext &sample,
         Float3 origin, Float3 direction, Float differential,
         CyclesSvmBackgroundEvaluation evaluation)

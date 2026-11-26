@@ -668,6 +668,37 @@ if(TEST psycles.luisa_thin_film_fresnel_vk)
 endif()
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_spectrum_tests
+    SOURCE tests/test_luisa_cycles_spectrum.cpp
+    TEST_STEM luisa_cycles_spectrum
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_cycles_spectrum_tests
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+if(TEST psycles.luisa_cycles_spectrum_vk)
+    set_tests_properties(
+        psycles.luisa_cycles_spectrum_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_spectral_furnace_tests
+    SOURCE tests/test_luisa_spectral_furnace.cpp
+    TEST_STEM luisa_spectral_furnace
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_spectral_furnace_tests
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+if(TEST psycles.luisa_spectral_furnace_vk)
+    set_tests_properties(
+        psycles.luisa_spectral_furnace_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_noise_callable_tests
     SOURCE tests/test_luisa_noise_callable.cpp
     TEST_STEM luisa_noise_callable

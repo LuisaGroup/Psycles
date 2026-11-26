@@ -19,6 +19,12 @@ struct MicrofacetFresnelEvaluation {
   luisa::compute::Float cosine_transmitted;
 };
 
+struct MicrofacetFresnelSpectralEvaluation {
+  luisa::compute::Float4 reflectance;
+  luisa::compute::Float4 transmittance;
+  luisa::compute::Float4 cosine_transmitted;
+};
+
 [[nodiscard]] luisa::compute::Float
 f0_from_ior(luisa::compute::Expr<float> ior) noexcept;
 
@@ -57,5 +63,14 @@ microfacet_fresnel(const KernelGlobals &kernel_globals,
                    const MicrofacetF82TintClosure &closure,
                    luisa::compute::Expr<float> cosine_incoming,
                    bool may_transmit = false) noexcept;
+
+[[nodiscard]] MicrofacetFresnelSpectralEvaluation
+microfacet_fresnel_spectral(
+    const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
+    luisa::compute::Expr<float> cosine_incoming,
+    luisa::compute::Expr<luisa::float4> eta_lambda,
+    const cycles_spectrum::SpectralContext &spectral,
+    luisa::compute::Expr<bool> is_dispersive,
+    bool may_transmit = true) noexcept;
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

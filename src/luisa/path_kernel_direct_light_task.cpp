@@ -21,6 +21,19 @@ Float3 finalize_direct_light_sample(
   return path_throughput * local_unshadowed * roulette_weight;
 }
 
+Float4 finalize_direct_light_sample_spectral(
+    const LightSampleRouletteCallable &light_sample_roulette,
+    Float4 local_unshadowed, Float4 path_throughput, Bool secondary_terminated,
+    Float light_terminate_sample, Float inverse_threshold) noexcept {
+  const auto max_val = cycles_spectrum::max_abs_component(
+      cycles_spectrum::Spectrum::from_lanes(local_unshadowed),
+      secondary_terminated);
+  const auto roulette_weight = light_sample_roulette(
+      make_float3(max_val, 0.0f, 0.0f), light_terminate_sample,
+      inverse_threshold);
+  return path_throughput * local_unshadowed * roulette_weight;
+}
+
 Var<ShadowTraceResultCall> DirectLightTaskEvaluator::trace(
     const Var<DirectLightTaskCall> &task,
     const Var<RenderKernelParameters> &parameters) const noexcept {
@@ -43,11 +56,45 @@ Var<ShadowTraceResultCall> DirectLightTaskEvaluator::trace(
       parameters);
 }
 
+void DirectLightTaskEvaluator::trace_spectral(
+    Var<DirectLightTaskCall> &task, DirectLightSpectralExtension &spectral,
+    const Var<RenderKernelParameters> &parameters, Bool &visible,
+    const std::function<void(Expr<luisa::uint>)> &vt_wait_resident)
+    const noexcept {
+  Bool active = true;
+  $while(active) {
+    const auto shadow_batch = intersect(task, parameters);
+    $if(shadow_batch.blocked != 0u) { active = false; }
+    $else {
+      if (vt_wait_resident) {
+        $loop {
+          UInt vt_miss = vt_invalid_page;
+          const auto step = shade_shadow(task, shadow_batch, parameters,
+                                         &vt_miss, &spectral);
+          $if(vt_miss != vt_invalid_page) {
+            vt_wait_resident(vt_miss);
+            $continue;
+          };
+          active = step.continue_shadow;
+          visible |= step.visible;
+          $break;
+        };
+      } else {
+        const auto step =
+            shade_shadow(task, shadow_batch, parameters, nullptr, &spectral);
+        active = step.continue_shadow;
+        visible |= step.visible;
+      }
+    };
+  };
+}
+
 void DirectLightTaskEvaluator::trace_staged(
     Var<DirectLightTaskCall> &task,
     const Var<RenderKernelParameters> &parameters, Bool &active,
     Bool &visible,
-    const std::function<void(Expr<luisa::uint>)> &vt_wait_resident)
+    const std::function<void(Expr<luisa::uint>)> &vt_wait_resident,
+    DirectLightSpectralExtension *spectral)
     const noexcept {
   $while(active) {
     $suspend(path_transition::intersect_shadow);
@@ -61,7 +108,7 @@ void DirectLightTaskEvaluator::trace_staged(
           $suspend(path_transition::shade_shadow);
           UInt vt_miss = vt_invalid_page;
           const auto step =
-              shade_shadow(task, shadow_batch, parameters, &vt_miss);
+              shade_shadow(task, shadow_batch, parameters, &vt_miss, spectral);
           $if(vt_miss != vt_invalid_page) {
             vt_wait_resident(vt_miss);
             $continue;
@@ -72,7 +119,8 @@ void DirectLightTaskEvaluator::trace_staged(
         };
       } else {
         $suspend(path_transition::shade_shadow);
-        const auto step = shade_shadow(task, shadow_batch, parameters);
+        const auto step =
+            shade_shadow(task, shadow_batch, parameters, nullptr, spectral);
         active = step.continue_shadow;
         visible |= step.visible;
       }
@@ -83,12 +131,52 @@ void DirectLightTaskEvaluator::trace_staged(
 Bool DirectLightTaskEvaluator::shade_light_nee(
     Var<DirectLightTaskCall> &task,
     const Var<RenderKernelParameters> &parameters,
-    UInt *vt_miss_page) const noexcept {
+    UInt *vt_miss_page,
+    DirectLightSpectralExtension *spectral) const noexcept {
+  const bool use_spectral = spectral != nullptr && spectral_tables != nullptr;
   Float3 evaluated_shader = task.light_shader;
-  if (light_emission) {
-    evaluated_shader = light_emission->evaluate(task, parameters, vt_miss_page);
+  Float4 evaluated_spec = make_float4(0.0f);
+  if (use_spectral) {
+    evaluated_spec = make_float4(task.light_shader, spectral->light_shader_w);
+    if (light_emission) {
+      const auto wavelengths =
+          cycles_spectrum::sample_visible_wavelengths(spectral->u_lambda);
+      const auto secondary_terminated =
+          (task.path_flags &
+           cycles_path_state::flag_spectral_secondary_terminated) != 0u;
+      const cycles_spectrum::SpectralContext ctx{
+          spectral_tables.get(), wavelengths, secondary_terminated};
+      evaluated_spec = light_emission->evaluate_spectral(
+          task, parameters, ctx, vt_miss_page);
+    }
+  } else {
+    if (light_emission) {
+      evaluated_shader = light_emission->evaluate(task, parameters, vt_miss_page);
+    }
   }
   const auto commit_nee = [&]() noexcept {
+    if (use_spectral) {
+      task.light_shader = evaluated_spec.xyz();
+      spectral->light_shader_w = evaluated_spec.w;
+      const auto local_unshadowed =
+          make_float4(task.unshadowed_contribution,
+                      spectral->unshadowed_contribution_w) *
+          evaluated_spec;
+      const auto path_throughput = make_float4(
+          task.nee_path_throughput, spectral->nee_path_throughput_w);
+      const auto secondary_terminated =
+          (task.path_flags &
+           cycles_path_state::flag_spectral_secondary_terminated) != 0u;
+      const auto final_spec = finalize_direct_light_sample_spectral(
+          light_sample_roulette, local_unshadowed, path_throughput,
+          secondary_terminated, task.light_terminate_sample,
+          parameters.light_inv_rr_threshold);
+      task.unshadowed_contribution = final_spec.xyz();
+      spectral->unshadowed_contribution_w = final_spec.w;
+      task.shadow_throughput = final_spec.xyz();
+      spectral->shadow_throughput_w = final_spec.w;
+      return any(final_spec != 0.0f);
+    }
     task.light_shader = evaluated_shader;
     const auto local_unshadowed =
         task.unshadowed_contribution * task.light_shader;
@@ -128,7 +216,9 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
     Var<DirectLightTaskCall> &task,
     const Var<ShadowIntersectionBatchCall> &shadow_batch,
     const Var<RenderKernelParameters> &parameters,
-    UInt *vt_miss_page) const noexcept {
+    UInt *vt_miss_page,
+    DirectLightSpectralExtension *spectral) const noexcept {
+  const bool use_spectral = spectral != nullptr && spectral_tables != nullptr;
   Bool continue_shadow = false;
   Bool visible = false;
   Bool vt_missed = false;
@@ -148,6 +238,14 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
         task.ray_time, task.sample_index, task.rng_hash, task.rng_offset,
         task.volume_bounds_bounce);
     auto throughput = def(task.shadow_throughput);
+    Float4 throughput4 = make_float4(0.0f);
+    std::optional<cycles_spectrum::SampledWavelengths> wavelengths;
+    if (use_spectral) {
+      throughput4 = make_float4(task.shadow_throughput,
+                                spectral->shadow_throughput_w);
+      wavelengths.emplace(
+          cycles_spectrum::sample_visible_wavelengths(spectral->u_lambda));
+    }
     $for(index, ordered_batch->count) {
       $if(!carries_light) { $break; };
       const auto hit = ordered_batch->hits[index];
@@ -162,14 +260,43 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
           $break;
         };
       }
-      carries_light =
-          advance_shadow_surface_state(context, throughput, surface);
+      if (use_spectral) {
+        context.volume_bounds_bounce =
+            (context.volume_bounds_bounce + surface->volume_boundary) & 0xffffu;
+        const auto t = surface->transmittance;
+        auto trans4 = cycles_spectrum::rgb_to_spectrum_reflectance(
+            *spectral_tables, t, wavelengths->lambdas);
+        trans4 = select(trans4, make_float4(1.0f),
+                        (t.x == 1.0f) & (t.y == 1.0f) & (t.z == 1.0f));
+        trans4 = select(trans4, make_float4(0.0f),
+                        (t.x == 0.0f) & (t.y == 0.0f) & (t.z == 0.0f));
+        const auto next4 = throughput4 * trans4;
+        const auto nonzero4 = any(next4 != 0.0f);
+        $if(nonzero4) {
+          throughput4 = next4;
+          context.path.transparent_depth =
+              (context.path.transparent_depth + 1u) & 0xffffu;
+          context.rng_offset =
+              (context.rng_offset + cycles_path_state::bounce_dimension_count) &
+              0xffffu;
+        };
+        carries_light =
+            nonzero4 & (context.volume_bounds_bounce <= shadow_volume_bounds_max);
+      } else {
+        carries_light =
+            advance_shadow_surface_state(context, throughput, surface);
+      }
       $if(carries_light) {
         last_distance = max(last_distance, hit.distance);
       };
     };
     const auto commit_shadow = [&]() noexcept {
-      task.shadow_throughput = throughput;
+      if (use_spectral) {
+        task.shadow_throughput = throughput4.xyz();
+        spectral->shadow_throughput_w = throughput4.w;
+      } else {
+        task.shadow_throughput = throughput;
+      }
       task.transparent_depth =
           context.path.transparent_depth.cast<std::uint16_t>();
       task.rng_offset = context.rng_offset;
@@ -201,7 +328,22 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
 
 Float3 DirectLightTaskEvaluator::contribution(
     const Var<DirectLightTaskCall> &task, Float3 throughput,
-    const Var<RenderKernelParameters> &parameters) const noexcept {
+    const Var<RenderKernelParameters> &parameters,
+    const DirectLightSpectralExtension *spectral) const noexcept {
+  if (spectral != nullptr && spectral_tables != nullptr) {
+    const auto wavelengths =
+        cycles_spectrum::sample_visible_wavelengths(spectral->u_lambda);
+    const auto secondary_terminated =
+        (task.path_flags &
+         cycles_path_state::flag_spectral_secondary_terminated) != 0u;
+    const auto rgb = cycles_spectrum::spectrum_to_rgb(
+        *spectral_tables,
+        make_float4(throughput, spectral->shadow_throughput_w),
+        wavelengths, secondary_terminated);
+    return clamp_contribution(rgb, task.path_depth,
+                              parameters.sample_clamp_direct,
+                              parameters.sample_clamp_indirect);
+  }
   return clamp_contribution(throughput,
                             task.path_depth, parameters.sample_clamp_direct,
                             parameters.sample_clamp_indirect);
@@ -242,6 +384,9 @@ make_direct_light_task_evaluator(const PathKernelConfig &config) noexcept {
           .light_emission = make_cycles_svm_light_emission_component(
               config.scene, config.camera_projection,
               config.reflective_caustics, config.refractive_caustics),
+          .spectral_tables = config.spectral_rendering
+                                 ? config.scene->spectral_tables
+                                 : nullptr,
           .volume_guiding = config.volume_state != nullptr};
 }
 

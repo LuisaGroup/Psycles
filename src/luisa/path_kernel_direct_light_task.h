@@ -2,7 +2,11 @@
 
 #include "path_tracer_geometry.h"
 
+#include <psycles/luisa/cycles_spectrum.h>
+
 #include <functional>
+#include <memory>
+#include <optional>
 #include <type_traits>
 
 namespace psycles::luisa_backend::detail {
@@ -91,12 +95,27 @@ struct DirectLightShadowStep {
   Bool visible;
 };
 
+// Host-only spectral sidecar carrying the 4th spectral lane (.w) and hero-sampling
+// coordinate `u_lambda` alongside `DirectLightTaskCall` without growing its 224B ABI.
+struct DirectLightSpectralExtension {
+  Float unshadowed_contribution_w{0.0f};
+  Float nee_path_throughput_w{0.0f};
+  Float light_shader_w{0.0f};
+  Float shadow_throughput_w{0.0f};
+  Float u_lambda{0.0f};
+};
+
 // Finalizes one light sample without changing its roulette measure. The local
 // unshadowed value determines survival and inverse probability; path
 // throughput is applied exactly once, after that decision.
 [[nodiscard]] Float3 finalize_direct_light_sample(
     const LightSampleRouletteCallable &light_sample_roulette,
     Float3 local_unshadowed, Float3 path_throughput,
+    Float light_terminate_sample, Float inverse_threshold) noexcept;
+
+[[nodiscard]] Float4 finalize_direct_light_sample_spectral(
+    const LightSampleRouletteCallable &light_sample_roulette,
+    Float4 local_unshadowed, Float4 path_throughput, Bool secondary_terminated,
     Float light_terminate_sample, Float inverse_threshold) noexcept;
 
 struct DirectLightTaskEvaluator {
@@ -106,11 +125,18 @@ struct DirectLightTaskEvaluator {
   LightSampleRouletteCallable light_sample_roulette;
   ClampLightContributionCallable clamp_contribution;
   std::shared_ptr<const DirectLightEmissionComponent> light_emission;
+  std::shared_ptr<const cycles_spectrum::SpectralTablesGpu> spectral_tables;
   bool volume_guiding{};
 
   [[nodiscard]] Var<ShadowTraceResultCall>
   trace(const Var<DirectLightTaskCall> &task,
         const Var<RenderKernelParameters> &parameters) const noexcept;
+  void
+  trace_spectral(Var<DirectLightTaskCall> &task,
+                 DirectLightSpectralExtension &spectral,
+                 const Var<RenderKernelParameters> &parameters, Bool &visible,
+                 const std::function<void(Expr<luisa::uint>)> &vt_wait_resident =
+                     {}) const noexcept;
   // The production coroutine driver. The traversal batch is live only on
   // the INTERSECT_SHADOW -> SHADE_SHADOW edge, never in the invariant task.
   void
@@ -118,11 +144,13 @@ struct DirectLightTaskEvaluator {
                const Var<RenderKernelParameters> &parameters, Bool &active,
                Bool &visible,
                const std::function<void(Expr<luisa::uint>)> &vt_wait_resident =
-                   {}) const noexcept;
+                   {},
+               DirectLightSpectralExtension *spectral = nullptr) const noexcept;
   [[nodiscard]] Bool
   shade_light_nee(Var<DirectLightTaskCall> &task,
                   const Var<RenderKernelParameters> &parameters,
-                  UInt *vt_miss_page = nullptr) const noexcept;
+                  UInt *vt_miss_page = nullptr,
+                  DirectLightSpectralExtension *spectral = nullptr) const noexcept;
   [[nodiscard]] Var<ShadowIntersectionBatchCall>
   intersect(const Var<DirectLightTaskCall> &task,
             const Var<RenderKernelParameters> &parameters) const noexcept;
@@ -130,10 +158,12 @@ struct DirectLightTaskEvaluator {
   shade_shadow(Var<DirectLightTaskCall> &task,
                const Var<ShadowIntersectionBatchCall> &shadow_batch,
                const Var<RenderKernelParameters> &parameters,
-               UInt *vt_miss_page = nullptr) const noexcept;
+               UInt *vt_miss_page = nullptr,
+               DirectLightSpectralExtension *spectral = nullptr) const noexcept;
   [[nodiscard]] Float3
   contribution(const Var<DirectLightTaskCall> &task, Float3 throughput,
-               const Var<RenderKernelParameters> &parameters) const noexcept;
+               const Var<RenderKernelParameters> &parameters,
+               const DirectLightSpectralExtension *spectral = nullptr) const noexcept;
   void accumulate_passes(PathSampleContext &sample,
                          const Var<DirectLightTaskCall> &task,
                          Float3 contribution) const noexcept;
@@ -162,7 +192,8 @@ public:
   virtual ~DirectLightTaskSink() noexcept = default;
   virtual void emit(
       Var<DirectLightTaskCall> task,
-      Expr<std::uint32_t> runtime_capacity) const noexcept = 0;
+      Expr<std::uint32_t> runtime_capacity,
+      const DirectLightSpectralExtension *spectral = nullptr) const noexcept = 0;
 };
 
 } // namespace psycles::luisa_backend::detail
@@ -187,6 +218,7 @@ namespace psycles::luisa_backend::detail {
 struct DirectLightTransportPreparation {
   Var<DirectLightTaskCall> task;
   Bool valid;
+  std::optional<DirectLightSpectralExtension> spectral{};
 };
 
 } // namespace psycles::luisa_backend::detail

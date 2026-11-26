@@ -150,6 +150,9 @@ struct MaterialDesc {
     // remains independent of Scene::shaders identity: the SVM Object Info
     // node exposes it as Material Index without inspecting the shader graph.
     std::int32_t cycles_pass_id{};
+    // Optional optical Abbe number (V_d) for Cauchy spectral dispersion in
+    // refractive closures. Non-positive disables dispersion.
+    float dispersion_abbe{0.0f};
 };
 
 enum class ImageColorSpace : std::uint8_t {

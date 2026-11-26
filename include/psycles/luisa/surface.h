@@ -5,6 +5,7 @@
 #endif
 
 #include <cstdint>
+#include <optional>
 
 #include <psycles/contract/cycles_abi.h>
 #include <psycles/contract/surface.h>
@@ -153,9 +154,13 @@ struct SurfaceEvaluation {
     Float diffuse_pdf;
     Float average_roughness_squared;
     UInt events;
+    std::optional<Float4> spectral_f{};
+    std::optional<Float4> spectral_diffuse_f{};
+    std::optional<Float4> spectral_glossy_f{};
+    std::optional<Bool> spectral_terminated_secondary{};
 
-    [[nodiscard]] static SurfaceEvaluation zero() noexcept {
-        return {
+    [[nodiscard]] static SurfaceEvaluation zero(bool spectral = false) noexcept {
+        SurfaceEvaluation out{
             .f = make_float3(0.0f),
             .pdf = 0.0f,
             .diffuse_f = make_float3(0.0f),
@@ -163,6 +168,13 @@ struct SurfaceEvaluation {
             .diffuse_pdf = 0.0f,
             .average_roughness_squared = 0.0f,
             .events = static_cast<std::uint32_t>(event_none)};
+        if (spectral) {
+            out.spectral_f.emplace(make_float4(0.0f));
+            out.spectral_diffuse_f.emplace(make_float4(0.0f));
+            out.spectral_glossy_f.emplace(make_float4(0.0f));
+            out.spectral_terminated_secondary.emplace(false);
+        }
+        return out;
     }
 };
 
@@ -181,9 +193,9 @@ struct SurfaceSample {
     Float bssrdf_anisotropy;
     Bool valid;
 
-    [[nodiscard]] static SurfaceSample zero() noexcept {
+    [[nodiscard]] static SurfaceSample zero(bool spectral = false) noexcept {
         return {
-            .evaluation = SurfaceEvaluation::zero(),
+            .evaluation = SurfaceEvaluation::zero(spectral),
             .wi = make_float3(0.0f, 0.0f, 1.0f),
             .eta = 1.0f,
             .roughness = make_float2(0.0f),
@@ -234,9 +246,9 @@ struct SurfaceSampleTrace {
     Float3 closure_normal;
     Bool closure_valid;
 
-    [[nodiscard]] static SurfaceSampleTrace zero() noexcept {
+    [[nodiscard]] static SurfaceSampleTrace zero(bool spectral = false) noexcept {
         return {
-            .sample = SurfaceSample::zero(),
+            .sample = SurfaceSample::zero(spectral),
             .closure_index = 0u,
             .closure_type = 0u,
             .closure_sample_weight = 0.0f,
@@ -261,10 +273,11 @@ struct SurfacePreparation {
     Float3 shading_normal;
     UInt runtime_flags;
     SurfaceAov aov;
+    std::optional<Float4> spectral_emission{};
 
     [[nodiscard]] static SurfacePreparation zero(
-        const SurfacePoint &point) noexcept {
-        return {
+        const SurfacePoint &point, bool spectral = false) noexcept {
+        SurfacePreparation out{
             .emission = make_float3(0.0f),
             .shading_normal = point.shading_normal,
             .runtime_flags = 0u,
@@ -275,6 +288,10 @@ struct SurfacePreparation {
                 .roughness = make_float2(0.0f),
                 .normal = point.shading_normal,
                 .transparency = make_float3(0.0f)}};
+        if (spectral) {
+            out.spectral_emission.emplace(make_float4(0.0f));
+        }
+        return out;
     }
 };
 

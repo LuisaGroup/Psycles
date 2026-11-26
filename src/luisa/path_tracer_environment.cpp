@@ -45,6 +45,14 @@ Float3 constant_environment_emission(
     return background + emission;
 }
 
+Float4 constant_environment_emission_spectral(
+    const LuisaSceneData &scene, Float3 background,
+    const cycles_spectrum::SpectralContext &spectral) noexcept {
+    return cycles_spectrum::rgb_to_spectrum_illuminant(
+        *spectral.tables, constant_environment_emission(scene, background),
+        spectral.wavelengths.lambdas);
+}
+
 Float3 evaluate_environment_emission(
     const std::shared_ptr<LuisaSceneData> &scene,
     const Var<RenderKernelParameters> &parameters,
@@ -108,6 +116,31 @@ Float3 evaluate_environment_emission(
         }
     }
     return emission;
+}
+
+Float4 evaluate_environment_emission_spectral(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const Var<RenderKernelParameters> &parameters,
+    Float3 origin, Float3 direction, Float differential, Float time,
+    const cycles_svm::PathState &state, UInt lcg_state,
+    CyclesSvmBackgroundEvaluation evaluation,
+    const cycles_spectrum::SpectralContext &spectral,
+    UInt *vt_miss_page,
+    bool force_direct_textures) noexcept {
+    if (scene->cycles_background_shader_id != ~0u) {
+        return cycles_spectrum::rgb_to_spectrum_illuminant(
+                   *spectral.tables, parameters.background,
+                   spectral.wavelengths.lambdas) +
+               evaluate_cycles_svm_background_emission_spectral(
+                   scene, parameters, origin, direction, differential, time,
+                   state, lcg_state, evaluation, spectral, vt_miss_page,
+                   force_direct_textures);
+    }
+    const auto rgb = evaluate_environment_emission(
+        scene, parameters, origin, direction, differential, time, state,
+        lcg_state, evaluation, vt_miss_page, force_direct_textures);
+    return cycles_spectrum::rgb_to_spectrum_illuminant(
+        *spectral.tables, rgb, spectral.wavelengths.lambdas);
 }
 
 Float3 evaluate_background_importance(

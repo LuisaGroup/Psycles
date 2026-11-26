@@ -196,9 +196,27 @@ class AnalyticDirectLightProvider final : public DirectLightProvider {
                     (light.flags &
                      light_flag_constant_emission) != 0u;
                 Float3 light_shader = make_float3(0.0f);
+                std::optional<Float4> spectral_radiometric_weight{};
+                std::optional<Float4> spectral_light_shader{};
+                const auto spectral = sample.is_spectral();
+                if (spectral) {
+                    const auto ctx = sample.spectral_context();
+                    spectral_radiometric_weight.emplace(
+                        cycles_spectrum::rgb_to_spectrum_reflectance(
+                            *ctx->tables, light.color, ctx->wavelengths.lambdas) *
+                        (light.power * light_eval_factor));
+                    spectral_light_shader.emplace(make_float4(0.0f));
+                }
                 $if(constant_emission) {
-                    light_shader =
-                        sample.analytic_light_constant_shader(light);
+                    if (spectral) {
+                        *spectral_light_shader =
+                            sample.analytic_light_constant_shader_spectrum(light)
+                                .lanes();
+                        light_shader = spectral_light_shader->xyz();
+                    } else {
+                        light_shader =
+                            sample.analytic_light_constant_shader(light);
+                    }
                 };
                 const auto forward_intersectable =
                     (light.flags & light_flag_forward_intersectable) != 0u;
@@ -224,7 +242,9 @@ class AnalyticDirectLightProvider final : public DirectLightProvider {
                      .distant =
                          light.type == static_cast<std::uint32_t>(
                                            LightType::distant),
-                     .valid = true});
+                     .valid = true,
+                     .spectral_radiometric_weight = spectral_radiometric_weight,
+                     .spectral_light_shader = spectral_light_shader});
             }
             $else {
                 _trace->record_failed_sample(

@@ -302,7 +302,8 @@ class ClosestEventStageImpl final
                     transparent_depth,
                     parameters.min_bounces,
                     parameters.transparent_min_bounces,
-                    throughput);
+                    throughput,
+                    sample.spectral_secondary_terminated());
             const auto decision =
                 cycles_path_state::decide_closest_continuation(
                     continuation_probability,

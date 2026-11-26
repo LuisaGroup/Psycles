@@ -98,13 +98,23 @@ namespace abi = ::psycles::compiler::cycles_svm;
   return (value.x != 0.0f) | (value.y != 0.0f) | (value.z != 0.0f);
 }
 
+[[nodiscard]] Bool nonzero4(Expr<luisa::float4> value) noexcept {
+  return any(value != 0.0f);
+}
+
 [[nodiscard]] UInt evaluation_events(
     const svm_detail::SurfaceShaderBsdfEval &evaluation,
     const svm::ShaderData &shader_data,
     Expr<luisa::float3> outgoing) noexcept {
-  const auto has_diffuse = nonzero(evaluation.diffuse);
-  const auto has_glossy = nonzero(evaluation.glossy);
-  const auto has_scatter = nonzero(evaluation.sum);
+  const auto has_diffuse = evaluation.spectral_diffuse
+                               ? nonzero4(*evaluation.spectral_diffuse)
+                               : nonzero(evaluation.diffuse);
+  const auto has_glossy = evaluation.spectral_glossy
+                              ? nonzero4(*evaluation.spectral_glossy)
+                              : nonzero(evaluation.glossy);
+  const auto has_scatter = evaluation.spectral_sum
+                               ? nonzero4(*evaluation.spectral_sum)
+                               : nonzero(evaluation.sum);
   UInt result = 0u;
   result |= select(0u, static_cast<std::uint32_t>(contract::event_diffuse),
                    has_diffuse);
@@ -131,19 +141,28 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
     svm_detail::ClosureTypeMask _closure_types;
     SurfacePopulationQuery _preparation_query;
     bool _include_aov_roughness{};
+    bool _spectral{false};
 
   private:
     [[nodiscard]] SurfacePreparation make_preparation(
         const SurfacePopulationQuery &query) const noexcept {
-      auto result = SurfacePreparation::zero(_point);
+      auto result = SurfacePreparation::zero(_point, _spectral);
       const auto flags = _shader_data->flag;
       const auto emission_cosine = abs(dot(_shader_data->Ng,
                                            _shader_data->wi));
+      const auto has_emission =
+          ((flags & static_cast<std::uint32_t>(abi::SD_EMISSION)) != 0u) &
+          (emission_cosine > 0.0f);
       result.emission = select(
           make_float3(0.0f),
           _shader_data->closure_emission_background,
-          ((flags & static_cast<std::uint32_t>(abi::SD_EMISSION)) != 0u) &
-              (emission_cosine > 0.0f));
+          has_emission);
+      if (_spectral && _shader_data->spectral_emission_background.has_value()) {
+        result.spectral_emission = select(
+            make_float4(0.0f),
+            *_shader_data->spectral_emission_background,
+            has_emission);
+      }
       result.shading_normal = _shader_data->N;
       result.runtime_flags = select(
           0u, runtime_flags(flags), query.include_runtime_flags);
@@ -284,7 +303,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                           : closure::is_bsdf(common.type)) &
           (common.sample_weight > 0.0f);
 
-      auto trace = SurfaceSampleTrace::zero();
+      auto trace = SurfaceSampleTrace::zero(_spectral);
       auto &result = trace.sample;
       result.runtime_flags = runtime_flags(_shader_data->flag);
 
@@ -302,6 +321,20 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
             make_float3(0.0f), sampled.evaluation.diffuse, sampled_valid);
         result.evaluation.glossy_f = select(
             make_float3(0.0f), sampled.evaluation.glossy, sampled_valid);
+        if (_spectral) {
+          result.evaluation.spectral_f = select(
+              make_float4(0.0f), *sampled.evaluation.spectral_sum,
+              sampled_valid);
+          result.evaluation.spectral_diffuse_f = select(
+              make_float4(0.0f), *sampled.evaluation.spectral_diffuse,
+              sampled_valid);
+          result.evaluation.spectral_glossy_f = select(
+              make_float4(0.0f), *sampled.evaluation.spectral_glossy,
+              sampled_valid);
+          result.evaluation.spectral_terminated_secondary =
+              sampled_valid &
+              sampled.spectral_terminated_secondary.value_or(Bool{false});
+        }
         const auto sampled_events = events_from_label(sampled.label);
         result.evaluation.diffuse_pdf = select(
             0.0f, sampled.evaluation.pdf,
@@ -327,9 +360,16 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
         // BSDF sample is not evaluated for a selected BSSRDF closure.
         $if(selected_bssrdf) {
           const auto bssrdf = _closures->bssrdf(closure_index);
-          result.evaluation.f =
+          const auto bssrdf_weight =
               svm_detail::surface_shader_bssrdf_sample_weight(
                   *_shader_data, closure_index);
+          result.evaluation.f = bssrdf_weight;
+          if (_spectral && _shader_data->spectral.has_value()) {
+            const auto &sc = *_shader_data->spectral;
+            result.evaluation.spectral_f =
+                cycles_spectrum::rgb_to_spectrum_reflectance(
+                    *sc.tables, bssrdf_weight, sc.wavelengths.lambdas);
+          }
           result.evaluation.pdf = 1.0f;
           result.evaluation.events =
               static_cast<std::uint32_t>(contract::event_subsurface);
@@ -364,7 +404,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
     [[nodiscard]] SurfaceSampleTrace sample_impl(
         Expr<float> u_lobe,
         Expr<luisa::float2> u_direction) const noexcept {
-      auto result = SurfaceSampleTrace::zero();
+      auto result = SurfaceSampleTrace::zero(_spectral);
       /* Cycles 5.2.1 integrate_surface_bsdf_bssrdf_bounce() rejects a
        * surface without SD_BSDF/SD_BSSRDF before calling the closure picker.
        * Keep that precondition explicit in the pointer-free projection: an
@@ -392,7 +432,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           _kernel_globals{
               _scene, context,
               std::span<const std::uint8_t>{bucket.active_shader_mask},
-              false, context.vt_miss_page},
+              false, context.vt_miss_page, context.spectral.has_value()},
           _closures{std::make_unique<svm::ClosurePool>(
               std::clamp<std::size_t>(
                   bucket.max_surface_closures != 0u
@@ -419,7 +459,8 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                           abi::ClosureUsage::fresnel_generalized_schlick),
                   .outline_transparent_merge =
                       _scene->device.backend_name() == "simd" &&
-                      _scene->device.compute_warp_size() > 1u})},
+                      _scene->device.compute_warp_size() > 1u,
+                  .spectral = context.spectral.has_value()})},
           _closure_types{
               svm_detail::closure_types_for_kernel_features(
                   _scene->cycles_svm->kernel_features) &
@@ -429,7 +470,8 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                     ? abi::ClosureUsage::bit(closure::type_diffuse)
                     : 0ull))},
           _preparation_query{context.query},
-          _include_aov_roughness{false} {
+          _include_aov_roughness{false},
+          _spectral{context.spectral.has_value()} {
       UInt flags;
       if (context.cycles_shader_flags) {
         flags = *context.cycles_shader_flags;
@@ -488,6 +530,10 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
               static_cast<std::uint32_t>(abi::SD_BSDF |
                                          abi::SD_BSSRDF)) == 0u);
       _shader_data->ray_P = context.ray_origin;
+      _shader_data->spectral = context.spectral;
+      if (_spectral) {
+        _shader_data->spectral_emission_background.emplace(make_float4(0.0f));
+      }
 
       const auto unpack_tfm = [](Var<abi::PackedTransform> t) noexcept {
         return svm_detail::transform_from_rows(
@@ -659,6 +705,14 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
       Float eval_pdf = 0.0f;
       Float eval_avg_r2 = 0.0f;
       UInt eval_events = 0u;
+      std::optional<Float4> eval_spec_sum;
+      std::optional<Float4> eval_spec_diffuse;
+      std::optional<Float4> eval_spec_glossy;
+      if (_spectral) {
+        eval_spec_sum.emplace(make_float4(0.0f));
+        eval_spec_diffuse.emplace(make_float4(0.0f));
+        eval_spec_glossy.emplace(make_float4(0.0f));
+      }
       $outline_when_with_name(outline_bsdf, "simd_svm_bsdf_eval") {
         const auto evaluation = svm_detail::surface_shader_bsdf_eval(
             _kernel_globals, *_shader_data, outgoing, query.shader_flags,
@@ -668,6 +722,11 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
         eval_glossy = evaluation.glossy;
         eval_pdf = evaluation.pdf;
         eval_avg_r2 = evaluation.average_roughness_squared;
+        if (_spectral) {
+          *eval_spec_sum = *evaluation.spectral_sum;
+          *eval_spec_diffuse = *evaluation.spectral_diffuse;
+          *eval_spec_glossy = *evaluation.spectral_glossy;
+        }
         eval_events = evaluation_events(evaluation, *_shader_data, outgoing);
       };
       auto result = SurfaceEvaluation{
@@ -675,9 +734,16 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           .pdf = eval_pdf,
           .diffuse_f = eval_diffuse,
           .glossy_f = eval_glossy,
-          .diffuse_pdf = select(0.0f, eval_pdf, nonzero(eval_diffuse)),
+          .diffuse_pdf = select(
+              0.0f, eval_pdf,
+              _spectral ? nonzero4(*eval_spec_diffuse) : nonzero(eval_diffuse)),
           .average_roughness_squared = eval_avg_r2,
           .events = eval_events};
+      if (_spectral) {
+        result.spectral_f = *eval_spec_sum;
+        result.spectral_diffuse_f = *eval_spec_diffuse;
+        result.spectral_glossy_f = *eval_spec_glossy;
+      }
       return result;
     }
 
@@ -762,7 +828,8 @@ make_cycles_svm_surface_population_component(
 }
 
 SurfaceCallables make_surface_callables(
-    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    const std::shared_ptr<LuisaSceneData> &scene,
+    bool /*spectral_rendering*/) noexcept {
   return {make_cycles_svm_surface_population_component(scene)};
 }
 

@@ -79,6 +79,7 @@ class PathCyclesSvmKernelGlobals final
     UInt *_vt_miss_page{nullptr};
     const UInt *_vt_preflight_weight{nullptr};
     const PathSurfaceAmbientOcclusionContext *_ambient_occlusion{nullptr};
+    bool _spectral_rendering{false};
     Bool _caustics_reflective;
     Bool _caustics_refractive;
     luisa::compute::Float4x4 _camera_to_world;
@@ -96,19 +97,27 @@ class PathCyclesSvmKernelGlobals final
         std::span<const std::uint8_t> explicit_shader_mask = {},
         bool force_direct_textures = false,
         UInt *vt_miss_page = nullptr,
-        const UInt *vt_preflight_weight = nullptr) noexcept;
+        const UInt *vt_preflight_weight = nullptr,
+        bool spectral_rendering = false) noexcept;
     PathCyclesSvmKernelGlobals(
         std::shared_ptr<LuisaSceneData> scene,
         const SurfacePopulationContext &context,
         std::span<const std::uint8_t> explicit_shader_mask = {},
         bool force_direct_textures = false,
-        UInt *vt_miss_page = nullptr) noexcept;
+        UInt *vt_miss_page = nullptr,
+        bool spectral_rendering = false) noexcept;
 
     [[nodiscard]] Bool caustics_reflective() const noexcept override;
     [[nodiscard]] Bool caustics_refractive() const noexcept override;
     [[nodiscard]] Bool background_use_sun_guiding() const noexcept override;
     [[nodiscard]] bool has_shadow_terminator_shading_offset() const noexcept override;
     [[nodiscard]] bool may_have_thin_film() const noexcept override;
+    [[nodiscard]] bool is_spectral() const noexcept override;
+    [[nodiscard]] const cycles_spectrum::SpectralTablesGpu *
+    spectral_tables() const noexcept override;
+    [[nodiscard]] bool has_dispersive_materials() const noexcept override;
+    [[nodiscard]] Float shader_dispersion_abbe(
+        Expr<std::uint32_t> shader_id) const noexcept override;
     [[nodiscard]] compiler::cycles_svm::ClosureUsage closure_usage() const noexcept override;
     [[nodiscard]] cycles_svm::SurfaceAttributeSummary surface_attribute_summary() const noexcept override;
     [[nodiscard]] cycles_svm::SurfaceAttributeSummary attribute_summary_for_id(

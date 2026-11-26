@@ -6,6 +6,7 @@
 
 #include <psycles/luisa/cycles_svm.h>
 
+#include <array>
 #include <optional>
 #include <span>
 
@@ -13,6 +14,11 @@
 #include <luisa/dsl/local.h>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
+
+struct SpectralClosureWeight {
+  luisa::compute::Float4 spd{luisa::compute::make_float4(0.0f)};
+  luisa::compute::UInt valid{0u};
+};
 
 // Cycles stack addressing is unchanged; only the physical local extent is a
 // host/JIT input. The maximum-sized default keeps direct node fixtures and
@@ -29,25 +35,46 @@ private:
     bool use_var{false};
   };
 
+  struct SpectralSlot {
+    luisa::compute::UInt offset;
+    luisa::compute::Float4 spd;
+  };
+
   luisa::optional<luisa::compute::Local<float>> _array;
   luisa::compute::detail::FunctionBuilder *_owner_fb{nullptr};
   luisa::compute::ScopeStmt *_root_scope{nullptr};
   std::size_t _size{0u};
   bool _direct_jit{false};
   luisa::vector<SlotState> _slots;
+  std::optional<std::array<SpectralSlot, 2u>> _spectral_slots;
+  bool _next_spectral_slot{false};
+  bool _spectral_slot_recorded{false};
 
-  Stack(std::size_t size, bool direct_jit_mode) noexcept;
+  Stack(std::size_t size, bool direct_jit_mode, bool spectral) noexcept;
 
 public:
-  explicit Stack(std::size_t size = SVM_STACK_SIZE) noexcept;
-  [[nodiscard]] static Stack direct_jit(std::size_t size) noexcept;
+  explicit Stack(std::size_t size = SVM_STACK_SIZE,
+                 bool spectral = false) noexcept;
+  [[nodiscard]] static Stack direct_jit(std::size_t size,
+                                        bool spectral = false) noexcept;
 
   [[nodiscard]] bool is_direct_jit() const noexcept { return _direct_jit; }
+  [[nodiscard]] bool is_spectral() const noexcept {
+    return _spectral_slots.has_value();
+  }
   [[nodiscard]] std::size_t size() const noexcept { return _size; }
   [[nodiscard]] bool at_root_scope() const noexcept;
   [[nodiscard]] std::optional<float>
   try_const_slot(std::uint32_t offset) const noexcept;
   void materialize_all_to_vars() noexcept;
+
+  void record_spectral_slot(luisa::compute::Expr<std::uint32_t> offset,
+                            luisa::compute::Expr<luisa::float4> spd) noexcept;
+  void invalidate_spectral_slot(
+      luisa::compute::Expr<std::uint32_t> offset) noexcept;
+  [[nodiscard]] luisa::compute::Bool
+  try_load_spectral_slot(luisa::compute::Expr<std::uint32_t> offset,
+                         luisa::compute::Float4 &out_spd) const noexcept;
 
   [[nodiscard]] luisa::compute::Expr<float>
   load_const_expr(std::uint32_t offset) noexcept;
@@ -495,36 +522,41 @@ void node_map_range(Cursor &cursor, Stack &stack,
 void node_vector_map_range(Cursor &cursor, Stack &stack,
                            std::uint32_t type_mask = ~0u) noexcept;
 void node_blackbody(Cursor &cursor, Stack &stack,
-                    const KernelGlobals &kernel_globals) noexcept;
+                    const KernelGlobals &kernel_globals,
+                    const ShaderData *shader_data = nullptr) noexcept;
 void node_wavelength(Cursor &cursor, Stack &stack,
-                     const KernelGlobals &kernel_globals) noexcept;
+                     const KernelGlobals &kernel_globals,
+                     const ShaderData *shader_data = nullptr) noexcept;
 
-void node_closure_set_weight(Cursor &cursor,
-                             luisa::compute::Float3 &closure_weight) noexcept;
-void node_closure_weight(Cursor &cursor, Stack &stack,
-                         luisa::compute::Float3 &closure_weight) noexcept;
-void node_emission_weight(Cursor &cursor, Stack &stack,
-                          luisa::compute::Float3 &closure_weight) noexcept;
+void node_closure_set_weight(
+    Cursor &cursor, luisa::compute::Float3 &closure_weight,
+    SpectralClosureWeight *spectral_weight = nullptr) noexcept;
+void node_closure_weight(
+    Cursor &cursor, Stack &stack, luisa::compute::Float3 &closure_weight,
+    SpectralClosureWeight *spectral_weight = nullptr) noexcept;
+void node_emission_weight(
+    Cursor &cursor, Stack &stack, luisa::compute::Float3 &closure_weight,
+    SpectralClosureWeight *spectral_weight = nullptr) noexcept;
 void node_mix_closure(Cursor &cursor, Stack &stack) noexcept;
 void node_closure_holdout(Cursor &cursor, Stack &stack,
                           luisa::compute::Expr<luisa::float3> closure_weight,
                           ShaderData &shader_data) noexcept;
-void node_closure_emission(const KernelGlobals &kernel_globals,
-                           Cursor &cursor, Stack &stack,
-                           luisa::compute::Expr<luisa::float3> closure_weight,
-                           ShaderData &shader_data,
-                           const EvaluationTransition &transition) noexcept;
-void node_closure_background(Cursor &cursor, Stack &stack,
-                             luisa::compute::Expr<luisa::float3> closure_weight,
-                             ShaderData &shader_data) noexcept;
-void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
-                       Stack &stack,
-                       luisa::compute::Expr<luisa::float3> closure_weight,
-                       compiler::cycles_svm::ShaderType shader_type,
-                       std::uint32_t kernel_features,
-                       std::uint32_t node_feature_mask, ShaderData &shader_data,
-                       const PathState &path_state,
-                       const EvaluationTransition &transition) noexcept;
+void node_closure_emission(
+    const KernelGlobals &kernel_globals, Cursor &cursor, Stack &stack,
+    luisa::compute::Expr<luisa::float3> closure_weight, ShaderData &shader_data,
+    const EvaluationTransition &transition,
+    const SpectralClosureWeight *spectral_weight = nullptr) noexcept;
+void node_closure_background(
+    Cursor &cursor, Stack &stack,
+    luisa::compute::Expr<luisa::float3> closure_weight, ShaderData &shader_data,
+    const SpectralClosureWeight *spectral_weight = nullptr) noexcept;
+void node_closure_bsdf(
+    const KernelGlobals &kernel_globals, Cursor &cursor, Stack &stack,
+    luisa::compute::Expr<luisa::float3> closure_weight,
+    compiler::cycles_svm::ShaderType shader_type, std::uint32_t kernel_features,
+    std::uint32_t node_feature_mask, ShaderData &shader_data,
+    const PathState &path_state, const EvaluationTransition &transition,
+    const SpectralClosureWeight *spectral_weight = nullptr) noexcept;
 void node_closure_bsdf_shadow_only(
     const KernelGlobals &kernel_globals, Cursor &cursor, Stack &stack,
     luisa::compute::Expr<luisa::float3> closure_weight,
@@ -578,6 +610,20 @@ public:
   }
   [[nodiscard]] bool may_have_thin_film() const noexcept override {
     return _inner.may_have_thin_film();
+  }
+  [[nodiscard]] bool is_spectral() const noexcept override {
+    return _inner.is_spectral();
+  }
+  [[nodiscard]] const cycles_spectrum::SpectralTablesGpu *
+  spectral_tables() const noexcept override {
+    return _inner.spectral_tables();
+  }
+  [[nodiscard]] bool has_dispersive_materials() const noexcept override {
+    return _inner.has_dispersive_materials();
+  }
+  [[nodiscard]] luisa::compute::Float shader_dispersion_abbe(
+      luisa::compute::Expr<std::uint32_t> shader_id) const noexcept override {
+    return _inner.shader_dispersion_abbe(shader_id);
   }
   [[nodiscard]] compiler::cycles_svm::ClosureUsage
   closure_usage() const noexcept override {

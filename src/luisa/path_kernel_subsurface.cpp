@@ -594,8 +594,19 @@ public:
             success = selected & (weight_sum > 0.0f);
             $if(success) {
                 const auto selected_weight = hit_weights[selected_index];
-                throughput *= selected_weight * weight_sum /
-                              max(selected_sample_weight, 1.0e-20f);
+                const auto weight_factor =
+                    selected_weight * weight_sum /
+                    max(selected_sample_weight, 1.0e-20f);
+                if (path.is_spectral()) {
+                    const auto ctx = path.spectral_context();
+                    throughput *=
+                        cycles_spectrum::Spectrum::from_rgb_reflectance(
+                            ctx->tables, weight_factor, &ctx->wavelengths,
+                            true);
+                } else {
+                    throughput = cycles_spectrum::Spectrum::from_rgb_raw(
+                        throughput.rgb() * weight_factor);
+                }
                 pending_hit.store_surface(
                     hit_instances[selected_index],
                     hit_primitives[selected_index],

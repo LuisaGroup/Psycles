@@ -330,12 +330,14 @@ Bool SubsurfaceRandomWalkComponent::transport(
             static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk_legacy),
             legacy_encoded);
     }
+    const auto input_throughput =
+        path.is_spectral() ? make_float3(1.0f) : throughput.rgb();
     const auto mapped = coefficients(
         method,
         state.albedo,
         state.radius,
         anisotropy,
-        throughput,
+        input_throughput,
         may_have_legacy_or_skin);
 
     const auto guide_normal = state.normal;
@@ -690,7 +692,14 @@ Bool SubsurfaceRandomWalkComponent::transport(
     };
 
     $if(hit) {
-        throughput = walk_throughput;
+        if (path.is_spectral()) {
+            const auto ctx = path.spectral_context();
+            throughput *= cycles_spectrum::Spectrum::from_rgb_reflectance(
+                ctx->tables, walk_throughput, &ctx->wavelengths, true);
+        } else {
+            throughput =
+                cycles_spectrum::Spectrum::from_rgb_raw(walk_throughput);
+        }
         path.pending_subsurface_hit.store_surface(exit_hit);
         path.pending_subsurface_exit = true;
         path.ray = make_ray(

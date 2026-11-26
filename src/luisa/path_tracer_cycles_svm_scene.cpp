@@ -412,6 +412,27 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
   runtime->particle_buffer.emplace(
       scene->device.create_buffer<CyclesSvmParticleGpu>(
           runtime->particle_records.size()));
+  bool any_dispersive = false;
+  for (const auto [shader_index, material_id] : shader_compile_order) {
+    static_cast<void>(shader_index);
+    if (snapshot.materials.at(material_id).dispersion_abbe > 0.0f) {
+      any_dispersive = true;
+      break;
+    }
+  }
+  if (any_dispersive && !runtime->compilation.kernel_shaders.empty()) {
+    runtime->has_dispersive_materials = true;
+    runtime->dispersion_abbe_values.assign(
+        runtime->compilation.kernel_shaders.size(), 0.0f);
+    for (const auto [shader_index, material_id] : shader_compile_order) {
+      if (shader_index < runtime->dispersion_abbe_values.size()) {
+        runtime->dispersion_abbe_values[shader_index] =
+            std::max(snapshot.materials.at(material_id).dispersion_abbe, 0.0f);
+      }
+    }
+    runtime->dispersion_abbe_buffer.emplace(scene->device.create_buffer<float>(
+        runtime->dispersion_abbe_values.size()));
+  }
   return runtime;
 }
 
@@ -436,6 +457,10 @@ void upload_cycles_svm_runtime(Stream &stream,
   if (runtime.particle_buffer) {
     stream << runtime.particle_buffer->copy_from(
         luisa::span{runtime.particle_records});
+  }
+  if (runtime.dispersion_abbe_buffer) {
+    stream << runtime.dispersion_abbe_buffer->copy_from(
+        luisa::span{runtime.dispersion_abbe_values});
   }
 }
 

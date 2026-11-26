@@ -82,14 +82,28 @@ class EnvironmentDirectLightProvider final : public DirectLightProvider {
                          -light.direction,
                      .distance = ray_maximum});
                 Float3 light_shader = make_float3(0.0f);
+                std::optional<Float4> spectral_radiometric_weight{};
+                std::optional<Float4> spectral_light_shader{};
+                const auto spectral = sample.is_spectral();
+                if (spectral) {
+                    spectral_radiometric_weight.emplace(make_float4(1.0f));
+                    spectral_light_shader.emplace(make_float4(0.0f));
+                }
                 const auto constant_emission =
                     config.scene->environment_emission_is_constant;
                 if (config.scene
                         ->environment_emission_is_constant) {
-                    light_shader =
-                        _environment_light
-                            ->evaluate_constant_emission(
-                                sample);
+                    if (spectral) {
+                        *spectral_light_shader =
+                            _environment_light
+                                ->evaluate_constant_emission_spectral(sample);
+                        light_shader = spectral_light_shader->xyz();
+                    } else {
+                        light_shader =
+                            _environment_light
+                                ->evaluate_constant_emission(
+                                    sample);
+                    }
                 }
                 _result.accept(
                     {.direction = light.direction,
@@ -113,7 +127,9 @@ class EnvironmentDirectLightProvider final : public DirectLightProvider {
                      .apply_mis = true,
                      .constant_light_shader = Bool{constant_emission},
                      .distant = true,
-                     .valid = true});
+                     .valid = true,
+                     .spectral_radiometric_weight = spectral_radiometric_weight,
+                     .spectral_light_shader = spectral_light_shader});
             }
             $else {
                 _trace->record_failed_sample(

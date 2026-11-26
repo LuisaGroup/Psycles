@@ -403,7 +403,16 @@ using detail::unsigned_number;
                     optional_unsigned_number(
                         member(cycles_sync, "shader_index")),
                 .cycles_pass_id = static_cast<std::int32_t>(
-                    signed_number(member(cycles_sync, "pass_id"), 0))};
+                    signed_number(member(cycles_sync, "pass_id"), 0)),
+                .dispersion_abbe = [&]() noexcept -> float {
+                    if (auto *v = member(material, "dispersion_abbe"); v != nullptr) {
+                        return number(v, 0.0f);
+                    }
+                    if (auto *v = member(material, "abbe_number"); v != nullptr) {
+                        return number(v, 0.0f);
+                    }
+                    return 0.0f;
+                }()};
         });
         for (std::size_t i = 0u; i < parsed_materials.size(); ++i) {
             for (auto &diag : material_diags[i]) {

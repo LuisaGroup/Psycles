@@ -75,6 +75,12 @@ class EmissiveTriangleComponent {
         const EmissiveTriangleLightProposal
             &proposal) const noexcept = 0;
 
+    [[nodiscard]] virtual Float4
+    evaluate_constant_emission_spectral(
+        PathSampleContext &sample,
+        const EmissiveTriangleLightProposal
+            &proposal) const noexcept = 0;
+
     // Forward-hit MIS starts from an already committed primitive. Its exact
     // effective material supplies emission_sampling directly. The caller
     // supplies the selection probability from either the legacy distribution

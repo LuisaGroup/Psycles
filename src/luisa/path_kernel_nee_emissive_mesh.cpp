@@ -110,14 +110,29 @@ class EmissiveMeshDirectLightProvider final : public DirectLightProvider {
                     const auto constant_emission =
                         emitter.emission_is_constant != 0u;
                     Float3 light_shader = make_float3(0.0f);
+                    std::optional<Float4> spectral_radiometric_weight{};
+                    std::optional<Float4> spectral_light_shader{};
+                    const auto spectral = sample.is_spectral();
+                    if (spectral) {
+                        spectral_radiometric_weight.emplace(make_float4(1.0f));
+                        spectral_light_shader.emplace(make_float4(0.0f));
+                    }
                     // Cycles' constant factor is evaluated after geometric
                     // rejection but before the receiving BSDF.
                     $if(constant_emission) {
-                        light_shader =
-                            _emissive_triangle
-                                ->evaluate_constant_emission(
-                                    sample,
-                                    light);
+                        if (spectral) {
+                            *spectral_light_shader =
+                                _emissive_triangle
+                                    ->evaluate_constant_emission_spectral(
+                                        sample, light);
+                            light_shader = spectral_light_shader->xyz();
+                        } else {
+                            light_shader =
+                                _emissive_triangle
+                                    ->evaluate_constant_emission(
+                                        sample,
+                                        light);
+                        }
                     };
                     _result.accept(
                         {.direction = light.light.direction,
@@ -140,7 +155,10 @@ class EmissiveMeshDirectLightProvider final : public DirectLightProvider {
                          .apply_mis = true,
                          .constant_light_shader = constant_emission,
                          .distant = false,
-                         .valid = true});
+                         .valid = true,
+                         .spectral_radiometric_weight =
+                             spectral_radiometric_weight,
+                         .spectral_light_shader = spectral_light_shader});
                 };
             }
             $else {

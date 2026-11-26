@@ -1042,19 +1042,29 @@ class PathVolumeDirectLightingComponent final
                         volume_shadow_ray,
                         light.light_instance,
                         light.light_accel_primitive);
-                const auto continuation =
-                    volume.throughput /
-                    sample
-                        .continuation_probability;
-                const auto contribution =
-                    invocation
-                        .clamp_contribution(
-                            continuation *
-                                unshadowed *
-                                surface_transmittance *
-                                volume_transmittance *
-                                roulette_weight,
-                            sample.path_depth);
+                Float3 contribution_unclamped;
+                if (sample.is_spectral()) {
+                    const auto ctx = sample.spectral_context();
+                    const auto spec_contrib =
+                        (sample.throughput / sample.continuation_probability) *
+                        cycles_spectrum::Spectrum::from_rgb_reflectance(
+                            ctx->tables,
+                            volume.throughput * surface_transmittance *
+                                volume_transmittance,
+                            &ctx->wavelengths, true) *
+                        cycles_spectrum::Spectrum::from_rgb_illuminant(
+                            ctx->tables, unshadowed * roulette_weight,
+                            &ctx->wavelengths, true);
+                    contribution_unclamped = sample.spectrum_to_rgb(spec_contrib);
+                } else {
+                    const auto continuation =
+                        volume.throughput / sample.continuation_probability;
+                    contribution_unclamped =
+                        continuation * unshadowed * surface_transmittance *
+                        volume_transmittance * roulette_weight;
+                }
+                const auto contribution = invocation.clamp_contribution(
+                    contribution_unclamped, sample.path_depth);
                 accumulate_volume_nee_film(sample, contribution);
             };
         };

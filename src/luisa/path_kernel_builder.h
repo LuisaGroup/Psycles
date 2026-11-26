@@ -116,6 +116,10 @@ struct PathKernelConfig {
     const luisa::compute::Buffer<luisa::ulong> *megakernel_stage_profile_buffer{
         nullptr};
     bool enable_virtual_texture_cache{false};
+    bool spectral_rendering{false};
+    contract::CausticsMethod caustics_method{contract::CausticsMethod::mnee};
+    bool sms_unbiased{true};
+    std::uint32_t sms_max_trials{8u};
 };
 
 struct MegakernelStageProfileState {
@@ -318,6 +322,8 @@ struct PathKernelInvocation {
                                               Float random) const noexcept;
   [[nodiscard]] Float volume_guiding_majorant_optical_depth() const noexcept;
   [[nodiscard]] Float3 constant_environment() const noexcept;
+  [[nodiscard]] Float4 constant_environment_spectral(
+      const cycles_spectrum::SpectralContext &spectral) const noexcept;
 
     void write_film() noexcept;
 };
@@ -363,7 +369,8 @@ struct PathSampleContext {
     UInt ray_source_object;
     UInt ray_source_primitive;
     Float3 radiance;
-    Float3 throughput;
+    cycles_spectrum::Spectrum throughput;
+    std::optional<Float> spectral_u_lambda;
     Float3 sample_normal;
     Float3 sample_albedo;
     Float3 sample_glossy_color;
@@ -478,6 +485,17 @@ struct PathSampleContext {
       UInt event_path_visibility, UInt event_path_depth,
       Bool primary_volume_scatter_override = false) noexcept;
   void accumulate_transparency(Float transparency) noexcept;
+    [[nodiscard]] bool is_spectral() const noexcept;
+    [[nodiscard]] Bool spectral_secondary_terminated() const noexcept;
+    [[nodiscard]] std::optional<cycles_spectrum::SampledWavelengths>
+    sampled_wavelengths() const noexcept;
+    [[nodiscard]] std::optional<cycles_spectrum::SpectralContext>
+    spectral_context() const noexcept;
+    [[nodiscard]] Float3 spectrum_to_rgb(
+        const cycles_spectrum::Spectrum &value) const noexcept;
+    [[nodiscard]] Float3 reflectance_to_rgb(
+        const cycles_spectrum::Spectrum &reflectance) const noexcept;
+    [[nodiscard]] Float throughput_average() const noexcept;
     [[nodiscard]] Float3
   analytic_light_constant_shader(Var<LightGpu> light) const noexcept;
     [[nodiscard]] Float3
@@ -485,6 +503,13 @@ struct PathSampleContext {
                         Float3 light_position, Float3 light_normal,
                         Float2 light_uv, Float3 incoming,
                           Float light_distance) const noexcept;
+    [[nodiscard]] cycles_spectrum::Spectrum
+  analytic_light_constant_shader_spectrum(Var<LightGpu> light) const noexcept;
+    [[nodiscard]] cycles_spectrum::Spectrum
+  analytic_light_shader_spectrum(Var<LightGpu> light, UInt light_index,
+                                 Float3 light_position, Float3 light_normal,
+                                 Float2 light_uv, Float3 incoming,
+                                 Float light_distance) const noexcept;
 };
 
 [[nodiscard]] PathSampleContext
@@ -665,8 +690,11 @@ struct DirectLightSampleState {
     Bool constant_light_shader;
     Bool distant;
     Bool valid;
+    std::optional<Float4> spectral_radiometric_weight{};
+    std::optional<Float4> spectral_light_shader{};
 
-    [[nodiscard]] static DirectLightSampleState empty() noexcept;
+    [[nodiscard]] static DirectLightSampleState
+    empty(bool spectral = false) noexcept;
     void accept(const DirectLightSampleState &proposal) noexcept;
 };
 
@@ -691,10 +719,24 @@ struct DirectLightTransportState {
     Bool constant_light_shader;
     Bool distant;
     Bool valid;
+    std::optional<Float4> spectral_weighted_bsdf{};
+    std::optional<Float4> spectral_light_shader{};
+    std::optional<Float4> spectral_bsdf{};
+    std::optional<Float4> spectral_diffuse_bsdf{};
+    std::optional<Float4> spectral_glossy_bsdf{};
 
-    [[nodiscard]] static DirectLightTransportState empty() noexcept;
+    [[nodiscard]] static DirectLightTransportState
+    empty(bool spectral = false) noexcept;
+    void accept(const DirectLightTransportState &other) noexcept;
     void accept(const SurfaceEvaluation &evaluation,
                 Float3 proposal_weighted_bsdf, Float3 proposal_light_shader,
+                Float3 proposal_direction, Float3 proposal_target_position,
+                Bool proposal_distant, UInt proposal_light_object,
+                UInt proposal_light_primitive, UInt proposal_shader_flags,
+                Bool proposal_constant_light_shader) noexcept;
+    void accept(const SurfaceEvaluation &evaluation,
+                const cycles_spectrum::Spectrum &proposal_weighted_bsdf,
+                const cycles_spectrum::Spectrum &proposal_light_shader,
                 Float3 proposal_direction, Float3 proposal_target_position,
                 Bool proposal_distant, UInt proposal_light_object,
                 UInt proposal_light_primitive, UInt proposal_shader_flags,

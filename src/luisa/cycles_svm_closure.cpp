@@ -41,7 +41,13 @@ ClosurePool::ClosurePool(std::size_t capacity, Options options) noexcept
       _options{options},
       _storage{std::max(_capacity, std::size_t{1u}) * closure_vec4s},
       _count{0u},
-      _left{static_cast<std::uint32_t>(_capacity)} {}
+      _left{static_cast<std::uint32_t>(_capacity)} {
+  if (_options.spectral) {
+    const auto spectral_capacity = std::max(_capacity, std::size_t{1u});
+    _spectral_weight.emplace(spectral_capacity);
+    _spectral_weight_valid.emplace(spectral_capacity);
+  }
+}
 
 UInt4 ClosurePool::load_vec4(Expr<std::uint32_t> slot,
                              std::uint32_t vec_index) const noexcept {
@@ -162,6 +168,17 @@ ClosurePool::allocate(Expr<std::uint32_t> closure_type,
                make_uint4(weight.x.as<luisa::uint>(),
                           weight.y.as<luisa::uint>(),
                           weight.z.as<luisa::uint>(), closure_type));
+    if (_options.spectral && _spectral_weight_valid.has_value()) {
+      if (_capacity <= 1u) {
+        (*_spectral_weight_valid)[0u] = 0u;
+      } else if (const auto c = detail::try_const_uint(allocation.index)) {
+        if (*c < _capacity) {
+          (*_spectral_weight_valid)[*c] = 0u;
+        }
+      } else {
+        (*_spectral_weight_valid)[allocation.index] = 0u;
+      }
+    }
     // Native closure_alloc initializes only type/weight. Scattering setup
     // owns sample_weight/N; other closure kinds must not clobber those lanes.
     _count += 1u;
@@ -169,6 +186,72 @@ ClosurePool::allocate(Expr<std::uint32_t> closure_type,
     allocation.valid = true;
   };
   return allocation;
+}
+
+void ClosurePool::set_spectral_weight(Expr<std::uint32_t> index,
+                                      Expr<luisa::float4> weight) noexcept {
+  if (!_options.spectral || !_spectral_weight.has_value() ||
+      !_spectral_weight_valid.has_value()) {
+    return;
+  }
+  if (_capacity <= 1u) {
+    (*_spectral_weight)[0u] = weight;
+    (*_spectral_weight_valid)[0u] = 1u;
+    return;
+  }
+  if (const auto c = detail::try_const_uint(index)) {
+    if (*c < _capacity) {
+      (*_spectral_weight)[*c] = weight;
+      (*_spectral_weight_valid)[*c] = 1u;
+    }
+    return;
+  }
+  $if(index < static_cast<std::uint32_t>(_capacity)) {
+    (*_spectral_weight)[index] = weight;
+    (*_spectral_weight_valid)[index] = 1u;
+  };
+}
+
+Bool ClosurePool::has_spectral_weight(
+    Expr<std::uint32_t> index) const noexcept {
+  if (!_options.spectral || !_spectral_weight_valid.has_value()) {
+    return false;
+  }
+  if (_capacity <= 1u) {
+    return (*_spectral_weight_valid)[0u] != 0u;
+  }
+  if (const auto c = detail::try_const_uint(index)) {
+    if (*c >= _capacity) {
+      return false;
+    }
+    return (*_spectral_weight_valid)[*c] != 0u;
+  }
+  Bool result = false;
+  $if(index < static_cast<std::uint32_t>(_capacity)) {
+    result = (*_spectral_weight_valid)[index] != 0u;
+  };
+  return result;
+}
+
+Float4 ClosurePool::spectral_weight(
+    Expr<std::uint32_t> index) const noexcept {
+  if (!_options.spectral || !_spectral_weight.has_value()) {
+    return make_float4(0.0f);
+  }
+  if (_capacity <= 1u) {
+    return (*_spectral_weight)[0u];
+  }
+  if (const auto c = detail::try_const_uint(index)) {
+    if (*c >= _capacity) {
+      return make_float4(0.0f);
+    }
+    return (*_spectral_weight)[*c];
+  }
+  Float4 result = make_float4(0.0f);
+  $if(index < static_cast<std::uint32_t>(_capacity)) {
+    result = (*_spectral_weight)[index];
+  };
+  return result;
 }
 
 Bool ClosurePool::allocate_extra(const Allocation &owner,
@@ -718,27 +801,79 @@ ClosurePool::microfacet_param(Expr<std::uint32_t> index) const noexcept {
 
 namespace detail {
 
-void node_closure_set_weight(Cursor &cursor, Float3 &closure_weight) noexcept {
+void node_closure_set_weight(Cursor &cursor, Float3 &closure_weight,
+                             SpectralClosureWeight *spectral_weight) noexcept {
   const auto x = cursor.floating();
   const auto y = cursor.floating();
   const auto z = cursor.floating();
   closure_weight = make_float3(x, y, z);
+  if (spectral_weight != nullptr) {
+    spectral_weight->valid = 0u;
+  }
 }
 
-void node_closure_weight(Cursor &cursor, Stack &stack,
-                         Float3 &closure_weight) noexcept {
+void node_closure_weight(Cursor &cursor, Stack &stack, Float3 &closure_weight,
+                         SpectralClosureWeight *spectral_weight) noexcept {
   const auto packed = cursor.word();
-  closure_weight = stack_load_float3(stack, cursor.byte(packed, 0u));
+  const auto offset = cursor.byte(packed, 0u);
+  closure_weight = stack_load_float3(stack, offset);
+  if (spectral_weight != nullptr && stack.is_spectral()) {
+    const Bool found =
+        stack.try_load_spectral_slot(offset, spectral_weight->spd);
+    spectral_weight->valid = select(0u, 1u, found);
+  }
 }
 
-void node_emission_weight(Cursor &cursor, Stack &stack,
-                          Float3 &closure_weight) noexcept {
+void node_emission_weight(Cursor &cursor, Stack &stack, Float3 &closure_weight,
+                          SpectralClosureWeight *spectral_weight) noexcept {
   const auto color_x = cursor.word();
   const auto color_y = cursor.word();
   const auto color_z = cursor.word();
   const auto strength = cursor.word();
-  closure_weight = stack_load_input_float3(stack, color_x, color_y, color_z) *
-                   stack_load_input_float(stack, strength);
+  const auto strength_val = stack_load_input_float(stack, strength);
+  closure_weight =
+      stack_load_input_float3(stack, color_x, color_y, color_z) * strength_val;
+  if (spectral_weight != nullptr && stack.is_spectral()) {
+    spectral_weight->valid = 0u;
+    spectral_weight->spd = make_float4(0.0f);
+    if (const auto cx = try_const_uint(color_x)) {
+      if ((*cx >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+        Float4 spd = make_float4(0.0f);
+        const Bool found = stack.try_load_spectral_slot(*cx & 0xffu, spd);
+        spectral_weight->spd =
+            select(spectral_weight->spd, spd * strength_val, found);
+        spectral_weight->valid = select(0u, 1u, found);
+      }
+    } else {
+      $if((color_x >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+        Float4 spd = make_float4(0.0f);
+        const Bool found = stack.try_load_spectral_slot(color_x & 0xffu, spd);
+        spectral_weight->spd =
+            select(spectral_weight->spd, spd * strength_val, found);
+        spectral_weight->valid = select(0u, 1u, found);
+      };
+    }
+  }
+}
+
+[[nodiscard]] Float4 resolve_spectral_emission_weight(
+    const ShaderData &shader_data, Expr<luisa::float3> weight,
+    Expr<float> weight_scale,
+    const SpectralClosureWeight *spectral_weight) noexcept {
+  const auto &sc = *shader_data.spectral;
+  if (spectral_weight == nullptr) {
+    return cycles_spectrum::rgb_to_spectrum_illuminant(
+        *sc.tables, weight, sc.wavelengths.lambdas);
+  }
+  Float4 w_spec = make_float4(0.0f);
+  $if(spectral_weight->valid != 0u) {
+    w_spec = spectral_weight->spd * weight_scale;
+  }
+  $else {
+    w_spec = cycles_spectrum::rgb_to_spectrum_illuminant(
+        *sc.tables, weight, sc.wavelengths.lambdas);
+  };
+  return w_spec;
 }
 
 void node_mix_closure(Cursor &cursor, Stack &stack) noexcept {
@@ -771,27 +906,34 @@ void node_mix_closure(Cursor &cursor, Stack &stack) noexcept {
   }
 }
 
-void node_closure_emission(const KernelGlobals &kernel_globals,
-                           Cursor &cursor, Stack &stack,
-                           Expr<luisa::float3> closure_weight,
-                           ShaderData &shader_data,
-                           const EvaluationTransition &transition) noexcept {
+void node_closure_emission(
+    const KernelGlobals &kernel_globals, Cursor &cursor, Stack &stack,
+    Expr<luisa::float3> closure_weight, ShaderData &shader_data,
+    const EvaluationTransition &transition,
+    const SpectralClosureWeight *spectral_weight) noexcept {
   const auto packed = cursor.word();
   const auto mix_weight_offset = cursor.byte(packed, 0u);
   Float3 weight = closure_weight;
+  Float weight_scale = 1.0f;
   Bool active = true;
 
   if (const auto mwo = try_const_uint(mix_weight_offset)) {
     if (*mwo != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
       const auto mix_weight = stack_load_float(stack, *mwo);
       $if(mix_weight == 0.0f) { active = false; }
-      $else { weight *= mix_weight; };
+      $else {
+        weight *= mix_weight;
+        weight_scale *= mix_weight;
+      };
     }
   } else {
     $if(mix_weight_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
       const auto mix_weight = stack_load_float(stack, mix_weight_offset);
       $if(mix_weight == 0.0f) { active = false; }
-      $else { weight *= mix_weight; };
+      $else {
+        weight *= mix_weight;
+        weight_scale *= mix_weight;
+      };
     };
   }
 
@@ -800,6 +942,7 @@ void node_closure_emission(const KernelGlobals &kernel_globals,
       if (const auto density =
               kernel_globals.object_volume_density(shader_data.object)) {
         weight *= *density;
+        weight_scale *= *density;
       } else {
         $if(shader_data.object != object_none) {
           active = false;
@@ -808,12 +951,26 @@ void node_closure_emission(const KernelGlobals &kernel_globals,
       }
     };
     $if(active) {
+      const bool has_spectral =
+          kernel_globals.is_spectral() && shader_data.spectral.has_value() &&
+          shader_data.spectral_emission_background.has_value();
+      Float4 w_spec = make_float4(0.0f);
+      if (has_spectral) {
+        w_spec = resolve_spectral_emission_weight(shader_data, weight,
+                                                  weight_scale, spectral_weight);
+      }
       $if((shader_data.flag & shader_data_emission) != 0u) {
         shader_data.closure_emission_background += weight;
+        if (has_spectral) {
+          *shader_data.spectral_emission_background += w_spec;
+        }
       }
       $else {
         shader_data.flag |= shader_data_emission;
         shader_data.closure_emission_background = weight;
+        if (has_spectral) {
+          *shader_data.spectral_emission_background = w_spec;
+        }
       };
     };
   };
@@ -849,35 +1006,57 @@ void node_closure_holdout(Cursor &cursor, Stack &stack,
   };
 }
 
-void node_closure_background(Cursor &cursor, Stack &stack,
-                             Expr<luisa::float3> closure_weight,
-                             ShaderData &shader_data) noexcept {
+void node_closure_background(
+    Cursor &cursor, Stack &stack, Expr<luisa::float3> closure_weight,
+    ShaderData &shader_data,
+    const SpectralClosureWeight *spectral_weight) noexcept {
   const auto packed = cursor.word();
   const auto mix_weight_offset = cursor.byte(packed, 0u);
   Float3 weight = closure_weight;
+  Float weight_scale = 1.0f;
   Bool active = true;
 
   if (const auto mwo = try_const_uint(mix_weight_offset)) {
     if (*mwo != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
       const auto mix_weight = stack_load_float(stack, *mwo);
       $if(mix_weight == 0.0f) { active = false; }
-      $else { weight *= mix_weight; };
+      $else {
+        weight *= mix_weight;
+        weight_scale *= mix_weight;
+      };
     }
   } else {
     $if(mix_weight_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
       const auto mix_weight = stack_load_float(stack, mix_weight_offset);
       $if(mix_weight == 0.0f) { active = false; }
-      $else { weight *= mix_weight; };
+      $else {
+        weight *= mix_weight;
+        weight_scale *= mix_weight;
+      };
     };
   }
 
   $if(active) {
+    const bool has_spectral =
+        shader_data.spectral.has_value() &&
+        shader_data.spectral_emission_background.has_value();
+    Float4 w_spec = make_float4(0.0f);
+    if (has_spectral) {
+      w_spec = resolve_spectral_emission_weight(shader_data, weight,
+                                                weight_scale, spectral_weight);
+    }
     $if((shader_data.flag & shader_data_emission) != 0u) {
       shader_data.closure_emission_background += weight;
+      if (has_spectral) {
+        *shader_data.spectral_emission_background += w_spec;
+      }
     }
     $else {
       shader_data.flag |= shader_data_emission;
       shader_data.closure_emission_background = weight;
+      if (has_spectral) {
+        *shader_data.spectral_emission_background = w_spec;
+      }
     };
   };
 }
@@ -887,7 +1066,8 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                        ShaderType shader_type, std::uint32_t kernel_features,
                        std::uint32_t node_feature_mask,
                        ShaderData &shader_data, const PathState &path_state,
-                       const EvaluationTransition &transition) noexcept {
+                       const EvaluationTransition &transition,
+                       const SpectralClosureWeight *spectral_weight) noexcept {
   const auto closure_type = cursor.word();
   const auto packed = cursor.word();
   const auto mix_weight_offset = cursor.byte(packed, 0u);
@@ -909,64 +1089,90 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
   const auto usage = kernel_globals.closure_usage();
   const auto node_mask = usage.svm_bsdf_node_mask;
 
-  const auto emit_diffuse = [&]() noexcept {
-    const auto color_x = cursor.word();
-    const auto color_y = cursor.word();
-    const auto color_z = cursor.word();
-    const auto roughness_input = cursor.word();
-    const auto normal_packed = cursor.word();
-    const auto normal_offset = cursor.byte(normal_packed, 0u);
-    auto normal =
-        stack_load_float3_default(stack, normal_offset, shader_data.N);
-    normal = native_vector_math::safe_normalize_nonzero_or(normal,
-                                                           shader_data.N);
+  const auto with_spectral_bsdf_weight = [&](auto &&emit_fn) noexcept {
+    if (spectral_weight != nullptr && kernel_globals.is_spectral() &&
+        shader_data.spectral.has_value() && shader_data.closure != nullptr &&
+        shader_data.closure->is_spectral()) {
+      auto &pool = *shader_data.closure;
+      const UInt prev_count = pool.count();
+      emit_fn();
+      $if((spectral_weight->valid != 0u) & (pool.count() == prev_count + 1u)) {
+        const auto &sc = *shader_data.spectral;
+        const Float4 illum = luisa::compute::max(
+            cycles_spectrum::sample_illuminant_4(*sc.tables,
+                                                 sc.wavelengths.lambdas),
+            make_float4(0.1f));
+        const Float4 spec_refl = luisa::compute::max(
+            (spectral_weight->spd / illum) * mix_weight, make_float4(0.0f));
+        pool.set_spectral_weight(prev_count, spec_refl);
+      };
+      return;
+    }
+    emit_fn();
+  };
 
-    const auto weight = closure_weight * mix_weight;
-    const bool may_lambertian =
-        (usage.diffuse_node_mask & ClosureUsage::diffuse_lambertian) != 0u;
-    const bool may_oren_nayar =
-        (usage.diffuse_node_mask & ClosureUsage::diffuse_oren_nayar) != 0u;
-    if (may_lambertian && !may_oren_nayar) {
-      static_cast<void>(color_x);
-      static_cast<void>(color_y);
-      static_cast<void>(color_z);
-      static_cast<void>(roughness_input);
-      diffuse_setup(shader_data, normal, weight);
-    } else {
-      const auto roughness = stack_load_input_float(stack, roughness_input);
-      if (!may_lambertian && may_oren_nayar) {
-        const auto color = clamp(
-            stack_load_input_float3(stack, color_x, color_y, color_z), 0.0f,
-            1.0f);
-        oren_nayar_setup(shader_data, normal, weight, roughness, color);
+  const auto emit_diffuse = [&]() noexcept {
+    with_spectral_bsdf_weight([&]() noexcept {
+      const auto color_x = cursor.word();
+      const auto color_y = cursor.word();
+      const auto color_z = cursor.word();
+      const auto roughness_input = cursor.word();
+      const auto normal_packed = cursor.word();
+      const auto normal_offset = cursor.byte(normal_packed, 0u);
+      auto normal =
+          stack_load_float3_default(stack, normal_offset, shader_data.N);
+      normal = native_vector_math::safe_normalize_nonzero_or(normal,
+                                                             shader_data.N);
+
+      const auto weight = closure_weight * mix_weight;
+      const bool may_lambertian =
+          (usage.diffuse_node_mask & ClosureUsage::diffuse_lambertian) != 0u;
+      const bool may_oren_nayar =
+          (usage.diffuse_node_mask & ClosureUsage::diffuse_oren_nayar) != 0u;
+      if (may_lambertian && !may_oren_nayar) {
+        static_cast<void>(color_x);
+        static_cast<void>(color_y);
+        static_cast<void>(color_z);
+        static_cast<void>(roughness_input);
+        diffuse_setup(shader_data, normal, weight);
       } else {
-        $if(roughness < 1.0e-5f) {
-          diffuse_setup(shader_data, normal, weight);
-        }
-        $else {
+        const auto roughness = stack_load_input_float(stack, roughness_input);
+        if (!may_lambertian && may_oren_nayar) {
           const auto color = clamp(
               stack_load_input_float3(stack, color_x, color_y, color_z), 0.0f,
               1.0f);
           oren_nayar_setup(shader_data, normal, weight, roughness, color);
-        };
+        } else {
+          $if(roughness < 1.0e-5f) {
+            diffuse_setup(shader_data, normal, weight);
+          }
+          $else {
+            const auto color = clamp(
+                stack_load_input_float3(stack, color_x, color_y, color_z), 0.0f,
+                1.0f);
+            oren_nayar_setup(shader_data, normal, weight, roughness, color);
+          };
+        }
       }
-    }
+    });
   };
 
   const auto emit_translucent = [&]() noexcept {
-    const auto unused_param = cursor.word();
-    const auto normal_packed = cursor.word();
-    static_cast<void>(unused_param);
-    const auto normal_offset = cursor.byte(normal_packed, 0u);
-    auto normal =
-        stack_load_float3_default(stack, normal_offset, shader_data.N);
-    normal = native_vector_math::safe_normalize_nonzero_or(normal,
-                                                           shader_data.N);
-    const auto weight = closure_weight * mix_weight;
-    translucent_setup(shader_data,
-                      detail::maybe_ensure_valid_specular_reflection(
-                          shader_data, normal),
-                      weight);
+    with_spectral_bsdf_weight([&]() noexcept {
+      const auto unused_param = cursor.word();
+      const auto normal_packed = cursor.word();
+      static_cast<void>(unused_param);
+      const auto normal_offset = cursor.byte(normal_packed, 0u);
+      auto normal =
+          stack_load_float3_default(stack, normal_offset, shader_data.N);
+      normal = native_vector_math::safe_normalize_nonzero_or(normal,
+                                                             shader_data.N);
+      const auto weight = closure_weight * mix_weight;
+      translucent_setup(shader_data,
+                        detail::maybe_ensure_valid_specular_reflection(
+                            shader_data, normal),
+                        weight);
+    });
   };
 
   const auto emit_transparent = [&]() noexcept {
@@ -975,6 +1181,20 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
     static_cast<void>(unused_param);
     static_cast<void>(unused_normal);
     transparent_setup(shader_data, path_state, closure_weight * mix_weight);
+  };
+
+  const auto emit_glossy = [&](Expr<std::uint32_t> type) noexcept {
+    with_spectral_bsdf_weight([&]() noexcept {
+      node_glossy_bsdf(kernel_globals, cursor, stack, type, mix_weight,
+                       closure_weight, shader_data, path_state);
+    });
+  };
+
+  const auto emit_refraction = [&](Expr<std::uint32_t> type) noexcept {
+    with_spectral_bsdf_weight([&]() noexcept {
+      node_refraction_bsdf(kernel_globals, cursor, stack, type, mix_weight,
+                           closure_weight, shader_data, path_state);
+    });
   };
 
   const auto emit_static_bsdf = [&](std::uint32_t ct) noexcept {
@@ -1006,13 +1226,11 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
       case CLOSURE_BSDF_MICROFACET_BECKMANN_ID:
       case CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID:
       case CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID:
-        node_glossy_bsdf(kernel_globals, cursor, stack, ct, mix_weight,
-                         closure_weight, shader_data, path_state);
+        emit_glossy(ct);
         return;
       case CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID:
       case CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID:
-        node_refraction_bsdf(kernel_globals, cursor, stack, ct, mix_weight,
-                             closure_weight, shader_data, path_state);
+        emit_refraction(ct);
         return;
       case CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID:
       case CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID:
@@ -1138,18 +1356,10 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                CLOSURE_BSDF_MICROFACET_BECKMANN_ID,
                CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID,
                CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID},
-              [&] {
-                node_glossy_bsdf(kernel_globals, cursor, stack, closure_type,
-                                 mix_weight, closure_weight, shader_data,
-                                 path_state);
-              });
+              [&] { emit_glossy(closure_type); });
         cases({CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID,
                CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID},
-              [&] {
-                node_refraction_bsdf(kernel_globals, cursor, stack,
-                                     closure_type, mix_weight, closure_weight,
-                                     shader_data, path_state);
-              });
+              [&] { emit_refraction(closure_type); });
         cases({CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID,
                CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID,
                CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID},

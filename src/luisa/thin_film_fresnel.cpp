@@ -294,6 +294,96 @@ template <std::uint32_t Channel>
       unused_cosine);
 }
 
+[[nodiscard]] Float airy_monochromatic_closed_form(Float reflection_12,
+                                                   Float reflection_23,
+                                                   Float optical_path_difference,
+                                                   Float wavelength_nm,
+                                                   ComplexFloat phase) noexcept {
+  constexpr float two_pi = 6.28318530717958647692f;
+  const auto phi =
+      two_pi * optical_path_difference / max(wavelength_nm, 1.0f);
+  const auto c = phase.real * cos(phi) + phase.imaginary * sin(phi);
+  const auto r123 = reflection_12 * reflection_23;
+  const auto a123 = sqrt(max(r123, 0.0f));
+  const auto cross_term = 2.0f * a123 * c;
+  const auto denom = max(1.0f + r123 - cross_term, 1.0e-20f);
+  return clamp((reflection_12 + reflection_23 - cross_term) / denom, 0.0f,
+               1.0f);
+}
+
+template <bool Conductive, bool F82Model = false>
+[[nodiscard]] Float iridescence_monochromatic(
+    Float thickness, Float authored_film_ior, Float ambient_ior,
+    Float substrate_n, Float substrate_k, Float f82, Float cosine_incoming,
+    Float wavelength_nm, Float &cosine_transmitted) noexcept {
+  const auto film_ior =
+      effective_film_ior(thickness, authored_film_ior, ambient_ior);
+  const auto top = fresnel_dielectric_polarized(
+      cosine_incoming, film_ior / max(ambient_ior, 1.0e-20f));
+  cosine_transmitted = 0.0f;
+  Float result = 1.0f;
+  $if(!top.total_internal_reflection) {
+    Float reflection_23_s;
+    Float reflection_23_p;
+    ComplexFloat phase_23_s;
+    ComplexFloat phase_23_p;
+    Bool bottom_total_internal_reflection = false;
+    if constexpr (Conductive) {
+      const auto bottom = fresnel_conductor_polarized(
+          -top.cosine_transmitted, film_ior, substrate_n, substrate_k, f82,
+          F82Model);
+      reflection_23_s = bottom.reflection_s;
+      reflection_23_p = bottom.reflection_p;
+      phase_23_s = bottom.phase_s;
+      phase_23_p = bottom.phase_p;
+    } else {
+      const auto bottom = fresnel_dielectric_polarized(
+          -top.cosine_transmitted, substrate_n / max(film_ior, 1.0e-20f));
+      reflection_23_s = bottom.reflectance.x;
+      reflection_23_p = bottom.reflectance.y;
+      phase_23_s = {.real = bottom.reflection_phase_cosine.x,
+                    .imaginary = 0.0f};
+      phase_23_p = {.real = bottom.reflection_phase_cosine.y,
+                    .imaginary = 0.0f};
+      bottom_total_internal_reflection = bottom.total_internal_reflection;
+      cosine_transmitted = bottom.cosine_transmitted;
+    }
+    $if(!bottom_total_internal_reflection) {
+      const auto optical_path_difference =
+          -2.0f * film_ior * thickness * top.cosine_transmitted;
+      const auto phase_s =
+          complex_scale(phase_23_s, -top.reflection_phase_cosine.x);
+      const auto reflection_s = airy_monochromatic_closed_form(
+          top.reflectance.x, reflection_23_s, optical_path_difference,
+          wavelength_nm, phase_s);
+      const auto phase_p =
+          complex_scale(phase_23_p, -top.reflection_phase_cosine.y);
+      const auto reflection_p = airy_monochromatic_closed_form(
+          top.reflectance.y, reflection_23_p, optical_path_difference,
+          wavelength_nm, phase_p);
+      result = clamp(0.5f * (reflection_s + reflection_p), 0.0f, 1.0f);
+    };
+  };
+  return result;
+}
+
+[[nodiscard]] Float f82_monochromatic(Float thickness, Float film_ior, Float f0,
+                                      Float b, Float cosine_incoming,
+                                      Float wavelength_nm) noexcept {
+  const auto r = min(f0, 0.999f);
+  const auto g = fresnel_f82_scalar(1.0f / 7.0f, f0, b);
+  const auto sqrt_r = sqrt(max(r, 0.0f));
+  const auto n = lerp((1.0f + sqrt_r) / max(1.0f - sqrt_r, 1.0e-20f),
+                      (1.0f - r) / max(1.0f + r, 1.0e-20f), g);
+  const auto k = sqrt(
+      max((r * square(n + 1.0f) - square(n - 1.0f)) / max(1.0f - r, 1.0e-20f),
+          0.0f));
+  Float unused_cosine;
+  return iridescence_monochromatic<true, true>(thickness, film_ior, 1.0f, n, k,
+                                               g, cosine_incoming, wavelength_nm,
+                                               unused_cosine);
+}
+
 } // namespace
 
 ThinFilmDielectricFresnel
@@ -349,6 +439,65 @@ Float3 thin_film_conductor_fresnel(
       iridescence_channel<2u, true>(
           services, thickness, film_ior, 1.0f, substrate_ior.z,
           substrate_extinction.z, -1.0f, cosine_incoming, unused_cosine));
+}
+
+ThinFilmDielectricFresnelSpectral thin_film_dielectric_fresnel_spectral(
+    Float thickness, Float film_ior, Float4 substrate_ior, Float4 f0,
+    Float cosine_incoming, Float4 lambdas) noexcept {
+  Float cos_t[4];
+  Float refl[4];
+  for (std::uint32_t c = 0u; c < 4u; ++c) {
+    auto r_c = iridescence_monochromatic<false>(
+        thickness, film_ior, 1.0f, substrate_ior[c], 0.0f, -1.0f,
+        cosine_incoming, lambdas[c], cos_t[c]);
+    const auto real_f0 = f0_from_ior(substrate_ior[c]);
+    $if((real_f0 > 1.0e-5f) & (abs(1.0f - real_f0) > 1.0e-6f) & (r_c != 1.0f)) {
+      const auto interpolation =
+          clamp((r_c - 1.0f) / (real_f0 - 1.0f), 0.0f, 1.0f);
+      const auto factor = f0[c] / real_f0;
+      r_c = r_c * lerp(1.0f, factor, interpolation);
+    };
+    refl[c] = r_c;
+  }
+  return {.reflectance = make_float4(refl[0], refl[1], refl[2], refl[3]),
+          .cosine_transmitted =
+              make_float4(cos_t[0], cos_t[1], cos_t[2], cos_t[3])};
+}
+
+Float4 thin_film_f82_fresnel_spectral(Float thickness, Float film_ior,
+                                      Float4 f0, Float4 b,
+                                      Float cosine_incoming,
+                                      Float4 lambdas) noexcept {
+  return make_float4(
+      f82_monochromatic(thickness, film_ior, f0.x, b.x, cosine_incoming,
+                        lambdas.x),
+      f82_monochromatic(thickness, film_ior, f0.y, b.y, cosine_incoming,
+                        lambdas.y),
+      f82_monochromatic(thickness, film_ior, f0.z, b.z, cosine_incoming,
+                        lambdas.z),
+      f82_monochromatic(thickness, film_ior, f0.w, b.w, cosine_incoming,
+                        lambdas.w));
+}
+
+Float4 thin_film_conductor_fresnel_spectral(Float thickness, Float film_ior,
+                                            Float4 substrate_ior,
+                                            Float4 substrate_extinction,
+                                            Float cosine_incoming,
+                                            Float4 lambdas) noexcept {
+  Float unused_cosine;
+  return make_float4(
+      iridescence_monochromatic<true>(
+          thickness, film_ior, 1.0f, substrate_ior.x, substrate_extinction.x,
+          -1.0f, cosine_incoming, lambdas.x, unused_cosine),
+      iridescence_monochromatic<true>(
+          thickness, film_ior, 1.0f, substrate_ior.y, substrate_extinction.y,
+          -1.0f, cosine_incoming, lambdas.y, unused_cosine),
+      iridescence_monochromatic<true>(
+          thickness, film_ior, 1.0f, substrate_ior.z, substrate_extinction.z,
+          -1.0f, cosine_incoming, lambdas.z, unused_cosine),
+      iridescence_monochromatic<true>(
+          thickness, film_ior, 1.0f, substrate_ior.w, substrate_extinction.w,
+          -1.0f, cosine_incoming, lambdas.w, unused_cosine));
 }
 
 } // namespace psycles::luisa_backend::detail

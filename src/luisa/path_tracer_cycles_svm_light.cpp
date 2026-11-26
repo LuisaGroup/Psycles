@@ -234,25 +234,32 @@ public:
         _reflective_caustics{reflective_caustics},
         _refractive_caustics{refractive_caustics} {}
 
-  [[nodiscard]] Float3 evaluate(
-      const Var<DirectLightTaskCall> &task,
-      const Var<RenderKernelParameters> &parameters,
-      UInt *vt_miss_page = nullptr) const noexcept override {
+  void evaluate_impl(const Var<DirectLightTaskCall> &task,
+                     const Var<RenderKernelParameters> &parameters,
+                     const cycles_spectrum::SpectralContext *spectral,
+                     Float3 &out_rgb, Float4 &out_spec,
+                     UInt *vt_miss_page) const noexcept {
     const auto backend_name = _scene->device.backend_name();
     const bool is_simd = backend_name == "simd";
     const bool is_simd_wide = is_simd && _scene->device.compute_warp_size() > 1u;
     const bool cpu_backend = backend_name == "fallback" || is_simd;
-    Float3 emission = make_float3(0.0f);
+    const bool use_spectral = spectral != nullptr;
     UInt local_vt_miss = vt_invalid_page;
     UInt *local_vt_ptr = vt_miss_page != nullptr ? &local_vt_miss : nullptr;
-    $outline_when_with_name(is_simd_wide, "simd_eval_light_nee") {
+    $outline_when_with_name(
+        is_simd_wide,
+        use_spectral ? "simd_eval_light_nee_spectral" : "simd_eval_light_nee") {
       const PathCyclesSvmKernelGlobals kg{
           _scene, parameters, _camera_projection, Bool{_reflective_caustics},
           Bool{_refractive_caustics}, PathCyclesSvmShaderDomain::light_emission,
-          {}, false, local_vt_ptr};
+          {}, false, local_vt_ptr, nullptr, use_spectral};
       auto setup =
           setup_cycles_svm_light_shader_data(_scene, kg, task, parameters);
       auto &sd = setup.shader_data;
+      if (use_spectral) {
+        sd.spectral = *spectral;
+        sd.spectral_emission_background.emplace(make_float4(0.0f));
+      }
       const auto &transforms = setup.transforms;
       const auto &background = setup.background;
       // The shadow state's bounce counters are copied before surface scatter.
@@ -297,14 +304,39 @@ public:
                       : svm::SvmBackendStrategy::auto_select);
       $if((sd.flag & static_cast<unsigned>(abi::SD_EMISSION)) != 0u) {
         const auto evaluable = background | (abs(dot(sd.Ng, sd.wi)) > 0.0f);
-        emission =
-            select(make_float3(0.0f), sd.closure_emission_background, evaluable);
+        if (use_spectral) {
+          out_spec = select(make_float4(0.0f), *sd.spectral_emission_background,
+                            evaluable);
+        } else {
+          out_rgb =
+              select(make_float3(0.0f), sd.closure_emission_background, evaluable);
+        }
       };
     };
     if (vt_miss_page != nullptr) {
       *vt_miss_page =
           ite(*vt_miss_page == vt_invalid_page, local_vt_miss, *vt_miss_page);
     }
+  }
+
+  [[nodiscard]] Float3 evaluate(
+      const Var<DirectLightTaskCall> &task,
+      const Var<RenderKernelParameters> &parameters,
+      UInt *vt_miss_page = nullptr) const noexcept override {
+    Float3 emission = make_float3(0.0f);
+    Float4 unused_spec = make_float4(0.0f);
+    evaluate_impl(task, parameters, nullptr, emission, unused_spec, vt_miss_page);
+    return emission;
+  }
+
+  [[nodiscard]] Float4 evaluate_spectral(
+      const Var<DirectLightTaskCall> &task,
+      const Var<RenderKernelParameters> &parameters,
+      const cycles_spectrum::SpectralContext &spectral,
+      UInt *vt_miss_page = nullptr) const noexcept override {
+    Float3 unused_rgb = make_float3(0.0f);
+    Float4 emission = make_float4(0.0f);
+    evaluate_impl(task, parameters, &spectral, unused_rgb, emission, vt_miss_page);
     return emission;
   }
 };

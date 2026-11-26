@@ -75,6 +75,15 @@ inline constexpr auto microfacet_type_mask =
     closure_bit(closure_type::type_microfacet_ggx_glass) |
     closure_bit(closure_type::type_microfacet_multi_ggx_glass);
 
+inline constexpr auto spectral_microfacet_type_mask =
+    closure_bit(closure_type::type_microfacet_ggx) |
+    closure_bit(closure_type::type_microfacet_ggx_refraction) |
+    closure_bit(closure_type::type_microfacet_ggx_glass) |
+    closure_bit(closure_type::type_thin_glass_transmission) |
+    closure_bit(closure_type::type_microfacet_beckmann) |
+    closure_bit(closure_type::type_microfacet_beckmann_refraction) |
+    closure_bit(closure_type::type_microfacet_beckmann_glass);
+
 [[nodiscard]] Bool is_diffuse(Expr<std::uint32_t> type) noexcept {
   return (type >= closure_type::type_diffuse) &
          (type <= closure_type::type_translucent);
@@ -168,6 +177,23 @@ void assign(BsdfSample &destination, const BsdfSample &source) noexcept {
   destination.sampled_roughness = source.sampled_roughness;
   destination.eta = source.eta;
   destination.label = source.label;
+}
+
+void assign(BsdfSpectralEvaluation &destination,
+            const BsdfSpectralEvaluation &source) noexcept {
+  destination.value = source.value;
+  destination.pdf = source.pdf;
+}
+
+void assign(BsdfSpectralSample &destination,
+            const BsdfSpectralSample &source) noexcept {
+  destination.value = source.value;
+  destination.wo = source.wo;
+  destination.pdf = source.pdf;
+  destination.sampled_roughness = source.sampled_roughness;
+  destination.eta = source.eta;
+  destination.label = source.label;
+  destination.terminated_secondary = source.terminated_secondary;
 }
 
 [[nodiscard]] BsdfEvaluation
@@ -897,6 +923,188 @@ Float3 bsdf_albedo(const KernelGlobals &kernel_globals,
       result *= bsdf_hair_huang_albedo(pool.huang_hair(closure_index));
     };
   }
+  return result;
+}
+
+BsdfSpectralSample bsdf_sample_spectral(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    Expr<std::uint32_t> closure_index, Expr<luisa::float3> random,
+    const cycles_spectrum::SpectralContext &spectral,
+    ClosureTypeMask closure_types) noexcept {
+  auto &pool = *shader_data.closure;
+  const auto common = pool.common(closure_index);
+  const auto geometric_normal =
+      kernel_globals.has_curves()
+          ? select(shader_data.Ng, common.N,
+                   is_curve(kernel_globals, shader_data))
+          : shader_data.Ng;
+  BsdfSpectralSample result{.value = make_float4(0.0f),
+                            .wo = make_float3(0.0f),
+                            .pdf = 0.0f,
+                            .sampled_roughness = make_float2(0.0f),
+                            .eta = 0.0f,
+                            .label = closure_type::label_none,
+                            .terminated_secondary = false};
+  const Float abbe = kernel_globals.has_dispersive_materials()
+                         ? kernel_globals.shader_dispersion_abbe(
+                               shader_data.shader)
+                         : Float{0.0f};
+  const auto to_spec_eval = [&](const BsdfSample &s) noexcept {
+    result.value = cycles_spectrum::rgb_to_spectrum_reflectance(
+        *spectral.tables, s.value, spectral.wavelengths.lambdas);
+    result.wo = s.wo;
+    result.pdf = s.pdf;
+    result.sampled_roughness = s.sampled_roughness;
+    result.eta = s.eta;
+    result.label = s.label;
+  };
+  Bool applied_tail = false;
+  $switch(common.type) {
+    closure_cases(
+        closure_types,
+        {closure_type::type_microfacet_ggx,
+         closure_type::type_microfacet_ggx_refraction,
+         closure_type::type_microfacet_ggx_glass},
+        [&] {
+          assign(result,
+                 bsdf_microfacet_ggx_sample_spectral(
+                     kernel_globals, pool.microfacet(closure_index),
+                     geometric_normal, shader_data.wi, random, spectral, abbe));
+        });
+    if (closure_enabled(closure_types,
+                        closure_type::type_thin_glass_transmission)) {
+      $case(closure_type::type_thin_glass_transmission) {
+        assign(result,
+               bsdf_thin_glass_transmission_sample_spectral(
+                   kernel_globals, pool.microfacet(closure_index),
+                   geometric_normal, shader_data.wi, random, spectral, abbe));
+      };
+    }
+    closure_cases(
+        closure_types,
+        {closure_type::type_microfacet_beckmann,
+         closure_type::type_microfacet_beckmann_refraction,
+         closure_type::type_microfacet_beckmann_glass},
+        [&] {
+          assign(result,
+                 bsdf_microfacet_beckmann_sample_spectral(
+                     kernel_globals, pool.microfacet(closure_index),
+                     geometric_normal, shader_data.wi, random, spectral, abbe));
+        });
+    $default {
+      // All remaining closures evaluate analytically in RGB and upsample to
+      // active wavelengths here. Strip only the microfacet types handled above
+      // (preserving ashikhmin_shirley) so this branch does not duplicate AST.
+      const auto non_microfacet_types =
+          closure_types & ~spectral_microfacet_type_mask;
+      to_spec_eval(bsdf_sample(kernel_globals, shader_data, closure_index,
+                               random, non_microfacet_types));
+      applied_tail = true;
+    };
+  };
+
+  $if(!applied_tail) {
+    $if((result.label & closure_type::label_transmit) != 0u) {
+      const auto threshold =
+          kernel_globals.transparent_roughness_squared_threshold();
+      $if((threshold >= 0.0f) &
+          ((result.label & closure_type::label_diffuse) == 0u) &
+          (bsdf_get_specular_roughness_squared(pool, closure_index) <=
+           threshold)) {
+        result.label |= closure_type::label_transmit_transparent;
+      };
+    }
+    $elif(result.label != closure_type::label_none) {
+      if (kernel_globals.has_shadow_terminator_shading_offset()) {
+        const auto frequency =
+            kernel_globals.object_shadow_terminator_shading_offset(
+                shader_data.object);
+        $if(frequency > 1.0f) {
+          result.value *= shift_cos_in(dot(result.wo, common.N), frequency);
+        };
+      }
+      result.value *= bump_shadowing_term(kernel_globals, shader_data, common,
+                                          result.wo, false);
+    };
+  };
+  return result;
+}
+
+BsdfSpectralEvaluation bsdf_eval_spectral(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    Expr<std::uint32_t> closure_index, Expr<luisa::float3> wo,
+    const cycles_spectrum::SpectralContext &spectral,
+    ClosureTypeMask closure_types) noexcept {
+  auto &pool = *shader_data.closure;
+  const auto common = pool.common(closure_index);
+  BsdfSpectralEvaluation result{.value = make_float4(0.0f), .pdf = 0.0f};
+  const auto bump =
+      bump_shadowing_term(kernel_globals, shader_data, common, wo, true);
+  const Float abbe = kernel_globals.has_dispersive_materials()
+                         ? kernel_globals.shader_dispersion_abbe(
+                               shader_data.shader)
+                         : Float{0.0f};
+  $if(bump != 0.0f) {
+    Bool applied_tail = false;
+    $switch(common.type) {
+      closure_cases(
+          closure_types,
+          {closure_type::type_microfacet_ggx,
+           closure_type::type_microfacet_ggx_refraction,
+           closure_type::type_microfacet_ggx_glass},
+          [&] {
+            assign(result,
+                   bsdf_microfacet_ggx_eval_spectral(
+                       kernel_globals, pool.microfacet(closure_index),
+                       shader_data.wi, wo, spectral, abbe));
+          });
+      if (closure_enabled(closure_types,
+                          closure_type::type_thin_glass_transmission)) {
+        $case(closure_type::type_thin_glass_transmission) {
+          assign(result,
+                 bsdf_thin_glass_transmission_eval_spectral(
+                     kernel_globals, pool.microfacet(closure_index),
+                     shader_data.wi, wo, spectral, abbe));
+        };
+      }
+      closure_cases(
+          closure_types,
+          {closure_type::type_microfacet_beckmann,
+           closure_type::type_microfacet_beckmann_refraction,
+           closure_type::type_microfacet_beckmann_glass},
+          [&] {
+            assign(result,
+                   bsdf_microfacet_beckmann_eval_spectral(
+                       kernel_globals, pool.microfacet(closure_index),
+                       shader_data.wi, wo, spectral, abbe));
+          });
+      $default {
+        const auto non_microfacet_types =
+            closure_types & ~spectral_microfacet_type_mask;
+        const auto eval_rgb = bsdf_eval(kernel_globals, shader_data,
+                                        closure_index, wo, non_microfacet_types);
+        result.value = cycles_spectrum::rgb_to_spectrum_reflectance(
+            *spectral.tables, eval_rgb.value, spectral.wavelengths.lambdas);
+        result.pdf = eval_rgb.pdf;
+        applied_tail = true;
+      };
+    };
+
+    $if(!applied_tail) {
+      result.value *= bump;
+      if (kernel_globals.has_shadow_terminator_shading_offset()) {
+        const auto frequency =
+            kernel_globals.object_shadow_terminator_shading_offset(
+                shader_data.object);
+        $if(frequency > 1.0f) {
+          const auto cosine = dot(wo, common.N);
+          $if(cosine >= 0.0f) {
+            result.value *= shift_cos_in(cosine, frequency);
+          };
+        };
+      }
+    };
+  };
   return result;
 }
 

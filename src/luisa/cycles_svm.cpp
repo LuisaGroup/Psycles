@@ -103,8 +103,17 @@ void eval_nodes_impl(
   LUISA_ASSERT(stack_size != 0u && stack_size <= SVM_STACK_SIZE,
                "Cycles SVM stack extent must be in [1, {}], got {}.",
                SVM_STACK_SIZE, stack_size);
-  detail::Stack stack{stack_size};
+  const bool has_spectral =
+      kernel_globals.is_spectral() && shader_data.spectral.has_value() &&
+      (node_types_used[NODE_BLACKBODY] || node_types_used[NODE_WAVELENGTH]);
+  detail::Stack stack{stack_size, has_spectral};
   Float3 closure_weight = make_float3(0.0f);
+  std::optional<detail::SpectralClosureWeight> spectral_weight;
+  if (has_spectral) {
+    spectral_weight.emplace();
+  }
+  auto *const spectral_weight_ptr =
+      spectral_weight ? &*spectral_weight : nullptr;
   const UInt jump_base = (shader_data.shader & shader_mask) *
                          (1u + static_cast<std::uint32_t>(
                                    sizeof(SVMNodeShaderJump) /
@@ -178,7 +187,7 @@ void eval_nodes_impl(
               detail::node_closure_bsdf(
                   kernel_globals, cursor, stack, closure_weight, shader_type,
                   kernel_features, node_feature_mask, shader_data, path_state,
-                  transition));
+                  transition, spectral_weight_ptr));
         };
       }
       if (node_types_used[NODE_CLOSURE_EMISSION]) {
@@ -188,7 +197,7 @@ void eval_nodes_impl(
                 "svm_node_closure_emission",
                 detail::node_closure_emission(kernel_globals, cursor, stack,
                                               closure_weight, shader_data,
-                                              transition));
+                                              transition, spectral_weight_ptr));
           }
         };
       }
@@ -242,24 +251,27 @@ void eval_nodes_impl(
             PSYCLES_SVM_OUTLINE_NODE(
                 "svm_node_closure_background",
                 detail::node_closure_background(cursor, stack, closure_weight,
-                                                shader_data));
+                                                shader_data, spectral_weight_ptr));
           }
         };
       }
       if (node_types_used[NODE_CLOSURE_SET_WEIGHT]) {
         PSYCLES_SVM_CASE(NODE_CLOSURE_SET_WEIGHT) {
-          detail::node_closure_set_weight(cursor, closure_weight);
+          detail::node_closure_set_weight(cursor, closure_weight,
+                                          spectral_weight_ptr);
         };
       }
       if (node_types_used[NODE_CLOSURE_WEIGHT]) {
         PSYCLES_SVM_CASE(NODE_CLOSURE_WEIGHT) {
-          detail::node_closure_weight(cursor, stack, closure_weight);
+          detail::node_closure_weight(cursor, stack, closure_weight,
+                                      spectral_weight_ptr);
         };
       }
       if (node_types_used[NODE_EMISSION_WEIGHT]) {
         PSYCLES_SVM_CASE(NODE_EMISSION_WEIGHT) {
           if ((node_feature_mask & kernel_feature_node_emission) != 0u) {
-            detail::node_emission_weight(cursor, stack, closure_weight);
+            detail::node_emission_weight(cursor, stack, closure_weight,
+                                         spectral_weight_ptr);
           }
         };
       }
@@ -762,14 +774,16 @@ void eval_nodes_impl(
         PSYCLES_SVM_CASE(NODE_WAVELENGTH) {
           PSYCLES_SVM_OUTLINE_NODE(
               "svm_node_wavelength",
-              detail::node_wavelength(cursor, stack, kernel_globals));
+              detail::node_wavelength(cursor, stack, kernel_globals,
+                                      &shader_data));
         };
       }
       if (node_types_used[NODE_BLACKBODY]) {
         PSYCLES_SVM_CASE(NODE_BLACKBODY) {
           PSYCLES_SVM_OUTLINE_NODE(
               "svm_node_blackbody",
-              detail::node_blackbody(cursor, stack, kernel_globals));
+              detail::node_blackbody(cursor, stack, kernel_globals,
+                                     &shader_data));
         };
       }
       if (node_types_used[NODE_LIGHT_PATH]) {

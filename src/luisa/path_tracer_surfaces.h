@@ -41,6 +41,7 @@ struct SurfacePopulationContext {
     std::optional<Expr<std::uint32_t>> cycles_object_flags{};
     bool may_filter_glossy{true};
     UInt *vt_miss_page{nullptr};
+    std::optional<cycles_spectrum::SpectralContext> spectral{};
 };
 
 // Host/JIT object whose device-local storage is populated exactly once for a
@@ -98,6 +99,7 @@ struct SurfaceCallables {
 };
 
 [[nodiscard]] SurfaceCallables make_surface_callables(
-    const std::shared_ptr<LuisaSceneData> &scene) noexcept;
+    const std::shared_ptr<LuisaSceneData> &scene,
+    bool spectral_rendering = false) noexcept;
 
 }// namespace psycles::luisa_backend::detail

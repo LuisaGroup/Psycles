@@ -26,6 +26,16 @@ namespace {
   return raw == nullptr || std::string_view{raw} != "0";
 }
 
+[[nodiscard]] Float3 spectral_component_ratio(
+    Expr<luisa::float4> num, Expr<luisa::float4> den,
+    Expr<bool> secondary_terminated) noexcept {
+  const Float n = select((num.x + num.y + num.z + num.w) * 0.25f, num.x,
+                         secondary_terminated);
+  const Float d = select((den.x + den.y + den.z + den.w) * 0.25f, den.x,
+                         secondary_terminated);
+  return make_float3(select(0.0f, n / d, d != 0.0f));
+}
+
 } // namespace
 
 namespace svm = cycles_svm;
@@ -35,21 +45,26 @@ namespace abi = compiler::cycles_svm;
 namespace path = cycles_path_state;
 
 PreparedCyclesSvmSurfaceScatter
-PreparedCyclesSvmSurfaceScatter::empty() noexcept {
-  return {.wo = make_float3(0.0f, 0.0f, 1.0f),
-          .throughput_weight = make_float3(0.0f),
-          .diffuse_ratio = make_float3(0.0f),
-          .glossy_ratio = make_float3(0.0f),
-          .pdf = 0.0f,
-          .average_roughness_squared = 0.0f,
-          .shading_normal = make_float3(0.0f, 0.0f, 1.0f),
-          .dP = 0.0f,
-          .ray_length = 0.0f,
-          .label = closure::label_none,
-          .sd_flag = 0u,
-          .bssrdf_sample = SurfaceSample::zero(),
-          .subsurface = false,
-          .valid = false};
+PreparedCyclesSvmSurfaceScatter::empty(bool spectral) noexcept {
+  PreparedCyclesSvmSurfaceScatter out{
+      .wo = make_float3(0.0f, 0.0f, 1.0f),
+      .throughput_weight = cycles_spectrum::Spectrum::zero(spectral),
+      .diffuse_ratio = make_float3(0.0f),
+      .glossy_ratio = make_float3(0.0f),
+      .pdf = 0.0f,
+      .average_roughness_squared = 0.0f,
+      .shading_normal = make_float3(0.0f, 0.0f, 1.0f),
+      .dP = 0.0f,
+      .ray_length = 0.0f,
+      .label = closure::label_none,
+      .sd_flag = 0u,
+      .bssrdf_sample = SurfaceSample::zero(spectral),
+      .subsurface = false,
+      .valid = false};
+  if (spectral) {
+    out.spectral_terminated_secondary.emplace(false);
+  }
+  return out;
 }
 
 Bool PreparedCyclesSvmSurfaceScatter::needs_triangle_ray_origin()
@@ -77,6 +92,10 @@ void PreparedCyclesSvmSurfaceScatter::accept(
   }
   subsurface = other.subsurface;
   valid = other.valid;
+  if (spectral_terminated_secondary.has_value() &&
+      other.spectral_terminated_secondary.has_value()) {
+    *spectral_terminated_secondary = *other.spectral_terminated_secondary;
+  }
 }
 
 PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
@@ -90,8 +109,9 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
   const auto features = config.scene->cycles_svm->kernel_features;
   const bool bssrdf_enabled =
       may_have_bssrdf && ((features & svm::kernel_feature_subsurface) != 0u);
+  const bool spectral = sample.is_spectral();
 
-  auto out = PreparedCyclesSvmSurfaceScatter::empty();
+  auto out = PreparedCyclesSvmSurfaceScatter::empty(spectral);
   out.shading_normal = sd.N;
   out.dP = sd.dP;
   out.ray_length = sd.ray_length;
@@ -110,19 +130,42 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
       $outline_when_with_name(outline_bsdf, "simd_svm_bsdf_sample") {
         const auto bsdf = native::surface_shader_bsdf_sample_closure(
             kg, sd, pick, population.closure_types);
-        $if((bsdf.evaluation.pdf != 0.0f) & any(bsdf.evaluation.sum != 0.0f) &
+        const auto non_zero_eval =
+            spectral ? any(*bsdf.evaluation.spectral_sum != 0.0f)
+                     : any(bsdf.evaluation.sum != 0.0f);
+        $if((bsdf.evaluation.pdf != 0.0f) & non_zero_eval &
             (bsdf.label != closure::label_none)) {
           out.wo = bsdf.wo;
-          out.throughput_weight = bsdf.evaluation.sum / bsdf.evaluation.pdf;
+          if (spectral) {
+            out.throughput_weight = cycles_spectrum::Spectrum::from_lanes(
+                *bsdf.evaluation.spectral_sum / bsdf.evaluation.pdf);
+            *out.spectral_terminated_secondary =
+                bsdf.spectral_terminated_secondary.value_or(Bool{false});
+          } else {
+            out.throughput_weight = cycles_spectrum::Spectrum::from_rgb_raw(
+                bsdf.evaluation.sum / bsdf.evaluation.pdf);
+          }
           out.pdf = bsdf.evaluation.pdf;
           out.average_roughness_squared =
               bsdf.evaluation.average_roughness_squared;
           out.label = bsdf.label;
           $if(sample.path_depth == 0u) {
-            out.diffuse_ratio = config.light_transport.light_component_ratio(
-                bsdf.evaluation.diffuse, bsdf.evaluation.sum);
-            out.glossy_ratio = config.light_transport.light_component_ratio(
-                bsdf.evaluation.glossy, bsdf.evaluation.sum);
+            if (spectral) {
+              const auto eff_term =
+                  sample.spectral_secondary_terminated() |
+                  bsdf.spectral_terminated_secondary.value_or(Bool{false});
+              out.diffuse_ratio = spectral_component_ratio(
+                  *bsdf.evaluation.spectral_diffuse,
+                  *bsdf.evaluation.spectral_sum, eff_term);
+              out.glossy_ratio = spectral_component_ratio(
+                  *bsdf.evaluation.spectral_glossy,
+                  *bsdf.evaluation.spectral_sum, eff_term);
+            } else {
+              out.diffuse_ratio = config.light_transport.light_component_ratio(
+                  bsdf.evaluation.diffuse, bsdf.evaluation.sum);
+              out.glossy_ratio = config.light_transport.light_component_ratio(
+                  bsdf.evaluation.glossy, bsdf.evaluation.sum);
+            }
           };
           out.valid = true;
         };
@@ -155,8 +198,17 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
         out.bssrdf_sample.bssrdf_ior = bssrdf.param.ior;
         out.bssrdf_sample.bssrdf_roughness = bssrdf.param.alpha;
         out.bssrdf_sample.bssrdf_anisotropy = bssrdf.param.anisotropy;
-        out.throughput_weight =
+        const auto bssrdf_w =
             native::surface_shader_bssrdf_sample_weight(sd, pick.index);
+        if (spectral) {
+          const auto ctx = sample.spectral_context();
+          out.throughput_weight =
+              cycles_spectrum::Spectrum::from_rgb_reflectance(
+                  ctx->tables, bssrdf_w, &ctx->wavelengths, true);
+        } else {
+          out.throughput_weight =
+              cycles_spectrum::Spectrum::from_rgb_raw(bssrdf_w);
+        }
         out.subsurface = true;
         out.valid = true;
       }
@@ -236,6 +288,14 @@ SurfaceScatterStage::Result commit_cycles_svm_surface_continuation(
         path_state(), prepared.label,
         (prepared.sd_flag & unsigned(abi::SD_BSDF_HAS_TRANSMISSION)) != 0u,
         Bool{false}, limits));
+    if (sample.is_spectral() &&
+        prepared.spectral_terminated_secondary.has_value()) {
+      $if(*prepared.spectral_terminated_secondary) {
+        sample.path_flags |=
+            cycles_path_state::flag_spectral_secondary_terminated;
+        sample.throughput.terminate_secondary();
+      };
+    }
     sample.ray_source_object = context.surface.cycles_object_index;
     sample.ray_source_primitive = context.surface.cycles_primitive_index;
     if (config.volume_state) {
@@ -275,7 +335,7 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
   const auto &pool = *sd.closure;
   const auto features = config.scene->cycles_svm->kernel_features;
   const auto has_portal = (features & svm::kernel_feature_node_portal) != 0u;
-  auto bssrdf_sample = SurfaceSample::zero();
+  auto bssrdf_sample = SurfaceSample::zero(sample.is_spectral());
   Bool subsurface = false;
   Bool valid = false;
   const path::Limits limits{
@@ -326,11 +386,22 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
 
     UInt label = closure::label_none;
     const bool outline_bsdf = should_outline_simd_bsdf(config);
-    const auto ordinary_bsdf = [&] noexcept {
+  const bool spectral = sample.is_spectral();
+  const auto ordinary_bsdf = [&] noexcept {
       Float3 bsdf_wo = make_float3(0.0f);
       Float3 bsdf_sum = make_float3(0.0f);
       Float3 bsdf_diffuse = make_float3(0.0f);
       Float3 bsdf_glossy = make_float3(0.0f);
+      std::optional<Float4> bsdf_spec_sum;
+      std::optional<Float4> bsdf_spec_diffuse;
+      std::optional<Float4> bsdf_spec_glossy;
+      std::optional<Bool> bsdf_term_sec;
+      if (spectral) {
+        bsdf_spec_sum.emplace(make_float4(0.0f));
+        bsdf_spec_diffuse.emplace(make_float4(0.0f));
+        bsdf_spec_glossy.emplace(make_float4(0.0f));
+        bsdf_term_sec.emplace(false);
+      }
       Float bsdf_pdf = 0.0f;
       Float bsdf_avg_r2 = 0.0f;
       Float2 bsdf_sampled_roughness = make_float2(0.0f);
@@ -343,6 +414,13 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
         bsdf_sum = bsdf.evaluation.sum;
         bsdf_diffuse = bsdf.evaluation.diffuse;
         bsdf_glossy = bsdf.evaluation.glossy;
+        if (spectral) {
+          *bsdf_spec_sum = *bsdf.evaluation.spectral_sum;
+          *bsdf_spec_diffuse = *bsdf.evaluation.spectral_diffuse;
+          *bsdf_spec_glossy = *bsdf.evaluation.spectral_glossy;
+          *bsdf_term_sec =
+              bsdf.spectral_terminated_secondary.value_or(Bool{false});
+        }
         bsdf_pdf = bsdf.evaluation.pdf;
         bsdf_avg_r2 = bsdf.evaluation.average_roughness_squared;
         bsdf_sampled_roughness = bsdf.sampled_roughness;
@@ -351,13 +429,19 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
       };
       // Native rejection is exactly zero PDF or zero BsdfEval. Do not add a
       // selected-weight, positive-PDF, finite or nonnegative-throughput guard.
-      $if((bsdf_pdf != 0.0f) & any(bsdf_sum != 0.0f)) {
+      const auto non_zero_eval =
+          spectral ? any(*bsdf_spec_sum != 0.0f) : any(bsdf_sum != 0.0f);
+      $if((bsdf_pdf != 0.0f) & non_zero_eval) {
         label = bsdf_label;
         if (config.path_trace_enabled) {
           trace(path_trace_schema::EventSlot::bsdf_meta,
                 make_float3(bsdf_pdf, bsdf_pdf, label.cast<float>()));
           trace(path_trace_schema::EventSlot::bsdf_wo, bsdf_wo);
-          trace(path_trace_schema::EventSlot::bsdf_eval, bsdf_sum);
+          trace(path_trace_schema::EventSlot::bsdf_eval,
+                spectral ? sample.reflectance_to_rgb(
+                               cycles_spectrum::Spectrum::from_lanes(
+                                   *bsdf_spec_sum))
+                         : bsdf_sum);
           trace(path_trace_schema::EventSlot::bsdf_roughness_eta,
                 make_float3(bsdf_sampled_roughness, bsdf_eta));
         }
@@ -375,15 +459,29 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
           sample.ray_dD = cycles_ray_differential::widen_direction(
               sample.ray_dD, bsdf_avg_r2);
         };
-        sample.throughput *= bsdf_sum / bsdf_pdf;
+        if (spectral) {
+          sample.throughput *= cycles_spectrum::Spectrum::from_lanes(
+              *bsdf_spec_sum / bsdf_pdf);
+        } else {
+          sample.throughput.rgb() *= bsdf_sum / bsdf_pdf;
+        }
         // This renderer exposes the complete light-pass contract. Native
         // first-bounce weights include transparent closures and are reduced
         // only inside the first-bounce predicate.
         $if(sample.path_depth == 0u) {
-          sample.path_diffuse_weight = config.light_transport.light_component_ratio(
-              bsdf_diffuse, bsdf_sum);
-          sample.path_glossy_weight = config.light_transport.light_component_ratio(
-              bsdf_glossy, bsdf_sum);
+          if (spectral) {
+            const auto eff_term =
+                sample.spectral_secondary_terminated() | *bsdf_term_sec;
+            sample.path_diffuse_weight = spectral_component_ratio(
+                *bsdf_spec_diffuse, *bsdf_spec_sum, eff_term);
+            sample.path_glossy_weight = spectral_component_ratio(
+                *bsdf_spec_glossy, *bsdf_spec_sum, eff_term);
+          } else {
+            sample.path_diffuse_weight = config.light_transport.light_component_ratio(
+                bsdf_diffuse, bsdf_sum);
+            sample.path_glossy_weight = config.light_transport.light_component_ratio(
+                bsdf_glossy, bsdf_sum);
+          }
         };
         $if(!transparent) {
           sample.previous_bsdf_pdf = bsdf_pdf;
@@ -395,6 +493,13 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
         store_path(path::next_surface(path_state(), label,
             (sd.flag & unsigned(abi::SD_BSDF_HAS_TRANSMISSION)) != 0u,
             has_portal ? (sd.flag & unsigned(abi::SD_RAY_PORTAL)) != 0u : Bool{false}, limits));
+        if (spectral) {
+          $if(*bsdf_term_sec) {
+            sample.path_flags |=
+                cycles_path_state::flag_spectral_secondary_terminated;
+            sample.throughput.terminate_secondary();
+          };
+        }
         // Traversal has already replaced Cycles' isect with this hit. The
         // split source-identity representation commits that same identity here.
         sample.ray_source_object = context.surface.cycles_object_index;
@@ -403,7 +508,9 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
           trace(path_trace_schema::EventSlot::post_depth,
                 make_float3(sample.path_depth.cast<float>(), sample.transparent_depth.cast<float>(),
                             sample.cycles_rng_offset.cast<float>()));
-          trace(path_trace_schema::EventSlot::post_throughput, sample.throughput);
+          trace(path_trace_schema::EventSlot::post_throughput,
+                spectral ? sample.reflectance_to_rgb(sample.throughput)
+                         : sample.throughput.rgb());
           trace(path_trace_schema::EventSlot::post_ray_p, sample.ray->origin());
           trace(path_trace_schema::EventSlot::post_ray_d, sample.ray->direction());
           trace(path_trace_schema::EventSlot::post_flags, sample.trace_uint32(sample.path_flags));
@@ -421,14 +528,25 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
           native::RayPortalState state{
               .P = sample.ray->origin(), .D = sample.ray->direction(),
               .tmin = sample.ray->t_min(), .tmax = sample.ray->t_max(),
-              .dP = sample.ray_dP, .throughput = sample.throughput,
-              .isect_object = context.surface.cycles_object_index, .path = path_state()};
+              .dP = sample.ray_dP,
+              .throughput =
+                  spectral ? make_float3(1.0f) : sample.throughput.rgb(),
+              .isect_object = context.surface.cycles_object_index,
+              .path = path_state()};
           label = native::integrate_surface_ray_portal(
               kg, sd, pick.index, context.surface.fetch_world_to_object(), state, limits);
           $if(label != closure::label_none) {
             sample.ray = make_ray(state.P, state.D, state.tmin, state.tmax);
             sample.ray_dP = state.dP;
-            sample.throughput = state.throughput;
+            if (spectral) {
+              const auto ctx = sample.spectral_context();
+              sample.throughput *=
+                  cycles_spectrum::Spectrum::from_rgb_reflectance(
+                      ctx->tables, state.throughput, &ctx->wavelengths, true);
+            } else {
+              sample.throughput =
+                  cycles_spectrum::Spectrum::from_rgb_raw(state.throughput);
+            }
             sample.ray_source_object = state.isect_object;
             sample.ray_source_primitive = context.surface.cycles_primitive_index;
             store_path(state.path);
@@ -455,7 +573,15 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
         bssrdf_sample.bssrdf_ior = bssrdf.param.ior;
         bssrdf_sample.bssrdf_roughness = bssrdf.param.alpha;
         bssrdf_sample.bssrdf_anisotropy = bssrdf.param.anisotropy;
-        sample.throughput *= native::surface_shader_bssrdf_sample_weight(sd, pick.index);
+        const auto bssrdf_w =
+            native::surface_shader_bssrdf_sample_weight(sd, pick.index);
+        if (spectral) {
+          const auto ctx = sample.spectral_context();
+          sample.throughput *= cycles_spectrum::Spectrum::from_rgb_reflectance(
+              ctx->tables, bssrdf_w, &ctx->wavelengths, true);
+        } else {
+          sample.throughput *= cycles_spectrum::Spectrum::from_rgb_raw(bssrdf_w);
+        }
         sample.cycles_rng_offset += path::bounce_dimension_count;
         sample.cycles_path_visibility &= ~path::visibility_camera;
         sample.ray_dP = sd.dP;

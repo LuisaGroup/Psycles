@@ -282,6 +282,12 @@ Float3 PathKernelInvocation::constant_environment() const noexcept {
     return constant_environment_emission(*config.scene, parameters.background);
 }
 
+Float4 PathKernelInvocation::constant_environment_spectral(
+    const cycles_spectrum::SpectralContext &spectral) const noexcept {
+    return constant_environment_emission_spectral(
+        *config.scene, parameters.background, spectral);
+}
+
 UInt PathSampleContext::traversal_ray_visibility() const noexcept {
     return cycles_path_state::to_contract_traversal_visibility(
         cycles_path_visibility);
@@ -513,7 +519,14 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     UInt ray_source_primitive = surface_ray::invalid_primitive;
 
     Float3 radiance = make_float3(0.0f);
-    Float3 throughput = make_float3(1.0f);
+    auto throughput =
+        cycles_spectrum::Spectrum::one(config.spectral_rendering);
+    std::optional<Float> spectral_u_lambda;
+    if (config.spectral_rendering) {
+        spectral_u_lambda.emplace(cycles_sampler::sample_1d(
+            sobol_table, kernel_parameters.sobol_sequence_size,
+            sample_index, rng_hash ^ 0x51a7b9d3u, 0u));
+    }
     Float3 sample_normal = make_float3(0.0f);
     Float3 sample_albedo = make_float3(0.0f);
     Float3 sample_glossy_color = make_float3(0.0f);
@@ -589,6 +602,7 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(ray_source_primitive),
             std::move(radiance),
             std::move(throughput),
+            std::move(spectral_u_lambda),
             std::move(sample_normal),
             std::move(sample_albedo),
             std::move(sample_glossy_color),
@@ -712,7 +726,15 @@ void reset_path_sample(PathSampleContext &sample,
     sample.ray_source_object = surface_ray::invalid_primitive;
     sample.ray_source_primitive = surface_ray::invalid_primitive;
     sample.radiance = make_float3(0.0f);
-    sample.throughput = make_float3(1.0f);
+    sample.throughput =
+        cycles_spectrum::Spectrum::one(config.spectral_rendering);
+    if (config.spectral_rendering) {
+        sample.spectral_u_lambda = cycles_sampler::sample_1d(
+            sobol_table, kernel_parameters.sobol_sequence_size,
+            sample.sample_index, sample.rng_hash ^ 0x51a7b9d3u, 0u);
+    } else {
+        sample.spectral_u_lambda.reset();
+    }
     sample.sample_normal = make_float3(0.0f);
     sample.sample_albedo = make_float3(0.0f);
     sample.sample_glossy_color = make_float3(0.0f);
@@ -766,6 +788,69 @@ void reset_path_sample(PathSampleContext &sample,
     sample.pending_subsurface_hit.committed_ray_t = 0.0f;
 }
 
+bool PathSampleContext::is_spectral() const noexcept {
+    return invocation.config.spectral_rendering;
+}
+
+Bool PathSampleContext::spectral_secondary_terminated() const noexcept {
+    if (!is_spectral()) {
+        return false;
+    }
+    return (path_flags &
+            cycles_path_state::flag_spectral_secondary_terminated) != 0u;
+}
+
+std::optional<cycles_spectrum::SampledWavelengths>
+PathSampleContext::sampled_wavelengths() const noexcept {
+    if (!is_spectral() || !spectral_u_lambda.has_value()) {
+        return std::nullopt;
+    }
+    return cycles_spectrum::sample_visible_wavelengths(*spectral_u_lambda);
+}
+
+std::optional<cycles_spectrum::SpectralContext>
+PathSampleContext::spectral_context() const noexcept {
+    if (!is_spectral()) {
+        return std::nullopt;
+    }
+    const auto &scene = invocation.config.scene;
+    LUISA_ASSERT(scene && scene->spectral_tables &&
+                     spectral_u_lambda.has_value(),
+                 "Spectral path requires uploaded SpectralTablesGpu and u_lambda.");
+    return cycles_spectrum::SpectralContext{
+        .tables = scene->spectral_tables.get(),
+        .wavelengths =
+            cycles_spectrum::sample_visible_wavelengths(*spectral_u_lambda),
+        .secondary_terminated = spectral_secondary_terminated()};
+}
+
+Float3 PathSampleContext::spectrum_to_rgb(
+    const cycles_spectrum::Spectrum &value) const noexcept {
+    if (!value.is_spectral()) {
+        return value.rgb();
+    }
+    const auto ctx = spectral_context();
+    return cycles_spectrum::spectrum_to_rgb(*ctx->tables, value.lanes(),
+                                            ctx->wavelengths,
+                                            ctx->secondary_terminated);
+}
+
+Float3 PathSampleContext::reflectance_to_rgb(
+    const cycles_spectrum::Spectrum &reflectance) const noexcept {
+    if (!reflectance.is_spectral()) {
+        return reflectance.rgb();
+    }
+    const auto ctx = spectral_context();
+    return cycles_spectrum::reflectance_to_rgb(*ctx->tables, reflectance.lanes(),
+                                               ctx->wavelengths,
+                                               ctx->secondary_terminated);
+}
+
+Float PathSampleContext::throughput_average() const noexcept {
+    return cycles_spectrum::average(throughput,
+                                    spectral_secondary_terminated());
+}
+
 Float3
 PathSampleContext::analytic_light_constant_shader(
     Var<LightGpu> light) const noexcept {
@@ -798,6 +883,52 @@ PathSampleContext::analytic_light_shader(Var<LightGpu> light,
             0.0f, state, vt_miss_page);
     };
     return result;
+}
+
+cycles_spectrum::Spectrum
+PathSampleContext::analytic_light_constant_shader_spectrum(
+    Var<LightGpu> light) const noexcept {
+    if (!is_spectral()) {
+        return cycles_spectrum::Spectrum::from_rgb_raw(
+            analytic_light_constant_shader(light));
+    }
+    const auto ctx = spectral_context();
+    Float3 result = make_float3(1.0f);
+    $if(light.surface_tag != ~std::uint32_t{0u}) {
+        const auto constant = cycles_svm_constant_emission(
+            *invocation.config.scene, light.cycles_shader_id, result);
+        assume(constant);
+    };
+    return cycles_spectrum::Spectrum::from_lanes(
+        cycles_spectrum::rgb_to_spectrum_illuminant(
+            *ctx->tables, result, ctx->wavelengths.lambdas));
+}
+
+cycles_spectrum::Spectrum
+PathSampleContext::analytic_light_shader_spectrum(
+    Var<LightGpu> light, UInt light_index, Float3 light_position,
+    Float3 light_normal, Float2 light_uv, Float3 incoming,
+    Float light_distance) const noexcept {
+    if (!is_spectral()) {
+        return cycles_spectrum::Spectrum::from_rgb_raw(
+            analytic_light_shader(light, light_index, light_position,
+                                  light_normal, light_uv, incoming,
+                                  light_distance));
+    }
+    const auto ctx = spectral_context();
+    Float4 result = cycles_spectrum::rgb_to_spectrum_illuminant(
+        *ctx->tables, make_float3(1.0f), ctx->wavelengths.lambdas);
+    $if(light.surface_tag != ~std::uint32_t{0u}) {
+        const cycles_svm::PathState state{
+            0u, cycles_svm::path_ray_emission, path_depth, transparent_depth,
+            diffuse_depth, glossy_depth, transmission_depth, portal_depth};
+        result = evaluate_cycles_svm_lamp_emission_spectral(
+            invocation.config.scene, invocation.parameters,
+            light.cycles_shader_id, light.cycles_object_index, light_index,
+            light_position, light_normal, incoming, light_uv, light_distance,
+            0.0f, state, *ctx, vt_miss_page);
+    };
+    return cycles_spectrum::Spectrum::from_lanes(result);
 }
 
 } // namespace psycles::luisa_backend::detail

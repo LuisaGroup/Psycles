@@ -6,6 +6,8 @@
 
 #include "cycles_svm_bsdf.h"
 
+#include <optional>
+
 namespace psycles::luisa_backend::cycles_svm::detail {
 
 /* Direct Luisa projection of Cycles 5.2.1 film/light_passes.h::BsdfEval.
@@ -17,6 +19,9 @@ struct SurfaceShaderBsdfEval {
   luisa::compute::Float3 sum;
   luisa::compute::Float pdf;
   luisa::compute::Float average_roughness_squared;
+  std::optional<luisa::compute::Float4> spectral_diffuse{};
+  std::optional<luisa::compute::Float4> spectral_glossy{};
+  std::optional<luisa::compute::Float4> spectral_sum{};
 };
 
 /* Result of Cycles' surface_shader_bsdf_bssrdf_pick(). `random` contains the
@@ -37,6 +42,7 @@ struct SurfaceShaderBsdfSample {
   luisa::compute::Float2 sampled_roughness;
   luisa::compute::Float eta;
   luisa::compute::UInt label;
+  std::optional<luisa::compute::Bool> spectral_terminated_secondary{};
 };
 
 /* Exact closure-capacity initialization at the start of Cycles 5.2.1

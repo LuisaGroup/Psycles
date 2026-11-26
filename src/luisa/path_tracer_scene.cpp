@@ -1479,6 +1479,21 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
     upload_cycles_svm_scene_runtime(
         stream, *data->cycles_svm);
+    data->has_dispersive_materials =
+        data->cycles_svm && data->cycles_svm->has_dispersive_materials;
+    if (data->cycles_svm && data->cycles_svm->objects) {
+        for (const auto flags :
+             data->cycles_svm->objects->image.object_flags) {
+            if ((flags & compiler::cycles_svm::SD_OBJECT_CAUSTICS_CASTER) !=
+                0u) {
+                data->has_caustics_casters = true;
+            }
+            if ((flags & compiler::cycles_svm::SD_OBJECT_CAUSTICS_RECEIVER) !=
+                0u) {
+                data->has_caustics_receivers = true;
+            }
+        }
+    }
     for (auto &upload : uploads) {
         auto release = [](auto &vec) {
             std::remove_reference_t<decltype(vec)>{}.swap(vec);

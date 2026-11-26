@@ -254,11 +254,43 @@ class PathEnvironmentLightComponent final
             sample.vt_miss_page);
     }
 
+    Float4 evaluate_emission_spectral(
+        PathSampleContext &sample,
+        Float3 origin, Float3 direction, Float differential,
+        CyclesSvmBackgroundEvaluation evaluation) const noexcept override {
+        const auto ctx = sample.spectral_context();
+        LUISA_ASSERT(ctx.has_value(),
+                     "Spectral environment emission requires spectral context.");
+        const auto forward = evaluation == CyclesSvmBackgroundEvaluation::forward;
+        const cycles_svm::PathState state{
+            forward ? sample.cycles_path_visibility : UInt{0u},
+            forward ? sample.path_flags | cycles_svm::path_ray_emission
+                    : UInt{cycles_svm::path_ray_emission},
+            sample.path_depth, sample.transparent_depth, sample.diffuse_depth,
+            sample.glossy_depth, sample.transmission_depth, sample.portal_depth};
+        const auto lcg_state = cycles_noise::hash_uint3(
+            sample.rng_hash ^ 0xb4bc3953u, sample.cycles_rng_offset, sample.sample_index);
+        return evaluate_environment_emission_spectral(
+            sample.invocation.config.scene, sample.invocation.parameters,
+            origin, direction, differential, 0.5f, state, lcg_state, evaluation,
+            *ctx, sample.vt_miss_page);
+    }
+
     Float3 evaluate_constant_emission(
         PathSampleContext &sample)
         const noexcept override {
         return sample.invocation
             .constant_environment();
+    }
+
+    Float4 evaluate_constant_emission_spectral(
+        PathSampleContext &sample)
+        const noexcept override {
+        const auto ctx = sample.spectral_context();
+        LUISA_ASSERT(ctx.has_value(),
+                     "Spectral constant environment requires spectral context.");
+        return sample.invocation
+            .constant_environment_spectral(*ctx);
     }
 
     Float from_direction(

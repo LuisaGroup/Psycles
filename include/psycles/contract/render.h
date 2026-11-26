@@ -76,6 +76,12 @@ enum class DirectLightSampling : std::uint8_t {
     next_event_estimation
 };
 
+enum class CausticsMethod : std::uint8_t {
+    none,
+    mnee,
+    sms
+};
+
 // Transport controls are part of the render contract, not backend tuning.
 // A scene imported from Blender must carry the same values that Cycles uses so
 // a backend cannot silently render with convenient hard-coded limits.
@@ -109,6 +115,10 @@ struct PathIntegratorSettings {
     bool reflective_caustics{true};
     bool refractive_caustics{true};
     bool use_light_tree{false};
+    bool spectral_rendering{false};
+    CausticsMethod caustics_method{CausticsMethod::mnee};
+    bool sms_unbiased{true};
+    std::uint32_t sms_max_trials{8u};
     DirectLightSampling direct_light_sampling{
         DirectLightSampling::multiple_importance_sampling};
 };

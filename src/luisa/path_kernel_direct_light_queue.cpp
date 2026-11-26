@@ -68,6 +68,7 @@ private:
   bool _may_have_shade_shadow{true};
   bool _may_continue_shadow{true};
   bool _has_fallback_light_shader{false};
+  bool _spectral{false};
   std::array<std::uint32_t, 5u> _host_counts{};
 
   static constexpr std::uint32_t k_stride_ray_origin_tmin = 0u;
@@ -93,8 +94,11 @@ private:
   [[nodiscard]] std::uint32_t stride_transm_and_portal() const noexcept {
     return stride_after_16() + 12u;
   }
-  [[nodiscard]] std::uint32_t total_slot_stride() const noexcept {
+  [[nodiscard]] std::uint32_t stride_spectral() const noexcept {
     return stride_after_16() + 16u;
+  }
+  [[nodiscard]] std::uint32_t total_slot_stride() const noexcept {
+    return stride_after_16() + (_spectral ? 32u : 16u);
   }
 
   [[nodiscard]] static constexpr std::uint32_t
@@ -130,8 +134,9 @@ public:
       std::span<const std::string_view> producer_continuations = {},
       std::shared_ptr<VirtualTextureCache> vt_cache = {}) noexcept
       : _task_buffer{device.create_byte_buffer(
-            static_cast<std::size_t>(evaluator.light_emission == nullptr ? 176u
-                                                                         : 160u) *
+            static_cast<std::size_t>(
+                (evaluator.light_emission == nullptr ? 160u : 144u) +
+                (evaluator.spectral_tables != nullptr ? 32u : 16u)) *
             static_cast<std::size_t>(capacity))},
         _shadow_storage{shadow_storage
                             ? std::move(shadow_storage)
@@ -156,7 +161,8 @@ public:
         _fuse_unoccluded_shadow{fuse_unoccluded_shadow},
         _may_have_shade_shadow{may_have_shade_shadow},
         _may_continue_shadow{may_continue_shadow},
-        _has_fallback_light_shader{evaluator.light_emission == nullptr} {
+        _has_fallback_light_shader{evaluator.light_emission == nullptr},
+        _spectral{evaluator.spectral_tables != nullptr} {
     if (producer_continuations.empty()) {
       _producers.push_back(
           {.continuation = path_transition::shade_surface,
@@ -365,6 +371,9 @@ public:
                 copy_chunk.operator()<luisa::float4>(k_stride_fallback_light);
               }
             };
+            if (_spectral) {
+              copy_chunk.operator()<luisa::float4>(stride_spectral());
+            }
             // Only this edge owns a traversal batch. Never read the scratch
             // fields of a task at NEE or INTERSECT_SHADOW.
             if (_may_have_shade_shadow) {
@@ -494,6 +503,7 @@ public:
             task.unshadowed_contribution = tt.xyz();
             task.light_terminate_sample = tt.w;
             task.path_depth = film.y;
+            task.path_flags = film.z;
             task.ray_dP = dtf.x;
             task.ray_dD = dtf.y;
             task.ray_time = dtf.z;
@@ -505,18 +515,40 @@ public:
             task.glossy_depth = rng_d.w >> 16u;
             task.transmission_depth = tp & 0xffffu;
             task.portal_depth = (tp >> 16u).cast<std::uint16_t>();
-            task.nee_path_throughput =
-                read_chunk.operator()<luisa::float4>(k_stride_nee_throughput).xyz();
+            const auto nee_chunk =
+                read_chunk.operator()<luisa::float4>(k_stride_nee_throughput);
+            task.nee_path_throughput = nee_chunk.xyz();
+            Float fallback_light_w = 0.0f;
             if (_has_fallback_light_shader) {
-              task.light_shader =
-                  read_chunk.operator()<luisa::float4>(k_stride_fallback_light).xyz();
+              const auto fallback_chunk =
+                  read_chunk.operator()<luisa::float4>(k_stride_fallback_light);
+              task.light_shader = fallback_chunk.xyz();
+              fallback_light_w = fallback_chunk.w;
+            }
+            std::optional<DirectLightSpectralExtension> spec;
+            if (_spectral) {
+              const auto spec_chunk =
+                  read_chunk.operator()<luisa::float4>(stride_spectral());
+              spec.emplace(DirectLightSpectralExtension{
+                  .unshadowed_contribution_w = spec_chunk.x,
+                  .nee_path_throughput_w = nee_chunk.w,
+                  .light_shader_w = fallback_light_w,
+                  .shadow_throughput_w = spec_chunk.x,
+                  .u_lambda = spec_chunk.y});
             }
             UInt vt_miss = vt_invalid_page;
             $if(evaluator.shade_light_nee(
-                    task, parameters, vt_enabled ? &vt_miss : nullptr)) {
+                    task, parameters, vt_enabled ? &vt_miss : nullptr,
+                    spec ? &*spec : nullptr)) {
               write_chunk.operator()<luisa::float4>(
                   k_stride_throughput_and_term,
                   def(luisa::compute::make_float4(task.shadow_throughput, 0.0f)));
+              if (_spectral) {
+                write_chunk.operator()<luisa::float4>(
+                    stride_spectral(),
+                    def(luisa::compute::make_float4(
+                        spec->shadow_throughput_w, spec->u_lambda, 0.0f, 0.0f)));
+              }
               next = 2u;
             };
             if (vt_enabled) {
@@ -608,8 +640,17 @@ public:
                     task.path_depth = film.y;
                     task.path_flags = film.z;
                     task.path_visibility = film.w;
-                    const auto value =
-                        evaluator.contribution(task, task.shadow_throughput, parameters);
+                    std::optional<DirectLightSpectralExtension> spec;
+                    if (_spectral) {
+                      const auto spec_chunk =
+                          read_chunk.operator()<luisa::float4>(stride_spectral());
+                      spec.emplace(DirectLightSpectralExtension{
+                          .shadow_throughput_w = spec_chunk.x,
+                          .u_lambda = spec_chunk.y});
+                    }
+                    const auto value = evaluator.contribution(
+                        task, task.shadow_throughput, parameters,
+                        spec ? &*spec : nullptr);
                     atomic_accumulate_radiance(combined, volume_guiding_raw, task.pixel,
                                                task.pixel * volume_guiding::raw_pixel_stride,
                                                evaluator.volume_guiding, task.path_flags,
@@ -665,8 +706,17 @@ public:
                   task.path_depth = film.y;
                   task.path_flags = film.z;
                   task.path_visibility = film.w;
-                  const auto value =
-                      evaluator.contribution(task, task.shadow_throughput, parameters);
+                  std::optional<DirectLightSpectralExtension> spec;
+                  if (_spectral) {
+                    const auto spec_chunk =
+                        read_chunk.operator()<luisa::float4>(stride_spectral());
+                    spec.emplace(DirectLightSpectralExtension{
+                        .shadow_throughput_w = spec_chunk.x,
+                        .u_lambda = spec_chunk.y});
+                  }
+                  const auto value = evaluator.contribution(
+                      task, task.shadow_throughput, parameters,
+                      spec ? &*spec : nullptr);
                   atomic_accumulate_radiance(combined, volume_guiding_raw, task.pixel,
                                              task.pixel * volume_guiding::raw_pixel_stride,
                                              evaluator.volume_guiding, task.path_flags,
@@ -735,8 +785,17 @@ public:
                       slot, parameters.wavefront_frame_capacity);
                 }
                 UInt vt_miss = vt_invalid_page;
+                std::optional<DirectLightSpectralExtension> spec;
+                if (_spectral) {
+                  const auto spec_chunk =
+                      read_chunk.operator()<luisa::float4>(stride_spectral());
+                  spec.emplace(DirectLightSpectralExtension{
+                      .shadow_throughput_w = spec_chunk.x,
+                      .u_lambda = spec_chunk.y});
+                }
                 const auto step = evaluator.shade_shadow(
-                    task, batch, parameters, vt_enabled ? &vt_miss : nullptr);
+                    task, batch, parameters, vt_enabled ? &vt_miss : nullptr,
+                    spec ? &*spec : nullptr);
                 Bool row_vt_missed = false;
                 if (vt_enabled) {
                   row_vt_missed = (vt_miss != vt_invalid_page);
@@ -759,6 +818,13 @@ public:
                           k_stride_throughput_and_term,
                           def(luisa::compute::make_float4(task.shadow_throughput,
                                                           0.0f)));
+                      if (_spectral) {
+                        write_chunk.operator()<luisa::float4>(
+                            stride_spectral(),
+                            def(luisa::compute::make_float4(
+                                spec->shadow_throughput_w, spec->u_lambda,
+                                0.0f, 0.0f)));
+                      }
                       write_chunk.operator()<luisa::uint>(
                           stride_transp_and_vol(),
                           def((task.transparent_depth.cast<luisa::uint>() &
@@ -775,7 +841,8 @@ public:
                     }
                     $elif(step.visible) {
                       const auto value = evaluator.contribution(
-                          task, task.shadow_throughput, parameters);
+                          task, task.shadow_throughput, parameters,
+                          spec ? &*spec : nullptr);
                       atomic_accumulate_radiance(
                           combined, volume_guiding_raw, task.pixel,
                           task.pixel * volume_guiding::raw_pixel_stride,
@@ -788,7 +855,8 @@ public:
                   } else {
                     $if(step.visible) {
                       const auto value = evaluator.contribution(
-                          task, task.shadow_throughput, parameters);
+                          task, task.shadow_throughput, parameters,
+                          spec ? &*spec : nullptr);
                       atomic_accumulate_radiance(
                           combined, volume_guiding_raw, task.pixel,
                           task.pixel * volume_guiding::raw_pixel_stride,
@@ -1028,7 +1096,13 @@ public:
   }
 
   void emit(Var<DirectLightTaskCall> task,
-            Expr<std::uint32_t> runtime_capacity) const noexcept override {
+            Expr<std::uint32_t> runtime_capacity,
+            const DirectLightSpectralExtension *spectral = nullptr)
+      const noexcept override {
+    if (_spectral) {
+      LUISA_ASSERT(spectral != nullptr,
+                   "Spectral direct-light queue requires spectral extension.");
+    }
     const auto buf = Expr<luisa::compute::ByteBuffer>{_task_buffer};
     const auto tokens =
         Expr<luisa::compute::Buffer<luisa::uint>>{_tokens};
@@ -1119,13 +1193,28 @@ public:
         }
         buf.write(slot_byte_offset<luisa::float4>(
                       runtime_capacity, k_stride_nee_throughput, slot),
-                  luisa::compute::make_float4(task.nee_path_throughput, 0.0f));
+                  luisa::compute::make_float4(
+                      task.nee_path_throughput,
+                      spectral != nullptr ? spectral->nee_path_throughput_w
+                                          : Float{0.0f}));
         if (_has_fallback_light_shader) {
           buf.write(slot_byte_offset<luisa::float4>(
                         runtime_capacity, k_stride_fallback_light, slot),
-                    luisa::compute::make_float4(task.light_shader, 0.0f));
+                    luisa::compute::make_float4(
+                        task.light_shader,
+                        spectral != nullptr ? spectral->light_shader_w
+                                            : Float{0.0f}));
         }
       };
+      if (_spectral) {
+        const auto initial_w = select(spectral->unshadowed_contribution_w,
+                                      spectral->shadow_throughput_w,
+                                      is_const_light);
+        buf.write(slot_byte_offset<luisa::float4>(
+                      runtime_capacity, stride_spectral(), slot),
+                  luisa::compute::make_float4(initial_w, spectral->u_lambda,
+                                              0.0f, 0.0f));
+      }
       tokens.write(slot, token);
       if (_warp_size == 32u) {
         $if(luisa::compute::warp_active_all_equal(token)) {

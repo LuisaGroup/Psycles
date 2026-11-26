@@ -2,6 +2,8 @@
 
 #include "path_tracer_cycles_svm_background.h"
 
+#include <psycles/luisa/cycles_spectrum.h>
+
 namespace psycles::luisa_backend::detail {
 
 // The shader can observe camera projection and final render extent while
@@ -13,12 +15,24 @@ struct BackgroundSamplingDistribution {
 
 [[nodiscard]] Float3 constant_environment_emission(
     const LuisaSceneData &scene, Float3 background) noexcept;
+[[nodiscard]] Float4 constant_environment_emission_spectral(
+    const LuisaSceneData &scene, Float3 background,
+    const cycles_spectrum::SpectralContext &spectral) noexcept;
 [[nodiscard]] Float3 evaluate_environment_emission(
     const std::shared_ptr<LuisaSceneData> &scene,
     const Var<RenderKernelParameters> &parameters,
     Float3 origin, Float3 direction, Float differential, Float time,
     const cycles_svm::PathState &state, UInt lcg_state,
     CyclesSvmBackgroundEvaluation evaluation,
+    UInt *vt_miss_page = nullptr,
+    bool force_direct_textures = false) noexcept;
+[[nodiscard]] Float4 evaluate_environment_emission_spectral(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const Var<RenderKernelParameters> &parameters,
+    Float3 origin, Float3 direction, Float differential, Float time,
+    const cycles_svm::PathState &state, UInt lcg_state,
+    CyclesSvmBackgroundEvaluation evaluation,
+    const cycles_spectrum::SpectralContext &spectral,
     UInt *vt_miss_page = nullptr,
     bool force_direct_textures = false) noexcept;
 [[nodiscard]] Float3 evaluate_background_importance(

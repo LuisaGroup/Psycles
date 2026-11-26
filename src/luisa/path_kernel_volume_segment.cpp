@@ -272,8 +272,10 @@ class PathVolumeSegmentStageImpl final
                       ->stack_is_heterogeneous(
                           stack)
                 : def(false);
+        const Float3 volume_input_throughput =
+            sample.is_spectral() ? make_float3(1.0f) : throughput.rgb();
         Float3 result_throughput =
-            throughput;
+            volume_input_throughput;
         Float3 result_emission =
             make_float3(0.0f);
         Float result_distance =
@@ -310,7 +312,7 @@ class PathVolumeSegmentStageImpl final
                             segment_position,
                             -ray->direction(),
                             segment_length,
-                            throughput,
+                            volume_input_throughput,
                             scatter_random,
                             channel_random,
                             phase_random,
@@ -412,7 +414,7 @@ class PathVolumeSegmentStageImpl final
                              .ray_maximum =
                                  event.distance,
                              .throughput =
-                                 throughput,
+                                 volume_input_throughput,
                              .reservoir_random =
                                  channel_random,
                              .phase_random =
@@ -509,14 +511,18 @@ class PathVolumeSegmentStageImpl final
             };
         }
 
+        Float3 raw_emission =
+            select(make_float3(0.0f), result_emission, inside_volume);
+        if (sample.is_spectral()) {
+            const auto ctx = sample.spectral_context();
+            const auto spec_emission =
+                throughput *
+                cycles_spectrum::Spectrum::from_rgb_illuminant(
+                    ctx->tables, raw_emission, &ctx->wavelengths, true);
+            raw_emission = sample.spectrum_to_rgb(spec_emission);
+        }
         const auto emission =
-            invocation
-                .clamp_emission_contribution(
-                select(
-                    make_float3(0.0f),
-                    result_emission,
-                    inside_volume),
-                path_depth);
+            invocation.clamp_emission_contribution(raw_emission, path_depth);
         sample.accumulate_radiance(
             emission);
         sample.accumulate_emission_or_background(emission, LightPassBuffer::emission);
@@ -526,11 +532,18 @@ class PathVolumeSegmentStageImpl final
                 result_optical_depth,
                 inside_volume &
                     (path_depth == 0u));
-        throughput =
-            select(
-                throughput,
-                result_throughput,
-                inside_volume);
+        if (sample.is_spectral()) {
+            const auto ctx = sample.spectral_context();
+            const auto spec_trans =
+                throughput *
+                cycles_spectrum::Spectrum::from_rgb_reflectance(
+                    ctx->tables, result_throughput, &ctx->wavelengths, true);
+            throughput =
+                cycles_spectrum::select(throughput, spec_trans, inside_volume);
+        } else {
+            throughput = cycles_spectrum::Spectrum::from_rgb_raw(
+                select(throughput.rgb(), result_throughput, inside_volume));
+        }
 
         const auto terminates_in_volume =
             inside_volume &

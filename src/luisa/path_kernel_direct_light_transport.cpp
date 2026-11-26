@@ -15,27 +15,33 @@
 
 namespace psycles::luisa_backend::detail {
 
-DirectLightSampleState DirectLightSampleState::empty() noexcept {
-    return {.direction = make_float3(0.0f, 0.0f, 1.0f),
-            .target_position = make_float3(0.0f),
-            .light_normal = make_float3(0.0f, 0.0f, 1.0f),
-            .light_uv = make_float2(0.0f),
-            .barycentric = make_float2(0.0f),
-            .radiometric_weight = make_float3(0.0f),
-            .light_shader = make_float3(0.0f),
-            .pdf = 0.0f,
-            .normalization_pdf = 1.0f,
-            .distance = ray_maximum,
-            .emitter_kind = static_cast<std::uint32_t>(
-                sampling::LightDistributionEmitterKind::sentinel),
-            .emitter_index = surface_ray::invalid_primitive,
-            .light_object = surface_ray::invalid_primitive,
-            .light_primitive = surface_ray::invalid_primitive,
-            .shader_flags = 0u,
-            .apply_mis = false,
-            .constant_light_shader = false,
-            .distant = false,
-            .valid = false};
+DirectLightSampleState DirectLightSampleState::empty(bool spectral) noexcept {
+    DirectLightSampleState state{
+        .direction = make_float3(0.0f, 0.0f, 1.0f),
+        .target_position = make_float3(0.0f),
+        .light_normal = make_float3(0.0f, 0.0f, 1.0f),
+        .light_uv = make_float2(0.0f),
+        .barycentric = make_float2(0.0f),
+        .radiometric_weight = make_float3(0.0f),
+        .light_shader = make_float3(0.0f),
+        .pdf = 0.0f,
+        .normalization_pdf = 1.0f,
+        .distance = ray_maximum,
+        .emitter_kind = static_cast<std::uint32_t>(
+            sampling::LightDistributionEmitterKind::sentinel),
+        .emitter_index = surface_ray::invalid_primitive,
+        .light_object = surface_ray::invalid_primitive,
+        .light_primitive = surface_ray::invalid_primitive,
+        .shader_flags = 0u,
+        .apply_mis = false,
+        .constant_light_shader = false,
+        .distant = false,
+        .valid = false};
+    if (spectral) {
+        state.spectral_radiometric_weight.emplace(make_float4(0.0f));
+        state.spectral_light_shader.emplace(make_float4(0.0f));
+    }
+    return state;
 }
 
 void DirectLightSampleState::accept(
@@ -63,24 +69,71 @@ void DirectLightSampleState::accept(
     constant_light_shader = proposal.constant_light_shader;
     distant = proposal.distant;
     valid = proposal.valid;
+    if (spectral_radiometric_weight.has_value() &&
+        proposal.spectral_radiometric_weight.has_value()) {
+        *spectral_radiometric_weight = *proposal.spectral_radiometric_weight;
+    }
+    if (spectral_light_shader.has_value() &&
+        proposal.spectral_light_shader.has_value()) {
+        *spectral_light_shader = *proposal.spectral_light_shader;
+    }
 }
 
-DirectLightTransportState DirectLightTransportState::empty() noexcept {
-    return {.weighted_bsdf = make_float3(0.0f),
-            .light_shader = make_float3(0.0f),
-            .direction = make_float3(0.0f, 0.0f, 1.0f),
-            .target_position = make_float3(0.0f),
-            .bsdf = make_float3(0.0f),
-            .diffuse_bsdf = make_float3(0.0f),
-            .glossy_bsdf = make_float3(0.0f),
-            .light_object = surface_ray::invalid_primitive,
-            .light_primitive = surface_ray::invalid_primitive,
-            .shader_flags = 0u,
-            .average_roughness_squared = 0.0f,
-            .light_terminate_sample = 0.0f,
-            .constant_light_shader = false,
-            .distant = false,
-            .valid = false};
+DirectLightTransportState DirectLightTransportState::empty(bool spectral) noexcept {
+    DirectLightTransportState state{
+        .weighted_bsdf = make_float3(0.0f),
+        .light_shader = make_float3(0.0f),
+        .direction = make_float3(0.0f, 0.0f, 1.0f),
+        .target_position = make_float3(0.0f),
+        .bsdf = make_float3(0.0f),
+        .diffuse_bsdf = make_float3(0.0f),
+        .glossy_bsdf = make_float3(0.0f),
+        .light_object = surface_ray::invalid_primitive,
+        .light_primitive = surface_ray::invalid_primitive,
+        .shader_flags = 0u,
+        .average_roughness_squared = 0.0f,
+        .light_terminate_sample = 0.0f,
+        .constant_light_shader = false,
+        .distant = false,
+        .valid = false};
+    if (spectral) {
+        state.spectral_weighted_bsdf.emplace(make_float4(0.0f));
+        state.spectral_light_shader.emplace(make_float4(0.0f));
+        state.spectral_bsdf.emplace(make_float4(0.0f));
+        state.spectral_diffuse_bsdf.emplace(make_float4(0.0f));
+        state.spectral_glossy_bsdf.emplace(make_float4(0.0f));
+    }
+    return state;
+}
+
+void DirectLightTransportState::accept(
+    const DirectLightTransportState &other) noexcept {
+    weighted_bsdf = other.weighted_bsdf;
+    light_shader = other.light_shader;
+    direction = other.direction;
+    target_position = other.target_position;
+    bsdf = other.bsdf;
+    diffuse_bsdf = other.diffuse_bsdf;
+    glossy_bsdf = other.glossy_bsdf;
+    light_object = other.light_object;
+    light_primitive = other.light_primitive;
+    shader_flags = other.shader_flags;
+    average_roughness_squared = other.average_roughness_squared;
+    light_terminate_sample = other.light_terminate_sample;
+    constant_light_shader = other.constant_light_shader;
+    distant = other.distant;
+    valid = other.valid;
+    const auto copy_opt = [](std::optional<Float4> &dst,
+                             const std::optional<Float4> &src) noexcept {
+        if (dst.has_value() && src.has_value()) {
+            *dst = *src;
+        }
+    };
+    copy_opt(spectral_weighted_bsdf, other.spectral_weighted_bsdf);
+    copy_opt(spectral_light_shader, other.spectral_light_shader);
+    copy_opt(spectral_bsdf, other.spectral_bsdf);
+    copy_opt(spectral_diffuse_bsdf, other.spectral_diffuse_bsdf);
+    copy_opt(spectral_glossy_bsdf, other.spectral_glossy_bsdf);
 }
 
 void DirectLightTransportState::accept(
@@ -104,6 +157,44 @@ void DirectLightTransportState::accept(
     constant_light_shader = proposal_constant_light_shader;
     distant = proposal_distant;
     valid = true;
+}
+
+void DirectLightTransportState::accept(
+    const SurfaceEvaluation &evaluation,
+    const cycles_spectrum::Spectrum &proposal_weighted_bsdf,
+    const cycles_spectrum::Spectrum &proposal_light_shader,
+    Float3 proposal_direction, Float3 proposal_target_position,
+    Bool proposal_distant, UInt proposal_light_object,
+    UInt proposal_light_primitive, UInt proposal_shader_flags,
+    Bool proposal_constant_light_shader) noexcept {
+    accept(evaluation,
+           proposal_weighted_bsdf.is_spectral()
+               ? proposal_weighted_bsdf.lanes().xyz()
+               : proposal_weighted_bsdf.rgb(),
+           proposal_light_shader.is_spectral()
+               ? proposal_light_shader.lanes().xyz()
+               : proposal_light_shader.rgb(),
+           proposal_direction, proposal_target_position, proposal_distant,
+           proposal_light_object, proposal_light_primitive,
+           proposal_shader_flags, proposal_constant_light_shader);
+    if (spectral_weighted_bsdf.has_value()) {
+        *spectral_weighted_bsdf = proposal_weighted_bsdf.lanes();
+    }
+    if (spectral_light_shader.has_value()) {
+        *spectral_light_shader = proposal_light_shader.lanes();
+    }
+    if (spectral_bsdf.has_value()) {
+        *spectral_bsdf = evaluation.spectral_f.value_or(
+            make_float4(evaluation.f, 0.0f));
+    }
+    if (spectral_diffuse_bsdf.has_value()) {
+        *spectral_diffuse_bsdf = evaluation.spectral_diffuse_f.value_or(
+            make_float4(evaluation.diffuse_f, 0.0f));
+    }
+    if (spectral_glossy_bsdf.has_value()) {
+        *spectral_glossy_bsdf = evaluation.spectral_glossy_f.value_or(
+            make_float4(evaluation.glossy_f, 0.0f));
+    }
 }
 
 namespace {
@@ -136,25 +227,54 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
         auto &surface = context.surface;
         DirectLightTransportPreparation preparation;
         auto &task = preparation.task;
+        const bool spectral = sample.is_spectral();
+        if (spectral) {
+            preparation.spectral.emplace(DirectLightSpectralExtension{
+                .u_lambda = *sample.spectral_u_lambda});
+        }
 
         $if(transport.valid) {
             const Float light_terminate_sample =
                 bounce.random_state != nullptr
                     ? bounce.random().light_terminate_sample
                     : transport.light_terminate_sample;
-            const auto local_unshadowed =
-                transport.weighted_bsdf * transport.light_shader;
-            const auto constant_contribution = finalize_direct_light_sample(
-                config.light_transport.light_sample_roulette_weight,
-                local_unshadowed, sample.throughput,
-                light_terminate_sample,
-                invocation.parameters.light_inv_rr_threshold);
-            const auto initial_contribution = select(
-                transport.weighted_bsdf, constant_contribution,
-                transport.constant_light_shader);
-            const auto publish =
-                (!transport.constant_light_shader) |
-                any(initial_contribution != 0.0f);
+            Float3 initial_rgb = make_float3(0.0f);
+            Float4 initial_spec = make_float4(0.0f);
+            Float4 light_shader_spec = make_float4(0.0f);
+            Bool publish = false;
+            if (spectral) {
+                const auto weighted_spec =
+                    transport.spectral_weighted_bsdf.value_or(
+                        make_float4(transport.weighted_bsdf, 0.0f));
+                light_shader_spec = transport.spectral_light_shader.value_or(
+                    make_float4(transport.light_shader, 0.0f));
+                const auto local_unshadowed_spec =
+                    weighted_spec * light_shader_spec;
+                const auto constant_spec = finalize_direct_light_sample_spectral(
+                    config.light_transport.light_sample_roulette_weight,
+                    local_unshadowed_spec, sample.throughput.lanes(),
+                    sample.spectral_secondary_terminated(),
+                    light_terminate_sample,
+                    invocation.parameters.light_inv_rr_threshold);
+                initial_spec = select(weighted_spec, constant_spec,
+                                      transport.constant_light_shader);
+                publish = (!transport.constant_light_shader) |
+                          any(initial_spec != 0.0f);
+            } else {
+                const auto local_unshadowed =
+                    transport.weighted_bsdf * transport.light_shader;
+                const auto constant_contribution = finalize_direct_light_sample(
+                    config.light_transport.light_sample_roulette_weight,
+                    local_unshadowed, sample.throughput.rgb(),
+                    light_terminate_sample,
+                    invocation.parameters.light_inv_rr_threshold);
+                initial_rgb = select(
+                    transport.weighted_bsdf, constant_contribution,
+                    transport.constant_light_shader);
+                publish =
+                    (!transport.constant_light_shader) |
+                    any(initial_rgb != 0.0f);
+            }
             $if(publish) {
                 auto shadow =
                     surface.make_shadow_terminator_origin(transport.direction);
@@ -183,10 +303,23 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                         transport.average_roughness_squared);
                 task.ray_origin = shadow.position;
                 task.ray_direction = shadow_direction;
-                task.unshadowed_contribution = initial_contribution;
-                task.nee_path_throughput = sample.throughput;
-                task.light_shader = transport.light_shader;
-                task.shadow_throughput = initial_contribution;
+                if (spectral) {
+                    const auto path_t = sample.throughput.lanes();
+                    task.unshadowed_contribution = initial_spec.xyz();
+                    task.nee_path_throughput = path_t.xyz();
+                    task.light_shader = light_shader_spec.xyz();
+                    task.shadow_throughput = initial_spec.xyz();
+                    preparation.spectral->unshadowed_contribution_w =
+                        initial_spec.w;
+                    preparation.spectral->nee_path_throughput_w = path_t.w;
+                    preparation.spectral->light_shader_w = light_shader_spec.w;
+                    preparation.spectral->shadow_throughput_w = initial_spec.w;
+                } else {
+                    task.unshadowed_contribution = initial_rgb;
+                    task.nee_path_throughput = sample.throughput.rgb();
+                    task.light_shader = transport.light_shader;
+                    task.shadow_throughput = initial_rgb;
+                }
                 prepare_surface_shadow_pass(task, sample, transport);
                 task.ray_minimum = 0.0f;
                 task.ray_maximum = shadow_maximum;
@@ -244,9 +377,13 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
         _trace->record_contribution(bounce, make_float3(0.0f));
 
         $if(preparation.valid) {
+            DirectLightSpectralExtension *spectral_ptr =
+                preparation.spectral.has_value() ? &*preparation.spectral
+                                                 : nullptr;
             if (_task_sink) {
                 _task_sink->emit(
-                    task, invocation.parameters.wavefront_frame_capacity);
+                    task, invocation.parameters.wavefront_frame_capacity,
+                    spectral_ptr);
             } else if (defer_until_after_surface_scatter(cut_policy)) {
                 Bool active = true;
                 Bool visible = false;
@@ -261,7 +398,8 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                             $suspend(path_transition::shade_light_nee);
                             UInt vt_miss = vt_invalid_page;
                             active = _evaluator.shade_light_nee(
-                                task, invocation.parameters, &vt_miss);
+                                task, invocation.parameters, &vt_miss,
+                                spectral_ptr);
                             $if(vt_miss != vt_invalid_page) {
                                 sample.vt_wait_resident(vt_miss);
                                 $continue;
@@ -271,11 +409,16 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                     } else {
                         $suspend(path_transition::shade_light_nee);
                         active = _evaluator.shade_light_nee(
-                            task, invocation.parameters);
+                            task, invocation.parameters, nullptr, spectral_ptr);
                     }
                 }
                 $else {
-                    active = any(task.unshadowed_contribution != 0.0f);
+                    active = spectral_ptr != nullptr
+                                 ? any(make_float4(
+                                           task.unshadowed_contribution,
+                                           spectral_ptr->unshadowed_contribution_w) !=
+                                       0.0f)
+                                 : any(task.unshadowed_contribution != 0.0f);
                 };
                 _trace->record_transport(
                     bounce, {.light_shader = task.light_shader,
@@ -283,18 +426,77 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
 
                 _evaluator.trace_staged(
                     task, invocation.parameters, active, visible,
-                    sample.vt_wait_resident);
+                    sample.vt_wait_resident, spectral_ptr);
 
                 $if(visible) {
                     const auto unclamped_contribution = task.shadow_throughput;
                     _trace->record_contribution(
                         bounce, unclamped_contribution);
                     const auto contribution = _evaluator.contribution(
-                        task, unclamped_contribution, invocation.parameters);
+                        task, unclamped_contribution, invocation.parameters,
+                        spectral_ptr);
                     sample.accumulate_radiance_at_state(
                         contribution, task.path_flags, task.path_visibility,
                         task.path_depth);
                     _evaluator.accumulate_passes(sample, task, contribution);
+                };
+            } else if (spectral_ptr != nullptr) {
+                Bool active = true;
+                if (sample.vt_wait_resident) {
+                    $loop {
+                        UInt vt_miss = vt_invalid_page;
+                        $if(task.constant_light_shader == 0u) {
+                            active = _evaluator.shade_light_nee(
+                                task, invocation.parameters, &vt_miss,
+                                spectral_ptr);
+                        }
+                        $else {
+                            active = any(make_float4(
+                                             task.unshadowed_contribution,
+                                             spectral_ptr->unshadowed_contribution_w) !=
+                                         0.0f);
+                        };
+                        $if(vt_miss != vt_invalid_page) {
+                            sample.vt_wait_resident(vt_miss);
+                            $continue;
+                        };
+                        $break;
+                    };
+                } else {
+                    $if(task.constant_light_shader == 0u) {
+                        active = _evaluator.shade_light_nee(
+                            task, invocation.parameters, nullptr, spectral_ptr);
+                    }
+                    $else {
+                        active = any(make_float4(
+                                         task.unshadowed_contribution,
+                                         spectral_ptr->unshadowed_contribution_w) !=
+                                     0.0f);
+                    };
+                }
+                _trace->record_transport(
+                    bounce, {.light_shader = task.light_shader,
+                             .unshadowed = task.unshadowed_contribution});
+                $if(active) {
+                    if (cut_policy == PathCoroutineCutPolicy::none &&
+                        invocation.stage_profile != nullptr) {
+                        invocation.stage_profile->enter(
+                            MegakernelStageProfileState::stage_shadow_trace);
+                    }
+                    Bool visible = false;
+                    _evaluator.trace_spectral(
+                        task, *spectral_ptr, invocation.parameters, visible,
+                        sample.vt_wait_resident);
+                    $if(visible) {
+                        const auto contribution = _evaluator.contribution(
+                            task, task.shadow_throughput, invocation.parameters,
+                            spectral_ptr);
+                        _trace->record_contribution(bounce, contribution);
+                        sample.accumulate_radiance_at_state(
+                            contribution, task.path_flags,
+                            task.path_visibility, task.path_depth);
+                        _evaluator.accumulate_passes(sample, task, contribution);
+                    };
                 };
             } else {
                 Bool active = true;

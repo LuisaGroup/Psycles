@@ -442,7 +442,8 @@ void PathKernelPipeline::emit(
       const auto emit_nee_closure_eval =
           [&](DirectLightingContext &lighting) noexcept
           -> DirectLightTransportState {
-        auto transport = DirectLightTransportState::empty();
+        auto transport =
+            DirectLightTransportState::empty(config.spectral_rendering);
         if (!_impl->direct_light_transport) {
           return transport;
         }
@@ -462,7 +463,8 @@ void PathKernelPipeline::emit(
                     (lighting.shading.cycles_surface_runtime_flags &
                      cycles_closure::runtime_bsdf_has_transmission) != 0u);
               }
-              auto direct_light = DirectLightSampleState::empty();
+              auto direct_light =
+                  DirectLightSampleState::empty(config.spectral_rendering);
               std::vector<std::unique_ptr<DirectLightProvider>> light_providers;
               light_providers.reserve(_impl->direct_lighting.size());
               for (const auto &component : _impl->direct_lighting) {
@@ -473,7 +475,8 @@ void PathKernelPipeline::emit(
                 provider->sample();
               }
 
-              auto evaluation = SurfaceEvaluation::zero();
+              auto evaluation =
+                  SurfaceEvaluation::zero(config.spectral_rendering);
               $if(direct_light.valid) {
                 if (prof != nullptr) {
                   prof->bump(MegakernelStageProfileState::count_nee_evals);
@@ -498,31 +501,68 @@ void PathKernelPipeline::emit(
                      .glossy = evaluation.glossy_f});
                 const auto mis_weight = select(1.0f, cycles_mis_weight,
                                                direct_light.apply_mis);
-                const auto constant_emission_factor =
-                    select(make_float3(1.0f), direct_light.light_shader,
-                           direct_light.constant_light_shader);
-                const auto weighted_bsdf =
-                    evaluation.f * direct_light.radiometric_weight *
-                    constant_emission_factor *
-                    (mis_weight / direct_light.normalization_pdf);
-                _impl->direct_light_trace->record_weighted_bsdf(bounce,
-                                                                weighted_bsdf);
-                $if(any(weighted_bsdf != 0.0f)) {
-                  if (prof != nullptr) {
-                    prof->bump(MegakernelStageProfileState::count_shadow_traces);
-                  }
-                  const auto deferred_light_shader =
-                      select(direct_light.light_shader, make_float3(1.0f),
+                if (config.spectral_rendering) {
+                  const auto eval_spec =
+                      evaluation.spectral_f.value_or(make_float4(evaluation.f, 0.0f));
+                  const auto rad_spec =
+                      direct_light.spectral_radiometric_weight.value_or(
+                          make_float4(direct_light.radiometric_weight, 0.0f));
+                  const auto shader_spec =
+                      direct_light.spectral_light_shader.value_or(
+                          make_float4(direct_light.light_shader, 0.0f));
+                  const auto constant_emission_factor_spec =
+                      select(make_float4(1.0f), shader_spec,
                              direct_light.constant_light_shader);
-                  transport.accept(
-                      evaluation, weighted_bsdf, deferred_light_shader,
-                      direct_light.direction, direct_light.target_position,
-                      direct_light.distant, direct_light.light_object,
-                      direct_light.light_primitive, direct_light.shader_flags,
-                      direct_light.constant_light_shader);
-                  transport.light_terminate_sample =
-                      random.light_terminate_sample;
-                };
+                  const auto weighted_bsdf_spec =
+                      eval_spec * rad_spec * constant_emission_factor_spec *
+                      (mis_weight / direct_light.normalization_pdf);
+                  _impl->direct_light_trace->record_weighted_bsdf(
+                      bounce, weighted_bsdf_spec.xyz());
+                  $if(any(weighted_bsdf_spec != 0.0f)) {
+                    if (prof != nullptr) {
+                      prof->bump(MegakernelStageProfileState::count_shadow_traces);
+                    }
+                    const auto deferred_light_shader_spec =
+                        select(shader_spec, make_float4(1.0f),
+                               direct_light.constant_light_shader);
+                    transport.accept(
+                        evaluation,
+                        cycles_spectrum::Spectrum::from_lanes(weighted_bsdf_spec),
+                        cycles_spectrum::Spectrum::from_lanes(deferred_light_shader_spec),
+                        direct_light.direction, direct_light.target_position,
+                        direct_light.distant, direct_light.light_object,
+                        direct_light.light_primitive, direct_light.shader_flags,
+                        direct_light.constant_light_shader);
+                    transport.light_terminate_sample =
+                        random.light_terminate_sample;
+                  };
+                } else {
+                  const auto constant_emission_factor =
+                      select(make_float3(1.0f), direct_light.light_shader,
+                             direct_light.constant_light_shader);
+                  const auto weighted_bsdf =
+                      evaluation.f * direct_light.radiometric_weight *
+                      constant_emission_factor *
+                      (mis_weight / direct_light.normalization_pdf);
+                  _impl->direct_light_trace->record_weighted_bsdf(bounce,
+                                                                  weighted_bsdf);
+                  $if(any(weighted_bsdf != 0.0f)) {
+                    if (prof != nullptr) {
+                      prof->bump(MegakernelStageProfileState::count_shadow_traces);
+                    }
+                    const auto deferred_light_shader =
+                        select(direct_light.light_shader, make_float3(1.0f),
+                               direct_light.constant_light_shader);
+                    transport.accept(
+                        evaluation, weighted_bsdf, deferred_light_shader,
+                        direct_light.direction, direct_light.target_position,
+                        direct_light.distant, direct_light.light_object,
+                        direct_light.light_primitive, direct_light.shader_flags,
+                        direct_light.constant_light_shader);
+                    transport.light_terminate_sample =
+                        random.light_terminate_sample;
+                  };
+                }
               };
               bounce.random_state = nullptr;
             });
@@ -702,8 +742,10 @@ void PathKernelPipeline::emit(
         Bool merged_back_facing = false;
         VolumeStackEntry merged_volume_entry{};
         Bool merged_surface_has_volume = false;
-        auto merged_transport = DirectLightTransportState::empty();
-        auto merged_scatter = PreparedCyclesSvmSurfaceScatter::empty();
+        auto merged_transport =
+            DirectLightTransportState::empty(config.spectral_rendering);
+        auto merged_scatter =
+            PreparedCyclesSvmSurfaceScatter::empty(config.spectral_rendering);
 
         Bool vt_outer_break = false;
         Bool vt_outer_continue = false;
@@ -740,7 +782,7 @@ void PathKernelPipeline::emit(
             merged_volume_entry = surface.volume_stack_entry;
             merged_surface_has_volume = surface.surface_has_volume;
           }
-          merged_transport = local_transport;
+          merged_transport.accept(local_transport);
           merged_scatter.accept(local_scatter, any_bssrdf);
         };
 

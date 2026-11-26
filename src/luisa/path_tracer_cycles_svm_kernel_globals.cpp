@@ -271,7 +271,8 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     const SurfacePopulationContext &context,
     std::span<const std::uint8_t> explicit_shader_mask,
     bool force_direct_textures,
-    UInt *vt_miss_page) noexcept
+    UInt *vt_miss_page,
+    bool spectral_rendering) noexcept
     : PathCyclesSvmKernelGlobals(
           std::move(scene), context.parameters, context.camera_projection,
           context.query.reflective_caustics,
@@ -279,7 +280,9 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
           PathCyclesSvmShaderDomain::surface_only,
           explicit_shader_mask,
           force_direct_textures,
-          vt_miss_page != nullptr ? vt_miss_page : context.vt_miss_page) {
+          vt_miss_page != nullptr ? vt_miss_page : context.vt_miss_page,
+          nullptr,
+          spectral_rendering) {
   _ambient_occlusion = context.ambient_occlusion;
 }
 
@@ -292,10 +295,12 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     std::span<const std::uint8_t> explicit_shader_mask,
     bool force_direct_textures,
     UInt *vt_miss_page,
-    const UInt *vt_preflight_weight) noexcept
+    const UInt *vt_preflight_weight,
+    bool spectral_rendering) noexcept
     : _scene{std::move(scene)},
       _parameters{parameters},
       _camera_projection{camera_projection},
+      _spectral_rendering{spectral_rendering},
       _caustics_reflective{reflective_caustics},
       _caustics_refractive{refractive_caustics},
       _camera_to_world{parameters.camera_transform},
@@ -530,6 +535,36 @@ bool PathCyclesSvmKernelGlobals::has_shadow_terminator_shading_offset() const no
 
 bool PathCyclesSvmKernelGlobals::may_have_thin_film() const noexcept {
   return _may_have_thin_film;
+}
+
+bool PathCyclesSvmKernelGlobals::is_spectral() const noexcept {
+  return _spectral_rendering;
+}
+
+const cycles_spectrum::SpectralTablesGpu *
+PathCyclesSvmKernelGlobals::spectral_tables() const noexcept {
+  return _spectral_rendering && _scene ? _scene->spectral_tables.get()
+                                       : nullptr;
+}
+
+bool PathCyclesSvmKernelGlobals::has_dispersive_materials() const noexcept {
+  return _spectral_rendering && _scene && _scene->has_dispersive_materials;
+}
+
+Float PathCyclesSvmKernelGlobals::shader_dispersion_abbe(
+    Expr<std::uint32_t> shader_id) const noexcept {
+  if (!has_dispersive_materials() || !_scene->cycles_svm ||
+      !_scene->cycles_svm->dispersion_abbe_buffer) {
+    return 0.0f;
+  }
+  const auto count =
+      static_cast<std::uint32_t>(_scene->cycles_svm->dispersion_abbe_values.size());
+  if (count == 0u) {
+    return 0.0f;
+  }
+  const Expr<Buffer<float>> abbes{*_scene->cycles_svm->dispersion_abbe_buffer};
+  const auto index = shader_id & svm::shader_mask;
+  return select(0.0f, abbes->read(min(index, count - 1u)), index < count);
 }
 
 abi::ClosureUsage PathCyclesSvmKernelGlobals::closure_usage() const noexcept {

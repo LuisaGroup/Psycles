@@ -1,12 +1,21 @@
 #pragma once
 
 #include <psycles/luisa/cycles_path_state.h>
+#include <psycles/luisa/cycles_spectrum.h>
 #include <psycles/luisa/surface_ray.h>
 
 namespace psycles::luisa_backend::cycles_volume_boundary {
 
 struct Continuation {
   luisa::compute::Float3 throughput;
+  luisa::compute::UInt bounds_bounce;
+  luisa::compute::UInt rng_offset;
+  luisa::compute::Float ray_tmin;
+  luisa::compute::Bool valid;
+};
+
+struct SpectralContinuation {
+  cycles_spectrum::Spectrum throughput;
   luisa::compute::UInt bounds_bounce;
   luisa::compute::UInt rng_offset;
   luisa::compute::Float ray_tmin;
@@ -33,6 +42,47 @@ struct Continuation {
     $if(probability != 1.0f) { result.throughput /= probability; };
     result.bounds_bounce += 1u;
     result.valid = result.bounds_bounce <= 1024u; // VOLUME_BOUNDS_MAX
+    $if(result.valid) {
+      result.rng_offset += cycles_path_state::bounce_dimension_count;
+      result.ray_tmin = surface_ray::intersection_t_offset(ray_length);
+    };
+  };
+  return result;
+}
+
+[[nodiscard]] inline SpectralContinuation advance(
+    const cycles_spectrum::Spectrum &throughput,
+    luisa::compute::Expr<std::uint32_t> bounds_bounce,
+    luisa::compute::Expr<std::uint32_t> rng_offset,
+    luisa::compute::Expr<float> ray_tmin,
+    luisa::compute::Expr<float> ray_length,
+    luisa::compute::Expr<float> continuation_probability,
+    luisa::compute::Expr<std::uint32_t> path_flag) noexcept {
+  using namespace luisa::compute;
+  if (!throughput.is_spectral()) {
+    const auto rgb_res =
+        advance(throughput.rgb(), bounds_bounce, rng_offset, ray_tmin,
+                ray_length, continuation_probability, path_flag);
+    return {.throughput = cycles_spectrum::Spectrum::from_rgb_raw(
+                rgb_res.throughput),
+            .bounds_bounce = rgb_res.bounds_bounce,
+            .rng_offset = rgb_res.rng_offset,
+            .ray_tmin = rgb_res.ray_tmin,
+            .valid = rgb_res.valid};
+  }
+  const Float probability = select(
+      continuation_probability, 0.0f,
+      (path_flag & cycles_path_state::flag_terminate_on_next_surface) != 0u);
+  SpectralContinuation result{
+      .throughput = throughput,
+      .bounds_bounce = UInt{bounds_bounce},
+      .rng_offset = UInt{rng_offset},
+      .ray_tmin = Float{ray_tmin},
+      .valid = probability != 0.0f};
+  $if(result.valid) {
+    $if(probability != 1.0f) { result.throughput /= probability; };
+    result.bounds_bounce += 1u;
+    result.valid = result.bounds_bounce <= 1024u;
     $if(result.valid) {
       result.rng_offset += cycles_path_state::bounce_dimension_count;
       result.ray_tmin = surface_ray::intersection_t_offset(ray_length);

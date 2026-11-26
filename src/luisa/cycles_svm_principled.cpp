@@ -134,6 +134,9 @@ public:
   [[nodiscard]] Float anisotropic_rotation(Stack &stack) const noexcept {
     return input_float(stack, anisotropic_rotation_word);
   }
+  [[nodiscard]] Expr<std::uint32_t> emission_color_input_word() const noexcept {
+    return _cursor.word_at(emission_color_word);
+  }
   [[nodiscard]] Float3 emission_color(Stack &stack) const noexcept {
     return input_float3(stack, emission_color_word);
   }
@@ -235,13 +238,21 @@ closure_layering_weight(Expr<luisa::float3> layer_albedo,
 }
 
 void emission_setup(ShaderData &shader_data,
-                    Expr<luisa::float3> weight) noexcept {
+                    Expr<luisa::float3> weight,
+                    Expr<luisa::float4> spectral_weight,
+                    bool has_spectral) noexcept {
   $if((shader_data.flag & shader_data_emission) != 0u) {
     shader_data.closure_emission_background += weight;
+    if (has_spectral) {
+      *shader_data.spectral_emission_background += spectral_weight;
+    }
   }
   $else {
     shader_data.flag |= shader_data_emission;
     shader_data.closure_emission_background = weight;
+    if (has_spectral) {
+      *shader_data.spectral_emission_background = spectral_weight;
+    }
   };
 }
 
@@ -425,10 +436,42 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
     }
 
     if (has_emission) {
-      const auto emission =
-          data.emission_color(stack) * data.emission_strength(stack);
+      const auto emission_strength_val = data.emission_strength(stack);
+      const auto emission = data.emission_color(stack) * emission_strength_val;
+      const bool has_spectral =
+          kernel_globals.is_spectral() && shader_data.spectral.has_value() &&
+          shader_data.spectral_emission_background.has_value();
       $if(any(emission != make_float3(0.0f))) {
-        emission_setup(shader_data, emission * weight);
+        Float4 spectral_emission = make_float4(0.0f);
+        if (has_spectral) {
+          const auto &sc = *shader_data.spectral;
+          spectral_emission = cycles_spectrum::rgb_to_spectrum_illuminant(
+              *sc.tables, emission * weight, sc.wavelengths.lambdas);
+          if (stack.is_spectral()) {
+            const auto em_bits = data.emission_color_input_word();
+            const auto apply_direct = [&](Expr<std::uint32_t> off) noexcept {
+              Float4 slot_spd = make_float4(0.0f);
+              $if(stack.try_load_spectral_slot(off, slot_spd)) {
+                const auto layer_atten =
+                    cycles_spectrum::rgb_to_spectrum_reflectance(
+                        *sc.tables, weight, sc.wavelengths.lambdas);
+                spectral_emission =
+                    slot_spd * emission_strength_val * layer_atten;
+              };
+            };
+            if (const auto c = try_const_uint(em_bits)) {
+              if ((*c >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+                apply_direct(*c & 0xffu);
+              }
+            } else {
+              $if((em_bits >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+                apply_direct(em_bits & 0xffu);
+              };
+            }
+          }
+        }
+        emission_setup(shader_data, emission * weight, spectral_emission,
+                       has_spectral);
       };
     }
 

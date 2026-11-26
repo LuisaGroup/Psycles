@@ -42,7 +42,23 @@ void emit_surface_emission(
   // work and atomic film writes. Flag-set zero emission remains eligible.
   $if((!bounce.subsurface_exit) &
       ((preparation.runtime_flags & cycles_closure::runtime_emission) != 0u)) {
-    emitted = preparation.emission;
+    const bool spectral = sample.is_spectral();
+    std::optional<Float4> emitted_spec;
+    if (spectral) {
+      if (preparation.spectral_emission.has_value()) {
+        emitted_spec.emplace(*preparation.spectral_emission);
+      } else {
+        const auto ctx = sample.spectral_context();
+        emitted_spec.emplace(cycles_spectrum::rgb_to_spectrum_illuminant(
+            *ctx->tables, preparation.emission, ctx->wavelengths.lambdas));
+      }
+      if (config.path_trace_enabled) {
+        emitted = sample.spectrum_to_rgb(
+            cycles_spectrum::Spectrum::from_lanes(*emitted_spec));
+      }
+    } else {
+      emitted = preparation.emission;
+    }
     if (next_event_estimation && scene->emissive_triangle_count > 0u) {
       // The committed primitive already carries the effective authored
       // sampling policy. NONE covers non-emissive materials, curves,
@@ -102,8 +118,16 @@ void emit_surface_emission(
         };
       };
     }
-    emission_contribution =
-        clamp_contribution(throughput * emitted * emission_weight, path_depth);
+    if (spectral) {
+      const auto spectral_contrib =
+          throughput * cycles_spectrum::Spectrum::from_lanes(*emitted_spec) *
+          emission_weight;
+      emission_contribution = clamp_contribution(
+          sample.spectrum_to_rgb(spectral_contrib), path_depth);
+    } else {
+      emission_contribution = clamp_contribution(
+          throughput.rgb() * emitted * emission_weight, path_depth);
+    }
     sample.accumulate_radiance(emission_contribution);
     sample.accumulate_emission_or_background(emission_contribution,
                                               LightPassBuffer::emission);

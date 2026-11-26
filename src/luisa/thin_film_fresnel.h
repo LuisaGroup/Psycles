@@ -48,4 +48,37 @@ thin_film_dielectric_fresnel(const CyclesBsdfTableReader &services,
     luisa::compute::Float3 substrate_extinction,
     luisa::compute::Float cosine_incoming) noexcept;
 
+// Spectral (4-wavelength monochromatic Airy) thin-film specializations.
+// Uses the exact closed-form monochromatic Airy interference formula at each
+// active wavelength in `lambdas` (nm), avoiding broadband CIE table ringing.
+struct ThinFilmDielectricFresnelSpectral {
+  luisa::compute::Float4 reflectance;
+  luisa::compute::Float4 cosine_transmitted;
+};
+
+[[nodiscard]] ThinFilmDielectricFresnelSpectral
+thin_film_dielectric_fresnel_spectral(
+    luisa::compute::Float thickness,
+    luisa::compute::Float film_ior,
+    luisa::compute::Float4 substrate_ior,
+    luisa::compute::Float4 f0,
+    luisa::compute::Float cosine_incoming,
+    luisa::compute::Float4 lambdas) noexcept;
+
+[[nodiscard]] luisa::compute::Float4 thin_film_f82_fresnel_spectral(
+    luisa::compute::Float thickness,
+    luisa::compute::Float film_ior,
+    luisa::compute::Float4 f0,
+    luisa::compute::Float4 b,
+    luisa::compute::Float cosine_incoming,
+    luisa::compute::Float4 lambdas) noexcept;
+
+[[nodiscard]] luisa::compute::Float4 thin_film_conductor_fresnel_spectral(
+    luisa::compute::Float thickness,
+    luisa::compute::Float film_ior,
+    luisa::compute::Float4 substrate_ior,
+    luisa::compute::Float4 substrate_extinction,
+    luisa::compute::Float cosine_incoming,
+    luisa::compute::Float4 lambdas) noexcept;
+
 } // namespace psycles::luisa_backend::detail

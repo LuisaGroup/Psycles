@@ -35,13 +35,30 @@ public:
     const auto visible = cycles_light_shader_visible(
         light.cycles_shader_flags, sample.cycles_path_visibility, path_flags);
     const auto evaluate_emission = (event.light_evaluation_factor != 0.0f) & visible;
+    const bool spectral = sample.is_spectral();
     Float3 light_radiance = make_float3(0.0f);
+    std::optional<Float4> light_radiance_spec;
+    if (spectral) {
+      light_radiance_spec.emplace(make_float4(0.0f));
+    }
     $if(evaluate_emission) {
-      light_radiance =
-          light.color * (light.power * event.light_evaluation_factor);
-      light_radiance *= sample.analytic_light_shader(
-          light, event.light_index, event.light_position, event.light_normal,
-          event.light_uv, -ray->direction(), event.distance);
+      if (spectral) {
+        const auto ctx = sample.spectral_context();
+        const auto tint_spec = cycles_spectrum::rgb_to_spectrum_reflectance(
+            *ctx->tables, light.color, ctx->wavelengths.lambdas);
+        const auto shader_spec = sample.analytic_light_shader_spectrum(
+            light, event.light_index, event.light_position, event.light_normal,
+            event.light_uv, -ray->direction(), event.distance);
+        *light_radiance_spec =
+            tint_spec * (light.power * event.light_evaluation_factor) *
+            shader_spec.lanes();
+      } else {
+        light_radiance =
+            light.color * (light.power * event.light_evaluation_factor);
+        light_radiance *= sample.analytic_light_shader(
+            light, event.light_index, event.light_position, event.light_normal,
+            event.light_uv, -ray->direction(), event.distance);
+      }
     };
     const auto commit_hit = [&]() noexcept {
       // Cycles' committed intersection becomes the next ray.self identity.
@@ -56,7 +73,10 @@ public:
                      surface_ray::intersection_t_offset(
                          max(ray->t_min(), event.distance)),
                      ray->t_max());
-      $if(evaluate_emission & any(light_radiance != make_float3(0.0f))) {
+      const auto has_radiance =
+          spectral ? any(*light_radiance_spec != make_float4(0.0f))
+                   : any(light_radiance != make_float3(0.0f));
+      $if(evaluate_emission & has_radiance) {
         Float mis_weight = 1.0f;
         const auto competing = (path_depth > 0u) & (!mis_competition_skipped);
         $if(competing) {
@@ -73,8 +93,15 @@ public:
           mis_weight = forward_light_weight(
               previous_bsdf_pdf, light_pdf, competing, light_pdf > 0.0f);
         };
+        const auto contrib_rgb =
+            spectral
+                ? sample.spectrum_to_rgb(
+                      throughput *
+                      cycles_spectrum::Spectrum::from_lanes(*light_radiance_spec) *
+                      mis_weight)
+                : (throughput.rgb() * light_radiance * mis_weight);
         const auto contribution = invocation.clamp_emission_contribution(
-            throughput * light_radiance * mis_weight, path_depth);
+            contrib_rgb, path_depth);
         sample.accumulate_radiance(contribution);
         sample.accumulate_emission_or_background(contribution,
                                                   LightPassBuffer::emission);

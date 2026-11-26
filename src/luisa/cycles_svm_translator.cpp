@@ -1887,9 +1887,10 @@ public:
   }
 };
 
-void emit_jit_instruction(const SvmTranslationRequest &req,
-                          const SvmInstructionIr &inst, detail::Stack &stack,
-                          Float3 &closure_weight) noexcept {
+void emit_jit_instruction(
+    const SvmTranslationRequest &req, const SvmInstructionIr &inst,
+    detail::Stack &stack, Float3 &closure_weight,
+    detail::SpectralClosureWeight *spectral_weight = nullptr) noexcept {
   const auto host_words = std::span<const std::uint32_t>{req.table.words};
   LUISA_ASSERT(
       static_cast<std::size_t>(inst.payload_offset) + inst.payload_word_count <=
@@ -1927,13 +1928,14 @@ void emit_jit_instruction(const SvmTranslationRequest &req,
         detail::node_closure_bsdf(kg, cursor, stack, closure_weight,
                                   req.shader_type, kernel_features,
                                   node_feature_mask, req.shader_data,
-                                  req.path_state, transition);
+                                  req.path_state, transition, spectral_weight);
       }
       return;
     case NODE_CLOSURE_EMISSION:
       if ((node_feature_mask & kernel_feature_node_emission) != 0u) {
         detail::node_closure_emission(kg, cursor, stack, closure_weight,
-                                      req.shader_data, transition);
+                                      req.shader_data, transition,
+                                      spectral_weight);
       }
       return;
     case NODE_CLOSURE_VOLUME:
@@ -1966,18 +1968,20 @@ void emit_jit_instruction(const SvmTranslationRequest &req,
     case NODE_CLOSURE_BACKGROUND:
       if ((node_feature_mask & kernel_feature_node_emission) != 0u) {
         detail::node_closure_background(cursor, stack, closure_weight,
-                                        req.shader_data);
+                                        req.shader_data, spectral_weight);
       }
       return;
     case NODE_CLOSURE_SET_WEIGHT:
-      detail::node_closure_set_weight(cursor, closure_weight);
+      detail::node_closure_set_weight(cursor, closure_weight, spectral_weight);
       return;
     case NODE_CLOSURE_WEIGHT:
-      detail::node_closure_weight(cursor, stack, closure_weight);
+      detail::node_closure_weight(cursor, stack, closure_weight,
+                                  spectral_weight);
       return;
     case NODE_EMISSION_WEIGHT:
       if ((node_feature_mask & kernel_feature_node_emission) != 0u) {
-        detail::node_emission_weight(cursor, stack, closure_weight);
+        detail::node_emission_weight(cursor, stack, closure_weight,
+                                     spectral_weight);
       }
       return;
     case NODE_MIX_CLOSURE:
@@ -2219,10 +2223,10 @@ void emit_jit_instruction(const SvmTranslationRequest &req,
       detail::node_brightness(cursor, stack);
       return;
     case NODE_WAVELENGTH:
-      detail::node_wavelength(cursor, stack, kg);
+      detail::node_wavelength(cursor, stack, kg, &req.shader_data);
       return;
     case NODE_BLACKBODY:
-      detail::node_blackbody(cursor, stack, kg);
+      detail::node_blackbody(cursor, stack, kg, &req.shader_data);
       return;
     case NODE_LIGHT_PATH:
       detail::node_light_path(cursor, stack, req.shader_data, req.path_state,
@@ -2377,8 +2381,24 @@ void emit_jit_instruction(const SvmTranslationRequest &req,
   }
 }
 
-void emit_jit_block(const SvmTranslationRequest &req, const SvmBlockIr &block,
-                    detail::Stack &stack, Float3 &closure_weight) noexcept {
+[[nodiscard]] bool block_has_spectral_source(const SvmBlockIr &block) noexcept {
+  for (const auto &op : block) {
+    if (op.is_conditional) {
+      if (block_has_spectral_source(op.children)) {
+        return true;
+      }
+    } else if (op.instruction.opcode == NODE_BLACKBODY ||
+               op.instruction.opcode == NODE_WAVELENGTH) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void emit_jit_block(
+    const SvmTranslationRequest &req, const SvmBlockIr &block,
+    detail::Stack &stack, Float3 &closure_weight,
+    detail::SpectralClosureWeight *spectral_weight = nullptr) noexcept {
   for (const auto &op : block) {
     if (op.is_conditional) {
       if (op.children.empty()) {
@@ -2389,7 +2409,8 @@ void emit_jit_block(const SvmTranslationRequest &req, const SvmBlockIr &block,
         const bool take =
             op.jump_if_one ? !(*c_cond >= 1.0f) : !(*c_cond <= 0.0f);
         if (take) {
-          emit_jit_block(req, op.children, stack, closure_weight);
+          emit_jit_block(req, op.children, stack, closure_weight,
+                         spectral_weight);
         }
         continue;
       }
@@ -2397,10 +2418,12 @@ void emit_jit_block(const SvmTranslationRequest &req, const SvmBlockIr &block,
       const Bool take_children =
           op.jump_if_one ? !(cond_val >= 1.0f) : !(cond_val <= 0.0f);
       $if(take_children) {
-        emit_jit_block(req, op.children, stack, closure_weight);
+        emit_jit_block(req, op.children, stack, closure_weight,
+                       spectral_weight);
       };
     } else {
-      emit_jit_instruction(req, op.instruction, stack, closure_weight);
+      emit_jit_instruction(req, op.instruction, stack, closure_weight,
+                           spectral_weight);
     }
   }
 }
@@ -2622,11 +2645,20 @@ void DirectJitTranslator::translate(
                 $if(shader_index ==
                     def<luisa::uint>(chunk.groups.front().shader_ids.front())) {
                   detail::DirectJitCaseCacheGuard attr_cache_guard;
-                  auto group_stack =
-                      detail::Stack::direct_jit(request.stack_size);
+                  const bool has_spectral =
+                      request.kernel_globals.is_spectral() &&
+                      request.shader_data.spectral.has_value() &&
+                      block_has_spectral_source(*chunk.groups.front().routine);
+                  auto group_stack = detail::Stack::direct_jit(
+                      request.stack_size, has_spectral);
                   Float3 closure_weight = make_float3(0.0f);
+                  std::optional<detail::SpectralClosureWeight> spectral_weight;
+                  if (has_spectral) {
+                    spectral_weight.emplace();
+                  }
                   emit_jit_block(request, *chunk.groups.front().routine,
-                                 group_stack, closure_weight);
+                                 group_stack, closure_weight,
+                                 spectral_weight ? &*spectral_weight : nullptr);
                 };
               } else {
                 $switch(shader_index) {
@@ -2635,11 +2667,22 @@ void DirectJitTranslator::translate(
                         luisa::span<const std::uint32_t>{group.shader_ids}} %
                         [&]() noexcept {
                           detail::DirectJitCaseCacheGuard attr_cache_guard;
-                          auto case_stack =
-                              detail::Stack::direct_jit(request.stack_size);
+                          const bool has_spectral =
+                              request.kernel_globals.is_spectral() &&
+                              request.shader_data.spectral.has_value() &&
+                              block_has_spectral_source(*group.routine);
+                          auto case_stack = detail::Stack::direct_jit(
+                              request.stack_size, has_spectral);
                           Float3 closure_weight = make_float3(0.0f);
-                          emit_jit_block(request, *group.routine, case_stack,
-                                         closure_weight);
+                          std::optional<detail::SpectralClosureWeight>
+                              spectral_weight;
+                          if (has_spectral) {
+                            spectral_weight.emplace();
+                          }
+                          emit_jit_block(
+                              request, *group.routine, case_stack,
+                              closure_weight,
+                              spectral_weight ? &*spectral_weight : nullptr);
                         };
                   }
                   $default {};
@@ -2675,10 +2718,20 @@ void DirectJitTranslator::translate(
     }
     if (groups.size() == 1u && active_empty_count == 0u) {
       detail::DirectJitCaseCacheGuard attr_cache_guard;
-      auto case_stack = detail::Stack::direct_jit(request.stack_size);
+      const bool has_spectral =
+          request.kernel_globals.is_spectral() &&
+          request.shader_data.spectral.has_value() &&
+          block_has_spectral_source(*groups.front().routine);
+      auto case_stack =
+          detail::Stack::direct_jit(request.stack_size, has_spectral);
       Float3 closure_weight = make_float3(0.0f);
+      std::optional<detail::SpectralClosureWeight> spectral_weight;
+      if (has_spectral) {
+        spectral_weight.emplace();
+      }
       emit_jit_block(request, *groups.front().routine, case_stack,
-                     closure_weight);
+                     closure_weight,
+                     spectral_weight ? &*spectral_weight : nullptr);
       return;
     }
     const UInt shader_index = request.shader_data.shader & shader_mask;
@@ -2688,10 +2741,20 @@ void DirectJitTranslator::translate(
             luisa::span<const std::uint32_t>{group.shader_ids}} %
             [&]() noexcept {
               detail::DirectJitCaseCacheGuard attr_cache_guard;
-              auto case_stack = detail::Stack::direct_jit(request.stack_size);
+              const bool has_spectral =
+                  request.kernel_globals.is_spectral() &&
+                  request.shader_data.spectral.has_value() &&
+                  block_has_spectral_source(*group.routine);
+              auto case_stack =
+                  detail::Stack::direct_jit(request.stack_size, has_spectral);
               Float3 closure_weight = make_float3(0.0f);
+              std::optional<detail::SpectralClosureWeight> spectral_weight;
+              if (has_spectral) {
+                spectral_weight.emplace();
+              }
               emit_jit_block(request, *group.routine, case_stack,
-                             closure_weight);
+                             closure_weight,
+                             spectral_weight ? &*spectral_weight : nullptr);
             };
       }
       $default {};

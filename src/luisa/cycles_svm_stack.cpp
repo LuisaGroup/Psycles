@@ -13,6 +13,8 @@
 
 namespace psycles::luisa_backend::cycles_svm::detail {
 
+using psycles::compiler::cycles_svm::SVMStackOffset;
+
 namespace {
 
 [[nodiscard]] std::optional<std::uint32_t>
@@ -126,7 +128,7 @@ stack_offset_add(luisa::compute::Expr<std::uint32_t> base,
   return base + delta;
 }
 
-Stack::Stack(std::size_t size, bool direct_jit_mode) noexcept
+Stack::Stack(std::size_t size, bool direct_jit_mode, bool spectral) noexcept
     : _size{size}, _direct_jit{direct_jit_mode} {
   if (_direct_jit) {
     auto *fb = luisa::compute::detail::FunctionBuilder::current();
@@ -136,12 +138,79 @@ Stack::Stack(std::size_t size, bool direct_jit_mode) noexcept
   } else {
     _array.emplace(size);
   }
+  if (spectral) {
+    _spectral_slots.emplace(std::array<SpectralSlot, 2u>{
+        SpectralSlot{.offset = static_cast<std::uint32_t>(SVM_STACK_INVALID),
+                     .spd = luisa::compute::make_float4(0.0f)},
+        SpectralSlot{.offset = static_cast<std::uint32_t>(SVM_STACK_INVALID),
+                     .spd = luisa::compute::make_float4(0.0f)}});
+  }
 }
 
-Stack::Stack(std::size_t size) noexcept : Stack{size, false} {}
+Stack::Stack(std::size_t size, bool spectral) noexcept
+    : Stack{size, false, spectral} {}
 
-Stack Stack::direct_jit(std::size_t size) noexcept {
-  return Stack{size, true};
+Stack Stack::direct_jit(std::size_t size, bool spectral) noexcept {
+  return Stack{size, true, spectral};
+}
+
+void Stack::record_spectral_slot(
+    luisa::compute::Expr<std::uint32_t> offset,
+    luisa::compute::Expr<luisa::float4> spd) noexcept {
+  using namespace luisa::compute;
+  if (!_spectral_slots.has_value()) {
+    return;
+  }
+  _spectral_slot_recorded = true;
+  auto &slots = *_spectral_slots;
+  const UInt target{offset};
+  const Bool hit0 = slots[0u].offset == target;
+  const Bool hit1 = !hit0 & (slots[1u].offset == target);
+  const Bool miss = !(hit0 | hit1);
+  const std::size_t victim = _next_spectral_slot ? 1u : 0u;
+  _next_spectral_slot = !_next_spectral_slot;
+  const Bool write0 = victim == 0u ? (hit0 | miss) : hit0;
+  const Bool write1 = victim == 1u ? (hit1 | miss) : hit1;
+  slots[0u].offset = select(slots[0u].offset, target, write0);
+  slots[0u].spd = select(slots[0u].spd, spd, write0);
+  slots[1u].offset = select(slots[1u].offset, target, write1);
+  slots[1u].spd = select(slots[1u].spd, spd, write1);
+}
+
+void Stack::invalidate_spectral_slot(
+    luisa::compute::Expr<std::uint32_t> offset) noexcept {
+  using namespace luisa::compute;
+  if (!_spectral_slots.has_value() ||
+      (_direct_jit && !_spectral_slot_recorded)) {
+    return;
+  }
+  const UInt off{offset};
+  const UInt invalid = static_cast<std::uint32_t>(SVM_STACK_INVALID);
+  for (auto &slot : *_spectral_slots) {
+    const Bool overlap = (slot.offset != invalid) &
+                         (slot.offset <= off) &
+                         (off < slot.offset + 3u);
+    slot.offset = select(slot.offset, invalid, overlap);
+  }
+}
+
+luisa::compute::Bool Stack::try_load_spectral_slot(
+    luisa::compute::Expr<std::uint32_t> offset,
+    luisa::compute::Float4 &out_spd) const noexcept {
+  using namespace luisa::compute;
+  if (!_spectral_slots.has_value() ||
+      (_direct_jit && !_spectral_slot_recorded)) {
+    return false;
+  }
+  const auto &slots = *_spectral_slots;
+  const UInt target{offset};
+  const Bool valid_target =
+      target != static_cast<std::uint32_t>(SVM_STACK_INVALID);
+  const Bool hit0 = valid_target & (slots[0u].offset == target);
+  const Bool hit1 = valid_target & !hit0 & (slots[1u].offset == target);
+  out_spd = select(out_spd, slots[1u].spd, hit1);
+  out_spd = select(out_spd, slots[0u].spd, hit0);
+  return hit0 | hit1;
 }
 
 bool Stack::at_root_scope() const noexcept {
@@ -232,6 +301,9 @@ Stack::load_dynamic(luisa::compute::Expr<std::uint32_t> offset) noexcept {
 void Stack::store_const(std::uint32_t offset,
                         luisa::compute::Expr<float> value) noexcept {
   using namespace luisa::compute;
+  if (_spectral_slots.has_value()) {
+    invalidate_spectral_slot(offset);
+  }
   if (!_direct_jit) {
     (*_array)[offset] = value;
     return;
@@ -288,6 +360,9 @@ void Stack::store_dynamic(luisa::compute::Expr<std::uint32_t> offset,
                           luisa::compute::Expr<float> value) noexcept {
   LUISA_ASSERT(!_direct_jit,
                "Dynamic SVM stack store is not supported in DirectJit mode.");
+  if (_spectral_slots.has_value()) {
+    invalidate_spectral_slot(offset);
+  }
   (*_array)[offset] = value;
 }
 

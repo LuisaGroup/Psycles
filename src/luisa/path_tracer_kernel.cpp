@@ -317,6 +317,10 @@ LuisaRenderSession::update_kernel_parameters(const RenderSettings &settings) {
             integrator.ambient_occlusion_bounces != 0u,
         .transparent_max_bounces = transparent_max_bounces,
         .wavefront_frame_capacity = wavefront_frame_capacity,
+        .spectral_rendering = integrator.spectral_rendering,
+        .caustics_method = integrator.caustics_method,
+        .sms_unbiased = integrator.sms_unbiased,
+        .sms_max_trials = integrator.sms_max_trials,
         .valid = true};
 }
 
@@ -339,6 +343,10 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     prepare_film_buffers(count, settings);
 
     const auto signature = update_kernel_parameters(settings);
+    if (signature.spectral_rendering && !_scene->spectral_tables) {
+        _scene->spectral_tables = cycles_spectrum::upload_spectral_tables(
+            _scene->device, _stream, _scene->shader_color_space);
+    }
     _background_sampling = build_background_sampling_distribution(
         _scene, _stream, _kernel_parameters);
     if (_scene->volume_majorant_plan) {
@@ -357,7 +365,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         make_light_distribution_sample_callable(_scene);
     auto light_tree_callables = make_light_tree_callables(
         _scene, _scene->volume_metadata.stack_size != 0u);
-    auto surface_callables = make_surface_callables(_scene);
+    auto surface_callables =
+        make_surface_callables(_scene, signature.spectral_rendering);
     auto shadow_trace_callables =
         make_shadow_trace_callables(_scene, light_transport.safe_normalize);
     std::shared_ptr<const PathVolumeStateComponent> volume_state;
@@ -399,7 +408,13 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .intersect_shadow = std::move(shadow_trace_callables.intersect),
         .shade_shadow_surface =
             std::move(shadow_trace_callables.shade_surface),
-        .trace_shadow = std::move(shadow_trace_callables.trace)};
+        .trace_shadow = std::move(shadow_trace_callables.trace),
+        .enable_virtual_texture_cache =
+            _options.virtual_texture_cache.enabled,
+        .spectral_rendering = signature.spectral_rendering,
+        .caustics_method = signature.caustics_method,
+        .sms_unbiased = signature.sms_unbiased,
+        .sms_max_trials = signature.sms_max_trials};
 
     PathKernelExecutorConfig executor_config{
         .scheduler = _options.scheduler,

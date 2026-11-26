@@ -6,7 +6,7 @@ namespace psycles::luisa_backend::detail {
 
 struct PreparedCyclesSvmSurfaceScatter {
   Float3 wo;
-  Float3 throughput_weight;
+  cycles_spectrum::Spectrum throughput_weight;
   Float3 diffuse_ratio;
   Float3 glossy_ratio;
   Float pdf;
@@ -19,8 +19,10 @@ struct PreparedCyclesSvmSurfaceScatter {
   SurfaceSample bssrdf_sample;
   Bool subsurface;
   Bool valid;
+  std::optional<Bool> spectral_terminated_secondary{};
 
-  [[nodiscard]] static PreparedCyclesSvmSurfaceScatter empty() noexcept;
+  [[nodiscard]] static PreparedCyclesSvmSurfaceScatter
+  empty(bool spectral = false) noexcept;
   [[nodiscard]] Bool needs_triangle_ray_origin() const noexcept;
   void accept(const PreparedCyclesSvmSurfaceScatter &other,
               bool include_bssrdf) noexcept;

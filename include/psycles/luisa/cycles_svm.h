@@ -13,6 +13,7 @@
 #include <psycles/compiler/cycles_svm_noise_usage.h>
 #include <psycles/compiler/cycles_svm_osl_binding.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
+#include <psycles/luisa/cycles_spectrum.h>
 
 #include <array>
 #include <cstddef>
@@ -477,6 +478,23 @@ public:
   // independently supplied closures must retain the native thin-film branch.
   [[nodiscard]] virtual bool may_have_thin_film() const noexcept {
     return true;
+  }
+
+  [[nodiscard]] virtual bool is_spectral() const noexcept { return false; }
+
+  [[nodiscard]] virtual const cycles_spectrum::SpectralTablesGpu *
+  spectral_tables() const noexcept {
+    return nullptr;
+  }
+
+  [[nodiscard]] virtual bool has_dispersive_materials() const noexcept {
+    return false;
+  }
+
+  [[nodiscard]] virtual luisa::compute::Float shader_dispersion_abbe(
+      luisa::compute::Expr<std::uint32_t> shader_id) const noexcept {
+    static_cast<void>(shader_id);
+    return 0.0f;
   }
 
   // Recording-time specialization mask over finalized SHADER_TYPE_SURFACE
@@ -956,12 +974,15 @@ public:
     bool may_have_positive_exponent{true};
     bool may_have_extra_fresnel{true};
     bool outline_transparent_merge{false};
+    bool spectral{false};
   };
 
 private:
   std::size_t _capacity;
   Options _options;
   luisa::compute::Local<luisa::uint4> _storage;
+  std::optional<luisa::compute::Local<luisa::float4>> _spectral_weight;
+  std::optional<luisa::compute::Local<luisa::uint>> _spectral_weight_valid;
   luisa::compute::UInt _count;
   luisa::compute::UInt _left;
 
@@ -1079,6 +1100,14 @@ public:
   void set_fresnel_f82_tint(luisa::compute::Expr<std::uint32_t> index,
                             const FresnelF82Tint &fresnel) noexcept;
   void set_left(luisa::compute::Expr<std::uint32_t> left) noexcept;
+  [[nodiscard]] bool is_spectral() const noexcept { return _options.spectral; }
+  void set_spectral_weight(
+      luisa::compute::Expr<std::uint32_t> index,
+      luisa::compute::Expr<luisa::float4> weight) noexcept;
+  [[nodiscard]] luisa::compute::Bool has_spectral_weight(
+      luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] luisa::compute::Float4 spectral_weight(
+      luisa::compute::Expr<std::uint32_t> index) const noexcept;
 
   [[nodiscard]] ShaderClosureCommon
   common(luisa::compute::Expr<std::uint32_t> index) const noexcept;
@@ -1163,6 +1192,8 @@ struct ShaderData {
   luisa::compute::Float3 closure_emission_background;
   luisa::compute::Float3 closure_transparent_extinction;
   ClosurePool *closure;
+  std::optional<cycles_spectrum::SpectralContext> spectral{};
+  std::optional<luisa::compute::Float4> spectral_emission_background{};
 
   ShaderData(luisa::compute::Expr<luisa::float3> position,
              luisa::compute::Expr<luisa::float3> normal,

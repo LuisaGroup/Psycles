@@ -48,6 +48,8 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_procedural_texture.cpp
     src/luisa/cycles_svm_ramp.cpp
     src/luisa/cycles_svm_spectral.cpp
+    src/luisa/cycles_spectrum.cpp
+    src/luisa/cycles_spectrum_tables.cpp
     src/luisa/cycles_svm_volume_attribute.cpp
     src/luisa/cycles_svm_stack.cpp
     src/luisa/cycles_svm_transform.cpp

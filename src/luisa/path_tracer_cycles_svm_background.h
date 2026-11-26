@@ -34,4 +34,14 @@ struct CyclesSvmBackgroundBakeRay {
     UInt *vt_miss_page = nullptr,
     bool force_direct_textures = false) noexcept;
 
+[[nodiscard]] Float4 evaluate_cycles_svm_background_emission_spectral(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const Var<RenderKernelParameters> &parameters,
+    Float3 origin, Float3 direction, Float differential, Float time,
+    const cycles_svm::PathState &state, UInt lcg_state,
+    CyclesSvmBackgroundEvaluation evaluation,
+    const cycles_spectrum::SpectralContext &spectral,
+    UInt *vt_miss_page = nullptr,
+    bool force_direct_textures = false) noexcept;
+
 } // namespace psycles::luisa_backend::detail

@@ -2,6 +2,7 @@
 
 #include "path_kernel_direct_light_task.h"
 
+#include <psycles/luisa/cycles_spectrum.h>
 #include <psycles/luisa/cycles_svm.h>
 
 namespace psycles::luisa_backend::detail {
@@ -30,6 +31,11 @@ public:
   evaluate(const Var<DirectLightTaskCall> &task,
            const Var<RenderKernelParameters> &parameters,
            UInt *vt_miss_page = nullptr) const noexcept = 0;
+  [[nodiscard]] virtual Float4 evaluate_spectral(
+      const Var<DirectLightTaskCall> &task,
+      const Var<RenderKernelParameters> &parameters,
+      const cycles_spectrum::SpectralContext &spectral,
+      UInt *vt_miss_page = nullptr) const noexcept = 0;
 };
 
 [[nodiscard]] std::shared_ptr<const DirectLightEmissionComponent>

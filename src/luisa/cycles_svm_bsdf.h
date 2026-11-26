@@ -28,6 +28,21 @@ struct BsdfSample {
   luisa::compute::UInt label;
 };
 
+struct BsdfSpectralEvaluation {
+  luisa::compute::Float4 value;
+  luisa::compute::Float pdf;
+};
+
+struct BsdfSpectralSample {
+  luisa::compute::Float4 value;
+  luisa::compute::Float3 wo;
+  luisa::compute::Float pdf;
+  luisa::compute::Float2 sampled_roughness;
+  luisa::compute::Float eta;
+  luisa::compute::UInt label;
+  luisa::compute::Bool terminated_secondary;
+};
+
 struct BsdfRoughnessEta {
   luisa::compute::Float2 roughness;
   luisa::compute::Float eta;
@@ -117,6 +132,20 @@ void bsdf_blur(ClosurePool &pool,
     luisa::compute::Expr<std::uint32_t> closure_index,
     luisa::compute::Expr<bool> reflection,
     luisa::compute::Expr<bool> transmission,
+    ClosureTypeMask closure_types = all_closure_types) noexcept;
+
+[[nodiscard]] BsdfSpectralSample bsdf_sample_spectral(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    luisa::compute::Expr<std::uint32_t> closure_index,
+    luisa::compute::Expr<luisa::float3> random,
+    const cycles_spectrum::SpectralContext &spectral,
+    ClosureTypeMask closure_types = all_closure_types) noexcept;
+
+[[nodiscard]] BsdfSpectralEvaluation bsdf_eval_spectral(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    luisa::compute::Expr<std::uint32_t> closure_index,
+    luisa::compute::Expr<luisa::float3> wo,
+    const cycles_spectrum::SpectralContext &spectral,
     ClosureTypeMask closure_types = all_closure_types) noexcept;
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

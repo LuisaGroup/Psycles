@@ -1912,6 +1912,12 @@ if(PSYCLES_ENABLE_LUISA)
                 PROPERTIES
                     RUNTIME_OUTPUT_DIRECTORY
                         "${CMAKE_BINARY_DIR}/bin")
+            if(MSVC)
+                target_link_options(
+                    psycles_render_blender_scene
+                    PRIVATE
+                        /STACK:8388608)
+            endif()
             foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
                 if(TARGET luisa-compute-backend-${_backend})
                     add_dependencies(

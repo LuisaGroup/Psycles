@@ -6,6 +6,7 @@
 #include <psycles/compiler/cycles_svm_object_scene.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sampler.h>
+#include <psycles/luisa/cycles_spectrum.h>
 #include <psycles/luisa/volume_majorant_hierarchy.h>
 
 #include "path_kernel_executor.h"
@@ -344,6 +345,9 @@ struct CyclesSvmRuntime {
     std::optional<Buffer<CyclesSvmImageBindingGpu>>
         image_binding_buffer;
     std::optional<Buffer<CyclesSvmParticleGpu>> particle_buffer;
+    bool has_dispersive_materials{false};
+    std::vector<float> dispersion_abbe_values;
+    std::optional<Buffer<float>> dispersion_abbe_buffer;
     // Null is the only pre-finalization state. The complete typed image is
     // installed atomically after displacement has fixed the final geometry.
     std::unique_ptr<CyclesSvmGeometryRuntime> geometry;
@@ -384,6 +388,13 @@ struct LuisaSceneData {
         contract::all_ray_visibility};
     std::uint32_t world_max_bounces{1024u};
     Buffer<float> cycles_bsdf_table_buffer;
+    std::shared_ptr<cycles_spectrum::SpectralTablesGpu> spectral_tables;
+    bool has_dispersive_materials{false};
+    bool has_caustics_casters{false};
+    bool has_caustics_receivers{false};
+    [[nodiscard]] bool scene_has_caustics() const noexcept {
+        return has_caustics_casters && has_caustics_receivers;
+    }
     std::vector<GeometryResource> geometries;
     std::vector<CurveGeometryResource> curve_geometries;
     std::vector<Image<float>> images;
@@ -604,6 +615,10 @@ struct SessionKernelSignature {
     bool ambient_occlusion_bounce_approximation{false};
     std::uint32_t transparent_max_bounces{8u};
     std::uint32_t wavefront_frame_capacity{1u};
+    bool spectral_rendering{false};
+    contract::CausticsMethod caustics_method{contract::CausticsMethod::mnee};
+    bool sms_unbiased{true};
+    std::uint32_t sms_max_trials{8u};
     bool valid{false};
 
     [[nodiscard]] bool operator==(
