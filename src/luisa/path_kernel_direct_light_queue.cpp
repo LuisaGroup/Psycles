@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -41,7 +42,7 @@ private:
   std::shared_ptr<const ShadowIntersectionBatchStorage> _shadow_storage;
   luisa::compute::Buffer<luisa::uint> _tokens;
   luisa::compute::Buffer<luisa::uint> _indices;
-  luisa::compute::Buffer<luisa::uint> _chained_indices;
+  std::array<luisa::compute::Buffer<luisa::uint>, 2u> _chained_indices;
   luisa::compute::Buffer<luisa::uint> _scratch_count;
   luisa::compute::Buffer<luisa::uint> _relocation_counts;
   // Counts 0..2 are live stages; count 3 is the append allocation extent;
@@ -61,7 +62,8 @@ private:
   std::uint32_t _execution_block_size{};
   std::uint32_t _warp_size{};
   std::uint32_t _scratch_slot{0u};
-  std::uint32_t _chained_slot{0u};
+  std::uint32_t _chain_count_slot{0u};
+  std::uint32_t _chain_buf_slot{0u};
   bool _fuse_unoccluded_shadow{false};
   bool _may_have_shade_shadow{true};
   bool _may_continue_shadow{true};
@@ -93,6 +95,11 @@ private:
   }
   [[nodiscard]] std::uint32_t total_slot_stride() const noexcept {
     return stride_after_16() + 16u;
+  }
+
+  [[nodiscard]] static constexpr std::uint32_t
+  pack_chain_mode(std::uint32_t in_kind, std::uint32_t out_kind) noexcept {
+    return in_kind | (out_kind << 8u);
   }
 
   template <typename T>
@@ -132,10 +139,14 @@ public:
                                   device, may_have_shade_shadow ? capacity : 1u)},
         _tokens{device.create_buffer<luisa::uint>(capacity)},
         _indices{device.create_buffer<luisa::uint>(capacity)},
-        _chained_indices{fuse_unoccluded_shadow
-                             ? device.create_buffer<luisa::uint>(capacity)
-                             : luisa::compute::Buffer<luisa::uint>{}},
-        _scratch_count{device.create_buffer<luisa::uint>(4u)},
+        _chained_indices{
+            fuse_unoccluded_shadow
+                ? device.create_buffer<luisa::uint>(capacity)
+                : luisa::compute::Buffer<luisa::uint>{},
+            (fuse_unoccluded_shadow && may_have_shade_shadow)
+                ? device.create_buffer<luisa::uint>(capacity)
+                : luisa::compute::Buffer<luisa::uint>{}},
+        _scratch_count{device.create_buffer<luisa::uint>(5u)},
         _relocation_counts{device.create_buffer<luisa::uint>(2u)},
         _count{device.create_buffer<luisa::uint>(5u)},
         _producers{},
@@ -163,10 +174,8 @@ public:
     luisa::compute::Kernel1D<luisa::uint> initialize = [this](UInt capacity) {
       const auto x = dispatch_x();
       $if(x < capacity) { _tokens->write(x, 0u); };
-      $if(x < 4u) {
-        _scratch_count->write(x, 0u);
-      };
       $if(x < 5u) {
+        _scratch_count->write(x, 0u);
         _count->write(x, 0u);
       };
       $if(x < 2u) {
@@ -374,8 +383,17 @@ public:
     std::array<std::optional<DirectLightConsumerKernel>, 3u> consumer_kernels;
     std::array<luisa::compute::ShaderOption, 3u> consumer_options;
     for (auto stage = 0u; stage < active_stages; ++stage) {
+      const bool stage_may_have_shade_shadow = _may_have_shade_shadow;
+      const bool stage_may_continue_shadow = _may_continue_shadow;
+      const bool can_chain_out =
+          fuse_unoccluded_shadow &&
+          ((stage == 0u) ||
+           (stage == 1u && stage_may_have_shade_shadow) ||
+           (stage == 2u && stage_may_continue_shadow && !vt_enabled));
       consumer_kernels[stage].emplace([this, evaluator, execution_block_size,
                                        stage, fuse_unoccluded_shadow,
+                                       may_have_shade_shadow = stage_may_have_shade_shadow,
+                                       can_chain_out,
                                        vt_enabled](
                                           BufferFloat4 combined,
                                           BufferFloat4 light_passes,
@@ -388,27 +406,51 @@ public:
           luisa::compute::set_warp_size(32u);
         }
         const auto x = dispatch_x();
+        const auto in_kind = chain_mode & 0xffu;
+        const auto out_kind = chain_mode >> 8u;
         UInt active_count = count;
-        if (stage == 1u && fuse_unoccluded_shadow) {
-          $if((chain_mode == 1u) | (chain_mode == 2u)) {
-            active_count = _scratch_count->read(chain_mode + 1u);
+        if (stage != 0u && fuse_unoccluded_shadow) {
+          if (may_have_shade_shadow) {
+            $if((in_kind >= 1u) & (in_kind <= 3u)) {
+              active_count = _scratch_count->read(in_kind + 1u);
+            }
+            $elif((in_kind >= 4u) & (in_kind <= 6u)) {
+              active_count = _scratch_count->read(in_kind - 2u);
+            }
+            $elif(in_kind >= 7u) {
+              active_count = _scratch_count->read(in_kind - 7u);
+            };
+          } else {
+            $if((in_kind >= 1u) & (in_kind <= 3u)) {
+              active_count = _scratch_count->read(in_kind + 1u);
+            }
+            $elif(in_kind >= 7u) {
+              active_count = _scratch_count->read(in_kind - 7u);
+            };
           }
-          $elif(chain_mode >= 3u) {
-            active_count = _scratch_count->read(chain_mode - 3u);
-          };
         }
         UInt slot = 0u;
         UInt next = 0u;
         $if(x < active_count) {
-          if (stage == 1u && fuse_unoccluded_shadow) {
-            $if((chain_mode == 1u) | (chain_mode == 2u)) {
-              slot = _chained_indices->read(x);
+          if (stage == 0u || !fuse_unoccluded_shadow) {
+            slot = _indices->read(x);
+          } else if (may_have_shade_shadow) {
+            $if((in_kind >= 1u) & (in_kind <= 3u)) {
+              slot = _chained_indices[0u]->read(x);
+            }
+            $elif((in_kind >= 4u) & (in_kind <= 6u)) {
+              slot = _chained_indices[1u]->read(x);
             }
             $else {
               slot = _indices->read(x);
             };
           } else {
-            slot = _indices->read(x);
+            $if((in_kind >= 1u) & (in_kind <= 3u)) {
+              slot = _chained_indices[0u]->read(x);
+            }
+            $else {
+              slot = _indices->read(x);
+            };
           }
           const auto cap = parameters.wavefront_frame_capacity;
           const auto buf = Expr<luisa::compute::ByteBuffer>{_task_buffer};
@@ -761,91 +803,97 @@ public:
               };
             };
           }
-          if (!(stage == 0u && fuse_unoccluded_shadow)) {
-            _tokens->write(slot, next);
-            if (stage == 1u && fuse_unoccluded_shadow) {
-              $if((x == 0u) & (chain_mode == 0u)) {
-                _count->atomic(stage).fetch_sub(active_count);
-              };
-            } else {
-              $if(x == 0u) { _count->atomic(stage).fetch_sub(active_count); };
-            }
-            if (!(stage == 2u && !_may_continue_shadow && !vt_enabled)) {
-              if (_warp_size == 32u) {
-                $if(luisa::compute::warp_active_all_equal(next)) {
-                  const auto total = luisa::compute::warp_active_count_bits(true);
-                  $if((next != 0u) &
-                      (luisa::compute::warp_prefix_count_bits(true) == 0u)) {
-                    _count->atomic(next - 1u).fetch_add(total);
-                  };
-                }
-                $else {
-                  $if(next != 0u) { _count->atomic(next - 1u).fetch_add(1u); };
-                };
-              } else {
-                $if(next != 0u) { _count->atomic(next - 1u).fetch_add(1u); };
-              }
-            }
-          }
         };
-        if (stage == 0u && fuse_unoccluded_shadow) {
-          $if(chain_mode != 0u) {
-            const auto out_count_slot = chain_mode + 1u;
+        if (can_chain_out) {
+          const auto target_next =
+              static_cast<luisa::uint>(stage == 1u ? 3u : 2u);
+          $if(out_kind != 0u) {
+            UInt out_count_slot = out_kind + 1u;
+            if (stage != 0u && may_have_shade_shadow) {
+              out_count_slot =
+                  select(out_kind - 2u, out_kind + 1u, out_kind <= 3u);
+            }
+            const auto clear_count_slot =
+                2u + (((out_count_slot - 2u) + 1u) % 3u);
             $if(x == 0u) {
-              _count->atomic(0u).fetch_sub(active_count);
-              _scratch_count->write(out_count_slot ^ 1u, 0u);
+              if (stage == 0u) {
+                _count->atomic(0u).fetch_sub(active_count);
+              } else {
+                $if(in_kind == 0u) {
+                  _count->atomic(stage).fetch_sub(active_count);
+                };
+              }
+              _scratch_count->write(clear_count_slot, 0u);
             };
-            const auto survived = (x < active_count) & (next == 2u);
+            const auto survived = (x < active_count) & (next == target_next);
             $if((x < active_count) & (next == 0u)) {
               _tokens->write(slot, 0u);
             };
-            if (vt_enabled) {
-              const auto vt_retry = (x < active_count) & (next == 1u);
+            if (vt_enabled && stage != 1u) {
+              const auto retry_tok = static_cast<luisa::uint>(stage + 1u);
+              const auto vt_retry = (x < active_count) & (next == retry_tok);
               $if(vt_retry) {
-                _tokens->write(slot, 1u);
+                _tokens->write(slot, retry_tok);
               };
               if (_warp_size == 32u) {
                 const auto miss_lanes =
                     luisa::compute::warp_active_count_bits(vt_retry);
                 $if(vt_retry &
                     (luisa::compute::warp_prefix_count_bits(vt_retry) == 0u)) {
-                  _count->atomic(0u).fetch_add(miss_lanes);
+                  _count->atomic(stage).fetch_add(miss_lanes);
                 };
               } else {
                 $if(vt_retry) {
-                  _count->atomic(0u).fetch_add(1u);
+                  _count->atomic(stage).fetch_add(1u);
                 };
               }
             }
-            if (_warp_size == 32u) {
-              const auto lane_prefix =
-                  luisa::compute::warp_prefix_count_bits(survived);
-              const auto warp_total =
-                  luisa::compute::warp_active_count_bits(survived);
-              UInt warp_base = 0u;
-              $if(((luisa::compute::thread_x() & 31u) == 0u) &
-                  (warp_total != 0u)) {
-                warp_base = _scratch_count->atomic(out_count_slot)
-                                .fetch_add(warp_total);
-              };
-              warp_base = luisa::compute::warp_read_lane(warp_base, 0u);
-              $if(survived) {
-                _chained_indices->write(warp_base + lane_prefix, slot);
-              };
+            const auto append_chained =
+                [&](const luisa::compute::Buffer<luisa::uint> &dst_indices) noexcept {
+                  if (_warp_size == 32u) {
+                    $if(survived) {
+                      const auto lane_prefix =
+                          luisa::compute::warp_prefix_count_bits(true);
+                      const auto warp_total =
+                          luisa::compute::warp_active_count_bits(true);
+                      UInt warp_base = 0u;
+                      $if(lane_prefix == 0u) {
+                        warp_base = _scratch_count->atomic(out_count_slot)
+                                        .fetch_add(warp_total);
+                      };
+                      warp_base =
+                          luisa::compute::warp_read_first_active_lane(warp_base);
+                      dst_indices->write(warp_base + lane_prefix, slot);
+                    };
+                  } else {
+                    $if(survived) {
+                      const auto out_idx =
+                          _scratch_count->atomic(out_count_slot).fetch_add(1u);
+                      dst_indices->write(out_idx, slot);
+                    };
+                  }
+                };
+            if (stage == 0u || !may_have_shade_shadow) {
+              append_chained(_chained_indices[0u]);
             } else {
-              $if(survived) {
-                const auto out_idx =
-                    _scratch_count->atomic(out_count_slot).fetch_add(1u);
-                _chained_indices->write(out_idx, slot);
+              $if(out_kind <= 3u) {
+                append_chained(_chained_indices[0u]);
+              }
+              $else {
+                append_chained(_chained_indices[1u]);
               };
             }
           }
           $else {
             $if(x < active_count) {
               _tokens->write(slot, next);
-              $if(x == 0u) {
-                _count->atomic(0u).fetch_sub(active_count);
-              };
+              if (stage == 0u) {
+                $if(x == 0u) { _count->atomic(0u).fetch_sub(active_count); };
+              } else {
+                $if((x == 0u) & (in_kind == 0u)) {
+                  _count->atomic(stage).fetch_sub(active_count);
+                };
+              }
               if (_warp_size == 32u) {
                 $if(luisa::compute::warp_active_all_equal(next)) {
                   const auto total =
@@ -866,6 +914,34 @@ public:
                 };
               }
             };
+          };
+        } else {
+          $if(x < active_count) {
+            _tokens->write(slot, next);
+            $if((x == 0u) & (in_kind == 0u)) {
+              _count->atomic(stage).fetch_sub(active_count);
+            };
+            if (!(stage == 2u && !_may_continue_shadow && !vt_enabled)) {
+              if (_warp_size == 32u) {
+                $if(luisa::compute::warp_active_all_equal(next)) {
+                  const auto total =
+                      luisa::compute::warp_active_count_bits(true);
+                  $if((next != 0u) &
+                      (luisa::compute::warp_prefix_count_bits(true) == 0u)) {
+                    _count->atomic(next - 1u).fetch_add(total);
+                  };
+                }
+                $else {
+                  $if(next != 0u) {
+                    _count->atomic(next - 1u).fetch_add(1u);
+                  };
+                };
+              } else {
+                $if(next != 0u) {
+                  _count->atomic(next - 1u).fetch_add(1u);
+                };
+              }
+            }
           };
         }
       });
@@ -1068,14 +1144,16 @@ public:
   void reset(Stream &stream) noexcept override {
     _host_counts = {};
     _scratch_slot = 0u;
-    _chained_slot = 0u;
+    _chain_count_slot = 0u;
+    _chain_buf_slot = 0u;
     stream << _initialize(_capacity).dispatch(std::max(_capacity, 5u));
   }
 
   void encode_reset(Stream &, luisa::compute::CommandList &commands) noexcept override {
     _host_counts = {};
     _scratch_slot = 0u;
-    _chained_slot = 0u;
+    _chain_count_slot = 0u;
+    _chain_buf_slot = 0u;
     commands << _initialize(_capacity).dispatch(std::max(_capacity, 5u));
   }
 
@@ -1228,21 +1306,45 @@ public:
         _warp_size == 32u
             ? ((std::max(_host_counts[3], 1u) + 255u) / 256u) * 256u
             : std::max(_host_counts[3], 1u);
+    const auto alloc_chain_slot = [&](bool use_buf1) noexcept {
+      const auto slot = _chain_count_slot;
+      _chain_count_slot = (_chain_count_slot + 1u) % 3u;
+      return (use_buf1 ? 4u : 1u) + slot;
+    };
     if (stage == 0u && _fuse_unoccluded_shadow) {
       const auto prior_stage1 = _host_counts[1u];
       const auto scratch_slot = _scratch_slot;
       _scratch_slot ^= 1u;
       if (prior_stage1 == 0u) {
-        const auto chain_mode = 1u + _chained_slot;
-        _chained_slot ^= 1u;
-        commands << _gather(1u, _host_counts[3], scratch_slot, 0u)
-                        .dispatch(gather_threads)
-                 << _consumers[0u](combined, light_passes, volume_guiding_raw,
-                                   consumer_parameters, count, chain_mode)
-                        .dispatch(count)
-                 << _consumers[1u](combined, light_passes, volume_guiding_raw,
-                                   consumer_parameters, count, chain_mode)
-                        .dispatch(count);
+        const auto chain01 = alloc_chain_slot(false);
+        if (_may_have_shade_shadow && _host_counts[2u] == 0u) {
+          const auto chain12 = alloc_chain_slot(true);
+          commands << _gather(1u, _host_counts[3], scratch_slot, 0u)
+                          .dispatch(gather_threads)
+                   << _consumers[0u](combined, light_passes, volume_guiding_raw,
+                                     consumer_parameters, count,
+                                     pack_chain_mode(0u, chain01))
+                          .dispatch(count)
+                   << _consumers[1u](combined, light_passes, volume_guiding_raw,
+                                     consumer_parameters, count,
+                                     pack_chain_mode(chain01, chain12))
+                          .dispatch(count)
+                   << _consumers[2u](combined, light_passes, volume_guiding_raw,
+                                     consumer_parameters, count,
+                                     pack_chain_mode(chain12, 0u))
+                          .dispatch(count);
+        } else {
+          commands << _gather(1u, _host_counts[3], scratch_slot, 0u)
+                          .dispatch(gather_threads)
+                   << _consumers[0u](combined, light_passes, volume_guiding_raw,
+                                     consumer_parameters, count,
+                                     pack_chain_mode(0u, chain01))
+                          .dispatch(count)
+                   << _consumers[1u](combined, light_passes, volume_guiding_raw,
+                                     consumer_parameters, count,
+                                     pack_chain_mode(chain01, 0u))
+                          .dispatch(count);
+        }
       } else {
         const auto stage1_scratch = _scratch_slot;
         _scratch_slot ^= 1u;
@@ -1250,14 +1352,59 @@ public:
         commands << _gather(1u, _host_counts[3], scratch_slot, 0u)
                         .dispatch(gather_threads)
                  << _consumers[0u](combined, light_passes, volume_guiding_raw,
-                                   consumer_parameters, count, 0u)
+                                   consumer_parameters, count,
+                                   pack_chain_mode(0u, 0u))
                         .dispatch(count)
                  << _gather(2u, _host_counts[3], stage1_scratch, 1u)
                         .dispatch(gather_threads)
                  << _consumers[1u](combined, light_passes, volume_guiding_raw,
                                    consumer_parameters, upper_bound,
-                                   3u + stage1_scratch)
+                                   pack_chain_mode(7u + stage1_scratch, 0u))
                         .dispatch(upper_bound);
+      }
+      return;
+    }
+    if (stage == 1u && _fuse_unoccluded_shadow && _may_have_shade_shadow &&
+        _host_counts[2u] == 0u) {
+      std::uint32_t rounds = 1u;
+      if (_may_continue_shadow && _vt_cache == nullptr) {
+        rounds = 2u;
+        if (const auto *raw = std::getenv("PSYCLES_SHADOW_CHAIN_MAX_ROUNDS");
+            raw != nullptr && raw[0] != '\0') {
+          char *end = nullptr;
+          const auto parsed = std::strtoul(raw, &end, 10);
+          if (end != raw && *end == '\0' && parsed >= 1ul && parsed <= 16ul) {
+            rounds = static_cast<std::uint32_t>(parsed);
+          }
+        }
+      }
+      const auto scratch_slot = _scratch_slot;
+      _scratch_slot ^= 1u;
+      commands << _gather(2u, _host_counts[3], scratch_slot, 0u)
+                      .dispatch(gather_threads);
+      std::uint32_t cur_in = 0u;
+      bool use_buf1 = false;
+      for (std::uint32_t r = 0u; r < rounds; ++r) {
+        const auto chain12 = alloc_chain_slot(use_buf1);
+        use_buf1 = !use_buf1;
+        commands << _consumers[1u](combined, light_passes, volume_guiding_raw,
+                                   consumer_parameters, count,
+                                   pack_chain_mode(cur_in, chain12))
+                        .dispatch(count);
+        if (r + 1u < rounds) {
+          const auto chain21 = alloc_chain_slot(use_buf1);
+          use_buf1 = !use_buf1;
+          commands << _consumers[2u](combined, light_passes, volume_guiding_raw,
+                                     consumer_parameters, count,
+                                     pack_chain_mode(chain12, chain21))
+                          .dispatch(count);
+          cur_in = chain21;
+        } else {
+          commands << _consumers[2u](combined, light_passes, volume_guiding_raw,
+                                     consumer_parameters, count,
+                                     pack_chain_mode(chain12, 0u))
+                          .dispatch(count);
+        }
       }
       return;
     }
@@ -1266,7 +1413,8 @@ public:
     commands << _gather(stage + 1u, _host_counts[3], scratch_slot, 0u)
                     .dispatch(gather_threads)
              << _consumers[stage](combined, light_passes, volume_guiding_raw,
-                                  consumer_parameters, count, 0u)
+                                  consumer_parameters, count,
+                                  pack_chain_mode(0u, 0u))
                     .dispatch(count);
   }
 
