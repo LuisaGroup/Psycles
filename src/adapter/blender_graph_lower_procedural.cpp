@@ -376,6 +376,57 @@ public:
             }
             return finish(*output);
         }
+        if (type == "RADIAL_TILING" || type == "ShaderNodeRadialTiling") {
+            static constexpr auto outputs = std::array{
+                std::pair{std::string_view{"Segment Coordinates"},
+                          SocketType::vector},
+                std::pair{std::string_view{"Segment ID"},
+                          SocketType::floating},
+                std::pair{std::string_view{"Segment Width"},
+                          SocketType::floating},
+                std::pair{std::string_view{"Segment Rotation"},
+                          SocketType::floating}};
+            const auto selected = std::ranges::find_if(
+                outputs, [&](const auto &entry) noexcept {
+                    return entry.first == socket;
+                });
+            if (selected == outputs.end()) {
+                return std::nullopt;
+            }
+            const auto semantic =
+                std::string{"radial_tiling."} + std::string{selected->first};
+            if (auto output = context.shared_output(node_name, semantic)) {
+                return finish(*output);
+            }
+
+            const auto id = context.graph().add_node(
+                compiler::node_type::radial_tiling,
+                node_name);
+            for (const auto &[name, input_type] : {
+                     std::pair{"Vector", SocketType::vector},
+                     std::pair{"Sides", SocketType::floating},
+                     std::pair{"Roundness", SocketType::floating}}) {
+                static_cast<void>(context.bind(
+                    id, name, node, name, input_type));
+            }
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Normalize",
+                SocketValue::boolean(context.node_property_bool(
+                    node, "normalize"))));
+            for (const auto &[name, output_type] : outputs) {
+                context.remember_shared_output(
+                    node_name,
+                    std::string{"radial_tiling."} + std::string{name},
+                    TypedOutput{.ref = {.node = id, .socket = std::string{name}},
+                                .type = output_type});
+            }
+            const auto output = context.shared_output(node_name, semantic);
+            if (!output) {
+                std::abort();
+            }
+            return finish(*output);
+        }
         if (type == "TEX_VORONOI") {
             static constexpr auto outputs = std::array{
                 std::pair{std::string_view{"Distance"},

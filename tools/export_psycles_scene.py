@@ -34,6 +34,7 @@ import blender_build_identity  # noqa: E402
 from blender_image_export import export_images as _export_images  # noqa: E402
 from blender_mesh_attributes import (  # noqa: E402
     collect_required_geometry_attributes as _collect_required_geometry_attributes,
+    collect_required_uv_map_names as _collect_required_uv_map_names,
     extract_generic_mesh_attributes as _extract_generic_mesh_attributes,
     resolved_material_slots as _resolved_material_slots,
 )
@@ -413,6 +414,7 @@ def _geometry(
     stream: Any,
     rec709_to_rgb: tuple[tuple[float, float, float], ...],
     required_geometry_attributes: set[str],
+    required_uv_map_names: set[str],
 ) -> dict[str, Any] | None:
     try:
         mesh = evaluated_obj.to_mesh(
@@ -475,8 +477,34 @@ def _geometry(
             if uv_layer is None:
                 continue
             raw_uv = np.empty(l_count * 2, dtype=np.float32)
-            uv_layer.data.foreach_get("uv", raw_uv)
+            if l_count > 0:
+                uv_layer.data.foreach_get("uv", raw_uv)
             uv_layer_values[uv_layer_name] = raw_uv.reshape(l_count, 2)[tri_loops]
+
+        promoted_uv_attrs: set[tuple[str, str]] = set()
+        if required_uv_map_names and getattr(mesh, "attributes", None) is not None:
+            for attr in mesh.attributes:
+                name = str(attr.name)
+                if (
+                    name.startswith(".")
+                    or name not in required_uv_map_names
+                    or name in uv_layer_values
+                    or str(attr.data_type) != "FLOAT2"
+                ):
+                    continue
+                domain = str(attr.domain)
+                if domain == "CORNER" and len(attr.data) >= l_count:
+                    raw = np.empty(l_count * 2, dtype=np.float32)
+                    if l_count > 0:
+                        attr.data.foreach_get("vector", raw)
+                    uv_layer_values[name] = raw.reshape(l_count, 2)[tri_loops]
+                    promoted_uv_attrs.add((name, "CORNER"))
+                elif domain == "POINT" and len(attr.data) >= v_count:
+                    raw = np.empty(v_count * 2, dtype=np.float32)
+                    if v_count > 0:
+                        attr.data.foreach_get("vector", raw)
+                    uv_layer_values[name] = raw.reshape(v_count, 2)[indices]
+                    promoted_uv_attrs.add((name, "POINT"))
 
         if default_uv_name is not None and default_uv_name in uv_layer_values:
             uvs = uv_layer_values[default_uv_name]
@@ -587,9 +615,11 @@ def _geometry(
                 ).astype(np.uint8)
             color_values[attribute.name] = c_rgba
 
-        excluded_generic = {
-            (name, "CORNER") for name in uv_layer_values
-        } | {(attribute.name, attribute.domain) for attribute in color_layers}
+        excluded_generic = (
+            {(name, "CORNER") for name in uv_layer_values}
+            | promoted_uv_attrs
+            | {(attribute.name, attribute.domain) for attribute in color_layers}
+        )
         generic_attributes = _extract_generic_mesh_attributes(
             mesh,
             required_geometry_attributes,
@@ -1420,6 +1450,9 @@ def _export_scene(
     required_geometry_attributes = _collect_required_geometry_attributes(
         bpy.data.materials
     )
+    required_uv_map_names = _collect_required_uv_map_names(
+        bpy.data.materials
+    )
     with (output / "geometry.bin").open("wb") as stream:
         stream.write(b"PSYGEO2\0")
         stream.write(struct.pack("<II", 2, 0))
@@ -1569,6 +1602,7 @@ def _export_scene(
                         stream,
                         rec709_to_rgb,
                         required_geometry_attributes,
+                        required_uv_map_names,
                     )
                     if geometry_data is not None:
                         geometry_data["cycles_sync"] = {

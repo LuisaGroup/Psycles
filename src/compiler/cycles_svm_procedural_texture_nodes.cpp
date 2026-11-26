@@ -360,6 +360,34 @@ public:
   }
 };
 
+class RadialTilingNode final : public GraphNode {
+public:
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_RADIAL_TILING;
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto normalize = boolean_property(this, "Normalize");
+    if (!normalize) {
+      compiler.fail("Cycles Radial Tiling Normalize property is invalid");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_RADIAL_TILING,
+        SVMNodeRadialTiling{
+            .vector = compiler.input_float3("Vector"),
+            .r_gon_sides = compiler.input_float("Sides"),
+            .r_gon_roundness = compiler.input_float("Roundness"),
+            .normalize_r_gon_parameter = static_cast<std::uint8_t>(*normalize),
+            .segment_coordinates_offset = compiler.output("Segment Coordinates"),
+            .segment_id_offset = compiler.output("Segment ID"),
+            .max_unit_parameter_offset = compiler.output("Segment Width"),
+            .x_axis_A_angle_bisector_offset =
+                compiler.output("Segment Rotation"),
+            ._pad = {0u, 0u, 0u}});
+  }
+};
+
 class VoronoiTextureNode final : public TextureNode {
 private:
   [[nodiscard]] std::optional<NodeVoronoiFeature>
@@ -447,6 +475,9 @@ make_procedural_texture_graph_node(std::string_view type) {
   }
   if (type == node_type::gabor_texture) {
     return std::make_unique<GaborTextureNode>();
+  }
+  if (type == node_type::radial_tiling) {
+    return std::make_unique<RadialTilingNode>();
   }
   if (type == node_type::voronoi_texture) {
     return std::make_unique<VoronoiTextureNode>();

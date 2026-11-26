@@ -368,6 +368,9 @@ void emit_jit_instruction(const SvmTranslationRequest &req,
     case NODE_TEX_GABOR:
       detail::node_tex_gabor(cursor, stack);
       return;
+    case NODE_RADIAL_TILING:
+      detail::node_radial_tiling(cursor, stack);
+      return;
     case NODE_TEX_WAVE:
       detail::node_tex_wave(cursor, stack, kg.wave_static_options());
       return;
@@ -708,6 +711,7 @@ std::size_t svm_block_jit_weight(const SvmBlockIr &block) noexcept {
     switch (op.instruction.opcode) {
       case NODE_TEX_VORONOI: w += 36u; break;
       case NODE_TEX_GABOR: w += 32u; break;
+      case NODE_RADIAL_TILING: w += 16u; break;
       case NODE_PRINCIPLED_VOLUME: w += 20u; break;
       case NODE_AMBIENT_OCCLUSION: w += 20u; break;
       case NODE_TEX_SKY: w += 16u; break;

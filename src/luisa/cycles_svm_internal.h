@@ -389,6 +389,7 @@ void node_tex_voronoi(Cursor &cursor, Stack &stack,
                       bool voronoi_extra_enabled,
                       VoronoiStaticOptions options = {}) noexcept;
 void node_tex_gabor(Cursor &cursor, Stack &stack) noexcept;
+void node_radial_tiling(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_wave(Cursor &cursor, Stack &stack,
                    WaveStaticOptions options = {}) noexcept;
 void node_tex_magic(Cursor &cursor, Stack &stack) noexcept;

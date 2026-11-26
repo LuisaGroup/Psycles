@@ -509,6 +509,22 @@ NodeRegistry make_core_node_registry() {
       .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::radial_tiling,
+      .inputs = {input("Vector", SocketType::vector,
+                       SocketValue::vector({0.0f, 0.0f, 0.0f})),
+                 input("Sides", SocketType::floating,
+                       SocketValue::floating(5.0f)),
+                 input("Roundness", SocketType::floating,
+                       SocketValue::floating(0.0f))},
+      .outputs = {output("Segment Coordinates", SocketType::vector),
+                  output("Segment ID", SocketType::floating),
+                  output("Segment Width", SocketType::floating),
+                  output("Segment Rotation", SocketType::floating)},
+      .properties = {property("Normalize", SocketType::boolean,
+                              SocketValue::boolean(false))},
+      .required_features = {}}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::voronoi_texture,
       .inputs =
           {input("Vector", SocketType::vector,

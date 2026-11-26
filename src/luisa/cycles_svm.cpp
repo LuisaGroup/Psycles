@@ -433,6 +433,13 @@ void eval_nodes_impl(
               detail::node_tex_gabor(cursor, stack));
         };
       }
+      if (node_types_used[NODE_RADIAL_TILING]) {
+        PSYCLES_SVM_CASE(NODE_RADIAL_TILING) {
+          PSYCLES_SVM_OUTLINE_NODE(
+              "svm_node_radial_tiling",
+              detail::node_radial_tiling(cursor, stack));
+        };
+      }
       if (node_types_used[NODE_TEX_WAVE]) {
         PSYCLES_SVM_CASE(NODE_TEX_WAVE) {
           PSYCLES_SVM_OUTLINE_NODE(

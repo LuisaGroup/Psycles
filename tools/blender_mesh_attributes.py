@@ -11,7 +11,8 @@ import numpy as np
 
 def _walk_node_tree_attributes(
     node_tree: Any,
-    required: set[str],
+    required_attrs: set[str],
+    required_uv_maps: set[str],
     visited: set[int],
 ) -> None:
     if node_tree is None:
@@ -26,21 +27,43 @@ def _walk_node_tree_attributes(
                 getattr(node, "attribute_type", "GEOMETRY") == "GEOMETRY"
                 and getattr(node, "attribute_name", "")
             ):
-                required.add(str(node.attribute_name))
+                required_attrs.add(str(node.attribute_name))
+        elif node.type in {"UVMAP", "NORMAL_MAP"}:
+            uv_map = getattr(node, "uv_map", "")
+            if uv_map:
+                required_uv_maps.add(str(uv_map))
         else:
             nested = getattr(node, "node_tree", None)
             if nested is not None:
-                _walk_node_tree_attributes(nested, required, visited)
+                _walk_node_tree_attributes(
+                    nested, required_attrs, required_uv_maps, visited
+                )
 
 
 def collect_required_geometry_attributes(materials: Iterable[Any]) -> set[str]:
     """Return every GEOMETRY-type Attribute name referenced by scene shaders."""
-    required: set[str] = set()
+    required_attrs: set[str] = set()
+    required_uv_maps: set[str] = set()
     visited: set[int] = set()
     for material in materials:
         if getattr(material, "use_nodes", False) and material.node_tree is not None:
-            _walk_node_tree_attributes(material.node_tree, required, visited)
-    return required
+            _walk_node_tree_attributes(
+                material.node_tree, required_attrs, required_uv_maps, visited
+            )
+    return required_attrs
+
+
+def collect_required_uv_map_names(materials: Iterable[Any]) -> set[str]:
+    """Return every UV map name referenced by UVMAP or NORMAL_MAP shader nodes."""
+    required_attrs: set[str] = set()
+    required_uv_maps: set[str] = set()
+    visited: set[int] = set()
+    for material in materials:
+        if getattr(material, "use_nodes", False) and material.node_tree is not None:
+            _walk_node_tree_attributes(
+                material.node_tree, required_attrs, required_uv_maps, visited
+            )
+    return required_uv_maps
 
 
 def resolved_material_slots(evaluated_obj: Any, mesh: Any) -> list[Any]:

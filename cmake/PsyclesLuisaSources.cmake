@@ -40,6 +40,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_math.cpp
     src/luisa/cycles_svm_noise.cpp
     src/luisa/cycles_svm_gabor.cpp
+    src/luisa/cycles_svm_radial_tiling.cpp
     src/luisa/cycles_svm_voronoi.cpp
     src/luisa/cycles_svm_normal.cpp
     src/luisa/cycles_svm_primitive_attribute.cpp
