@@ -4,6 +4,8 @@
 #include "path_kernel_surface_queue.h"
 #include "path_kernel_transitions.h"
 
+#include <psycles/luisa/cycles_svm_translator.h>
+
 #include <luisa/coro/schedulers/wavefront.h>
 #include <luisa/luisa-compute.h>
 
@@ -457,6 +459,115 @@ bool check_single_block_small_batch_sort(Device &device, Stream &stream) {
   return true;
 }
 
+bool check_heavy_tail_barbershop_bucketing(Device &device) {
+  auto scene = std::make_shared<LuisaSceneData>();
+  scene->device = device;
+  scene->cycles_svm = std::make_unique<CyclesSvmRuntime>();
+  auto &comp = scene->cycles_svm->compilation;
+  constexpr unsigned shader_count = 278u;
+  comp.table.valid = true;
+  comp.table.shader_count = shader_count;
+  comp.table.words.resize(shader_count * 4u, 0u);
+  comp.table.ir.valid = true;
+  comp.table.ir.shaders.resize(shader_count);
+  comp.shader_metadata.resize(shader_count);
+  comp.shader_surface_entry_usage.resize(shader_count);
+  comp.kernel_shaders.resize(shader_count);
+
+  for (unsigned i = 0u; i < shader_count; ++i) {
+    comp.table.words[i * 4u] = i + 1u;
+    auto &ops = comp.table.ir.shaders[i].routines[0u];
+    const auto make_op = [i](abi::ShaderNodeType opcode,
+                             std::uint32_t slot) noexcept {
+      abi::SvmOpIr op{};
+      op.instruction.opcode = opcode;
+      op.instruction.payload_offset = (i * 4u) % (shader_count * 4u);
+      op.instruction.payload_word_count = 1u + (slot & 3u);
+      return op;
+    };
+    if (i < 140u) {
+      // Light single-closure shaders: 4 light ops (1 each) + 1 BSDF (14) = weight 18.
+      for (unsigned k = 0u; k < 4u; ++k) {
+        ops.push_back(make_op(abi::NODE_MIX, k));
+      }
+      ops.push_back(make_op(abi::NODE_CLOSURE_BSDF, 4u));
+      comp.shader_metadata[i].surface_num_closures = 1u;
+    } else {
+      // Heavy multi-closure shaders: 6 noise ops (72) + 3 BSDF ops (42) + 11 light ops (11) = weight 125.
+      for (unsigned k = 0u; k < 6u; ++k) {
+        ops.push_back(make_op(abi::NODE_TEX_NOISE, k));
+      }
+      for (unsigned k = 0u; k < 3u; ++k) {
+        ops.push_back(make_op(abi::NODE_CLOSURE_BSDF, k));
+      }
+      for (unsigned k = 0u; k < 11u; ++k) {
+        ops.push_back(make_op(abi::NODE_MATH, k));
+      }
+      comp.shader_metadata[i].surface_num_closures = (i < 232u) ? 2u : 4u;
+    }
+  }
+
+  const auto plan =
+      make_path_surface_bucket_plan(*scene, true, true, false, false, true);
+  const auto max_shaders = psycles::luisa_backend::cycles_svm::direct_jit_max_shaders();
+  const auto max_weight = psycles::luisa_backend::cycles_svm::direct_jit_max_weight();
+  if (plan.buckets.size() < 2u ||
+      plan.buckets.size() > path_transition::max_surface_buckets) {
+    std::cerr << "Unexpected bucket count for heavy-tail 278-shader scene: "
+              << plan.buckets.size() << '\n';
+    return false;
+  }
+  if (plan.buckets[0u].max_surface_closures != 1u) {
+    std::cerr << "Expected Bucket 0 to snap to max_surface_closures == 1, got "
+              << plan.buckets[0u].max_surface_closures << '\n';
+    return false;
+  }
+  std::vector<unsigned> assigned(shader_count, 0u);
+  const auto host_words = std::span<const std::uint32_t>{comp.table.words};
+  for (std::size_t b = 0u; b < plan.buckets.size(); ++b) {
+    const auto &spec = plan.buckets[b];
+    if (spec.active_nonempty_shaders > max_shaders) {
+      std::cerr << "Bucket " << b << " exceeded DirectJit shader cap: "
+                << spec.active_nonempty_shaders << " > " << max_shaders << '\n';
+      return false;
+    }
+    std::vector<const abi::SvmBlockIr *> unique_routines;
+    std::size_t bucket_weight = 0u;
+    for (unsigned s = 0u; s < shader_count; ++s) {
+      if (s < spec.active_shader_mask.size() && spec.active_shader_mask[s] != 0u) {
+        ++assigned[s];
+        const auto &routine =
+            comp.table.ir.shaders[s].routine_for(abi::SHADER_TYPE_SURFACE);
+        bool merged = false;
+        for (const auto *existing : unique_routines) {
+          if (abi::same_linked_svm_block(host_words, *existing, routine)) {
+            merged = true;
+            break;
+          }
+        }
+        if (!merged) {
+          unique_routines.push_back(&routine);
+          bucket_weight +=
+              psycles::luisa_backend::cycles_svm::svm_block_jit_weight(routine);
+        }
+      }
+    }
+    if (bucket_weight > max_weight) {
+      std::cerr << "Bucket " << b << " exceeded DirectJit weight cap: "
+                << bucket_weight << " > " << max_weight << '\n';
+      return false;
+    }
+  }
+  for (unsigned s = 0u; s < shader_count; ++s) {
+    if (assigned[s] != 1u) {
+      std::cerr << "Shader " << s << " assigned " << assigned[s]
+                << " times across heavy-tail buckets\n";
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -575,6 +686,7 @@ int main(int argc, char **argv) {
   ok = check_joint_surface_queue(device, stream, oracle) && ok;
   ok = check_multi_bucket_surface_routing(device, stream) && ok;
   ok = check_single_block_small_batch_sort(device, stream) && ok;
+  ok = check_heavy_tail_barbershop_bucketing(device) && ok;
   if (ok) {
     std::cout << "Cycles surface queue shader identity passed\n";
   }

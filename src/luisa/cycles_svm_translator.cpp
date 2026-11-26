@@ -696,7 +696,9 @@ void emit_jit_block(const SvmTranslationRequest &req, const SvmBlockIr &block,
   }
 }
 
-[[nodiscard]] std::size_t svm_block_jit_weight(const SvmBlockIr &block) noexcept {
+} // namespace
+
+std::size_t svm_block_jit_weight(const SvmBlockIr &block) noexcept {
   std::size_t w = 0u;
   for (const auto &op : block) {
     if (op.is_conditional) {
@@ -728,7 +730,13 @@ void emit_jit_block(const SvmTranslationRequest &req, const SvmBlockIr &block,
   return w;
 }
 
-} // namespace
+std::size_t direct_jit_max_shaders() noexcept {
+  return configured_direct_jit_max_shaders();
+}
+
+std::size_t direct_jit_max_weight() noexcept {
+  return configured_direct_jit_max_weight();
+}
 
 void BytecodeVmTranslator::translate(
     const SvmTranslationRequest &request) const noexcept {

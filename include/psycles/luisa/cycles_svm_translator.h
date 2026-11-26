@@ -88,6 +88,13 @@ public:
   void translate(const SvmTranslationRequest &request) const noexcept override;
 };
 
+[[nodiscard]] std::size_t svm_block_jit_weight(
+    const compiler::cycles_svm::SvmBlockIr &block) noexcept;
+
+[[nodiscard]] std::size_t direct_jit_max_shaders() noexcept;
+
+[[nodiscard]] std::size_t direct_jit_max_weight() noexcept;
+
 [[nodiscard]] SvmBackendStrategy resolve_svm_backend_strategy(
     const SvmTranslationRequest &request,
     SvmBackendStrategy preferred = SvmBackendStrategy::auto_select) noexcept;

@@ -7,10 +7,12 @@
 #include <psycles/compiler/cycles_svm_ir.h>
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_svm.h>
+#include <psycles/luisa/cycles_svm_translator.h>
 
 #include <algorithm>
 #include <bit>
 #include <cstdlib>
+#include <limits>
 #include <numeric>
 #include <string_view>
 #include <tuple>
@@ -96,6 +98,7 @@ struct RoutineGroup {
   const abi::SvmBlockIr *routine{nullptr};
   std::uint32_t max_closures{0u};
   std::size_t ir_ops{0u};
+  std::size_t jit_weight{0u};
   bool has_bssrdf{false};
   bool has_emission{false};
   bool has_holdout{false};
@@ -418,6 +421,7 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       g.routine = &routine;
       g.max_closures = meta.surface_num_closures;
       g.ir_ops = count_ir_ops(routine);
+      g.jit_weight = std::max<std::size_t>(svm::svm_block_jit_weight(routine), 1u);
       g.has_bssrdf = meta.has_surface_bssrdf;
       g.has_emission = has_emit;
       g.has_holdout = has_hold;
@@ -440,35 +444,61 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
             });
 
   std::size_t total_active_nonempty = 0u;
+  std::size_t total_jit_weight = 0u;
   std::size_t pure_simple_shaders = 0u;
+  std::size_t pure_simple_weight = 0u;
   std::size_t pure_simple_groups = 0u;
   std::size_t simple_single_closure_shaders = 0u;
+  std::size_t simple_single_closure_weight = 0u;
   std::size_t simple_single_closure_groups = 0u;
   for (const auto &g : groups) {
     total_active_nonempty += g.shader_ids.size();
+    total_jit_weight += g.jit_weight;
     if (g.max_closures <= 1u && !g.has_bssrdf) {
       simple_single_closure_shaders += g.shader_ids.size();
+      simple_single_closure_weight += g.jit_weight;
       ++simple_single_closure_groups;
       if (!g.has_emission && !g.has_holdout) {
         pure_simple_shaders += g.shader_ids.size();
+        pure_simple_weight += g.jit_weight;
         ++pure_simple_groups;
       }
     }
   }
 
   const std::size_t max_per_bucket = configured_bucket_max_shaders();
+  const std::size_t jit_shader_cap =
+      std::max<std::size_t>(svm::direct_jit_max_shaders(), 1u);
+  const std::size_t jit_weight_cap =
+      std::max<std::size_t>(svm::direct_jit_max_weight(), 1u);
 
+  std::vector<std::size_t> suffix_min_buckets(groups.size() + 1u, 0u);
+  for (std::size_t i = groups.size(); i-- > 0u;) {
+    std::size_t s = groups[i].shader_ids.size();
+    std::size_t w = groups[i].jit_weight;
+    std::size_t j = i + 1u;
+    while (j < groups.size() &&
+           s + groups[j].shader_ids.size() <= jit_shader_cap &&
+           w + groups[j].jit_weight <= jit_weight_cap) {
+      s += groups[j].shader_ids.size();
+      w += groups[j].jit_weight;
+      ++j;
+    }
+    suffix_min_buckets[i] = 1u + suffix_min_buckets[j];
+  }
+  const std::size_t min_buckets_for_jit = suffix_min_buckets[0u];
+
+  const std::size_t max_buckets_allowed = std::min<std::size_t>(
+      path_transition::max_surface_buckets, groups.size());
   std::size_t bucket_count = 1u;
-  if (total_active_nonempty > max_per_bucket && groups.size() >= 2u) {
-    // Keep up to 4 buckets while each bucket stays within DirectJitTranslator's
-    // 80-shader budget to avoid extra per-bucket surface-sort wave launches;
-    // scale up to 8 buckets only for even larger shader tables (> 320 shaders).
-    const std::size_t auto_bucket_cap =
-        total_active_nonempty > 320u ? path_transition::max_surface_buckets : 4u;
+  if ((total_active_nonempty > max_per_bucket || min_buckets_for_jit > 1u) &&
+      groups.size() >= 2u) {
+    const std::size_t shader_buckets = std::clamp<std::size_t>(
+        (total_active_nonempty + max_per_bucket - 1u) / max_per_bucket,
+        2u, 4u);
     bucket_count = std::clamp<std::size_t>(
-        (total_active_nonempty + max_per_bucket - 1u) / max_per_bucket, 2u,
-        auto_bucket_cap);
-    bucket_count = std::min(bucket_count, groups.size());
+        std::max(shader_buckets, min_buckets_for_jit), 2u,
+        max_buckets_allowed);
   } else if (effective_mode == SurfaceBucketMode::split_closures &&
              simple_single_closure_groups >= 3u &&
              simple_single_closure_groups < groups.size() &&
@@ -487,79 +517,104 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
     return plan;
   }
 
-  // Partition sorted routine groups into `bucket_count` contiguous slices while
-  // keeping every slice <= 46 active shaders (well within the 48-shader JIT
-  // ceiling) and snapping Bucket 0 to the single-closure boundary whenever
-  // feasible so Bucket 0 gets ClosurePool(capacity = 1).
-  constexpr std::size_t jit_safe_cap = 46u;
+  // Partition sorted routine groups into `bucket_count` contiguous slices so
+  // every bucket fits within DirectJitTranslator's shader and weight budgets
+  // whenever feasible (`min_buckets_for_jit <= bucket_count`), while snapping
+  // Bucket 0 to the single-closure boundary when compatible.
   std::vector<std::size_t> group_cuts;
   if (bucket_count == 2u) {
     std::size_t cut = groups.size() / 2u;
+    const auto fits_slice = [&](std::size_t shaders,
+                                std::size_t weight) noexcept {
+      return shaders <= jit_shader_cap && weight <= jit_weight_cap;
+    };
     if (pure_simple_groups >= 1u &&
         pure_simple_groups < groups.size() &&
-        pure_simple_shaders <= jit_safe_cap &&
-        (total_active_nonempty - pure_simple_shaders) <= jit_safe_cap) {
+        fits_slice(pure_simple_shaders, pure_simple_weight) &&
+        fits_slice(total_active_nonempty - pure_simple_shaders,
+                   total_jit_weight - pure_simple_weight)) {
       cut = pure_simple_groups;
     } else if (simple_single_closure_groups >= 1u &&
-        simple_single_closure_groups < groups.size() &&
-        simple_single_closure_shaders <= jit_safe_cap &&
-        (total_active_nonempty - simple_single_closure_shaders) <=
-            jit_safe_cap) {
+               simple_single_closure_groups < groups.size() &&
+               fits_slice(simple_single_closure_shaders,
+                          simple_single_closure_weight) &&
+               fits_slice(total_active_nonempty - simple_single_closure_shaders,
+                          total_jit_weight - simple_single_closure_weight)) {
       cut = simple_single_closure_groups;
     } else {
-      const std::size_t target = total_active_nonempty / 2u;
-      std::size_t acc = 0u;
-      cut = 1u;
+      std::size_t acc_s = 0u;
+      std::size_t acc_w = 0u;
+      std::size_t best_cut = 1u;
+      std::size_t best_diff = std::numeric_limits<std::size_t>::max();
+      bool found_feasible = false;
       for (std::size_t gi = 0u; gi + 1u < groups.size(); ++gi) {
-        acc += groups[gi].shader_ids.size();
-        const std::size_t rem = total_active_nonempty - acc;
-        if (acc >= target || rem <= jit_safe_cap) {
-          cut = gi + 1u;
-          if (acc >= target) {
-            break;
-          }
+        acc_s += groups[gi].shader_ids.size();
+        acc_w += groups[gi].jit_weight;
+        const std::size_t rem_s = total_active_nonempty - acc_s;
+        const std::size_t rem_w = total_jit_weight - acc_w;
+        const bool feasible =
+            fits_slice(acc_s, acc_w) && fits_slice(rem_s, rem_w);
+        const std::size_t diff =
+            acc_w > rem_w ? (acc_w - rem_w) : (rem_w - acc_w);
+        if (feasible && (!found_feasible || diff < best_diff)) {
+          found_feasible = true;
+          best_diff = diff;
+          best_cut = gi + 1u;
+        } else if (!found_feasible && diff < best_diff) {
+          best_diff = diff;
+          best_cut = gi + 1u;
         }
       }
+      cut = best_cut;
     }
     group_cuts = {0u, cut, groups.size()};
   } else {
-    std::size_t total_ir_weight = 0u;
-    for (const auto &g : groups) {
-      total_ir_weight += std::max<std::size_t>(g.ir_ops, 1u);
-    }
     group_cuts.push_back(0u);
     std::size_t start = 0u;
-    std::size_t remaining_weight = total_ir_weight;
+    std::size_t remaining_weight = total_jit_weight;
     std::size_t remaining_shaders = total_active_nonempty;
+    const bool jit_feasible = min_buckets_for_jit <= bucket_count;
     for (std::size_t b = 0u; b + 1u < bucket_count; ++b) {
       const std::size_t buckets_left = bucket_count - b;
+      const std::size_t rem_buckets = buckets_left - 1u;
       const std::size_t target_weight =
           (remaining_weight + buckets_left - 1u) / buckets_left;
-      const std::size_t min_slice_shaders =
-          remaining_shaders > (buckets_left - 1u) * jit_safe_cap
-              ? remaining_shaders - (buckets_left - 1u) * jit_safe_cap
-              : 0u;
-      std::size_t acc_weight = 0u;
-      std::size_t acc_shaders = 0u;
+      const std::size_t max_end = groups.size() - rem_buckets;
       std::size_t end = start + 1u;
-      const std::size_t max_end = groups.size() - (buckets_left - 1u);
-      auto group_w = [&](std::size_t idx) noexcept -> std::size_t {
-        return std::max<std::size_t>(groups[idx].ir_ops, 1u);
-      };
-      acc_weight = group_w(start);
-      acc_shaders = groups[start].shader_ids.size();
-      while (end < max_end) {
-        const std::size_t next_s = groups[end].shader_ids.size();
-        const std::size_t next_w = group_w(end);
-        const bool need_min_shaders = acc_shaders < min_slice_shaders;
-        const bool under_target_weight = acc_weight < target_weight;
-        if (!need_min_shaders &&
-            (!under_target_weight || acc_shaders + next_s > jit_safe_cap)) {
-          break;
+      std::size_t acc_weight = groups[start].jit_weight;
+      std::size_t acc_shaders = groups[start].shader_ids.size();
+      if (jit_feasible) {
+        while (end < max_end && suffix_min_buckets[end] > rem_buckets) {
+          acc_weight += groups[end].jit_weight;
+          acc_shaders += groups[end].shader_ids.size();
+          ++end;
         }
-        acc_weight += next_w;
-        acc_shaders += next_s;
-        ++end;
+        while (end < max_end) {
+          if (b == 0u && groups[end - 1u].max_closures <= 1u &&
+              groups[end].max_closures > 1u &&
+              suffix_min_buckets[end] <= rem_buckets) {
+            break;
+          }
+          const std::size_t next_s = groups[end].shader_ids.size();
+          const std::size_t next_w = groups[end].jit_weight;
+          if (acc_weight >= target_weight ||
+              acc_shaders + next_s > jit_shader_cap ||
+              acc_weight + next_w > jit_weight_cap) {
+            break;
+          }
+          acc_weight += next_w;
+          acc_shaders += next_s;
+          ++end;
+        }
+      } else {
+        const std::size_t target_shaders =
+            (remaining_shaders + buckets_left - 1u) / buckets_left;
+        while (end < max_end && acc_weight < target_weight &&
+               acc_shaders < target_shaders) {
+          acc_weight += groups[end].jit_weight;
+          acc_shaders += groups[end].shader_ids.size();
+          ++end;
+        }
       }
       remaining_weight -= acc_weight;
       remaining_shaders -= acc_shaders;
@@ -594,17 +649,20 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       }
     }
     std::size_t bucket_ir_ops = 0u;
+    std::size_t bucket_jit_weight = 0u;
     for (std::size_t gi = group_cuts[b]; gi < group_cuts[b + 1u]; ++gi) {
       bucket_ir_ops += groups[gi].ir_ops;
+      bucket_jit_weight += groups[gi].jit_weight;
     }
     finalize_bucket_metadata(scene, spec);
     LUISA_INFO("Psycles surface bucket[{}] '{}': active_nonempty={} "
-               "unique_groups={} ir_ops={} sort_keys={} max_closures={} "
-               "emit={} holdout={} bssrdf={}.",
+               "unique_groups={} ir_ops={} jit_weight={} sort_keys={} "
+               "max_closures={} emit={} holdout={} bssrdf={}.",
                b, spec.continuation_name, spec.active_nonempty_shaders,
-               spec.unique_routine_groups, bucket_ir_ops, spec.key_count,
-               spec.max_surface_closures, spec.may_have_emission,
-               spec.may_have_holdout, spec.may_have_bssrdf);
+               spec.unique_routine_groups, bucket_ir_ops, bucket_jit_weight,
+               spec.key_count, spec.max_surface_closures,
+               spec.may_have_emission, spec.may_have_holdout,
+               spec.may_have_bssrdf);
   }
   return plan;
 }
