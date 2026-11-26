@@ -59,6 +59,9 @@ private:
         yyjson_val *tree{};
         TreeContext *parent{};
         yyjson_val *instance{};
+        TreeContext *closure_caller{};
+        yyjson_val *closure_eval_node{};
+        yyjson_val *closure_input_node{};
         RawNodeMap raw_nodes;
         RawLinkMap links;
         LoweredOutputMap outputs;
@@ -1006,7 +1009,8 @@ private:
             return constant_from_output(
                 node, socket, requested);
         }
-        if (type != "GROUP" && type != "GROUP_INPUT") {
+        if (type != "GROUP" && type != "GROUP_INPUT" &&
+            type != "NodeEvaluateClosure" && type != "NodeClosureInput") {
             // Blender 5.2 ShaderNodesInliner::ensure_node_inputs pushes
             // available inputs in socket order onto a LIFO stack. Producers
             // are therefore materialized in reverse input order, before the
@@ -1190,8 +1194,47 @@ private:
                 node_name + " / " + socket,
                 socket_type(output));
         }
+        if (type == "NodeClosureInput") {
+            if (_context->closure_caller != nullptr &&
+                _context->closure_eval_node != nullptr &&
+                (_context->closure_input_node == nullptr ||
+                 _context->closure_input_node == node)) {
+                auto *eval_node = _context->closure_eval_node;
+                auto *ci_out = raw_output(node, socket);
+                const auto ci_name = text(member(ci_out, "name"));
+                auto *eval_in = find_closure_socket(
+                    eval_node, "inputs", ci_name, socket, "Closure");
+                if (eval_in != nullptr) {
+                    const auto eval_in_id =
+                        text(member(eval_in, "identifier"));
+                    const auto in_type = socket_type(
+                        eval_in, socket_type(ci_out, requested));
+                    ContextScope caller{*this, _context->closure_caller};
+                    if (auto source = input_source(eval_node, eval_in_id)) {
+                        return lower_output(
+                            source->node, source->socket, in_type);
+                    }
+                    return default_from_input(
+                        eval_in,
+                        text(member(eval_node, "name")) + " / " + eval_in_id,
+                        in_type);
+                }
+            }
+            auto *output = raw_output(node, socket);
+            warn_once(
+                "closure-input:" + node_name + ":" + socket,
+                "closure input '" + socket +
+                    "' has no evaluation binding; using its default");
+            return constant_from_socket(
+                output, node_name + " / " + socket,
+                socket_type(output, requested));
+        }
         if (type == "GROUP") {
             return lower_group_output(
+                node, socket, requested);
+        }
+        if (type == "NodeEvaluateClosure") {
+            return lower_evaluate_closure(
                 node, socket, requested);
         }
 
@@ -1356,6 +1399,211 @@ private:
             }
         }
         return conversion(iter->second, requested);
+    }
+
+    [[nodiscard]] static yyjson_val *find_closure_socket(
+        yyjson_val *node,
+        const char *array_key,
+        std::string_view name,
+        std::string_view identifier,
+        std::string_view skip_identifier = {}) {
+        auto *sockets = member(node, array_key);
+        if (sockets != nullptr && yyjson_is_arr(sockets)) {
+            if (!name.empty()) {
+                yyjson_arr_iter it = yyjson_arr_iter_with(sockets);
+                while (auto *sock = yyjson_arr_iter_next(&it)) {
+                    const auto id = text(member(sock, "identifier"));
+                    if (id == "__extend__" || id == skip_identifier) {
+                        continue;
+                    }
+                    if (text(member(sock, "name")) == name) {
+                        return sock;
+                    }
+                }
+            }
+            yyjson_arr_iter it = yyjson_arr_iter_with(sockets);
+            while (auto *sock = yyjson_arr_iter_next(&it)) {
+                const auto id = text(member(sock, "identifier"));
+                if (id == "__extend__" || id == skip_identifier) {
+                    continue;
+                }
+                if (id == identifier) {
+                    return sock;
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] std::optional<std::pair<TreeContext *, yyjson_val *>>
+    resolve_closure_source(
+        TreeContext *ctx,
+        yyjson_val *node,
+        std::string_view input_socket) {
+        for (int depth = 0; depth < 64 && ctx != nullptr && node != nullptr;
+             ++depth) {
+            const auto key = RawOutputKey{
+                .node = text(member(node, "name")),
+                .socket = std::string{input_socket}};
+            const auto link_it = ctx->links.find(key);
+            if (link_it == ctx->links.end()) {
+                return std::nullopt;
+            }
+            const auto src_it = ctx->raw_nodes.find(link_it->second.node);
+            if (src_it == ctx->raw_nodes.end()) {
+                return std::nullopt;
+            }
+            auto *src_node = src_it->second;
+            const auto src_type = text(member(src_node, "type"));
+            if (src_type == "NodeClosureOutput") {
+                return std::pair{ctx, src_node};
+            }
+            if (src_type == "REROUTE") {
+                node = src_node;
+                input_socket = "Input";
+                continue;
+            }
+            if (src_type == "GROUP_INPUT") {
+                if (ctx->parent == nullptr) {
+                    return std::nullopt;
+                }
+                node = ctx->instance;
+                input_socket = link_it->second.socket;
+                ctx = ctx->parent;
+                continue;
+            }
+            if (src_type == "GROUP") {
+                const auto group_name = text(member(src_node, "node_tree"));
+                const auto group = _node_groups.find(group_name);
+                if (group == _node_groups.end()) {
+                    return std::nullopt;
+                }
+                auto &child = ctx->children[text(member(src_node, "name"))];
+                const auto initialize = !child;
+                if (initialize) {
+                    child = std::make_unique<TreeContext>();
+                    child->parent = ctx;
+                    child->instance = src_node;
+                    ContextScope scope{*this, child.get()};
+                    load_tree_context(group->second);
+                }
+                yyjson_val *active_output = nullptr;
+                yyjson_val *fallback_output = nullptr;
+                for (const auto &[name, gn] : child->raw_nodes) {
+                    static_cast<void>(name);
+                    if (text(member(gn, "type")) != "GROUP_OUTPUT") {
+                        continue;
+                    }
+                    fallback_output = gn;
+                    if (node_property_bool(gn, "is_active_output")) {
+                        active_output = gn;
+                        break;
+                    }
+                }
+                if (active_output == nullptr) {
+                    active_output = fallback_output;
+                }
+                if (active_output == nullptr) {
+                    return std::nullopt;
+                }
+                ctx = child.get();
+                node = active_output;
+                input_socket = link_it->second.socket;
+                continue;
+            }
+            if (src_type == "NodeClosureInput") {
+                if (ctx->closure_caller == nullptr ||
+                    ctx->closure_eval_node == nullptr) {
+                    return std::nullopt;
+                }
+                auto *ci_out = raw_output(src_node, link_it->second.socket);
+                auto *matched = find_closure_socket(
+                    ctx->closure_eval_node, "inputs",
+                    text(member(ci_out, "name")),
+                    link_it->second.socket, "Closure");
+                if (matched == nullptr) {
+                    return std::nullopt;
+                }
+                node = ctx->closure_eval_node;
+                input_socket = text(member(matched, "identifier"));
+                ctx = ctx->closure_caller;
+                continue;
+            }
+            return std::nullopt;
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] TypedOutput lower_evaluate_closure(
+        yyjson_val *eval_node,
+        const std::string &socket,
+        contract::SocketType requested) {
+        using contract::SocketType;
+        const auto resolved = resolve_closure_source(_context, eval_node, "Closure");
+        if (!resolved) {
+            warn_once(
+                "closure-unresolved:" + text(member(eval_node, "name")),
+                "Evaluate Closure '" + text(member(eval_node, "name")) +
+                    "' has no resolvable closure source; using its output default");
+            return constant_from_output(eval_node, socket, requested);
+        }
+        auto [def_ctx, closure_output] = *resolved;
+        yyjson_val *paired_input = nullptr;
+        const auto paired_name = node_property_text(closure_output, "paired_input");
+        if (!paired_name.empty()) {
+            const auto it = def_ctx->raw_nodes.find(paired_name);
+            if (it != def_ctx->raw_nodes.end() &&
+                text(member(it->second, "type")) == "NodeClosureInput") {
+                paired_input = it->second;
+            }
+        }
+        if (paired_input == nullptr) {
+            yyjson_val *sole_input = nullptr;
+            std::size_t input_count = 0u;
+            for (const auto &[name, cand] : def_ctx->raw_nodes) {
+                static_cast<void>(name);
+                if (text(member(cand, "type")) == "NodeClosureInput") {
+                    sole_input = cand;
+                    ++input_count;
+                }
+            }
+            if (input_count == 1u) {
+                paired_input = sole_input;
+            }
+        }
+
+        const auto child_key = text(member(eval_node, "name")) + "\x01closure";
+        auto &closure_ctx = _context->children[child_key];
+        const auto initialize = !closure_ctx;
+        if (initialize) {
+            closure_ctx = std::make_unique<TreeContext>();
+            closure_ctx->parent = def_ctx->parent;
+            closure_ctx->instance = def_ctx->instance;
+            closure_ctx->closure_caller = _context;
+            closure_ctx->closure_eval_node = eval_node;
+            closure_ctx->closure_input_node = paired_input;
+        }
+        ContextScope scope{*this, closure_ctx.get()};
+        if (initialize) {
+            load_tree_context(def_ctx->tree);
+        }
+
+        auto *eval_out = raw_output(eval_node, socket);
+        const auto out_name = text(member(eval_out, "name"));
+        auto *matched_in = find_closure_socket(
+            closure_output, "inputs", out_name, socket);
+        if (matched_in == nullptr) {
+            return constant_from_output(eval_node, socket, requested);
+        }
+        const auto out_in_id = text(member(matched_in, "identifier"));
+        const auto out_type = socket_type(eval_out, requested);
+        if (auto source = input_source(closure_output, out_in_id)) {
+            return lower_output(source->node, source->socket, out_type);
+        }
+        return default_from_input(
+            matched_in,
+            text(member(closure_output, "name")) + " / " + out_in_id,
+            out_type);
     }
 
     [[nodiscard]] TypedOutput lower_group_output(

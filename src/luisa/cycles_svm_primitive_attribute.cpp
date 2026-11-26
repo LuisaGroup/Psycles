@@ -317,10 +317,7 @@ make_surface_attr_spec(const SurfaceAttributeSummary &summary,
     spec.may_byte =
         (summary.element_mask &
          static_cast<std::uint32_t>(ATTR_ELEMENT_IS_BYTE)) != 0u;
-    spec.may_float4 =
-        spec.may_byte
-            ? ((summary.type_mask & (1u << NODE_ATTR_FLOAT4)) != 0u)
-            : true;
+    spec.may_float4 = spec.may_byte ? summary.has_float4 : true;
     spec.is_rec709 = spec.may_byte ? is_rec709 : true;
   }
   return spec;

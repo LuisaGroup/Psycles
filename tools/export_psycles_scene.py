@@ -32,6 +32,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import blender_scene_manifest as manifest  # noqa: E402
 import blender_build_identity  # noqa: E402
 from blender_image_export import export_images as _export_images  # noqa: E402
+from blender_mesh_attributes import (  # noqa: E402
+    collect_required_geometry_attributes as _collect_required_geometry_attributes,
+    extract_generic_mesh_attributes as _extract_generic_mesh_attributes,
+    resolved_material_slots as _resolved_material_slots,
+)
 from blender_cycles_object import (  # noqa: E402
     ParticleSourceRegistry as _ParticleSourceRegistry,
     light_group as _cycles_light_group,
@@ -329,23 +334,45 @@ def _write_array(stream: Any, values: array.array[Any]) -> dict[str, int]:
     return {"offset": offset, "bytes": written}
 
 
-def _geometry_cache_key(obj: Any, scene: Any) -> tuple[Any, ...]:
+def _geometry_cache_key(
+    evaluated_obj: Any,
+    original: Any,
+    scene: Any,
+    is_instance: bool,
+) -> tuple[Any, ...]:
     # Reusing an evaluated mesh is only safe when Blender reports that the
-    # render geometry is identical to the source Mesh datablock. Modifier
-    # evaluation can depend on object-local settings and referenced objects:
-    # Lone Monk's arch.005--arch.008 share one Mesh datablock, but their Mirror
-    # modifiers produce four different render meshes.
+    # render geometry is identical to the source Mesh datablock and material
+    # bindings match. Geometry Nodes / curve / grease pencil instances carry
+    # evaluated Mesh datablocks directly on `evaluated_obj.data`.
+    mesh_data = (
+        evaluated_obj.data
+        if isinstance(getattr(evaluated_obj, "data", None), bpy.types.Mesh)
+        else None
+    )
+    material_slots = tuple(
+        mat.as_pointer() if mat is not None else 0
+        for mat in _resolved_material_slots(evaluated_obj, mesh_data)
+    )
     if (
-        obj.type == "MESH"
-        and obj.data is not None
-        and not obj.is_modified(scene, "RENDER")
+        not is_instance
+        and original.type == "MESH"
+        and original.data is not None
+        and not original.is_modified(scene, "RENDER")
     ):
-        material_slots = tuple(
-            slot.material.as_pointer() if slot.material is not None else 0
-            for slot in obj.material_slots
+        return ("mesh", original.data.as_pointer(), material_slots)
+    if is_instance and mesh_data is not None:
+        return (
+            "inst_mesh",
+            mesh_data.as_pointer(),
+            material_slots,
+            _cycles_uses_adaptive_subdivision(original),
         )
-        return ("mesh", obj.data.as_pointer(), material_slots)
-    return ("object", obj.as_pointer())
+    return (
+        "object",
+        original.as_pointer(),
+        evaluated_obj.data.as_pointer() if evaluated_obj.data is not None else 0,
+        material_slots,
+    )
 
 
 def _cycles_uses_adaptive_subdivision(obj: Any) -> bool:
@@ -363,14 +390,15 @@ def _cycles_uses_adaptive_subdivision(obj: Any) -> bool:
 
 
 def _geometry(
-    obj: Any,
+    evaluated_obj: Any,
+    original: Any,
     depsgraph: Any,
     stream: Any,
     rec709_to_rgb: tuple[tuple[float, float, float], ...],
+    required_geometry_attributes: set[str],
 ) -> dict[str, Any] | None:
-    evaluated = obj.evaluated_get(depsgraph)
     try:
-        mesh = evaluated.to_mesh(
+        mesh = evaluated_obj.to_mesh(
             preserve_all_data_layers=True,
             depsgraph=depsgraph,
         )
@@ -379,9 +407,10 @@ def _geometry(
     if mesh is None:
         return None
     try:
+        resolved_slots = _resolved_material_slots(evaluated_obj, mesh)
         needs_pointiness = any(
-            _material_uses_pointiness(slot.material)
-            for slot in obj.material_slots
+            _material_uses_pointiness(mat)
+            for mat in resolved_slots
         )
         pointiness_normals = array.array("f")
         pointiness_edges = array.array("I")
@@ -647,10 +676,22 @@ def _geometry(
                 "edge_count": len(pointiness_edges) // 2,
                 "edges": _write_array(stream, pointiness_edges),
             }
+        excluded_generic = {
+            (name, "CORNER") for name in uv_by_layer
+        } | {(attribute.name, attribute.domain) for attribute in color_layers}
+        generic_attributes = _extract_generic_mesh_attributes(
+            mesh,
+            required_geometry_attributes,
+            excluded_generic,
+            rec709_to_rgb,
+            _cycles_color_attribute_value,
+            _write_array,
+            stream,
+        )
         return {
-            "name": obj.name,
+            "name": evaluated_obj.name,
             "uses_adaptive_subdivision": (
-                _cycles_uses_adaptive_subdivision(obj)
+                _cycles_uses_adaptive_subdivision(original)
             ),
             "point_count": len(mesh.vertices),
             "corner_count": len(mesh.loop_triangles) * 3,
@@ -705,6 +746,7 @@ def _geometry(
                 }
                 for attribute in color_layers
             ],
+            "generic_attributes": generic_attributes,
             "pointiness_source": pointiness_source,
             "indices": _write_array(stream, indices),
             "triangle_material_slots": _write_array(stream, materials),
@@ -713,12 +755,12 @@ def _geometry(
                 stream, random_per_island
             ),
             "material_slots": [
-                slot.material.name if slot.material else None
-                for slot in obj.material_slots
+                mat.name if mat else None
+                for mat in resolved_slots
             ],
         }
     finally:
-        evaluated.to_mesh_clear()
+        evaluated_obj.to_mesh_clear()
 
 
 def _object_has_particle_hair(obj: Any, depsgraph: Any) -> bool:
@@ -1264,6 +1306,9 @@ def _export_scene(
     curve_subdivisions = int(scene.cycles_curves.subdivisions)
     particle_sources = _ParticleSourceRegistry(scene)
     cycles_uses_light_linking = False
+    required_geometry_attributes = _collect_required_geometry_attributes(
+        bpy.data.materials
+    )
     with (output / "geometry.bin").open("wb") as stream:
         stream.write(b"PSYGEO2\0")
         stream.write(struct.pack("<II", 2, 0))
@@ -1343,14 +1388,18 @@ def _export_scene(
                 object_instance.show_self
                 and source_object_index is not None
             ):
-                key = _geometry_cache_key(original, scene)
+                key = _geometry_cache_key(
+                    obj, original, scene, object_instance.is_instance
+                )
                 geometry_index = geometry_by_source.get(key)
                 if geometry_index is None:
                     geometry_data = _geometry(
+                        obj,
                         original,
                         depsgraph,
                         stream,
                         rec709_to_rgb,
+                        required_geometry_attributes,
                     )
                     if geometry_data is not None:
                         geometry_data["cycles_sync"] = {
@@ -1445,6 +1494,10 @@ def _export_scene(
             attribute["byte_values"]
             for attribute in geometry["color_attributes"]
             if attribute.get("byte_values") is not None
+        )
+        sections.extend(
+            attribute["values"]
+            for attribute in geometry.get("generic_attributes", ())
         )
         for uv_layer in geometry["uv_layers"]:
             sections.append(uv_layer["values"])

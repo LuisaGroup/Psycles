@@ -325,6 +325,7 @@ struct SurfaceAttributeSummary {
   bool has_points{true};
   bool has_undisplaced_normal{true};
   bool has_undisplaced_position{true};
+  bool has_float4{true};
 };
 
 // Optional direct buffer handles exposed by scene-backed KernelGlobals so

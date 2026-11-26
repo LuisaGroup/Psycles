@@ -346,6 +346,35 @@ template <typename Geometry>
               color->second.values, [](Vec4f value) { return pack(value); })});
       continue;
     }
+    if (const auto flt = geometry.float_attributes.find(name);
+        flt != geometry.float_attributes.end()) {
+      input.attributes.emplace_back(GeometryAttributeSource{
+          .named_id = id,
+          .element = mesh_element(flt->second.domain),
+          .type = NODE_ATTR_FLOAT,
+          .payload = flt->second.values});
+      continue;
+    }
+    if (const auto flt2 = geometry.float2_attributes.find(name);
+        flt2 != geometry.float2_attributes.end()) {
+      input.attributes.emplace_back(GeometryAttributeSource{
+          .named_id = id,
+          .element = mesh_element(flt2->second.domain),
+          .type = NODE_ATTR_FLOAT2,
+          .payload = convert_values<packed_float2>(
+              flt2->second.values, [](Vec2f value) { return pack(value); })});
+      continue;
+    }
+    if (const auto flt3 = geometry.float3_attributes.find(name);
+        flt3 != geometry.float3_attributes.end()) {
+      input.attributes.emplace_back(GeometryAttributeSource{
+          .named_id = id,
+          .element = mesh_element(flt3->second.domain),
+          .type = NODE_ATTR_FLOAT3,
+          .payload = convert_values<packed_float3>(
+              flt3->second.values, [](Vec3f value) { return pack(value); })});
+      continue;
+    }
 
     struct TangentSuffix {
       std::string_view suffix;

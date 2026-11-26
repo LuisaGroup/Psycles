@@ -239,6 +239,12 @@ struct TriangleMeshDesc {
     // BYTE_COLOR conversion therefore matches Cycles before device upload.
     std::map<std::string, MeshAttribute<Vec4f>, std::less<>>
         color_attributes;
+    std::map<std::string, MeshAttribute<float>, std::less<>>
+        float_attributes;
+    std::map<std::string, MeshAttribute<Vec2f>, std::less<>>
+        float2_attributes;
+    std::map<std::string, MeshAttribute<Vec3f>, std::less<>>
+        float3_attributes;
     // Cycles keeps CORNER/BYTE_COLOR in its original four-byte storage and
     // performs sRGB plus working-space conversion in the attribute fetch.
     // The parallel scene-linear map above remains available to the legacy

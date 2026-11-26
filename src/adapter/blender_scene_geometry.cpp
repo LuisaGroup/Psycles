@@ -316,6 +316,40 @@ contract::TriangleMeshDesc parse_blender_triangle_mesh(
             }
         }
     }
+    if (auto *generic_attributes = member(geometry, "generic_attributes");
+        generic_attributes != nullptr && yyjson_is_arr(generic_attributes)) {
+        yyjson_arr_iter generic_iterator =
+            yyjson_arr_iter_with(generic_attributes);
+        while (auto *attribute = yyjson_arr_iter_next(&generic_iterator)) {
+            const auto name = text(member(attribute, "name"));
+            const auto domain =
+                mesh_attribute_domain(member(attribute, "domain"));
+            const auto value_count = domain_count(domain);
+            const auto attr_type = text(member(attribute, "type"));
+            const auto offset = section_offset(attribute, "values");
+            if (attr_type == "FLOAT") {
+                auto &dest = mesh.float_attributes[name];
+                dest.domain = domain;
+                dest.values =
+                    read_packed_values<float>(geometry_bin, offset, value_count);
+            } else if (attr_type == "FLOAT2") {
+                auto &dest = mesh.float2_attributes[name];
+                dest.domain = domain;
+                dest.values =
+                    read_packed_values<Vec2f>(geometry_bin, offset, value_count);
+            } else if (attr_type == "FLOAT3") {
+                auto &dest = mesh.float3_attributes[name];
+                dest.domain = domain;
+                dest.values =
+                    read_packed_values<Vec3f>(geometry_bin, offset, value_count);
+            } else if (attr_type == "RGBA") {
+                auto &dest = mesh.color_attributes[name];
+                dest.domain = domain;
+                dest.values =
+                    read_packed_values<Vec4f>(geometry_bin, offset, value_count);
+            }
+        }
+    }
 
     mesh.triangles = read_packed_values<std::array<std::uint32_t, 3u>>(
         geometry_bin, section_offset(geometry, "indices"), triangle_count);

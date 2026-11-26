@@ -418,6 +418,7 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
   std::uint32_t type_mask = 0u;
   bool has_undisp = false;
   bool has_undisp_pos = false;
+  bool has_float4 = false;
   for (const auto &entry : geom_img.attributes.attribute_map) {
     if (entry.id == static_cast<std::uint64_t>(abi::ATTR_STD_NONE)) {
       continue;
@@ -430,6 +431,13 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     const auto ty = static_cast<std::uint32_t>(entry.type);
     const std::uint32_t ty_bit = (ty < 32u) ? (1u << ty) : 0u;
     type_mask |= ty_bit;
+    const bool is_float4_entry =
+        ((ty == static_cast<std::uint32_t>(abi::NODE_ATTR_FLOAT4)) ||
+         (ty == static_cast<std::uint32_t>(abi::NODE_ATTR_RGBA))) &&
+        ((elem & static_cast<std::uint32_t>(abi::ATTR_ELEMENT_IS_BYTE)) == 0u);
+    if (is_float4_entry) {
+      has_float4 = true;
+    }
     if (entry.id == static_cast<std::uint64_t>(abi::ATTR_STD_NORMAL_UNDISPLACED)) {
       has_undisp = true;
     }
@@ -444,10 +452,14 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
           .has_curves = has_curves,
           .has_points = has_points,
           .has_undisplaced_normal = false,
-          .has_undisplaced_position = false};
+          .has_undisplaced_position = false,
+          .has_float4 = false};
     }
     per_id.element_mask |= elem;
     per_id.type_mask |= ty_bit;
+    if (is_float4_entry) {
+      per_id.has_float4 = true;
+    }
   }
   for (auto &[id, per_id] : _attribute_summaries_by_id) {
     (void)id;
@@ -461,7 +473,8 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
       .has_curves = has_curves,
       .has_points = has_points,
       .has_undisplaced_normal = has_undisp,
-      .has_undisplaced_position = has_undisp_pos};
+      .has_undisplaced_position = has_undisp_pos,
+      .has_float4 = has_float4};
 
   const auto &bindings = _scene->cycles_svm->image_bindings;
   _has_bicubic_images = false;
@@ -541,7 +554,8 @@ PathCyclesSvmKernelGlobals::attribute_summary_for_id(
       .has_undisplaced_normal =
           _surface_attribute_summary.has_undisplaced_normal,
       .has_undisplaced_position =
-          _surface_attribute_summary.has_undisplaced_position};
+          _surface_attribute_summary.has_undisplaced_position,
+      .has_float4 = false};
 }
 
 svm::NormalMapUsage
