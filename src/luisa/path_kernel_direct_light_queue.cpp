@@ -915,7 +915,8 @@ public:
       _consumers[stage].set_name(
           luisa::string{"aux_shadow_stage_"} + luisa::string{stage_name(stage)});
     }
-    if (device.impl()->query("vk_timeline_active") == "1") {
+    if (device.backend_name() == "vk" &&
+        device.impl()->query("vk_timeline_active") == "1") {
       auto lbl = [&](const char *name, std::uint64_t handle) noexcept {
         if (handle == 0ull || handle == luisa::compute::invalid_resource_handle) {
           return;

@@ -136,6 +136,8 @@ class PathCyclesSvmKernelGlobals final
     info_services() const noexcept override;
     [[nodiscard]] const cycles_svm::AmbientOcclusionServices *
     ambient_occlusion_services() const noexcept override;
+    [[nodiscard]] std::span<const compiler::cycles_svm::OslScriptBinding>
+    osl_scripts() const noexcept override;
 
     [[nodiscard]] Float cycles_bsdf_data(
         Expr<std::uint32_t> index) const noexcept override;

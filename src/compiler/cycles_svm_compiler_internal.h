@@ -65,6 +65,7 @@ public:
   [[nodiscard]] virtual std::int32_t
   image(NishitaImageBinding nishita) = 0;
   [[nodiscard]] virtual std::uint32_t ies(std::string_view content) = 0;
+  [[nodiscard]] virtual std::uint32_t add_osl_script(OslScriptBinding binding) = 0;
 
   virtual void add_value_node(GraphNode *node, float value,
                               SVMStackOffset stack_offset) = 0;

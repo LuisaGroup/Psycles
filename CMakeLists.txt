@@ -102,6 +102,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_noise_nodes.cpp
     src/compiler/cycles_svm_normal_nodes.cpp
     src/compiler/cycles_svm_nodes.cpp
+    src/compiler/cycles_svm_osl_nodes.cpp
     src/compiler/cycles_svm_object_scene.cpp
     src/compiler/cycles_svm_procedural_texture_nodes.cpp
     src/compiler/cycles_svm_ramp_nodes.cpp
@@ -360,6 +361,10 @@ if(PSYCLES_ENABLE_LUISA)
         target_link_libraries(psycles_luisa PUBLIC
             Psycles::core
             luisa::compute)
+        if(TARGET luisa-compute-osl)
+            target_link_libraries(psycles_luisa PUBLIC luisa-compute-osl)
+            target_compile_definitions(psycles_luisa PUBLIC PSYCLES_WITH_LUISA_OSL=1)
+        endif()
         message(STATUS "Psycles Luisa DSL surface compiler enabled")
         if(MSVC)
             target_compile_options(
@@ -1772,6 +1777,26 @@ if(PSYCLES_ENABLE_LUISA)
                 TEST_STEM
                     luisa_curve_path
                 LIBRARIES Psycles::luisa_runtime)
+
+            psycles_add_luisa_backend_test(
+                TARGET
+                    psycles_luisa_cycles_svm_osl_tests
+                SOURCE
+                    tests/test_luisa_cycles_svm_osl.cpp
+                TEST_STEM
+                    luisa_cycles_svm_osl
+                LIBRARIES Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_luisa_cycles_svm_osl_tests
+                PRIVATE
+                    "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
+                if(TEST psycles.luisa_cycles_svm_osl_${_backend})
+                    set_tests_properties(
+                        psycles.luisa_cycles_svm_osl_${_backend}
+                        PROPERTIES TIMEOUT 180)
+                endif()
+            endforeach()
 
             include(cmake/PsyclesLuisaVtTests.cmake)
 

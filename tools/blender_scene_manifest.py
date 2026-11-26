@@ -150,6 +150,71 @@ def _node_special_data(node: Any) -> dict[str, Any]:
             "available": available,
             "content_bytes": list(content),
         }
+    if node.bl_idname == "ShaderNodeScript":
+        import os
+        import tempfile
+
+        mode = str(getattr(node, "mode", "INTERNAL"))
+        filepath = str(getattr(node, "filepath", ""))
+        script = getattr(node, "script", None)
+        script_name = str(getattr(script, "name", "")) if script is not None else ""
+        oso_text = str(getattr(node, "bytecode", "") or "")
+        if not oso_text or mode == "EXTERNAL":
+            try:
+                from cycles import osl as cycles_osl
+            except Exception:
+                cycles_osl = None
+            if cycles_osl is not None:
+                def _silent_report(*_args, **_kwargs):
+                    return None
+
+                if mode == "EXTERNAL" and filepath:
+                    id_data = getattr(node, "id_data", None)
+                    library = getattr(id_data, "library", None) if id_data is not None else None
+                    ok, oso_path, remove_after = cycles_osl.update_external_script(
+                        _silent_report, filepath, library
+                    )
+                    if ok and oso_path:
+                        try:
+                            oso_text = pathlib.Path(oso_path).read_text(encoding="utf-8")
+                        except OSError:
+                            pass
+                        if remove_after:
+                            try:
+                                os.remove(oso_path)
+                            except OSError:
+                                pass
+                elif mode == "INTERNAL" and script is not None:
+                    tmp_osl_path = None
+                    oso_path = None
+                    try:
+                        with tempfile.NamedTemporaryFile(
+                            mode="w", suffix=".osl", encoding="utf-8", delete=False
+                        ) as handle:
+                            handle.write(script.as_string())
+                            tmp_osl_path = handle.name
+                        ok, oso_path = cycles_osl.osl_compile(
+                            tmp_osl_path, _silent_report
+                        )
+                        if ok and oso_path:
+                            oso_text = pathlib.Path(oso_path).read_text(
+                                encoding="utf-8"
+                            )
+                    except OSError:
+                        pass
+                    finally:
+                        for p in (tmp_osl_path, oso_path):
+                            if p:
+                                try:
+                                    os.remove(p)
+                                except OSError:
+                                    pass
+        result["osl"] = {
+            "mode": mode,
+            "script_name": script_name,
+            "filepath": filepath,
+            "oso": oso_text,
+        }
     if node.bl_idname == "ShaderNodeTexCoord":
         coordinate_object = getattr(node, "object", None)
         if coordinate_object is not None:

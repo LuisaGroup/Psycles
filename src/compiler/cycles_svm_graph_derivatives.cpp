@@ -10,11 +10,44 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <string>
+#include <string_view>
 #include <unordered_set>
+#include <variant>
 #include <vector>
 
 namespace psycles::compiler::cycles_svm {
 namespace {
+
+[[nodiscard]] bool osl_bytecode_uses_derivatives(
+    const GraphNode &node) noexcept {
+  const auto it = node.properties.find("Bytecode");
+  if (it == node.properties.end() ||
+      it->second.type != contract::SocketType::string) {
+    return false;
+  }
+  const auto *bc = std::get_if<std::string>(&it->second.value);
+  if (bc == nullptr || bc->empty()) {
+    return false;
+  }
+  const std::string_view sv{*bc};
+  return sv.find("\tDx") != std::string_view::npos ||
+         sv.find("\tDy") != std::string_view::npos ||
+         sv.find("\tfilterwidth") != std::string_view::npos ||
+         sv.find("\tarea") != std::string_view::npos ||
+         sv.find("\nDx") != std::string_view::npos ||
+         sv.find("\nDy") != std::string_view::npos ||
+         sv.find("\nfilterwidth") != std::string_view::npos ||
+         sv.find("\narea") != std::string_view::npos ||
+         sv.find("Dx ") != std::string_view::npos ||
+         sv.find("Dy ") != std::string_view::npos ||
+         sv.find("filterwidth ") != std::string_view::npos ||
+         sv.find("area ") != std::string_view::npos ||
+         sv.find("Dx\t") != std::string_view::npos ||
+         sv.find("Dy\t") != std::string_view::npos ||
+         sv.find("filterwidth\t") != std::string_view::npos ||
+         sv.find("area\t") != std::string_view::npos;
+}
 
 [[nodiscard]] bool is_image_derivative_sink(const GraphNode *node) noexcept {
   if (node == nullptr) {
@@ -58,10 +91,23 @@ struct DerivativeRule {
     return {};
   }
   const auto op = node.shader_node_type();
+  if (op == NODE_OSL_SCRIPT) {
+    DerivativeRule rule{.role = DerivativeRole::leaf, .dual_inputs = {}};
+    for (const auto &in : node.inputs) {
+      if (in.name == "SurfaceMixWeight" || in.name == "VolumeMixWeight") {
+        continue;
+      }
+      if (is_differentiable_socket(in.type)) {
+        rule.dual_inputs.push_back(&in);
+      }
+    }
+    return rule;
+  }
   // Explicitly exclude NODE_VERTEX_COLOR: node_vertex_color ignores
   // store_derivatives and does not write Dual3 outputs onto the stack.
   if (op == NODE_TEX_COORD || op == NODE_GEOMETRY || op == NODE_ATTR ||
-      op == NODE_TANGENT || node.type == node_type::constant_float ||
+      op == NODE_TANGENT ||
+      node.type == node_type::constant_float ||
       node.type == node_type::constant_color) {
     return {.role = DerivativeRole::leaf, .dual_inputs = {}};
   }
@@ -235,6 +281,29 @@ void CyclesGraph::propagate_derivatives(bool enable_texture_derivatives) {
     if (!src->need_derivatives) {
       src->need_derivatives = true;
       demand_worklist.push_back(src);
+    }
+  }
+
+  // OSL script nodes may invoke Dx/Dy/filterwidth/area internally even when
+  // no downstream image sink demands derivatives from their outputs.
+  for (const auto &node_ptr : _nodes) {
+    if (!node_ptr || node_ptr->id >= id_cap ||
+        !is_non_volume[node_ptr->id] ||
+        node_ptr->shader_node_type() != NODE_OSL_SCRIPT ||
+        !osl_bytecode_uses_derivatives(*node_ptr)) {
+      continue;
+    }
+    const auto &rule = rules[node_ptr->id];
+    for (const GraphInput *in : rule.dual_inputs) {
+      if (in == nullptr || in->link == nullptr) {
+        continue;
+      }
+      GraphNode *src = in->link->parent;
+      if (src != nullptr && src->id < id_cap &&
+          can_produce[src->id] != 0u && !src->need_derivatives) {
+        src->need_derivatives = true;
+        demand_worklist.push_back(src);
+      }
     }
   }
 

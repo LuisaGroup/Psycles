@@ -5,6 +5,7 @@
 #include <psycles/compiler/cycles_svm_closure_usage.h>
 #include <psycles/compiler/cycles_svm_ir.h>
 #include <psycles/compiler/cycles_svm_noise_usage.h>
+#include <psycles/compiler/cycles_svm_osl_binding.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/contract/scene.h>
 
@@ -209,6 +210,8 @@ struct ShaderImage {
   std::optional<ShaderEntryUsageTable> entry_usage;
   // Structured target-independent SVM IR emitted in lockstep with words.
   std::optional<SvmShaderIr> ir;
+  std::vector<OslScriptBinding> osl_scripts;
+  std::vector<std::uint32_t> osl_script_patch_offsets;
   ShaderCompileMetadata metadata;
 
   [[nodiscard]] ShaderEntryUsage usage_for(ShaderType type) const noexcept {

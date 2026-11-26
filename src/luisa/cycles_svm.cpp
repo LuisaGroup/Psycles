@@ -1044,6 +1044,16 @@ void eval_nodes_impl(
               detail::node_mix_vector_non_uniform(cursor, stack));
         };
       }
+      if (node_types_used[NODE_OSL_SCRIPT]) {
+        PSYCLES_SVM_CASE(NODE_OSL_SCRIPT) {
+          PSYCLES_SVM_OUTLINE_NODE(
+              "svm_node_osl_script",
+              detail::node_osl_script(
+                  cursor, stack, kernel_globals, transform_state, shader_data,
+                  path_state, shader_type, kernel_features, node_feature_mask,
+                  transition));
+        };
+      }
       $default {
         if constexpr (diagnose_failures) {
           result->status =

@@ -536,6 +536,7 @@ bool LuisaRenderSession::render_samples(const SampleRange &samples,
   }
   const bool tl_active =
       _scene && _scene->device &&
+      _scene->device.backend_name() == "vk" &&
       (_scene->device.impl()->query("vk_timeline_active") == "1");
   const auto integration_begin = std::chrono::steady_clock::now();
   if (tl_active) {

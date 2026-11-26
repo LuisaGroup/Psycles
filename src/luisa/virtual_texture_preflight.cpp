@@ -695,7 +695,8 @@ struct VtPreflightCacheEntry {
   };
 
   auto shader = scene->device.compile<2>(std::move(kernel), shader_option);
-  if (scene->device.impl()->query("vk_timeline_active") == "1" &&
+  if (scene->device.backend_name() == "vk" &&
+      scene->device.impl()->query("vk_timeline_active") == "1" &&
       shader.handle() != luisa::compute::invalid_resource_handle) {
     char qbuf[192];
     std::snprintf(qbuf, sizeof(qbuf),

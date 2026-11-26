@@ -1729,6 +1729,7 @@ void run_shadow_dce_block(const SvmBlockIr &in_block,
       case NODE_NORMAL_MAP:
       case NODE_VECTOR_MATH_DERIVATIVE:
       case NODE_MAPPING_DERIVATIVE: w += 4u; break;
+      case NODE_OSL_SCRIPT: w += 40u; break;
       default: w += 1u; break;
     }
   }
@@ -1767,12 +1768,25 @@ void run_shadow_dce_block(const SvmBlockIr &in_block,
 class InstructionScopedKernelGlobals final
     : public detail::DelegatingKernelGlobals {
   const SvmInstructionSpecialization &_spec;
+  std::span<const compiler::cycles_svm::OslScriptBinding> _table_osl_scripts;
 
 public:
   InstructionScopedKernelGlobals(
       const KernelGlobals &inner,
-      const SvmInstructionSpecialization &spec) noexcept
-      : DelegatingKernelGlobals{inner}, _spec{spec} {}
+      const SvmInstructionSpecialization &spec,
+      std::span<const compiler::cycles_svm::OslScriptBinding>
+          table_osl_scripts) noexcept
+      : DelegatingKernelGlobals{inner},
+        _spec{spec},
+        _table_osl_scripts{table_osl_scripts} {}
+
+  [[nodiscard]] std::span<const compiler::cycles_svm::OslScriptBinding>
+  osl_scripts() const noexcept override {
+    if (!_table_osl_scripts.empty()) {
+      return _table_osl_scripts;
+    }
+    return _inner.osl_scripts();
+  }
 
   [[nodiscard]] bool may_have_thin_film() const noexcept override {
     return _inner.may_have_thin_film() && _spec.may_have_thin_film;
@@ -1887,7 +1901,8 @@ void emit_jit_instruction(const SvmTranslationRequest &req,
       static_cast<std::size_t>(inst.payload_word_count));
   detail::Cursor cursor{req.words, payload_span, inst.payload_offset};
   const InstructionScopedKernelGlobals kg{req.kernel_globals,
-                                          inst.specialization};
+                                          inst.specialization,
+                                          req.table.osl_scripts};
   const detail::EvaluationTransition transition{nullptr};
   const auto kernel_features = req.kernel_features;
   const auto node_feature_mask = req.node_feature_mask;
@@ -2350,6 +2365,11 @@ void emit_jit_instruction(const SvmTranslationRequest &req,
     case NODE_MIX_VECTOR_NON_UNIFORM:
       detail::node_mix_vector_non_uniform(cursor, stack);
       return;
+    case NODE_OSL_SCRIPT:
+      detail::node_osl_script(cursor, stack, kg, req.transform_state,
+                              req.shader_data, req.path_state, req.shader_type,
+                              kernel_features, node_feature_mask, transition);
+      return;
     default:
       dsl::unreachable(
           "invalid node in DirectJitTranslator Cycles SVM stream");
@@ -2412,6 +2432,26 @@ std::size_t direct_jit_max_weight() noexcept {
 
 void BytecodeVmTranslator::translate(
     const SvmTranslationRequest &request) const noexcept {
+  struct OslTableKernelGlobals final : detail::DelegatingKernelGlobals {
+    std::span<const OslScriptBinding> _scripts;
+    OslTableKernelGlobals(const KernelGlobals &inner,
+                          std::span<const OslScriptBinding> scripts) noexcept
+        : DelegatingKernelGlobals{inner}, _scripts{scripts} {}
+    [[nodiscard]] std::span<const OslScriptBinding>
+    osl_scripts() const noexcept override {
+      return _scripts;
+    }
+  };
+  if (!request.table.osl_scripts.empty()) {
+    const OslTableKernelGlobals scoped_kg{request.kernel_globals,
+                                          request.table.osl_scripts};
+    eval_nodes_assume_valid(scoped_kg, request.words, request.shader_type,
+                            request.kernel_features, request.node_feature_mask,
+                            request.node_types_used, request.transform_state,
+                            request.shader_data, request.path_state,
+                            request.stack_size, request.noise_usage);
+    return;
+  }
   eval_nodes_assume_valid(request.kernel_globals, request.words,
                           request.shader_type, request.kernel_features,
                           request.node_feature_mask, request.node_types_used,

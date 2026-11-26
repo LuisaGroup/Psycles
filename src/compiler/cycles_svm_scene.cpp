@@ -127,6 +127,8 @@ static_assert(jump_node_word_count == 4u);
   return lhs.words == rhs.words && lhs.node_types_used == rhs.node_types_used &&
          lhs.attribute_requests == rhs.attribute_requests &&
          lhs.entry_usage == rhs.entry_usage && lhs.ir == rhs.ir &&
+         lhs.osl_scripts == rhs.osl_scripts &&
+         lhs.osl_script_patch_offsets == rhs.osl_script_patch_offsets &&
          lhs.peak_stack_usage == rhs.peak_stack_usage && same_metadata;
 }
 
@@ -238,6 +240,7 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
   }
   node_types_used[NODE_SHADER_JUMP] = !shaders.empty();
 
+  std::size_t osl_script_count = 0u;
   for (auto shader_index = std::size_t{}; shader_index < shaders.size();
        ++shader_index) {
     const auto &shader = shaders[shader_index];
@@ -262,6 +265,13 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
         return reject(prefix + "local ShaderJump entry is outside its tail");
       }
     }
+    for (const auto patch_offset : shader.osl_script_patch_offsets) {
+      if (!valid_local_offset(patch_offset, shader.words.size()) ||
+          shader.words[patch_offset] >= shader.osl_scripts.size()) {
+        return reject(prefix + "OSL script patch offset is out of range");
+      }
+    }
+    osl_script_count += shader.osl_scripts.size();
     if (shader.peak_stack_usage > SVM_STACK_SIZE) {
       return reject(prefix + "peak stack usage exceeds Cycles SVM capacity");
     }
@@ -315,6 +325,7 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
   result.entry_usage = entry_usage;
   result.shader_count = static_cast<std::uint32_t>(shaders.size());
   result.words.resize(global_word_count);
+  result.osl_scripts.reserve(osl_script_count);
 
   auto tail_base = shaders.size() * jump_node_word_count;
   bool all_have_ir = true;
@@ -348,6 +359,27 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
     }
     const auto tail = std::span{shader.words}.subspan(jump_node_word_count);
     std::copy(tail.begin(), tail.end(), result.words.data() + tail_base);
+    if (!shader.osl_scripts.empty()) {
+      std::vector<std::uint32_t> remap;
+      remap.reserve(shader.osl_scripts.size());
+      for (const auto &binding : shader.osl_scripts) {
+        std::uint32_t mapped_id = static_cast<std::uint32_t>(result.osl_scripts.size());
+        for (std::size_t k = 0u; k < result.osl_scripts.size(); ++k) {
+          if (result.osl_scripts[k] == binding) {
+            mapped_id = static_cast<std::uint32_t>(k);
+            break;
+          }
+        }
+        if (mapped_id == result.osl_scripts.size()) {
+          result.osl_scripts.push_back(binding);
+        }
+        remap.push_back(mapped_id);
+      }
+      for (const auto patch_offset : shader.osl_script_patch_offsets) {
+        const auto global_offset = tail_base + patch_offset - jump_node_word_count;
+        result.words[global_offset] = remap[result.words[global_offset]];
+      }
+    }
     tail_base += tail.size();
   }
   return result;

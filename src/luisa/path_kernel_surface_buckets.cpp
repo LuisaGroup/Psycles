@@ -396,7 +396,8 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       return SurfaceBucketMode::off;
     }
     if (backend_name == "vk" &&
-        domain_active_nonempty <= svm::direct_jit_max_shaders()) {
+        domain_active_nonempty <= svm::direct_jit_max_shaders() &&
+        domain_unique_jit_weight <= bucket_weight_cap) {
       return SurfaceBucketMode::off;
     }
     return SurfaceBucketMode::large_only;
@@ -471,15 +472,17 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
 
   std::sort(groups.begin(), groups.end(),
             [](const RoutineGroup &a, const RoutineGroup &b) noexcept {
+              const bool a_heavy_closures = a.max_closures > 2u;
+              const bool b_heavy_closures = b.max_closures > 2u;
               const bool a_multi = a.max_closures > 1u;
               const bool b_multi = b.max_closures > 1u;
               const bool a_special = a.has_emission || a.has_holdout;
               const bool b_special = b.has_emission || b.has_holdout;
-              return std::tuple{a_multi, a.has_bssrdf, a_special,
-                                a.max_closures, a.ir_ops,
+              return std::tuple{a.has_bssrdf, a_heavy_closures, a_multi,
+                                a_special, a.max_closures, a.ir_ops,
                                 a.shader_ids.front()} <
-                     std::tuple{b_multi, b.has_bssrdf, b_special,
-                                b.max_closures, b.ir_ops,
+                     std::tuple{b.has_bssrdf, b_heavy_closures, b_multi,
+                                b_special, b.max_closures, b.ir_ops,
                                 b.shader_ids.front()};
             });
 
@@ -491,17 +494,33 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
   std::size_t simple_single_closure_shaders = 0u;
   std::size_t simple_single_closure_weight = 0u;
   std::size_t simple_single_closure_groups = 0u;
+  std::size_t low_closure_non_bssrdf_shaders = 0u;
+  std::size_t low_closure_non_bssrdf_weight = 0u;
+  std::size_t low_closure_non_bssrdf_groups = 0u;
+  std::size_t non_bssrdf_shaders = 0u;
+  std::size_t non_bssrdf_weight = 0u;
+  std::size_t non_bssrdf_groups = 0u;
   for (const auto &g : groups) {
     total_active_nonempty += g.shader_ids.size();
     total_jit_weight += g.jit_weight;
-    if (g.max_closures <= 1u && !g.has_bssrdf) {
-      simple_single_closure_shaders += g.shader_ids.size();
-      simple_single_closure_weight += g.jit_weight;
-      ++simple_single_closure_groups;
-      if (!g.has_emission && !g.has_holdout) {
-        pure_simple_shaders += g.shader_ids.size();
-        pure_simple_weight += g.jit_weight;
-        ++pure_simple_groups;
+    if (!g.has_bssrdf) {
+      non_bssrdf_shaders += g.shader_ids.size();
+      non_bssrdf_weight += g.jit_weight;
+      ++non_bssrdf_groups;
+      if (g.max_closures <= 2u) {
+        low_closure_non_bssrdf_shaders += g.shader_ids.size();
+        low_closure_non_bssrdf_weight += g.jit_weight;
+        ++low_closure_non_bssrdf_groups;
+      }
+      if (g.max_closures <= 1u) {
+        simple_single_closure_shaders += g.shader_ids.size();
+        simple_single_closure_weight += g.jit_weight;
+        ++simple_single_closure_groups;
+        if (!g.has_emission && !g.has_holdout) {
+          pure_simple_shaders += g.shader_ids.size();
+          pure_simple_weight += g.jit_weight;
+          ++pure_simple_groups;
+        }
       }
     }
   }
@@ -566,14 +585,35 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
                                 std::size_t weight) noexcept {
       return shaders <= jit_shader_cap && weight <= bucket_weight_cap;
     };
-    if (pure_simple_groups >= 1u &&
-        pure_simple_groups < groups.size() &&
-        fits_slice(pure_simple_shaders, pure_simple_weight) &&
-        fits_slice(total_active_nonempty - pure_simple_shaders,
-                   total_jit_weight - pure_simple_weight)) {
+    const auto non_degenerate = [&](std::size_t g_cnt,
+                                    std::size_t s_cnt) noexcept {
+      return g_cnt >= 3u && s_cnt * 5u >= total_active_nonempty;
+    };
+    if (low_closure_non_bssrdf_groups < groups.size() &&
+        non_degenerate(low_closure_non_bssrdf_groups,
+                       low_closure_non_bssrdf_shaders) &&
+        (groups[low_closure_non_bssrdf_groups].has_bssrdf ||
+         groups.back().max_closures >= 4u) &&
+        fits_slice(low_closure_non_bssrdf_shaders,
+                   low_closure_non_bssrdf_weight) &&
+        fits_slice(total_active_nonempty - low_closure_non_bssrdf_shaders,
+                   total_jit_weight - low_closure_non_bssrdf_weight)) {
+      cut = low_closure_non_bssrdf_groups;
+    } else if (non_bssrdf_groups >= 1u &&
+               non_bssrdf_groups < groups.size() &&
+               fits_slice(non_bssrdf_shaders, non_bssrdf_weight) &&
+               fits_slice(total_active_nonempty - non_bssrdf_shaders,
+                          total_jit_weight - non_bssrdf_weight)) {
+      cut = non_bssrdf_groups;
+    } else if (pure_simple_groups < groups.size() &&
+               non_degenerate(pure_simple_groups, pure_simple_shaders) &&
+               fits_slice(pure_simple_shaders, pure_simple_weight) &&
+               fits_slice(total_active_nonempty - pure_simple_shaders,
+                          total_jit_weight - pure_simple_weight)) {
       cut = pure_simple_groups;
-    } else if (simple_single_closure_groups >= 1u &&
-               simple_single_closure_groups < groups.size() &&
+    } else if (simple_single_closure_groups < groups.size() &&
+               non_degenerate(simple_single_closure_groups,
+                              simple_single_closure_shaders) &&
                fits_slice(simple_single_closure_shaders,
                           simple_single_closure_weight) &&
                fits_slice(total_active_nonempty - simple_single_closure_shaders,

@@ -1306,4 +1306,13 @@ struct SVMNodeSceneTime {
 static_assert(alignof(SVMNodeSceneTime) <= alignof(uint));
 static_assert(sizeof(SVMNodeSceneTime) % sizeof(uint) == 0);
 
+/* NODE_OSL_SCRIPT */
+struct SVMNodeOslScript {
+  uint script_id;
+  SVMStackOffset mix_weight_offset;
+  uint8_t _pad[3];
+};
+static_assert(alignof(SVMNodeOslScript) <= alignof(uint));
+static_assert(sizeof(SVMNodeOslScript) % sizeof(uint) == 0);
+
 } // namespace psycles::compiler::cycles_svm

@@ -9,6 +9,77 @@ from typing import Any
 import numpy as np
 
 
+_BUILTIN_OSL_ATTR_PREFIXES = (
+    "geom:",
+    "object:",
+    "camera:",
+    "shader:",
+    "path:",
+    "hit:",
+    "material:",
+)
+
+
+def _scan_osl_script_attributes(
+    node: Any,
+    required_attrs: set[str],
+    required_uv_maps: set[str],
+) -> None:
+    import pathlib
+    import re
+
+    def record(name: str) -> None:
+        if not name or name.startswith(_BUILTIN_OSL_ATTR_PREFIXES):
+            return
+        required_attrs.add(name)
+        required_uv_maps.add(name)
+
+    sources: list[str] = []
+    script = getattr(node, "script", None)
+    if script is not None:
+        try:
+            sources.append(script.as_string())
+        except Exception:
+            pass
+    filepath = str(getattr(node, "filepath", "") or "")
+    if filepath:
+        try:
+            import bpy
+
+            id_data = getattr(node, "id_data", None)
+            lib = getattr(id_data, "library", None) if id_data is not None else None
+            resolved = pathlib.Path(bpy.path.abspath(filepath, library=lib))
+            if resolved.is_file():
+                sources.append(resolved.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            pass
+
+    for src in sources:
+        for match in re.finditer(r"\bgetattribute\s*\(([^;{}]*)\)", src):
+            for lit in re.findall(r'"((?:[^"\\]|\\.)*)"', match.group(1)):
+                record(lit)
+
+    bytecode = str(getattr(node, "bytecode", "") or "")
+    if bytecode:
+        str_consts: dict[str, str] = {}
+        for line in bytecode.splitlines():
+            line = line.strip()
+            cm = re.match(
+                r'^const\s+string\s+(\$\w+)\s+"((?:[^"\\]|\\.)*)"', line
+            )
+            if cm:
+                str_consts[cm.group(1)] = cm.group(2)
+            elif line.startswith("getattribute\b") or "\tgetattribute\b" in line or "getattribute " in line:
+                if line.split()[0] == "getattribute":
+                    tokens = line.split()
+                    for tok in tokens[1:]:
+                        tok_clean = tok.rstrip(",")
+                        if tok_clean in str_consts:
+                            record(str_consts[tok_clean])
+                        elif tok_clean.startswith('"') and tok_clean.endswith('"'):
+                            record(tok_clean[1:-1])
+
+
 def _walk_node_tree_attributes(
     node_tree: Any,
     required_attrs: set[str],
@@ -32,6 +103,8 @@ def _walk_node_tree_attributes(
             uv_map = getattr(node, "uv_map", "")
             if uv_map:
                 required_uv_maps.add(str(uv_map))
+        elif node.type == "SCRIPT":
+            _scan_osl_script_attributes(node, required_attrs, required_uv_maps)
         else:
             nested = getattr(node, "node_tree", None)
             if nested is not None:

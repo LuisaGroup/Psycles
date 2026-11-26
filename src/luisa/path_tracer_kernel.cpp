@@ -323,6 +323,7 @@ LuisaRenderSession::update_kernel_parameters(const RenderSettings &settings) {
 void LuisaRenderSession::initialize(const RenderSettings &settings) {
     const bool tl_active =
         _scene && _scene->device &&
+        _scene->device.backend_name() == "vk" &&
         _scene->device.impl()->query("vk_timeline_active") == "1";
     if (tl_active) {
         static_cast<void>(

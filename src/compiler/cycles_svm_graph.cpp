@@ -874,121 +874,228 @@ CyclesGraph CyclesGraph::project(
     const auto vector_range = target_type == cycles_synthetic_vector_map_range;
 
     std::vector<GraphInput> inputs;
-    inputs.reserve(schema->inputs.size() + 2u);
-    for (const auto &socket : schema->inputs) {
-      if (map_range && (socket.type == contract::SocketType::vector) != vector_range) {
-        continue;
-      }
-      const auto type = graph_socket_type(socket.type);
-      if (!type) {
-        // Cycles properties do not occupy ShaderInput stack lanes. A source
-        // schema using such a type as an input cannot be projected silently.
-        graph.reject("Cycles SVM input type is not stack representable: " +
-                     source.type + "." + socket.name);
-        return graph;
-      }
-      const auto binding = source.inputs.find(socket.name);
-      auto value = binding == source.inputs.end() ? std::nullopt
-                                                  : binding->second.value;
-      inputs.emplace_back(GraphInput{
-          .name = std::string{projected_input_name(target_type, socket.name)},
-          .type = *type,
-          .flags = socket_flags(target_type, socket.name),
-          .value = std::move(value),
-      });
-    }
-    if (!projected_binary_math_operation(source.type).empty()) {
-      inputs.emplace_back(GraphInput{
-          .name = "Value3",
-          .type = GraphSocketType::floating,
-          .value = contract::SocketValue::floating(0.0f),
-      });
-    }
-    if (source.type == node_type::clamp_float) {
-      inputs.emplace_back(GraphInput{
-          .name = "Min",
-          .type = GraphSocketType::floating,
-          .value = contract::SocketValue::floating(0.0f),
-      });
-      inputs.emplace_back(GraphInput{
-          .name = "Max",
-          .type = GraphSocketType::floating,
-          .value = contract::SocketValue::floating(1.0f),
-      });
-    }
-    if (source.type == node_type::bump) {
-      auto authored_inputs = std::move(inputs);
-      inputs.clear();
-      inputs.reserve(8u);
-      const auto append_authored = [&](std::string_view name) {
-        const auto iter = std::find_if(
-            authored_inputs.begin(), authored_inputs.end(),
-            [name](const GraphInput &input) { return input.name == name; });
-        if (iter == authored_inputs.end()) {
-          return false;
+    std::vector<GraphOutput> outputs;
+    const auto parse_type_spec =
+        [](const contract::ShaderNode &src, std::string_view prop_name,
+           std::vector<std::pair<std::string, contract::SocketType>> &out) {
+          const auto it = src.properties.find(prop_name);
+          if (it == src.properties.end() ||
+              it->second.type != contract::SocketType::string) {
+            return;
+          }
+          const auto *spec = std::get_if<std::string>(&it->second.value);
+          if (spec == nullptr) {
+            return;
+          }
+          std::size_t pos = 0u;
+          while (pos < spec->size()) {
+            const auto next = spec->find(';', pos);
+            const auto entry = std::string_view{*spec}.substr(
+                pos, next == std::string_view::npos ? spec->size() - pos
+                                                    : next - pos);
+            const auto eq = entry.find('=');
+            if (eq != std::string_view::npos) {
+              const auto sock_name = entry.substr(0u, eq);
+              const auto tok = entry.substr(eq + 1u);
+              std::optional<contract::SocketType> st;
+              if (tok == "float") { st = contract::SocketType::floating; }
+              else if (tok == "int") { st = contract::SocketType::integer; }
+              else if (tok == "bool") { st = contract::SocketType::boolean; }
+              else if (tok == "uint") { st = contract::SocketType::unsigned_integer; }
+              else if (tok == "float2") { st = contract::SocketType::float2; }
+              else if (tok == "float3") { st = contract::SocketType::float3; }
+              else if (tok == "color") { st = contract::SocketType::color; }
+              else if (tok == "spectrum") { st = contract::SocketType::spectrum; }
+              else if (tok == "vector") { st = contract::SocketType::vector; }
+              else if (tok == "point") { st = contract::SocketType::point; }
+              else if (tok == "normal") { st = contract::SocketType::normal; }
+              else if (tok == "transform") { st = contract::SocketType::transform; }
+              else if (tok == "string") { st = contract::SocketType::string; }
+              else if (tok == "closure") { st = contract::SocketType::closure; }
+              else if (tok == "volume_closure") { st = contract::SocketType::volume_closure; }
+              if (st) {
+                out.emplace_back(std::string{sock_name}, *st);
+              }
+            }
+            if (next == std::string_view::npos) {
+              break;
+            }
+            pos = next + 1u;
+          }
+        };
+
+    if (source.type == node_type::osl_script) {
+      std::vector<std::pair<std::string, contract::SocketType>> dyn_inputs;
+      parse_type_spec(source, "InputTypes", dyn_inputs);
+      inputs.reserve(dyn_inputs.size() + 2u);
+      for (const auto &[sock_name, sock_type] : dyn_inputs) {
+        const auto gtype = graph_socket_type(sock_type);
+        if (!gtype) {
+          continue;
         }
-        inputs.emplace_back(std::move(*iter));
-        authored_inputs.erase(iter);
-        return true;
-      };
-      if (!append_authored("Height")) {
-        graph.reject("Cycles Bump Height input is absent");
-        return graph;
-      }
-      for (const auto name : {"SampleCenter", "SampleX", "SampleY"}) {
+        const auto binding = source.inputs.find(sock_name);
+        auto value = binding == source.inputs.end() ? std::nullopt
+                                                    : binding->second.value;
         inputs.emplace_back(GraphInput{
-            .name = name,
+            .name = sock_name,
+            .type = *gtype,
+            .flags = graph_socket_none,
+            .value = std::move(value),
+        });
+      }
+      bool has_closure_out = false;
+      if (const auto it = source.properties.find("HasClosureOutput");
+          it != source.properties.end() &&
+          it->second.type == contract::SocketType::boolean) {
+        if (const auto *b = std::get_if<bool>(&it->second.value)) {
+          has_closure_out = *b;
+        }
+      }
+      std::vector<std::pair<std::string, contract::SocketType>> dyn_outputs;
+      parse_type_spec(source, "OutputTypes", dyn_outputs);
+      outputs.reserve(dyn_outputs.size());
+      for (const auto &[sock_name, sock_type] : dyn_outputs) {
+        const auto gtype = graph_socket_type(sock_type);
+        if (!gtype) {
+          continue;
+        }
+        if (*gtype == GraphSocketType::closure) {
+          has_closure_out = true;
+        }
+        outputs.emplace_back(GraphOutput{
+            .name = sock_name,
+            .type = *gtype,
+            .links = {},
+        });
+      }
+      if (has_closure_out) {
+        inputs.emplace_back(GraphInput{
+            .name = "SurfaceMixWeight",
+            .type = GraphSocketType::floating,
+            .value = contract::SocketValue::floating(0.0f),
+        });
+        inputs.emplace_back(GraphInput{
+            .name = "VolumeMixWeight",
             .type = GraphSocketType::floating,
             .value = contract::SocketValue::floating(0.0f),
         });
       }
-      if (!append_authored("Normal") || !append_authored("Strength") ||
-          !append_authored("Distance") || !append_authored("Filter Width") ||
-          !authored_inputs.empty()) {
-        graph.reject("Cycles Bump input projection is not isomorphic");
+    } else {
+      inputs.reserve(schema->inputs.size() + 2u);
+      for (const auto &socket : schema->inputs) {
+        if (map_range && (socket.type == contract::SocketType::vector) != vector_range) {
+          continue;
+        }
+        const auto type = graph_socket_type(socket.type);
+        if (!type) {
+          // Cycles properties do not occupy ShaderInput stack lanes. A source
+          // schema using such a type as an input cannot be projected silently.
+          graph.reject("Cycles SVM input type is not stack representable: " +
+                       source.type + "." + socket.name);
+          return graph;
+        }
+        const auto binding = source.inputs.find(socket.name);
+        auto value = binding == source.inputs.end() ? std::nullopt
+                                                    : binding->second.value;
+        inputs.emplace_back(GraphInput{
+            .name = std::string{projected_input_name(target_type, socket.name)},
+            .type = *type,
+            .flags = socket_flags(target_type, socket.name),
+            .value = std::move(value),
+        });
+      }
+      if (!projected_binary_math_operation(source.type).empty()) {
+        inputs.emplace_back(GraphInput{
+            .name = "Value3",
+            .type = GraphSocketType::floating,
+            .value = contract::SocketValue::floating(0.0f),
+        });
+      }
+      if (source.type == node_type::clamp_float) {
+        inputs.emplace_back(GraphInput{
+            .name = "Min",
+            .type = GraphSocketType::floating,
+            .value = contract::SocketValue::floating(0.0f),
+        });
+        inputs.emplace_back(GraphInput{
+            .name = "Max",
+            .type = GraphSocketType::floating,
+            .value = contract::SocketValue::floating(1.0f),
+        });
+      }
+      if (source.type == node_type::bump) {
+        auto authored_inputs = std::move(inputs);
+        inputs.clear();
+        inputs.reserve(8u);
+        const auto append_authored = [&](std::string_view name) {
+          const auto iter = std::find_if(
+              authored_inputs.begin(), authored_inputs.end(),
+              [name](const GraphInput &input) { return input.name == name; });
+          if (iter == authored_inputs.end()) {
+            return false;
+          }
+          inputs.emplace_back(std::move(*iter));
+          authored_inputs.erase(iter);
+          return true;
+        };
+        if (!append_authored("Height")) {
+          graph.reject("Cycles Bump Height input is absent");
+          return graph;
+        }
+        for (const auto name : {"SampleCenter", "SampleX", "SampleY"}) {
+          inputs.emplace_back(GraphInput{
+              .name = name,
+              .type = GraphSocketType::floating,
+              .value = contract::SocketValue::floating(0.0f),
+          });
+        }
+        if (!append_authored("Normal") || !append_authored("Strength") ||
+            !append_authored("Distance") || !append_authored("Filter Width") ||
+            !authored_inputs.empty()) {
+          graph.reject("Cycles Bump input projection is not isomorphic");
+          return graph;
+        }
+      }
+      if (is_surface_closure(target_type)) {
+        inputs.emplace_back(GraphInput{
+            .name = "SurfaceMixWeight",
+            .type = GraphSocketType::floating,
+            .value = contract::SocketValue::floating(0.0f),
+        });
+      }
+      if (is_volume_closure(target_type) || target_type == node_type::emission ||
+          target_type == node_type::holdout) {
+        inputs.emplace_back(GraphInput{
+            .name = "VolumeMixWeight",
+            .type = GraphSocketType::floating,
+            .value = contract::SocketValue::floating(0.0f),
+        });
+      }
+      if (is_surface_closure(target_type) &&
+          !project_closure_input_order(target_type, inputs)) {
+        graph.reject("Cycles closure input declaration is not isomorphic: " +
+                     std::string{target_type});
         return graph;
       }
-    }
-    if (is_surface_closure(target_type)) {
-      inputs.emplace_back(GraphInput{
-          .name = "SurfaceMixWeight",
-          .type = GraphSocketType::floating,
-          .value = contract::SocketValue::floating(0.0f),
-      });
-    }
-    if (is_volume_closure(target_type) || target_type == node_type::emission ||
-        target_type == node_type::holdout) {
-      inputs.emplace_back(GraphInput{
-          .name = "VolumeMixWeight",
-          .type = GraphSocketType::floating,
-          .value = contract::SocketValue::floating(0.0f),
-      });
-    }
-    if (is_surface_closure(target_type) &&
-        !project_closure_input_order(target_type, inputs)) {
-      graph.reject("Cycles closure input declaration is not isomorphic: " +
-                   std::string{target_type});
-      return graph;
-    }
 
-    std::vector<GraphOutput> outputs;
-    outputs.reserve(schema->outputs.size());
-    for (const auto &socket : schema->outputs) {
-      if (map_range && (socket.type == contract::SocketType::vector) != vector_range) {
-        continue;
+      outputs.reserve(schema->outputs.size());
+      for (const auto &socket : schema->outputs) {
+        if (map_range && (socket.type == contract::SocketType::vector) != vector_range) {
+          continue;
+        }
+        const auto type = graph_socket_type(socket.type);
+        if (!type) {
+          graph.reject("Cycles SVM output type is not stack representable: " +
+                       source.type + "." + socket.name);
+          return graph;
+        }
+        outputs.emplace_back(
+            GraphOutput{.name =
+                            std::string{
+                                projected_output_name(target_type, socket.name)},
+                        .type = *type,
+                        .links = {}});
       }
-      const auto type = graph_socket_type(socket.type);
-      if (!type) {
-        graph.reject("Cycles SVM output type is not stack representable: " +
-                     source.type + "." + socket.name);
-        return graph;
-      }
-      outputs.emplace_back(
-          GraphOutput{.name =
-                          std::string{
-                              projected_output_name(target_type, socket.name)},
-                      .type = *type,
-                      .links = {}});
     }
 
     auto properties = source.properties;

@@ -117,6 +117,7 @@ struct NodeSchema {
     std::vector<SocketSchema> outputs;
     std::vector<PropertySchema> properties;
     std::uint64_t required_features{};
+    bool allow_dynamic_sockets{false};
 };
 
 class NodeRegistry {

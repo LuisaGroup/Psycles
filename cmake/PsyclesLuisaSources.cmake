@@ -26,6 +26,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_ray_portal.cpp
     src/luisa/cycles_svm_sheen.cpp
     src/luisa/cycles_svm_toon.cpp
+    src/luisa/cycles_svm_osl.cpp
     src/luisa/cycles_svm_simple_closure.cpp
     src/luisa/cycles_svm_color.cpp
     src/luisa/cycles_svm_convert.cpp
@@ -104,6 +105,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/volume_majorant_prepass.cpp
     src/adapter/blender_graph_lower_closures.cpp
     src/adapter/blender_graph_lower_inputs.cpp
+    src/adapter/blender_graph_lower_osl.cpp
     src/adapter/blender_graph_lower_procedural.cpp
     src/adapter/blender_graph_lower_values.cpp
     src/adapter/blender_graph_lowering_components.cpp

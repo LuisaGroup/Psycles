@@ -77,6 +77,7 @@ inline constexpr auto layer_weight = "psycles.layer_weight";
 inline constexpr auto fresnel = "psycles.fresnel";
 inline constexpr auto ambient_occlusion = "psycles.ambient_occlusion";
 inline constexpr auto bevel = "psycles.bevel";
+inline constexpr auto osl_script = "psycles.osl.script";
 inline constexpr auto mix_float = "psycles.value.mix_float";
 inline constexpr auto mix_vector = "psycles.value.mix_vector";
 inline constexpr auto mix_vector_nonuniform =

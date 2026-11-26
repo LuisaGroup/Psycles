@@ -11,6 +11,7 @@
 #include <psycles/compiler/cycles_svm_closure_usage.h>
 #include <psycles/compiler/cycles_svm_node_types.h>
 #include <psycles/compiler/cycles_svm_noise_usage.h>
+#include <psycles/compiler/cycles_svm_osl_binding.h>
 #include <psycles/luisa/cycles_bsdf_tables.h>
 
 #include <array>
@@ -18,6 +19,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <span>
 
 #include <luisa/dsl/local.h>
 #include <luisa/luisa-compute.h>
@@ -694,6 +696,11 @@ public:
       luisa::compute::Expr<luisa::float3> position,
       luisa::compute::Expr<std::int32_t> interpolation,
       luisa::compute::Expr<bool> stochastic) const noexcept = 0;
+
+  [[nodiscard]] virtual std::span<const compiler::cycles_svm::OslScriptBinding>
+  osl_scripts() const noexcept {
+    return {};
+  }
 };
 
 /* Cycles kernel/types.h::MAX_CLOSURE. Scene analysis may instantiate a

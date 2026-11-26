@@ -714,6 +714,17 @@ build_path_kernel_executor(luisa::compute::Device &device,
             }
             scheduler_config.refill_continuations = {
                 path_transition::intersect_closest};
+            const bool collect_intersect = [&]() noexcept {
+              const char *raw = std::getenv("PSYCLES_WAVEFRONT_COLLECT_INTERSECT");
+              if (raw != nullptr && *raw != '\0') {
+                return std::string_view{raw} != "0";
+              }
+              return surface_buckets.buckets.size() >= 3u;
+            }();
+            if (collect_intersect) {
+              scheduler_config.collect_continuations = {
+                  path_transition::intersect_closest};
+            }
             float refill_ratio = 0.5f;
             if (const auto *override_ratio =
                     std::getenv("PSYCLES_WAVEFRONT_REFILL_RATIO")) {

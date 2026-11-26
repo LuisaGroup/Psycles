@@ -649,6 +649,14 @@ PathCyclesSvmKernelGlobals::ambient_occlusion_services() const noexcept {
              : nullptr;
 }
 
+std::span<const abi::OslScriptBinding>
+PathCyclesSvmKernelGlobals::osl_scripts() const noexcept {
+  if (_scene->cycles_svm) {
+    return _scene->cycles_svm->compilation.table.osl_scripts;
+  }
+  return {};
+}
+
 Float PathCyclesSvmKernelGlobals::cycles_bsdf_data(
     Expr<std::uint32_t> index) const noexcept {
   return _scene->cycles_bsdf_table_buffer->read(index);

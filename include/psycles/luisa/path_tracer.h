@@ -407,6 +407,7 @@ struct LuisaPathTracerOptions {
       surface_closure_count_histogram;
   LuisaVirtualTextureCacheOptions virtual_texture_cache{};
   LuisaTextureMipMode direct_texture_mip_mode{LuisaTextureMipMode::mip0};
+  bool build_light_tree{true};
 };
 
 class LuisaPathTracerBackend final : public contract::RendererBackend {

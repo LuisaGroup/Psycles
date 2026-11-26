@@ -187,6 +187,8 @@ make_blender_value_lowering_component();
 make_blender_procedural_lowering_component();
 [[nodiscard]] std::unique_ptr<BlenderNodeLoweringComponent>
 make_blender_closure_lowering_component();
+[[nodiscard]] std::unique_ptr<BlenderNodeLoweringComponent>
+make_blender_osl_lowering_component();
 
 [[nodiscard]] std::vector<
     std::unique_ptr<BlenderNodeLoweringComponent>>

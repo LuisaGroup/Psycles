@@ -1625,7 +1625,8 @@ void VirtualTextureCache::register_timeline_labels_if_active() const noexcept {
   if (_timeline_labels_registered || !_device) {
     return;
   }
-  if (_device.impl()->query("vk_timeline_active") != "1") {
+  if (_device.backend_name() != "vk" ||
+      _device.impl()->query("vk_timeline_active") != "1") {
     return;
   }
   _timeline_labels_registered = true;
@@ -1915,7 +1916,8 @@ VirtualTextureCache::make_wavefront_extension_handler() noexcept {
               ctx.device.compile(filter_ready, ctx.shader_option)});
       cached_ptr = &emplaced.shader;
       cached_filter_ptr = &emplaced.filter_shader;
-      if (ctx.device.impl()->query("vk_timeline_active") == "1") {
+      if (ctx.device.backend_name() == "vk" &&
+          ctx.device.impl()->query("vk_timeline_active") == "1") {
         char qbuf[192];
         std::snprintf(qbuf, sizeof(qbuf), "vk_timeline_label:shader:%llu:vt_collect",
                       static_cast<unsigned long long>(emplaced.shader.handle()));

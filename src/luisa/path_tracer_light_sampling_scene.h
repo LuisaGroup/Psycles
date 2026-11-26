@@ -58,6 +58,7 @@ build_light_sampling_scene_upload(
     std::span<const Vec3f> analytic_light_emission_estimates,
     std::span<const EmissiveTriangleGpu> emissive_triangles,
     std::span<const float> emissive_triangle_areas,
-    bool include_environment) noexcept;
+    bool include_environment,
+    bool build_light_tree = true) noexcept;
 
 }// namespace psycles::luisa_backend::detail

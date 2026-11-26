@@ -18,6 +18,7 @@
 #include "cycles_svm_mapping_nodes.h"
 #include "cycles_svm_noise_nodes.h"
 #include "cycles_svm_normal_nodes.h"
+#include "cycles_svm_osl_nodes.h"
 #include "cycles_svm_procedural_texture_nodes.h"
 #include "cycles_svm_ramp_nodes.h"
 #include "cycles_svm_sky_nodes.h"
@@ -1877,6 +1878,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
     return node;
   }
   if (auto node = make_volume_graph_node(type)) {
+    return node;
+  }
+  if (auto node = make_osl_graph_node(type)) {
     return node;
   }
   if (type == node_type::null_closure || type == node_type::null_volume) {

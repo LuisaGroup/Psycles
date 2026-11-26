@@ -26,6 +26,7 @@ struct ShaderTableImage {
   std::optional<ShaderEntryUsageTable> entry_usage;
   // Linked structured SVM IR for re-targetable backend translators.
   SvmTableIr ir;
+  std::vector<OslScriptBinding> osl_scripts;
 
   [[nodiscard]] ShaderEntryUsage usage_for(ShaderType type) const noexcept {
     const auto index = static_cast<std::size_t>(type);

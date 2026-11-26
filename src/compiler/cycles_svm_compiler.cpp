@@ -304,6 +304,8 @@ private:
   BytecodeBuilder _stream;
   Stack _stack;
   AttributeRequestSet _attribute_requests;
+  std::vector<OslScriptBinding> _osl_scripts;
+  std::vector<std::uint32_t> _osl_script_patch_offsets;
   ShaderCompileMetadata _metadata;
   ShaderEntryUsageTable _entry_usage{};
   SvmShaderIr _ir{};
@@ -634,6 +636,17 @@ private:
     return _ies_ids.get_ies_slot(content);
   }
 
+  [[nodiscard]] std::uint32_t add_osl_script(OslScriptBinding binding) override {
+    for (std::size_t i = 0u; i < _osl_scripts.size(); ++i) {
+      if (_osl_scripts[i] == binding) {
+        return static_cast<std::uint32_t>(i);
+      }
+    }
+    const auto id = static_cast<std::uint32_t>(_osl_scripts.size());
+    _osl_scripts.emplace_back(std::move(binding));
+    return id;
+  }
+
   void stack_link(GraphInput *input, GraphOutput *output_socket) override {
     if (input == nullptr || output_socket == nullptr || input->link == nullptr ||
         stack_size(input->link) != stack_size(output_socket)) {
@@ -883,6 +896,17 @@ private:
       _metadata.surface_closure_usage.merge(cu);
       inst_spec.closure_usage = cu;
       inst_spec.may_have_thin_film = false;
+    } else if (resolved == NODE_OSL_SCRIPT) {
+      _osl_script_patch_offsets.emplace_back(
+          static_cast<std::uint32_t>(op_offset + 1u));
+      if (_current_type == SHADER_TYPE_SURFACE && node != nullptr) {
+        const auto cu = node->get_surface_closure_usage();
+        _metadata.surface_closure_usage.merge(cu);
+        _metadata.may_have_thin_film =
+            _metadata.may_have_thin_film || cu.surface_closure_mask != 0ull;
+        inst_spec.closure_usage = cu;
+        inst_spec.may_have_thin_film = cu.surface_closure_mask != 0ull;
+      }
     }
     if (!_ir_block_stack.empty() && resolved != NODE_JUMP_IF_ONE &&
         resolved != NODE_JUMP_IF_ZERO && resolved != NODE_END &&
@@ -1518,6 +1542,8 @@ private:
     result.node_types_used = _stream.node_types_used();
     result.attribute_requests.assign(_attribute_requests.requests().begin(),
                                      _attribute_requests.requests().end());
+    result.osl_scripts = _osl_scripts;
+    result.osl_script_patch_offsets = _osl_script_patch_offsets;
     result.peak_stack_usage = _stack.peak();
     if (result.valid) {
       result.entry_usage = _entry_usage;

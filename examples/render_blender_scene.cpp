@@ -953,7 +953,8 @@ int main(int argc, char **argv) {
          .surface_closure_count_histogram =
              surface_closure_count_histogram_request,
          .virtual_texture_cache = vt_options,
-         .direct_texture_mip_mode = direct_texture_mip_mode}};
+         .direct_texture_mip_mode = direct_texture_mip_mode,
+         .build_light_tree = imported.integrator.use_light_tree}};
     const auto compile_begin = std::chrono::steady_clock::now();
     auto compilation = renderer.compile_scene(*imported.scene);
     if (!compilation.ok()) {

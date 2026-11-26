@@ -535,6 +535,14 @@ void node_closure_bsdf_shadow_only(
 void node_closure_bsdf_skip(
     Cursor &cursor, luisa::compute::Expr<std::uint32_t> closure_type,
     std::uint64_t svm_bsdf_node_mask = ~0ull) noexcept;
+void node_osl_script(Cursor &cursor, Stack &stack,
+                     const KernelGlobals &kernel_globals,
+                     const TransformState &transform_state,
+                     ShaderData &shader_data, const PathState &path_state,
+                     compiler::cycles_svm::ShaderType shader_type,
+                     std::uint32_t kernel_features,
+                     std::uint32_t node_feature_mask,
+                     const EvaluationTransition &transition) noexcept;
 
 // Forwarding wrapper around KernelGlobals so scoped AST specializations
 // (e.g. per-instruction or per-attribute) override only the queried metadata.
@@ -826,6 +834,10 @@ public:
       luisa::compute::Expr<bool> stochastic) const noexcept override {
     return _inner.kernel_image_interp_3d(shader_data, image_texture_id,
                                          position, interpolation, stochastic);
+  }
+  [[nodiscard]] std::span<const compiler::cycles_svm::OslScriptBinding>
+  osl_scripts() const noexcept override {
+    return _inner.osl_scripts();
   }
 };
 

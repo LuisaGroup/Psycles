@@ -112,7 +112,8 @@ LightSamplingSceneUpload build_light_sampling_scene_upload(
     std::span<const Vec3f> analytic_light_emission_estimates,
     std::span<const EmissiveTriangleGpu> emissive_triangles,
     std::span<const float> emissive_triangle_areas,
-    bool include_environment) noexcept {
+    bool include_environment,
+    bool build_light_tree) noexcept {
     LightSamplingSceneUpload result;
     try {
         if (emissive_triangles.size() != emissive_triangle_areas.size()) {
@@ -139,6 +140,9 @@ LightSamplingSceneUpload build_light_sampling_scene_upload(
             emissive_triangle_areas,
             static_cast<std::uint32_t>(lights.size()),
             include_environment);
+        if (!build_light_tree) {
+            return result;
+        }
 
         auto meshes = MeshLightTreeSceneComponent{}.build(
             snapshot, scene, geometry_uploads, emissive_triangles);

@@ -1821,6 +1821,28 @@ NodeRegistry make_core_node_registry() {
                  .properties = {},
                  .required_features = feature_bit(ShaderFeature::volume)}));
 
+  static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::osl_script,
+                 .inputs = {},
+                 .outputs = {},
+                 .properties = {
+                     property("Bytecode", SocketType::string,
+                              SocketValue::string("")),
+                     property("ScriptName", SocketType::string,
+                              SocketValue::string("")),
+                     property("InputTypes", SocketType::string,
+                              SocketValue::string("")),
+                     property("OutputTypes", SocketType::string,
+                              SocketValue::string("")),
+                     property("StringParams", SocketType::string,
+                              SocketValue::string("")),
+                     property("HasClosureOutput", SocketType::boolean,
+                              SocketValue::boolean(false))},
+                 .required_features = feature_bit(ShaderFeature::surface) |
+                                      feature_bit(ShaderFeature::ray_state) |
+                                      feature_bit(ShaderFeature::attributes),
+                 .allow_dynamic_sockets = true}));
+
   return registry;
 }
 

@@ -64,6 +64,7 @@ class SurfaceSortHandler final
   unsigned _subblocks_per_partition{1u};
   bool _use_fused_partition_sort{false};
   bool _warp32{false};
+  unsigned _min_sort_frames{512u};
   luisa::compute::Device *_device{nullptr};
   unsigned _frame_capacity{0u};
   luisa::compute::coro::radix_sort::instance<luisa::compute::Buffer<luisa::uint>,
@@ -84,6 +85,10 @@ public:
     _use_fused_partition_sort =
         _warp32 && _range <= max_fused_shader_range &&
         _composite_range <= max_fused_composite_range;
+    if (const char *raw = std::getenv("PSYCLES_SURFACE_SORT_MIN_FRAMES");
+        raw != nullptr && *raw != '\0') {
+      _min_sort_frames = static_cast<unsigned>(std::strtoul(raw, nullptr, 10));
+    }
     _indices = context.device.create_buffer<luisa::uint>(context.frame_capacity);
     const auto *binding = &stage.binding("shader");
     const auto *desc = &context.frame_desc;
@@ -514,8 +519,23 @@ public:
   [[nodiscard]] bool gathers_selected_frames() const noexcept override {
     return _use_fused_partition_sort;
   }
+  [[nodiscard]] bool gathers_selected_frames_for(
+      luisa::uint frame_count, luisa::uint scan_count) const noexcept override {
+    if (!_use_fused_partition_sort) {
+      return false;
+    }
+    if (frame_count <= _min_sort_frames && scan_count > single_block_max_scan) {
+      return false;
+    }
+    return true;
+  }
   [[nodiscard]] luisa::compute::BufferView<luisa::uint>
   dispatch_queue(const Dispatch &context) noexcept override {
+    if (!context.ungathered_scan &&
+        context.scan_count > single_block_max_scan &&
+        context.frame_count <= _min_sort_frames) {
+      return context.frame_indices;
+    }
     if (_use_fused_partition_sort) {
       if (context.ungathered_scan) {
         if (context.frame_count == 0u || context.scan_count == 0u) {

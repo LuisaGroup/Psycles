@@ -1853,7 +1853,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         analytic_lights.regular_shader_emission_estimates,
         emissive_triangles,
         emissive_triangle_areas,
-        include_environment);
+        include_environment,
+        _options.build_light_tree);
     if (!light_sampling.ok()) {
         diagnose(result.diagnostics, light_sampling.diagnostic);
         return result;

@@ -321,6 +321,59 @@ bool GraphValidation::ok() const noexcept {
                });
 }
 
+namespace {
+
+[[nodiscard]] std::optional<SocketType>
+parse_dynamic_socket_type_token(std::string_view token) noexcept {
+    if (token == "float") { return SocketType::floating; }
+    if (token == "int") { return SocketType::integer; }
+    if (token == "bool") { return SocketType::boolean; }
+    if (token == "uint") { return SocketType::unsigned_integer; }
+    if (token == "float2") { return SocketType::float2; }
+    if (token == "float3") { return SocketType::float3; }
+    if (token == "color") { return SocketType::color; }
+    if (token == "spectrum") { return SocketType::spectrum; }
+    if (token == "vector") { return SocketType::vector; }
+    if (token == "point") { return SocketType::point; }
+    if (token == "normal") { return SocketType::normal; }
+    if (token == "transform") { return SocketType::transform; }
+    if (token == "string") { return SocketType::string; }
+    if (token == "closure") { return SocketType::closure; }
+    if (token == "volume_closure") { return SocketType::volume_closure; }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<SocketType> find_dynamic_socket_type(
+    const ShaderNode &node,
+    std::string_view property_name,
+    std::string_view socket_name) noexcept {
+    const auto it = node.properties.find(property_name);
+    if (it == node.properties.end() || it->second.type != SocketType::string) {
+        return std::nullopt;
+    }
+    const auto *spec = std::get_if<std::string>(&it->second.value);
+    if (spec == nullptr) {
+        return std::nullopt;
+    }
+    std::size_t pos = 0u;
+    while (pos < spec->size()) {
+        const auto next = spec->find(';', pos);
+        const auto entry = std::string_view{*spec}.substr(
+            pos, next == std::string_view::npos ? spec->size() - pos : next - pos);
+        const auto eq = entry.find('=');
+        if (eq != std::string_view::npos && entry.substr(0u, eq) == socket_name) {
+            return parse_dynamic_socket_type_token(entry.substr(eq + 1u));
+        }
+        if (next == std::string_view::npos) {
+            break;
+        }
+        pos = next + 1u;
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
 GraphValidation validate_shader_graph(
     const ShaderGraph &graph,
     const NodeRegistry &registry) {
@@ -372,7 +425,15 @@ GraphValidation validate_shader_graph(
 
         for (const auto &[name, binding] : node->inputs) {
             const auto *input_schema = find_schema(schema->inputs, name);
-            if (input_schema == nullptr) {
+            std::optional<SocketType> expected_type;
+            if (input_schema != nullptr) {
+                expected_type = input_schema->type;
+            } else if (schema->allow_dynamic_sockets) {
+                expected_type = find_dynamic_socket_type(*node, "InputTypes", name);
+                if (!expected_type && binding.value) {
+                    expected_type = binding.value->type;
+                }
+            } else {
                 diagnose(
                     GraphDiagnosticCode::unknown_input,
                     node_prefix(id) + "unknown input '" + name + "'",
@@ -389,7 +450,7 @@ GraphValidation validate_shader_graph(
                             "' contains an ill-typed literal",
                         id,
                         name);
-                } else if (binding.value->type != input_schema->type) {
+                } else if (expected_type && binding.value->type != *expected_type) {
                     diagnose(
                         GraphDiagnosticCode::socket_type_mismatch,
                         node_prefix(id) + "input '" + name +
@@ -410,20 +471,27 @@ GraphValidation validate_shader_graph(
                         name);
                     continue;
                 }
-                const auto *source_schema = registry.find(source_iter->second->type);
+                const auto *source_node = source_iter->second;
+                const auto *source_schema = registry.find(source_node->type);
                 if (source_schema == nullptr) {
                     continue;
                 }
-                const auto *source_output =
-                    find_output(*source_schema, binding.source->socket);
-                if (source_output == nullptr) {
+                std::optional<SocketType> source_type;
+                if (const auto *source_output =
+                        find_output(*source_schema, binding.source->socket)) {
+                    source_type = source_output->type;
+                } else if (source_schema->allow_dynamic_sockets) {
+                    source_type = find_dynamic_socket_type(
+                        *source_node, "OutputTypes", binding.source->socket);
+                }
+                if (!source_type) {
                     diagnose(
                         GraphDiagnosticCode::unknown_output,
                         node_prefix(binding.source->node) + "unknown output '" +
                             binding.source->socket + "'",
                         binding.source->node,
                         binding.source->socket);
-                } else if (source_output->type != input_schema->type) {
+                } else if (expected_type && *source_type != *expected_type) {
                     diagnose(
                         GraphDiagnosticCode::socket_type_mismatch,
                         node_prefix(id) + "input '" + name +
@@ -523,8 +591,14 @@ GraphValidation validate_shader_graph(
         if (schema == nullptr) {
             continue;
         }
-        const auto *root_output = find_output(*schema, root->socket);
-        if (root_output == nullptr) {
+        std::optional<SocketType> root_type;
+        if (const auto *root_output = find_output(*schema, root->socket)) {
+            root_type = root_output->type;
+        } else if (schema->allow_dynamic_sockets) {
+            root_type = find_dynamic_socket_type(
+                *node_iter->second, "OutputTypes", root->socket);
+        }
+        if (!root_type) {
             diagnose(
                 GraphDiagnosticCode::unknown_output,
                 node_prefix(root->node) + "root references unknown output '" +
@@ -533,7 +607,7 @@ GraphValidation validate_shader_graph(
                 root->socket);
             continue;
         }
-        if (!root_type_matches(domain, root_output->type)) {
+        if (!root_type_matches(domain, *root_type)) {
             diagnose(
                 GraphDiagnosticCode::invalid_root_type,
                 "shader root output has an incompatible type",
@@ -661,6 +735,33 @@ GraphValidation validate_shader_graph(
                         parameter_hash, *binding_iter->second.value);
                 } else if (input.default_value) {
                     hash_socket_value(parameter_hash, *input.default_value);
+                }
+            }
+        }
+        if (schema->allow_dynamic_sockets) {
+            for (const auto &[dyn_name, dyn_binding] : node->inputs) {
+                if (find_schema(schema->inputs, dyn_name) != nullptr) {
+                    continue;
+                }
+                const auto dyn_type =
+                    find_dynamic_socket_type(*node, "InputTypes", dyn_name);
+                structure_hash.string(dyn_name);
+                if (dyn_type) {
+                    structure_hash.scalar(*dyn_type);
+                } else if (dyn_binding.value) {
+                    structure_hash.scalar(dyn_binding.value->type);
+                }
+                if (dyn_binding.source) {
+                    structure_hash.scalar(ordinal.at(dyn_binding.source->node));
+                    structure_hash.string(dyn_binding.source->socket);
+                } else {
+                    constexpr std::uint8_t unlinked = 0xffu;
+                    structure_hash.scalar(unlinked);
+                    parameter_hash.string(node->type);
+                    parameter_hash.string(dyn_name);
+                    if (dyn_binding.value) {
+                        hash_socket_value(parameter_hash, *dyn_binding.value);
+                    }
                 }
             }
         }
