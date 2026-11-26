@@ -1900,7 +1900,30 @@ void test_cycles_boolean_and_closure_conversions() {
     scene << R"JSON({
   "schema":"psycles.blender-scene.v1",
   "images":[],
-  "node_groups":[],
+  "node_groups":[
+    {
+      "name": "IntPassGroup",
+      "links": [
+        {"from_node": "Object Info", "from_socket": "Object Index", "to_node": "Group Output", "to_socket": "IntOut"}
+      ],
+      "nodes": [
+        {
+          "name": "Object Info", "type": "OBJECT_INFO", "mute": false,
+          "internal_links": [],
+          "inputs": [],
+          "outputs": [{"identifier": "Object Index", "name": "Object Index", "type": "NodeSocketFloat", "linked": true, "default": 0.0}],
+          "properties": {}, "special": {}
+        },
+        {
+          "name": "Group Output", "type": "GROUP_OUTPUT", "mute": false,
+          "internal_links": [],
+          "inputs": [{"identifier": "IntOut", "name": "IntOut", "type": "NodeSocketInt", "linked": true, "default": 0}],
+          "outputs": [],
+          "properties": {"is_active_output": true}, "special": {}
+        }
+      ]
+    }
+  ],
   "materials":[
     {
       "name":"Boolean And Color To Surface",
@@ -1922,6 +1945,49 @@ void test_cycles_boolean_and_closure_conversions() {
           "properties":{"operation":"ADD","use_clamp":false},
           "special":{}
         }]
+      }
+    },
+    {
+      "name": "Integer Conversions",
+      "cycles_sync": {"shader_index": 10},
+      "node_tree": {
+        "name": "Integer Conversions",
+        "surface_root": {"node": "Mix Shader", "socket": "Shader"},
+        "volume_root": null,
+        "displacement_root": null,
+        "links": [
+          {"from_node": "IntGroup", "from_socket": "IntOut", "to_node": "Emission", "to_socket": "Strength"},
+          {"from_node": "Emission", "from_socket": "Emission", "to_node": "Mix Shader", "to_socket": "Shader"}
+        ],
+        "nodes": [
+          {
+            "name": "IntGroup", "type": "GROUP", "node_tree": "IntPassGroup", "mute": false,
+            "internal_links": [],
+            "inputs": [],
+            "outputs": [{"identifier": "IntOut", "name": "IntOut", "type": "NodeSocketInt", "linked": true, "default": 0}],
+            "properties": {}, "special": {}
+          },
+          {
+            "name": "Emission", "type": "EMISSION", "mute": false,
+            "internal_links": [],
+            "inputs": [
+              {"identifier": "Color", "name": "Color", "type": "NodeSocketColor", "linked": false, "default": [1.0, 1.0, 1.0, 1.0]},
+              {"identifier": "Strength", "name": "Strength", "type": "NodeSocketFloat", "linked": true, "default": 1.0}
+            ],
+            "outputs": [{"identifier": "Emission", "name": "Emission", "type": "NodeSocketShader", "linked": true}],
+            "properties": {}, "special": {}
+          },
+          {
+            "name": "Mix Shader", "type": "MIX_SHADER", "mute": false,
+            "internal_links": [],
+            "inputs": [
+              {"identifier": "Fac", "name": "Fac", "type": "NodeSocketFloatFactor", "linked": false, "default": 0.5},
+              {"identifier": "Shader", "name": "Shader", "type": "NodeSocketShader", "linked": true}
+            ],
+            "outputs": [{"identifier": "Shader", "name": "Shader", "type": "NodeSocketShader", "linked": true}],
+            "properties": {}, "special": {}
+          }
+        ]
       }
     }
   ],
@@ -1984,6 +2050,28 @@ void test_cycles_boolean_and_closure_conversions() {
       psycles::compiler::make_core_node_registry()};
   const auto shader = compiler.compile(material->shader);
   expect(shader.ok(), "boolean/closure converted graph did not validate");
+
+  const psycles::contract::MaterialDesc *int_material = nullptr;
+  for (const auto &[id, candidate] : imported.scene->materials) {
+    static_cast<void>(id);
+    if (candidate.name == "Integer Conversions") {
+      int_material = &candidate;
+      break;
+    }
+  }
+  expect(int_material != nullptr, "Integer Conversions material missing");
+  bool has_scalar_to_int = false;
+  bool has_int_to_scalar = false;
+  for (const auto &node : int_material->shader.nodes()) {
+    has_scalar_to_int |=
+        node.type == psycles::compiler::node_type::scalar_to_integer;
+    has_int_to_scalar |=
+        node.type == psycles::compiler::node_type::integer_to_scalar;
+  }
+  expect(has_scalar_to_int, "scalar_to_integer conversion node missing");
+  expect(has_int_to_scalar, "integer_to_scalar conversion node missing");
+  const auto int_shader = compiler.compile(int_material->shader);
+  expect(int_shader.ok(), "integer conversion graph did not validate");
 }
 
 } // namespace

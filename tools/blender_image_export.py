@@ -19,6 +19,14 @@ def _safe_name(name: str) -> str:
     return clean[:120] or "unnamed"
 
 
+def image_export_name(image: Any) -> str:
+    """Return a globally unique image name across main and linked libraries."""
+    library = getattr(image, "library", None)
+    if library is None:
+        return str(image.name)
+    return f"{image.name} [{library.name}]"
+
+
 def _image_extension(image: Any) -> str:
     if image.source == "GENERATED":
         return ".png"
@@ -85,12 +93,19 @@ def export_images(output: pathlib.Path) -> list[dict[str, Any]]:
     texture_directory.mkdir(parents=True, exist_ok=True)
     result: list[dict[str, Any]] = []
     for index, image in enumerate(
-        sorted(bpy.data.images, key=lambda candidate: candidate.name)
+        sorted(
+            bpy.data.images,
+            key=lambda candidate: (
+                image_export_name(candidate),
+                candidate.as_pointer(),
+            ),
+        )
     ):
         if image.type in {"RENDER_RESULT", "COMPOSITING"}:
             continue
+        export_name = image_export_name(image)
         metadata = {
-            "name": image.name,
+            "name": export_name,
             "width": int(image.size[0]),
             "height": int(image.size[1]),
             "source": image.source,
@@ -106,7 +121,7 @@ def export_images(output: pathlib.Path) -> list[dict[str, Any]]:
             continue
         extension = _image_extension(image)
         destination = texture_directory / (
-            f"{index:03d}-{_safe_name(image.name)}{extension}"
+            f"{index:03d}-{_safe_name(export_name)}{extension}"
         )
         if image.packed_file is not None:
             destination.write_bytes(bytes(image.packed_file.data))

@@ -20,6 +20,7 @@ import bpy
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import cycles_hash  # noqa: E402
+from blender_image_export import image_export_name  # noqa: E402
 
 
 def _column_major(matrix: Any) -> list[float]:
@@ -333,7 +334,7 @@ def _node_tree_manifest(node_tree: Any) -> dict[str, Any] | None:
                     else None
                 ),
                 "image": (
-                    node.image.name
+                    image_export_name(node.image)
                     if hasattr(node, "image") and node.image
                     else None
                 ),
@@ -476,7 +477,7 @@ def _image_manifest(image: Any) -> dict[str, Any]:
     if image.packed_file is not None:
         packed_size = image.packed_file.size
     return {
-        "name": image.name,
+        "name": image_export_name(image),
         "source": image.source,
         "filepath": image.filepath,
         "filepath_raw": image.filepath_raw,

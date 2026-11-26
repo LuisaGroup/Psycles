@@ -49,6 +49,10 @@ inline constexpr auto vector_transform = "psycles.vector.transform";
 inline constexpr auto normal = "psycles.normal";
 inline constexpr auto wireframe = "psycles.wireframe";
 inline constexpr auto scalar_to_color = "psycles.convert.scalar_to_color";
+inline constexpr auto scalar_to_integer =
+    "psycles.convert.scalar_to_integer";
+inline constexpr auto integer_to_scalar =
+    "psycles.convert.integer_to_scalar";
 inline constexpr auto scalar_to_boolean =
     "psycles.convert.scalar_to_boolean";
 inline constexpr auto boolean_to_scalar =

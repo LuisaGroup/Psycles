@@ -788,6 +788,22 @@ NodeRegistry make_core_node_registry() {
                  .required_features = {}}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::scalar_to_integer,
+                 .inputs = {input("Value", SocketType::floating,
+                                  SocketValue::floating(0.0f))},
+                 .outputs = {output("Integer", SocketType::integer)},
+                 .properties = {},
+                 .required_features = {}}));
+
+  static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::integer_to_scalar,
+                 .inputs = {input("Integer", SocketType::integer,
+                                  SocketValue::integer(0))},
+                 .outputs = {output("Value", SocketType::floating)},
+                 .properties = {},
+                 .required_features = {}}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::scalar_to_boolean,
                  .inputs = {input("Value", SocketType::floating,
                                   SocketValue::floating(0.0f))},

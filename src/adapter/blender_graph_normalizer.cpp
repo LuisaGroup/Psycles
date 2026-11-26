@@ -538,6 +538,33 @@ private:
                 conversion(source, SocketType::floating),
                 SocketType::boolean);
         } else if (
+            source.type == SocketType::floating &&
+            target == SocketType::integer) {
+            node_type = compiler::node_type::scalar_to_integer;
+            input = "Value";
+            output = "Integer";
+        } else if (
+            source.type == SocketType::integer &&
+            target == SocketType::floating) {
+            node_type = compiler::node_type::integer_to_scalar;
+            input = "Integer";
+            output = "Value";
+        } else if (
+            source.type == SocketType::integer &&
+            (target == SocketType::color || vector_like(target) ||
+             target == SocketType::boolean ||
+             target == SocketType::closure)) {
+            return conversion(
+                conversion(source, SocketType::floating),
+                target);
+        } else if (
+            (source.type == SocketType::color || vector_like(source.type) ||
+             source.type == SocketType::boolean) &&
+            target == SocketType::integer) {
+            return conversion(
+                conversion(source, SocketType::floating),
+                SocketType::integer);
+        } else if (
             (source.type == SocketType::color ||
              vector_like(source.type) ||
              source.type == SocketType::floating ||
