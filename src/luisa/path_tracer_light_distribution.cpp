@@ -20,16 +20,38 @@ make_light_distribution_sample_callable(
             return result;
         }
 
+        const bool use_compact_cdf =
+            static_cast<bool>(scene->light_distribution_cdf_buffer);
+        const bool use_guide =
+            use_compact_cdf &&
+            scene->light_distribution_cdf_guide_bins != 0u &&
+            static_cast<bool>(scene->light_distribution_cdf_guide_buffer);
         UInt first = 0u;
         UInt length =
             scene->light_distribution_count + 1u;
+        if (use_guide) {
+            const auto bins = scene->light_distribution_cdf_guide_bins;
+            const auto bins_f = static_cast<float>(bins);
+            UInt bucket = select(
+                bins - 1u,
+                select(
+                    0u,
+                    min(cast<luisa::uint>(sample * bins_f), bins - 1u),
+                    sample >= 0.0f),
+                sample < 1.0f);
+            first = scene->light_distribution_cdf_guide_buffer->read(bucket);
+            UInt last =
+                scene->light_distribution_cdf_guide_buffer->read(bucket + 1u);
+            length = last - first;
+        }
         $while (length > 0u) {
             UInt half_length = length >> 1u;
             UInt middle = first + half_length;
-            Var<LightDistributionGpu> entry =
-                scene->light_distribution_buffer->read(
-                    middle);
-            $if (sample < entry.cumulative) {
+            Float cdf =
+                use_compact_cdf
+                    ? scene->light_distribution_cdf_buffer->read(middle)
+                    : scene->light_distribution_buffer->read(middle).cumulative;
+            $if (sample < cdf) {
                 length = half_length;
             }
             $else {

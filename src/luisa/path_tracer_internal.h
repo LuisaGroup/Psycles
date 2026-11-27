@@ -469,6 +469,9 @@ struct LuisaSceneData {
     std::uint32_t emissive_triangle_count{};
     Buffer<LightDistributionGpu> light_distribution_buffer;
     std::uint32_t light_distribution_count{};
+    Buffer<float> light_distribution_cdf_buffer;
+    Buffer<luisa::uint> light_distribution_cdf_guide_buffer;
+    std::uint32_t light_distribution_cdf_guide_bins{0u};
     Buffer<LightTreeNodeGpu> light_tree_node_buffer;
     Buffer<LightTreeEmitterGpu> light_tree_emitter_buffer;
     // Indexed by flat distribution emitter id: top-level emitter and leaf.

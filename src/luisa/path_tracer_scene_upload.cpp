@@ -1,6 +1,7 @@
 #include "path_tracer_scene_upload.h"
 
 #include "cycles_shader_identity.h"
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <map>
@@ -446,9 +447,59 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
     scene->emissive_triangle_buffer =
         scene->device.create_buffer<EmissiveTriangleGpu>(
             input.emissive_triangles.size());
+    luisa::vector<float> light_distribution_cdf;
+    light_distribution_cdf.reserve(input.light_distribution.size());
+    for (const auto &entry : input.light_distribution) {
+        light_distribution_cdf.emplace_back(entry.cumulative);
+    }
+    constexpr std::uint32_t k_light_dist_guide_bins = 8192u;
+    luisa::vector<luisa::uint> light_distribution_cdf_guide;
+    std::uint32_t guide_bins = 0u;
+    if (scene->light_distribution_count > 64u &&
+        light_distribution_cdf.size() >
+            static_cast<std::size_t>(scene->light_distribution_count)) {
+        const auto cdf_len =
+            static_cast<std::size_t>(scene->light_distribution_count) + 1u;
+        bool monotonic = std::isfinite(light_distribution_cdf[0u]);
+        for (std::size_t i = 1u; monotonic && i < cdf_len; ++i) {
+            if (!(light_distribution_cdf[i] >=
+                  light_distribution_cdf[i - 1u])) {
+                monotonic = false;
+            }
+        }
+        if (monotonic) {
+            guide_bins = k_light_dist_guide_bins;
+            light_distribution_cdf_guide.resize(
+                static_cast<std::size_t>(guide_bins) + 1u);
+            light_distribution_cdf_guide[0u] = 0u;
+            light_distribution_cdf_guide[guide_bins] =
+                scene->light_distribution_count + 1u;
+            std::size_t cursor = 0u;
+            for (std::uint32_t b = 1u; b < guide_bins; ++b) {
+                const float t = static_cast<float>(b) /
+                                static_cast<float>(guide_bins);
+                while (cursor < cdf_len &&
+                       !(t < light_distribution_cdf[cursor])) {
+                    ++cursor;
+                }
+                light_distribution_cdf_guide[b] =
+                    static_cast<luisa::uint>(cursor);
+            }
+        }
+    }
+    if (light_distribution_cdf_guide.empty()) {
+        light_distribution_cdf_guide.emplace_back(0u);
+    }
+    scene->light_distribution_cdf_guide_bins = guide_bins;
+
     scene->light_distribution_buffer =
         scene->device.create_buffer<LightDistributionGpu>(
             input.light_distribution.size());
+    scene->light_distribution_cdf_buffer =
+        scene->device.create_buffer<float>(light_distribution_cdf.size());
+    scene->light_distribution_cdf_guide_buffer =
+        scene->device.create_buffer<luisa::uint>(
+            light_distribution_cdf_guide.size());
     scene->light_tree_node_buffer =
         scene->device.create_buffer<LightTreeNodeGpu>(
             input.light_tree_nodes.size());
@@ -485,6 +536,10 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
                   luisa::span{input.emissive_triangles})
            << scene->light_distribution_buffer.copy_from(
                   luisa::span{input.light_distribution})
+           << scene->light_distribution_cdf_buffer.copy_from(
+                  luisa::span{light_distribution_cdf})
+           << scene->light_distribution_cdf_guide_buffer.copy_from(
+                  luisa::span{light_distribution_cdf_guide})
            << scene->light_tree_node_buffer.copy_from(
                   luisa::span{input.light_tree_nodes})
            << scene->light_tree_emitter_buffer.copy_from(
