@@ -2,7 +2,10 @@
 
 #include "path_tracer_internal.h"
 
+#include <psycles/luisa/cycles_spectrum.h>
 #include <psycles/luisa/cycles_svm.h>
+
+#include <optional>
 #include <psycles/luisa/volume_phase_set.h>
 #include <psycles/luisa/volume_stack.h>
 #include <psycles/luisa/volume_shader.h>
@@ -52,7 +55,9 @@ public:
       const Var<RenderKernelParameters> &parameters,
       Float3 origin, Float3 direction, Float minimum, Float time, UInt object,
       const cycles_svm::PathState &state, UInt lcg_state, bool shadow,
-      bool coefficients_only = false) noexcept;
+      bool coefficients_only = false,
+      std::optional<cycles_spectrum::SpectralContext> spectral =
+          std::nullopt) noexcept;
   [[nodiscard]] VolumeCoefficients evaluate(
       const VolumeStack &stack, Float3 position,
       VolumePhaseSet *phases = nullptr) const noexcept override;
@@ -71,6 +76,6 @@ public:
     const std::shared_ptr<LuisaSceneData> &scene,
     const Var<RenderKernelParameters> &parameters,
     const VolumeStackEntry &entry, const VolumeMajorantGrid &grid,
-    UInt cell_index) noexcept;
+    UInt cell_index, bool grid_in_object_space = false) noexcept;
 
 } // namespace psycles::luisa_backend::detail

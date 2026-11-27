@@ -35,6 +35,28 @@ struct PathHeterogeneousVolumeInput {
     Bool terminate;
 };
 
+struct PathHeterogeneousVolumeInputSpectral {
+    const VolumeStack &stack;
+    const PathCyclesSvmVolumeShader &shader;
+    const BufferFloat4 &sobol_table;
+    UInt sobol_sequence_size;
+    UInt sample_index;
+    UInt rng_hash;
+    UInt path_rng_offset;
+    Float3 ray_origin;
+    Float3 ray_direction;
+    Float ray_minimum;
+    Float ray_maximum;
+    Float4 throughput;
+    Float reservoir_random;
+    Float2 phase_random;
+    HeterogeneousVolumeDirectInput direct;
+    const VolumeDirectLightProvider
+        *direct_light;
+    Bool terminate;
+    Bool secondary_terminated;
+};
+
 // Production host-stage adapter between path state, scene majorant resources,
 // Cycles random dimensions, native SVM volume closures, and the generic
 // heterogeneous transport component.
@@ -50,6 +72,11 @@ class PathHeterogeneousVolumeComponent {
     [[nodiscard]] virtual HeterogeneousVolumeSegmentResult
     emit(
         const PathHeterogeneousVolumeInput &input)
+        const noexcept = 0;
+
+    [[nodiscard]] virtual HeterogeneousVolumeSegmentResultSpectral
+    emit_spectral(
+        const PathHeterogeneousVolumeInputSpectral &input)
         const noexcept = 0;
 };
 

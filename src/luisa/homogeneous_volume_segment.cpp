@@ -133,6 +133,92 @@ class HomogeneousVolumeSegmentComponentImpl final
                 transport.scattered &
                 !phase.valid};
     }
+
+    HomogeneousVolumeSegmentResultSpectral
+    emit_spectral(
+         const VolumeShaderEvaluator &shader,
+         const VolumeStack &stack,
+         Float3 position,
+         Float3 incoming,
+         Float distance,
+         Float4 throughput,
+         Float scatter_random,
+         Float channel_random,
+         Float2 phase_random,
+         Bool terminate,
+         Bool secondary_terminated,
+         const HomogeneousVolumeDirectInput &direct,
+         const VolumeDirectLightProvider *direct_light) const noexcept override {
+        const VolumeDirectSampling direct_sampling;
+        const auto direct_state =
+            direct_sampling.prepare(
+                direct.requested_method,
+                scatter_random,
+                direct.enabled & !terminate);
+        const VolumeEquiangularCoefficients equiangular{
+            .light_position = direct.light_position, .interval = direct.interval};
+        VolumeEquiangularSample equiangular_sample{
+            .distance = 0.0f, .pdf = 0.0f, .valid = false};
+        $if(direct_state.method == volume_sample_equiangular) {
+            equiangular_sample = direct_sampling.sample_equiangular(
+                position, -incoming, equiangular, direct_state.random);
+        };
+        VolumePhaseSet phases{_closure_allocation_budget};
+        const auto coefficients = shader.evaluate(stack, position, &phases);
+        const auto transport =
+            _transport.sample_spectral(
+                coefficients,
+                distance,
+                throughput,
+                direct_state.random,
+                channel_random,
+                terminate,
+                secondary_terminated);
+        const auto direct_transport =
+            _transport.sample_direct_spectral(
+                coefficients,
+                distance,
+                throughput,
+                transport.scatter_random,
+                transport.reservoir_random,
+                direct_state,
+                position,
+                -incoming,
+                equiangular,
+                equiangular_sample,
+                secondary_terminated);
+        VolumePhaseSetEvaluation direct_phase{
+            .value = 0.0f, .pdf = 0.0f, .sample_weight = 0.0f, .valid = false};
+        if (direct_light != nullptr) {
+            $if(direct_transport.scattered) {
+                const auto direction_sample =
+                    direct_light->sample_direction(direct_transport.distance);
+                $if(direction_sample.valid) {
+                    direct_light->evaluate_constant_emission();
+                    direct_phase = phases.evaluate(-incoming, direction_sample.direction);
+                    direct_light->evaluate_deferred_emission(
+                        direct_phase.valid & (direct_phase.value != 0.0f));
+                };
+            };
+        }
+
+        VolumePhaseSetSample phase{
+            .direction = -incoming, .pdf = 0.0f, .sampled_roughness = 1.0f,
+            .selection_rescaled = phase_random.x, .closure_index = 0u,
+            .closure_type = 0u, .valid = false};
+        $if(transport.scattered) {
+            phase = phases.sample(-incoming, phase_random);
+        };
+        const auto scattered = transport.scattered & phase.valid;
+        return {
+            .coefficients = coefficients,
+            .transport = transport,
+            .phase = phase,
+            .direct_transport = direct_transport,
+            .direct_phase = direct_phase,
+            .scattered = scattered,
+            .phase_failed = transport.scattered & !phase.valid};
+    }
 };
 
 }// namespace

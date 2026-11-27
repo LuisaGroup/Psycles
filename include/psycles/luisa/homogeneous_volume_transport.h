@@ -45,6 +45,42 @@ struct HomogeneousVolumeDirectSample {
     Bool scattered;
 };
 
+struct VolumeChannelSampleSpectral {
+    UInt channel;
+    Float4 pdf;
+    Float random;
+    Bool matched;
+};
+
+struct HomogeneousVolumeSampleSpectral {
+    Float4 transmittance;
+    Float4 emission;
+    Float4 throughput;
+    Float4 scatter_probability;
+    Float4 channel_pdf;
+    Float distance;
+    Float event_pdf;
+    Float scatter_random;
+    Float reservoir_random;
+    UInt channel;
+    Bool scattered;
+    Bool active;
+};
+
+struct HomogeneousVolumeDirectSampleSpectral {
+    Float4 transmittance;
+    Float4 throughput;
+    Float4 channel_pdf;
+    Float distance;
+    Float distance_pdf;
+    Float equiangular_pdf;
+    Float mis_weight;
+    UInt channel;
+    UInt sample_method;
+    Bool use_mis;
+    Bool scattered;
+};
+
 // Host-stage Luisa AST component for Cycles' analytic homogeneous-volume
 // estimator. The caller supplies the two Cycles random dimensions separately:
 // PRNG_VOLUME_SCATTER_DISTANCE and PRNG_VOLUME_RESERVOIR. Phase selection uses
@@ -59,6 +95,13 @@ class HomogeneousVolumeTransport {
         float fallback = 0.0f) noexcept;
     [[nodiscard]] static Float3 _safe_divide(
         Float3 numerator,
+        Float denominator) noexcept;
+    [[nodiscard]] static Float4 _safe_divide4(
+        Float4 numerator,
+        Float4 denominator,
+        float fallback = 0.0f) noexcept;
+    [[nodiscard]] static Float4 _safe_divide4(
+        Float4 numerator,
         Float denominator) noexcept;
 
   public:
@@ -149,6 +192,71 @@ class HomogeneousVolumeTransport {
         const VolumeEquiangularCoefficients
             &equiangular,
         const VolumeEquiangularSample &equiangular_sample) const noexcept;
+
+    [[nodiscard]] Float4 transmittance_spectral(
+        Float4 sigma_t,
+        Float distance) const noexcept;
+
+    [[nodiscard]] Float4 emission_integral_spectral(
+        const VolumeCoefficients &coefficients,
+        Float distance) const noexcept;
+
+    [[nodiscard]] Float4 channel_pdf_spectral(
+        Float4 albedo,
+        Float4 throughput,
+        Bool secondary_terminated) const noexcept;
+
+    [[nodiscard]] VolumeChannelSampleSpectral sample_channel_spectral(
+        Float4 albedo,
+        Float4 throughput,
+        Float random,
+        Bool secondary_terminated) const noexcept;
+
+    [[nodiscard]] Float4 bounded_exponential_pdf_spectral(
+        Float distance,
+        Float4 rate,
+        Float minimum,
+        Float maximum) const noexcept;
+
+    [[nodiscard]] Float4 unguided_scatter_probability_spectral(
+        const VolumeCoefficients &coefficients,
+        Float distance,
+        Bool terminate) const noexcept;
+
+    [[nodiscard]] HomogeneousVolumeSampleSpectral sample_spectral(
+        const VolumeCoefficients &coefficients,
+        Float distance,
+        Float4 throughput,
+        Float scatter_random,
+        Float channel_random,
+        Bool terminate,
+        Bool secondary_terminated) const noexcept;
+
+    [[nodiscard]] HomogeneousVolumeSampleSpectral
+    sample_with_probability_spectral(
+        const VolumeCoefficients &coefficients,
+        Float distance,
+        Float4 throughput,
+        Float scatter_random,
+        Float channel_random,
+        Float4 scatter_probability,
+        Bool terminate,
+        Bool secondary_terminated) const noexcept;
+
+    [[nodiscard]] HomogeneousVolumeDirectSampleSpectral
+    sample_direct_spectral(
+        const VolumeCoefficients &coefficients,
+        Float distance,
+        Float4 throughput,
+        Float scatter_random,
+        Float reservoir_random,
+        const VolumeDirectSamplingState &sampling,
+        Float3 ray_origin,
+        Float3 ray_direction,
+        const VolumeEquiangularCoefficients
+            &equiangular,
+        const VolumeEquiangularSample &equiangular_sample,
+        Bool secondary_terminated) const noexcept;
 };
 
 }// namespace psycles::luisa_backend

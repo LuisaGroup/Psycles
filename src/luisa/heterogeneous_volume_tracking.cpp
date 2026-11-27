@@ -1,3 +1,4 @@
+#include <psycles/luisa/cycles_spectrum.h>
 #include <psycles/luisa/heterogeneous_volume_tracking.h>
 
 #include <luisa/dsl/sugar.h>
@@ -30,6 +31,27 @@ Float3 HeterogeneousVolumeTracking::_safe_divide_scalar(
         make_float3(0.0f),
         numerator /
             select(1.0f, denominator, nonzero),
+        nonzero);
+}
+
+Float4 HeterogeneousVolumeTracking::_safe_divide4(
+    Float4 numerator,
+    Float4 denominator,
+    float fallback) noexcept {
+    const auto nonzero = denominator != make_float4(0.0f);
+    return select(
+        make_float4(fallback),
+        numerator / select(make_float4(1.0f), denominator, nonzero),
+        nonzero);
+}
+
+Float4 HeterogeneousVolumeTracking::_safe_divide4_scalar(
+    Float4 numerator,
+    Float denominator) noexcept {
+    const auto nonzero = denominator != 0.0f;
+    return select(
+        make_float4(0.0f),
+        numerator / select(1.0f, denominator, nonzero),
         nonzero);
 }
 
@@ -243,6 +265,98 @@ HeterogeneousVolumeTracking::select_event(
                 0.0f,
                 1.0f),
         .scattered = scattered};
+}
+
+HeterogeneousVolumeCollisionSpectral
+HeterogeneousVolumeTracking::evaluate_collision_spectral(
+    const VolumeCoefficients &coefficients,
+    Float sampled_majorant,
+    Float candidate_distance_value,
+    Float4 beta_u,
+    Float4 r_u,
+    Bool secondary_terminated) const noexcept {
+    const auto sigma_t = coefficients.spectral_sigma_t.value_or(
+        make_float4(coefficients.sigma_t, 0.0f));
+    const auto sigma_s = coefficients.spectral_sigma_s.value_or(
+        make_float4(coefficients.sigma_s, 0.0f));
+    const auto emission_coeff = coefficients.spectral_emission.value_or(
+        make_float4(coefficients.emission, 0.0f));
+
+    const auto actual_maximum =
+        cycles_spectrum::max_active(sigma_t, secondary_terminated);
+    const auto majorant = max(actual_maximum, sampled_majorant);
+    const auto exceeded = actual_maximum > sampled_majorant;
+    const auto active = sampled_majorant > 0.0f;
+    const auto active_beta = select(
+        beta_u, make_float4(beta_u.x, 0.0f, 0.0f, 0.0f), secondary_terminated);
+    const auto safe_majorant = select(1.0f, majorant, active);
+    const auto safe_sampled = select(1.0f, sampled_majorant, active);
+    const auto defensive_scale =
+        exp((sampled_majorant - majorant) * candidate_distance_value) /
+        safe_sampled;
+    const auto ordinary_scale = 1.0f / safe_majorant;
+    const auto inv_norm_majorant =
+        select(ordinary_scale, defensive_scale, exceeded);
+    const auto normalized_beta = select(
+        make_float4(0.0f), active_beta * inv_norm_majorant, active);
+
+    const auto sigma_n = max(make_float4(majorant) - sigma_t, make_float4(0.0f));
+    const auto sigma_c = sigma_s + sigma_n;
+    const auto p_s = _safe_divide4(sigma_s, sigma_c);
+    const auto p_n = _safe_divide4(sigma_n, sigma_c);
+
+    const auto absorption_only = select(
+        all(sigma_s == make_float4(0.0f)),
+        sigma_s.x == 0.0f,
+        secondary_terminated);
+
+    const auto denom_u = cycles_spectrum::avg_active(r_u, secondary_terminated);
+    const auto emission = select(
+        make_float4(0.0f),
+        (normalized_beta * emission_coeff) / select(1.0f, denom_u, denom_u > 0.0f),
+        active & (denom_u > 0.0f));
+
+    const auto hero_scatter_probability = p_s.x;
+    const auto hero_null_probability = p_n.x;
+    const auto hero_absorbed =
+        (!absorption_only) & (sigma_c.x <= 0.0f);
+
+    const auto r_u_scatter = r_u * p_s;
+    const auto denom_scatter =
+        cycles_spectrum::avg_active(r_u_scatter, secondary_terminated);
+    const auto scatter_throughput = select(
+        make_float4(0.0f),
+        (normalized_beta * sigma_s) / select(1.0f, denom_scatter, denom_scatter > 0.0f),
+        active & (denom_scatter > 0.0f));
+
+    const auto raw_null_beta = normalized_beta * sigma_n;
+    const auto raw_null_r = r_u * p_n;
+    const auto norm_null = cycles_spectrum::avg_active(raw_null_r, secondary_terminated);
+    const auto stochastic_null_valid = active & (norm_null > 0.0f);
+    const auto safe_norm_null = select(1.0f, norm_null, stochastic_null_valid);
+    const auto stochastic_null_beta = select(
+        make_float4(0.0f), raw_null_beta / safe_norm_null, stochastic_null_valid);
+    const auto stochastic_null_r = select(
+        make_float4(0.0f), raw_null_r / safe_norm_null, stochastic_null_valid);
+
+    const auto null_beta_u = select(stochastic_null_beta, raw_null_beta, absorption_only);
+    const auto null_r_u = select(stochastic_null_r, r_u, absorption_only);
+
+    return {
+        .sigma_n = sigma_n,
+        .p_s = p_s,
+        .p_n = p_n,
+        .emission = emission,
+        .scatter_throughput = scatter_throughput,
+        .null_beta_u = select(make_float4(0.0f), null_beta_u, active),
+        .null_r_u = select(make_float4(0.0f), null_r_u, active),
+        .majorant = majorant,
+        .hero_scatter_probability = select(0.0f, hero_scatter_probability, active),
+        .hero_null_probability = select(0.0f, hero_null_probability, active),
+        .hero_absorbed = hero_absorbed,
+        .absorption_only = absorption_only,
+        .majorant_exceeded = exceeded,
+        .active = active};
 }
 
 }// namespace psycles::luisa_backend

@@ -100,6 +100,10 @@ class EnvironmentVolumeLightProvider final
                     light.direction;
                 _result.radiance =
                     make_float3(1.0f);
+                if (_event.bounce.sample.is_spectral() &&
+                    _result.spectral_radiance.has_value()) {
+                    *_result.spectral_radiance = make_float4(1.0f);
+                }
                 _result.pdf = light.pdf;
                 _result.maximum_distance =
                     ray_maximum;
@@ -135,11 +139,19 @@ class EnvironmentVolumeLightProvider final
                 .invocation.config.scene
                 ->environment_emission_is_constant) {
             $if(_sample_valid) {
-                _result.radiance *=
-                    _environment_light
-                        ->evaluate_constant_emission(
-                            _event.bounce
-                                .sample);
+                if (_event.bounce.sample.is_spectral() &&
+                    _result.spectral_radiance.has_value()) {
+                    *_result.spectral_radiance *=
+                        _environment_light
+                            ->evaluate_constant_emission_spectral(
+                                _event.bounce.sample);
+                } else {
+                    _result.radiance *=
+                        _environment_light
+                            ->evaluate_constant_emission(
+                                _event.bounce
+                                    .sample);
+                }
             };
         }
     }

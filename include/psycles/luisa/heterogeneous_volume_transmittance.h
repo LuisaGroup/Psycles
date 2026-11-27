@@ -17,6 +17,14 @@ struct HeterogeneousVolumeTransmittanceResult {
     UInt evaluations;
 };
 
+struct HeterogeneousVolumeTransmittanceResultSpectral {
+    Float4 transmittance;
+    Float probability_mass;
+    UInt base_samples;
+    UInt independent_estimators;
+    UInt evaluations;
+};
+
 // Cycles' randomized telescoping residual-ratio estimator for one immutable
 // heterogeneous majorant segment. It is used by non-MIS equiangular direct
 // sampling and, later, heterogeneous shadow transport. Extinction always
@@ -35,6 +43,18 @@ class HeterogeneousVolumeTransmittance final {
         const HeterogeneousVolumeCollisionProvider
             &collisions,
         UInt rng_offset) const noexcept;
+
+    [[nodiscard]]
+    HeterogeneousVolumeTransmittanceResultSpectral
+    evaluate_spectral(
+        const VolumeMajorantSegment &segment,
+        Float minimum,
+        Float maximum,
+        const HeterogeneousVolumeTrackingRandomSource
+            &random,
+        const HeterogeneousVolumeCollisionProvider
+            &collisions,
+        UInt rng_offset) const noexcept;
 };
 
 }// namespace psycles::luisa_backend
@@ -42,3 +62,6 @@ class HeterogeneousVolumeTransmittance final {
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
     psycles::luisa_backend::
         HeterogeneousVolumeTransmittanceResult)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
+    psycles::luisa_backend::
+        HeterogeneousVolumeTransmittanceResultSpectral)

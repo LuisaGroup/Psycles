@@ -138,6 +138,64 @@ struct SpectralTablesGpu {
     luisa::compute::Expr<float> abbe_v,
     luisa::compute::Expr<luisa::float4> lambdas) noexcept;
 
+// Scale-invariant RGB -> reflectance spectrum lookup for quantities such as
+// subsurface scattering radius that span [1e-5, 1e3] where raw rgb2spec dark/HDR
+// branches differ in LUT precision.
+[[nodiscard]] inline luisa::compute::Float4 scale_invariant_rgb_to_spectrum(
+    const SpectralTablesGpu &tables, luisa::compute::Expr<luisa::float3> rgb,
+    luisa::compute::Expr<luisa::float4> lambdas) noexcept {
+  const auto clamped =
+      luisa::compute::max(rgb, luisa::compute::make_float3(0.0f));
+  const auto m = luisa::compute::max(
+      clamped.x, luisa::compute::max(clamped.y, clamped.z));
+  const auto mn = luisa::compute::min(
+      clamped.x, luisa::compute::min(clamped.y, clamped.z));
+  const auto is_gray =
+      (m - mn) <= 1.0e-6f * luisa::compute::max(m, 1.0f);
+  luisa::compute::Float4 out = luisa::compute::make_float4(m);
+  $if(!is_gray & (m > 0.0f)) {
+    const auto normalized =
+        clamped * (0.5f / luisa::compute::max(m, 1.0e-30f));
+    out = (2.0f * m) * rgb_to_spectrum_reflectance(tables, normalized, lambdas);
+  };
+  return out;
+}
+
+[[nodiscard]] inline luisa::compute::Float avg_active(
+    luisa::compute::Expr<luisa::float4> v,
+    luisa::compute::Expr<bool> secondary_terminated) noexcept {
+  return luisa::compute::select(
+      (v.x + v.y + v.z + v.w) * 0.25f, v.x, secondary_terminated);
+}
+
+[[nodiscard]] inline luisa::compute::Float max_active(
+    luisa::compute::Expr<luisa::float4> v,
+    luisa::compute::Expr<bool> secondary_terminated) noexcept {
+  return luisa::compute::select(
+      luisa::compute::max(luisa::compute::max(v.x, v.y),
+                          luisa::compute::max(v.z, v.w)),
+      v.x, secondary_terminated);
+}
+
+[[nodiscard]] inline luisa::compute::Float max_abs_active(
+    luisa::compute::Expr<luisa::float4> v,
+    luisa::compute::Expr<bool> secondary_terminated) noexcept {
+  const auto a = luisa::compute::abs(v);
+  return luisa::compute::select(
+      luisa::compute::max(luisa::compute::max(a.x, a.y),
+                          luisa::compute::max(a.z, a.w)),
+      a.x, secondary_terminated);
+}
+
+[[nodiscard]] inline luisa::compute::Float min_active(
+    luisa::compute::Expr<luisa::float4> v,
+    luisa::compute::Expr<bool> secondary_terminated) noexcept {
+  return luisa::compute::select(
+      luisa::compute::min(luisa::compute::min(v.x, v.y),
+                          luisa::compute::min(v.z, v.w)),
+      v.x, secondary_terminated);
+}
+
 // Transport wrapper: holds Float3 in RGB mode and Float4 in Spectral mode.
 // Copy constructor allocates a fresh DSL Var; copy assignment emits a DSL
 // assignment to the underlying variable without changing the active variant.

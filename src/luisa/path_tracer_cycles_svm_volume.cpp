@@ -63,7 +63,17 @@ Bool evaluate_cycles_svm_volume_entry(
         world_to_object = unpack(object.itfm);
       };
       const PathCyclesSvmKernelGlobals kg{
-          scene, parameters, scene->camera.projection, true, true};
+          scene,
+          parameters,
+          scene->camera.projection,
+          true,
+          true,
+          PathCyclesSvmShaderDomain::all_shaders,
+          {},
+          false,
+          nullptr,
+          nullptr,
+          sd.spectral.has_value()};
       const svm::TransformState transforms{
           parameters.camera_transform, parameters.camera_inverse_transform,
           object_to_world, world_to_object};
@@ -108,6 +118,15 @@ void evaluate_cycles_svm_volume_stack(
   sd.flag = svm::shader_data_is_volume_shader_eval |
             (sd.flag & static_cast<unsigned>(abi::SD_CACHE_MISS));
   sd.object_flag = 0u;
+  if (sd.spectral_extinction.has_value()) {
+    *sd.spectral_extinction = make_float4(0.0f);
+  }
+  if (sd.spectral_scatter.has_value()) {
+    *sd.spectral_scatter = make_float4(0.0f);
+  }
+  if (sd.spectral_emission_background.has_value()) {
+    *sd.spectral_emission_background = make_float4(0.0f);
+  }
   UInt i = 0u;
   $loop {
     const auto entry = stack.entry(i);
@@ -122,12 +141,27 @@ void evaluate_cycles_svm_volume_stack(
 }
 
 VolumeCoefficients cycles_svm_volume_coefficients(const svm::ShaderData &sd) noexcept {
-  auto result = VolumeCoefficients::zero();
+  const bool spectral =
+      sd.spectral.has_value() && sd.spectral_extinction.has_value() &&
+      sd.spectral_scatter.has_value() &&
+      sd.spectral_emission_background.has_value();
+  auto result = VolumeCoefficients::zero(spectral);
   result.has_extinction = (sd.flag & svm::shader_data_extinction) != 0u;
   result.has_emission = (sd.flag & svm::shader_data_emission) != 0u;
   result.has_scatter = (sd.flag & svm::shader_data_scatter) != 0u;
-  $if(result.has_extinction) { result.sigma_t = sd.closure_transparent_extinction; };
-  $if(result.has_emission) { result.emission = sd.closure_emission_background; };
+  $if(result.has_extinction) {
+    result.sigma_t = sd.closure_transparent_extinction;
+    if (spectral) {
+      *result.spectral_sigma_t = max(*sd.spectral_extinction, make_float4(0.0f));
+    }
+  };
+  $if(result.has_emission) {
+    result.emission = sd.closure_emission_background;
+    if (spectral) {
+      *result.spectral_emission =
+          max(*sd.spectral_emission_background, make_float4(0.0f));
+    }
+  };
   if (sd.closure != nullptr) {
     $if(result.has_scatter) {
       UInt i = 0u;
@@ -139,6 +173,15 @@ VolumeCoefficients cycles_svm_volume_coefficients(const svm::ShaderData &sd) noe
         };
         i += 1u;
       };
+      if (spectral) {
+        *result.spectral_sigma_s = max(*sd.spectral_scatter, make_float4(0.0f));
+      }
+    };
+  }
+  if (spectral) {
+    $if(result.has_scatter) {
+      *result.spectral_sigma_t =
+          max(*result.spectral_sigma_t, *result.spectral_sigma_s);
     };
   }
   return result;
@@ -161,7 +204,8 @@ PathCyclesSvmVolumeShader::PathCyclesSvmVolumeShader(
     const Var<RenderKernelParameters> &parameters,
     Float3 origin, Float3 direction, Float minimum, Float time, UInt object,
     const svm::PathState &state, UInt lcg_state, bool shadow,
-    bool coefficients_only) noexcept
+    bool coefficients_only,
+    std::optional<cycles_spectrum::SpectralContext> spectral) noexcept
     : _scene{std::move(scene)}, _parameters{parameters},
       _closures{shadow || coefficients_only ? 0u : _scene->cycles_svm->compilation.max_closures},
       _sd{setup_cycles_svm_volume_shader_data(
@@ -169,6 +213,12 @@ PathCyclesSvmVolumeShader::PathCyclesSvmVolumeShader(
       _state{state}, _shadow{shadow} {
   _sd.flag = svm::shader_data_is_volume_shader_eval;
   _sd.lcg_state = lcg_state;
+  if (spectral.has_value()) {
+    _sd.spectral = std::move(spectral);
+    _sd.spectral_extinction.emplace(make_float4(0.0f));
+    _sd.spectral_scatter.emplace(make_float4(0.0f));
+    _sd.spectral_emission_background.emplace(make_float4(0.0f));
+  }
 }
 
 VolumeCoefficients PathCyclesSvmVolumeShader::evaluate(
@@ -185,11 +235,25 @@ VolumeCoefficients PathCyclesSvmVolumeShader::evaluate_entry(
   _sd.closure->set_left(0u);
   _sd.closure_transparent_extinction = make_float3(0.0f);
   _sd.closure_emission_background = make_float3(0.0f);
+  const bool spectral =
+      _sd.spectral.has_value() && _sd.spectral_extinction.has_value() &&
+      _sd.spectral_emission_background.has_value();
+  if (spectral) {
+    *_sd.spectral_extinction = make_float4(0.0f);
+    *_sd.spectral_emission_background = make_float4(0.0f);
+    if (_sd.spectral_scatter.has_value()) {
+      *_sd.spectral_scatter = make_float4(0.0f);
+    }
+  }
   static_cast<void>(evaluate_cycles_svm_volume_entry(
       _scene, _parameters, entry, _sd, _state, _shadow, mask));
-  auto result = VolumeCoefficients::zero();
+  auto result = VolumeCoefficients::zero(spectral);
   result.sigma_t = _sd.closure_transparent_extinction;
   result.emission = _sd.closure_emission_background;
+  if (spectral) {
+    *result.spectral_sigma_t = max(*_sd.spectral_extinction, make_float4(0.0f));
+    *result.spectral_emission = max(*_sd.spectral_emission_background, make_float4(0.0f));
+  }
   return result;
 }
 

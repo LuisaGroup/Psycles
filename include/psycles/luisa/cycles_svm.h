@@ -1194,6 +1194,8 @@ struct ShaderData {
   ClosurePool *closure;
   std::optional<cycles_spectrum::SpectralContext> spectral{};
   std::optional<luisa::compute::Float4> spectral_emission_background{};
+  std::optional<luisa::compute::Float4> spectral_extinction{};
+  std::optional<luisa::compute::Float4> spectral_scatter{};
 
   ShaderData(luisa::compute::Expr<luisa::float3> position,
              luisa::compute::Expr<luisa::float3> normal,

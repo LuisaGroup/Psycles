@@ -12,7 +12,7 @@ VolumeMajorantCellExtrema evaluate_cycles_svm_volume_density_cell(
     const std::shared_ptr<LuisaSceneData> &scene,
     const Var<RenderKernelParameters> &parameters,
     const VolumeStackEntry &entry, const VolumeMajorantGrid &grid,
-    UInt cell_index) noexcept {
+    UInt cell_index, bool grid_in_object_space) noexcept {
     namespace abi = compiler::cycles_svm;
     const auto resolution = grid.resolution;
     const auto xy = cell_index / resolution;
@@ -31,8 +31,12 @@ VolumeMajorantCellExtrema evaluate_cycles_svm_volume_density_cell(
     const auto samples = select(volume_majorant_samples_per_cell, 1u, shader.homogeneous(entry));
     Bool transform = false;
     $if(entry.object != cycles_svm::object_none) {
-        transform = (scene->cycles_svm->objects->object_flag_buffer->read(entry.object) &
-                     static_cast<unsigned>(abi::SD_OBJECT_TRANSFORM_APPLIED)) == 0u;
+        if (grid_in_object_space) {
+            transform = true;
+        } else {
+            transform = (scene->cycles_svm->objects->object_flag_buffer->read(entry.object) &
+                         static_cast<unsigned>(abi::SD_OBJECT_TRANSFORM_APPLIED)) == 0u;
+        }
     };
     const auto object_to_world = shader.object_transform(entry, false);
     Float minimum = std::numeric_limits<float>::max();

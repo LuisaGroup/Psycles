@@ -306,14 +306,13 @@ surface_shader_bsdf_bssrdf_pick(const ShaderData &shader_data,
   return {.index = sampled, .random = reused_random};
 }
 
-Float3 surface_shader_bssrdf_sample_weight(
-    const ShaderData &shader_data, Expr<std::uint32_t> closure_index) noexcept {
-  const auto &pool = *shader_data.closure;
-  const auto selected = pool.common(closure_index);
+template <typename WeightT>
+[[nodiscard]] WeightT scale_bssrdf_sample_weight(
+    const ClosurePool &pool, WeightT weight,
+    Expr<float> selected_sample_weight) noexcept {
   if (pool.capacity() <= 1u) {
-    return selected.weight;
+    return weight;
   }
-  Float3 weight = selected.weight;
   $if(pool.count() > 1u) {
     Float sum_sample_weight = 0.0f;
     UInt index = 0u;
@@ -324,9 +323,27 @@ Float3 surface_shader_bssrdf_sample_weight(
       };
       index += 1u;
     };
-    weight *= sum_sample_weight / selected.sample_weight;
+    weight *= sum_sample_weight / selected_sample_weight;
   };
   return weight;
+}
+
+Float3 surface_shader_bssrdf_sample_weight(
+    const ShaderData &shader_data, Expr<std::uint32_t> closure_index) noexcept {
+  const auto &pool = *shader_data.closure;
+  const auto selected = pool.common(closure_index);
+  return scale_bssrdf_sample_weight(pool, selected.weight,
+                                    selected.sample_weight);
+}
+
+Float4 surface_shader_bssrdf_sample_weight_spectral(
+    const ShaderData &shader_data, Expr<std::uint32_t> closure_index,
+    const cycles_spectrum::SpectralContext &spectral) noexcept {
+  const auto &pool = *shader_data.closure;
+  const auto selected = pool.common(closure_index);
+  const auto base =
+      closure_spectral_weight(pool, closure_index, selected, spectral);
+  return scale_bssrdf_sample_weight(pool, base, selected.sample_weight);
 }
 
 SurfaceShaderBsdfSample

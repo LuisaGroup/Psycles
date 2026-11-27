@@ -1942,7 +1942,8 @@ void emit_jit_instruction(
       if (is_volume_mask && req.shader_type == SHADER_TYPE_VOLUME &&
           (kernel_features & kernel_feature_volume) != 0u) {
         detail::node_closure_volume(kg, cursor, stack, closure_weight,
-                                    req.shader_data, transition);
+                                    req.shader_data, transition,
+                                    spectral_weight);
       }
       return;
     case NODE_VOLUME_COEFFICIENTS:
@@ -1950,7 +1951,7 @@ void emit_jit_instruction(
           (kernel_features & kernel_feature_volume) != 0u) {
         detail::node_volume_coefficients(kg, cursor, stack, closure_weight,
                                          req.shader_data, req.path_state,
-                                         transition);
+                                         transition, spectral_weight);
       }
       return;
     case NODE_PRINCIPLED_VOLUME:
@@ -1958,7 +1959,7 @@ void emit_jit_instruction(
           (kernel_features & kernel_feature_volume) != 0u) {
         detail::node_principled_volume(kg, cursor, stack, closure_weight,
                                        req.shader_data, req.path_state,
-                                       transition);
+                                       transition, spectral_weight);
       }
       return;
     case NODE_CLOSURE_HOLDOUT:

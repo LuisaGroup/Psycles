@@ -30,6 +30,16 @@ struct HomogeneousVolumeSegmentResult {
     Bool phase_failed;
 };
 
+struct HomogeneousVolumeSegmentResultSpectral {
+    VolumeCoefficients coefficients;
+    HomogeneousVolumeSampleSpectral transport;
+    VolumePhaseSetSample phase;
+    HomogeneousVolumeDirectSampleSpectral direct_transport;
+    VolumePhaseSetEvaluation direct_phase;
+    Bool scattered;
+    Bool phase_failed;
+};
+
 // Host-stage composition of the three independent Cycles volume contracts:
 // raw stacked-graph evaluation, analytic homogeneous distance sampling, and
 // phase continuation. The component records one fused Luisa AST. It does not
@@ -55,6 +65,23 @@ class HomogeneousVolumeSegmentComponent {
          const HomogeneousVolumeDirectInput &direct,
          const VolumeDirectLightProvider
              *direct_light) const noexcept = 0;
+
+    [[nodiscard]] virtual HomogeneousVolumeSegmentResultSpectral
+    emit_spectral(
+         const VolumeShaderEvaluator &shader,
+         const VolumeStack &stack,
+         Float3 position,
+         Float3 incoming,
+         Float distance,
+         Float4 throughput,
+         Float scatter_random,
+         Float channel_random,
+         Float2 phase_random,
+         Bool terminate,
+         Bool secondary_terminated,
+         const HomogeneousVolumeDirectInput &direct,
+         const VolumeDirectLightProvider
+             *direct_light) const noexcept = 0;
 };
 
 [[nodiscard]] std::unique_ptr<HomogeneousVolumeSegmentComponent>
@@ -65,3 +92,5 @@ make_homogeneous_volume_segment_component(
 
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
     psycles::luisa_backend::HomogeneousVolumeSegmentResult)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
+    psycles::luisa_backend::HomogeneousVolumeSegmentResultSpectral)

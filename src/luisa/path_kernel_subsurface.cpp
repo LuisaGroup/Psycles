@@ -5,9 +5,10 @@
 
 #include <psycles/compiler/cycles_svm_closure_usage.h>
 #include <psycles/luisa/cycles_noise.h>
-#include <psycles/luisa/cycles_svm.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sample_mapping.h>
+#include <psycles/luisa/cycles_spectrum.h>
+#include <psycles/luisa/cycles_svm.h>
 #include <psycles/sampling/tabulated_sobol.h>
 
 #include <utility>
@@ -65,10 +66,26 @@ inline constexpr std::uint32_t local_intersection_scramble =
         burley_pdf(radius.z, distance));
 }
 
+[[nodiscard]] Float4 burley_profile_4(
+    Float4 radius, Float distance) noexcept {
+    return make_float4(
+        burley_pdf(radius.x, distance),
+        burley_pdf(radius.y, distance),
+        burley_pdf(radius.z, distance),
+        burley_pdf(radius.w, distance));
+}
+
 [[nodiscard]] Float channel_count(Float3 radius) noexcept {
     return select(0.0f, 1.0f, radius.x > 0.0f) +
            select(0.0f, 1.0f, radius.y > 0.0f) +
            select(0.0f, 1.0f, radius.z > 0.0f);
+}
+
+[[nodiscard]] Float channel_count_4(Float4 radius) noexcept {
+    return select(0.0f, 1.0f, radius.x > 0.0f) +
+           select(0.0f, 1.0f, radius.y > 0.0f) +
+           select(0.0f, 1.0f, radius.z > 0.0f) +
+           select(0.0f, 1.0f, radius.w > 0.0f);
 }
 
 struct BurleyDiskSample {
@@ -97,6 +114,39 @@ struct BurleyDiskSample {
     consider(radius.x);
     consider(radius.y);
     consider(radius.z);
+    const auto scaled = burley_root(
+        profile_random * burley_truncate_cdf);
+    const auto disk_radius = scaled * selected_radius;
+    const auto maximum_radius = burley_truncate * selected_radius;
+    return {
+        .radius = disk_radius,
+        .height = sqrt(max(maximum_radius * maximum_radius -
+                               disk_radius * disk_radius,
+                           0.0f))};
+}
+
+[[nodiscard]] BurleyDiskSample sample_burley_disk_4(
+    Float4 radius, Float random) noexcept {
+    const auto channels = channel_count_4(radius);
+    Float channel_random = random * channels;
+    Float selected_radius = 0.0f;
+    Float profile_random = 0.0f;
+    Float accumulated = 0.0f;
+    Bool selected = false;
+    const auto consider = [&](Float value) noexcept {
+        const auto enabled = value > 0.0f;
+        const auto next = accumulated + select(0.0f, 1.0f, enabled);
+        const auto choose = !selected & enabled & (channel_random < next);
+        selected_radius = select(selected_radius, value, choose);
+        profile_random = select(
+            profile_random, channel_random - accumulated, choose);
+        selected |= choose;
+        accumulated = next;
+    };
+    consider(radius.x);
+    consider(radius.y);
+    consider(radius.z);
+    consider(radius.w);
     const auto scaled = burley_root(
         profile_random * burley_truncate_cdf);
     const auto disk_radius = scaled * selected_radius;
@@ -332,8 +382,22 @@ public:
                 disk_random_y * 2.0f,
                 (!tangent_axis) & (!bitangent_axis));
 
-            const auto disk = sample_burley_disk(
-                state.radius, random_disk.x);
+            Float4 spectral_radius = make_float4(0.0f);
+            if (path.is_spectral()) {
+                const auto ctx = path.spectral_context();
+                const auto sec_term = path.spectral_secondary_terminated();
+                const auto r4 = max(
+                    cycles_spectrum::scale_invariant_rgb_to_spectrum(
+                        *ctx->tables, state.radius, ctx->wavelengths.lambdas),
+                    make_float4(0.0f));
+                spectral_radius = select(
+                    r4, make_float4(r4.x, 0.0f, 0.0f, 0.0f), sec_term);
+            }
+            const auto disk = path.is_spectral()
+                                  ? sample_burley_disk_4(spectral_radius,
+                                                         random_disk.x)
+                                  : sample_burley_disk(state.radius,
+                                                       random_disk.x);
             const auto phi = 2.0f * cycles_sample_mapping::pi *
                              disk_random_y;
             const auto disk_offset =
@@ -499,132 +563,173 @@ public:
             }
 
             luisa::compute::ArrayFloat3<maximum_hits> hit_normals;
-            luisa::compute::ArrayFloat3<maximum_hits> hit_weights;
-            Float weight_sum = 0.0f;
-            const auto channels = channel_count(
-                state.radius);
-            const auto disk_profile = burley_profile(
-                state.radius, disk.radius);
-            const auto disk_pdf =
-                (disk_profile.x + disk_profile.y + disk_profile.z) /
-                max(channels, 1.0f);
-            for (auto index = 0u; index < maximum_hits; ++index) {
-                const auto geometry = _triangle_geometry->emit(
-                    scene,
-                    hit_instances[index],
-                    hit_primitives[index]);
-                const auto normal_to_world = instance_normal_to_world(
-                    scene, hit_instances[index], geometry.primitive.instance);
-                const auto object_normal = normalize(cross(
-                    geometry.p1 - geometry.p0,
-                    geometry.p2 - geometry.p0));
-                auto hit_normal = normalize(
-                    (normal_to_world * make_float4(object_normal, 0.0f)).xyz());
-                hit_normal = select(
-                    hit_normal,
-                    -hit_normal,
-                    (path.path_flags &
-                     cycles_path_state::flag_subsurface_backfacing) != 0u);
-                hit_normals[index] = hit_normal;
+            auto finalize_burley = [&]<bool Spectral>() noexcept {
+                using WeightT = std::conditional_t<Spectral, Float4, Float3>;
+                using WeightArrayT = std::conditional_t<
+                    Spectral,
+                    luisa::compute::ArrayFloat4<maximum_hits>,
+                    luisa::compute::ArrayFloat3<maximum_hits>>;
+                WeightArrayT hit_weights;
+                Float weight_sum = 0.0f;
+                const auto zero_w = []() noexcept -> WeightT {
+                    if constexpr (Spectral) {
+                        return make_float4(0.0f);
+                    } else {
+                        return make_float3(0.0f);
+                    }
+                };
+                const auto sec_term = [&]() noexcept -> Bool {
+                    if constexpr (Spectral) {
+                        return path.spectral_secondary_terminated();
+                    } else {
+                        return false;
+                    }
+                }();
+                const Float disk_pdf = [&]() noexcept {
+                    if constexpr (Spectral) {
+                        const auto channels = channel_count_4(spectral_radius);
+                        const auto disk_profile = burley_profile_4(
+                            spectral_radius, disk.radius);
+                        return (disk_profile.x + disk_profile.y +
+                                disk_profile.z + disk_profile.w) /
+                               max(channels, 1.0f);
+                    } else {
+                        const auto channels = channel_count(state.radius);
+                        const auto disk_profile = burley_profile(
+                            state.radius, disk.radius);
+                        return (disk_profile.x + disk_profile.y + disk_profile.z) /
+                               max(channels, 1.0f);
+                    }
+                }();
+                const auto avg_weight = [&](const WeightT &w) noexcept -> Float {
+                    if constexpr (Spectral) {
+                        return cycles_spectrum::avg_active(abs(w), sec_term);
+                    } else {
+                        return (abs(w.x) + abs(w.y) + abs(w.z)) / 3.0f;
+                    }
+                };
+                for (auto index = 0u; index < maximum_hits; ++index) {
+                    const auto geometry = _triangle_geometry->emit(
+                        scene,
+                        hit_instances[index],
+                        hit_primitives[index]);
+                    const auto normal_to_world = instance_normal_to_world(
+                        scene, hit_instances[index], geometry.primitive.instance);
+                    const auto object_normal = normalize(cross(
+                        geometry.p1 - geometry.p0,
+                        geometry.p2 - geometry.p0));
+                    auto hit_normal = normalize(
+                        (normal_to_world * make_float4(object_normal, 0.0f)).xyz());
+                    hit_normal = select(
+                        hit_normal,
+                        -hit_normal,
+                        (path.path_flags &
+                         cycles_path_state::flag_subsurface_backfacing) != 0u);
+                    hit_normals[index] = hit_normal;
 
-                const auto hit_position =
-                    probe->origin() +
-                    probe->direction() * hit_distances[index];
-                const auto distance = luisa::compute::length(
-                    hit_position - ray->origin());
-                const auto pdf_normal =
-                    pick_pdf_normal * abs(dot(disk_normal, hit_normal));
-                const auto pdf_tangent =
-                    pick_pdf_tangent * abs(dot(disk_tangent, hit_normal));
-                const auto pdf_bitangent =
-                    pick_pdf_bitangent * abs(dot(disk_bitangent, hit_normal));
-                auto mis_weight = pdf_normal /
-                                  max(pdf_normal * pdf_normal +
-                                          pdf_tangent * pdf_tangent +
-                                          pdf_bitangent * pdf_bitangent,
-                                      1.0e-20f);
-                mis_weight *= select(
-                    1.0f,
-                    cast<float>(hit_count) /
-                        static_cast<float>(maximum_hits),
-                    hit_count > maximum_hits);
-                auto weight = burley_profile(
-                                  state.radius, distance) *
-                              (mis_weight / max(disk_pdf, 1.0e-20f));
-                weight = select(
-                    make_float3(0.0f),
-                    weight,
-                    (index < evaluated_hits) & (disk_pdf > 0.0f));
-                hit_weights[index] = weight;
-                weight_sum +=
-                    (abs(weight.x) + abs(weight.y) + abs(weight.z)) /
-                    3.0f;
-            }
-
-            const auto resample_random = cycles_sampler::sample_1d(
-                invocation.sobol_table,
-                parameters.sobol_sequence_size,
-                path.sample_index,
-                path.rng_hash,
-                cycles_sampler::path_state_dimension(rng_offset, 1u));
-            const auto target = resample_random * weight_sum;
-            Float partial = 0.0f;
-            UInt selected_index = 0u;
-            Float selected_sample_weight = 0.0f;
-            Bool selected = false;
-            for (auto index = 0u; index < maximum_hits; ++index) {
-                const auto weight = hit_weights[index];
-                const auto sample_weight =
-                    (abs(weight.x) + abs(weight.y) + abs(weight.z)) /
-                    3.0f;
-                const auto next = partial + sample_weight;
-                const auto choose = !selected &
-                                    (index < evaluated_hits) &
-                                    (target < next);
-                selected_index = select(
-                    selected_index,
-                    static_cast<std::uint32_t>(index),
-                    choose);
-                selected_sample_weight = select(
-                    selected_sample_weight, sample_weight, choose);
-                selected |= choose;
-                partial = next;
-            }
-
-            success = selected & (weight_sum > 0.0f);
-            $if(success) {
-                const auto selected_weight = hit_weights[selected_index];
-                const auto weight_factor =
-                    selected_weight * weight_sum /
-                    max(selected_sample_weight, 1.0e-20f);
-                if (path.is_spectral()) {
-                    const auto ctx = path.spectral_context();
-                    throughput *=
-                        cycles_spectrum::Spectrum::from_rgb_reflectance(
-                            ctx->tables, weight_factor, &ctx->wavelengths,
-                            true);
-                } else {
-                    throughput = cycles_spectrum::Spectrum::from_rgb_raw(
-                        throughput.rgb() * weight_factor);
+                    const auto hit_position =
+                        probe->origin() +
+                        probe->direction() * hit_distances[index];
+                    const auto distance = luisa::compute::length(
+                        hit_position - ray->origin());
+                    const auto pdf_normal =
+                        pick_pdf_normal * abs(dot(disk_normal, hit_normal));
+                    const auto pdf_tangent =
+                        pick_pdf_tangent * abs(dot(disk_tangent, hit_normal));
+                    const auto pdf_bitangent =
+                        pick_pdf_bitangent * abs(dot(disk_bitangent, hit_normal));
+                    auto mis_weight = pdf_normal /
+                                      max(pdf_normal * pdf_normal +
+                                              pdf_tangent * pdf_tangent +
+                                              pdf_bitangent * pdf_bitangent,
+                                          1.0e-20f);
+                    mis_weight *= select(
+                        1.0f,
+                        cast<float>(hit_count) /
+                            static_cast<float>(maximum_hits),
+                        hit_count > maximum_hits);
+                    WeightT weight = [&]() noexcept {
+                        if constexpr (Spectral) {
+                            return burley_profile_4(spectral_radius, distance) *
+                                   (mis_weight / max(disk_pdf, 1.0e-20f));
+                        } else {
+                            return burley_profile(state.radius, distance) *
+                                   (mis_weight / max(disk_pdf, 1.0e-20f));
+                        }
+                    }();
+                    weight = select(
+                        zero_w(),
+                        weight,
+                        (index < evaluated_hits) & (disk_pdf > 0.0f));
+                    hit_weights[index] = weight;
+                    weight_sum += avg_weight(weight);
                 }
-                pending_hit.store_surface(
-                    hit_instances[selected_index],
-                    hit_primitives[selected_index],
-                    hit_barycentrics[selected_index],
-                    hit_distances[selected_index]);
-                pending_exit = true;
 
-                const auto exit_normal = hit_normals[selected_index];
-                const auto exit_position =
-                    probe->origin() + probe->direction() *
-                                          hit_distances[selected_index];
-                ray = make_ray(exit_position + 2.0f * exit_normal,
-                               -exit_normal,
-                               0.0f,
-                               1.0f);
-                ray_dD = 0.0f;
-                rng_offset += cycles_path_state::bounce_dimension_count;
+                const auto resample_random = cycles_sampler::sample_1d(
+                    invocation.sobol_table,
+                    parameters.sobol_sequence_size,
+                    path.sample_index,
+                    path.rng_hash,
+                    cycles_sampler::path_state_dimension(rng_offset, 1u));
+                const auto target = resample_random * weight_sum;
+                Float partial = 0.0f;
+                UInt selected_index = 0u;
+                Float selected_sample_weight = 0.0f;
+                Bool selected = false;
+                for (auto index = 0u; index < maximum_hits; ++index) {
+                    const auto weight = hit_weights[index];
+                    const auto sample_weight = avg_weight(weight);
+                    const auto next = partial + sample_weight;
+                    const auto choose = !selected &
+                                        (index < evaluated_hits) &
+                                        (target < next);
+                    selected_index = select(
+                        selected_index,
+                        static_cast<std::uint32_t>(index),
+                        choose);
+                    selected_sample_weight = select(
+                        selected_sample_weight, sample_weight, choose);
+                    selected |= choose;
+                    partial = next;
+                }
+
+                success = selected & (weight_sum > 0.0f);
+                $if(success) {
+                    const auto selected_weight = hit_weights[selected_index];
+                    const auto weight_factor =
+                        selected_weight * weight_sum /
+                        max(selected_sample_weight, 1.0e-20f);
+                    if constexpr (Spectral) {
+                        throughput *=
+                            cycles_spectrum::Spectrum::from_lanes(weight_factor);
+                    } else {
+                        throughput = cycles_spectrum::Spectrum::from_rgb_raw(
+                            throughput.rgb() * weight_factor);
+                    }
+                    pending_hit.store_surface(
+                        hit_instances[selected_index],
+                        hit_primitives[selected_index],
+                        hit_barycentrics[selected_index],
+                        hit_distances[selected_index]);
+                    pending_exit = true;
+
+                    const auto exit_normal = hit_normals[selected_index];
+                    const auto exit_position =
+                        probe->origin() + probe->direction() *
+                                              hit_distances[selected_index];
+                    ray = make_ray(exit_position + 2.0f * exit_normal,
+                                   -exit_normal,
+                                   0.0f,
+                                   1.0f);
+                    ray_dD = 0.0f;
+                    rng_offset += cycles_path_state::bounce_dimension_count;
+                };
             };
+            if (path.is_spectral()) {
+                finalize_burley.template operator()<true>();
+            } else {
+                finalize_burley.template operator()<false>();
+            }
         }
         $else {
             success = _random_walk.transport(path, state);
