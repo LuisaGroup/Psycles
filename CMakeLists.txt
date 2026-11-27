@@ -433,6 +433,17 @@ if(PSYCLES_ENABLE_LUISA)
                 NAME psycles.luisa_path_scheduler
                 COMMAND psycles_luisa_path_scheduler_tests)
 
+            psycles_add_luisa_backend_test(
+                TARGET
+                    psycles_luisa_coro_compile_cache_tests
+                SOURCE
+                    tests/test_luisa_coro_compile_cache.cpp
+                TEST_STEM
+                    luisa_coro_compile_cache
+                LIBRARIES
+                    Psycles::luisa_runtime
+                    luisa-compute-xir)
+
             add_executable(
                 psycles_luisa_sample_dispatch_film_tests
                 tests/test_luisa_sample_dispatch_film.cpp)
