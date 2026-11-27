@@ -264,15 +264,23 @@ bool check_multi_bucket_surface_routing(Device &device, Stream &stream) {
       psycles::luisa_backend::cycles_svm::kernel_feature_subsurface;
 
   if (std::getenv("PSYCLES_SURFACE_BUCKET_MODE") == nullptr) {
-    const auto auto_plan =
-        make_path_surface_bucket_plan(*scene, true, true, false, true);
     const auto backend = std::string_view{device.backend_name()};
-    const std::size_t expected_auto_buckets =
+    const auto auto_plan_no_sss =
+        make_path_surface_bucket_plan(*scene, true, true, false, false);
+    const std::size_t expected_no_sss_buckets =
         (backend == "dx" || backend == "vk") ? 1u : 2u;
-    if (auto_plan.buckets.size() != expected_auto_buckets) {
-      std::cerr << "Unexpected auto surface bucket count "
-                << auto_plan.buckets.size() << " for backend " << backend
-                << " (expected " << expected_auto_buckets << ")\n";
+    if (auto_plan_no_sss.buckets.size() != expected_no_sss_buckets) {
+      std::cerr << "Unexpected non-subsurface auto surface bucket count "
+                << auto_plan_no_sss.buckets.size() << " for backend " << backend
+                << " (expected " << expected_no_sss_buckets << ")\n";
+      return false;
+    }
+    const auto auto_plan_sss =
+        make_path_surface_bucket_plan(*scene, true, true, false, true);
+    if (auto_plan_sss.buckets.size() != 2u) {
+      std::cerr << "Unexpected subsurface auto surface bucket count "
+                << auto_plan_sss.buckets.size() << " for backend " << backend
+                << " (expected 2)\n";
       return false;
     }
   }

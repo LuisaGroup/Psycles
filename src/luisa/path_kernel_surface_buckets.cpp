@@ -385,12 +385,8 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
     // shaders fit within DirectJitTranslator's 80-shader budget. Beyond 80
     // shaders (e.g. Barbershop), falling back to a single BytecodeVM bucket
     // severely degrades DX/VK throughput, so split into <=80-shader buckets.
-    if (backend_name == "dx" &&
-        domain_active_nonempty <= svm::direct_jit_max_shaders() &&
-        domain_unique_jit_weight <= bucket_weight_cap) {
-      return SurfaceBucketMode::off;
-    }
-    if (backend_name == "vk" &&
+    if (!has_subsurface &&
+        (backend_name == "dx" || backend_name == "vk") &&
         domain_active_nonempty <= svm::direct_jit_max_shaders() &&
         domain_unique_jit_weight <= bucket_weight_cap) {
       return SurfaceBucketMode::off;

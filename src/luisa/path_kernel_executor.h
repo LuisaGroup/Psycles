@@ -37,6 +37,7 @@ struct PathKernelExecutorConfig {
     bool persistent_shared_memory_soa{true};
     bool persistent_global_memory_extension{true};
     luisa::compute::ShaderOption shader_option{};
+    std::function<void()> on_after_coroutine_build{};
     std::function<void()> on_before_register_extensions{};
 };
 

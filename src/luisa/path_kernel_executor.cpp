@@ -552,6 +552,9 @@ build_path_kernel_executor(luisa::compute::Device &device,
         scheduler_config.max_async_in_flight_batches =
             shadow_path.scene->virtual_texture_cache->async_batch_slots();
     }
+    if (config.on_after_coroutine_build) {
+        config.on_after_coroutine_build();
+    }
     auto scheduler = std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);
     const auto pso_t1 = VtProfileRecorder::steady_ns();
@@ -678,16 +681,19 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 coroutine.frame().frame_type()->size(),
                 config.wavefront_frame_capacity);
     const auto backend_name = device.backend_name();
+    bool has_surface_block_override = false;
     auto shade_surface_block_size =
-        (backend_name == "dx" || backend_name == "vk") ? 32u : 64u;
+        (backend_name == "vk") ? 32u : 64u;
     if (const auto *override_block =
             std::getenv("PSYCLES_SHADE_SURFACE_BLOCK_SIZE")) {
       const auto parsed =
           static_cast<std::uint32_t>(std::strtoul(override_block, nullptr, 10));
       if (valid_luisa_execution_block_size(parsed)) {
         shade_surface_block_size = parsed;
+        has_surface_block_override = true;
       }
     }
+    bool has_bucket0_block_override = false;
     auto bucket0_block_size = shade_surface_block_size;
     if (const auto *override_b0 =
             std::getenv("PSYCLES_SHADE_SURFACE_BUCKET0_BLOCK_SIZE")) {
@@ -695,6 +701,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
           static_cast<std::uint32_t>(std::strtoul(override_b0, nullptr, 10));
       if (valid_luisa_execution_block_size(parsed)) {
         bucket0_block_size = parsed;
+        has_bucket0_block_override = true;
       }
     }
     const auto surface_buckets = make_path_surface_bucket_plan(staged_path);
@@ -703,10 +710,18 @@ build_path_kernel_executor(luisa::compute::Device &device,
     scheduler_config.execution_block_size =
         config.wavefront_execution_block_size;
     for (std::size_t b = 0u; b < surface_buckets.buckets.size(); ++b) {
+      std::uint32_t block_size = shade_surface_block_size;
+      if (b == 0u && has_bucket0_block_override) {
+        block_size = bucket0_block_size;
+      } else if (!has_surface_block_override && backend_name == "vk") {
+        const auto &spec = surface_buckets.buckets[b];
+        block_size =
+            (spec.max_surface_closures <= 4u && !spec.may_have_bssrdf) ? 64u
+                                                                       : 32u;
+      }
       scheduler_config.continuation_block_sizes.push_back(
           {.continuation = surface_buckets.buckets[b].continuation_name,
-           .execution_block_size =
-               b == 0u ? bucket0_block_size : shade_surface_block_size});
+           .execution_block_size = block_size});
     }
     if (surface_buckets.post_closure_substage) {
       scheduler_config.continuation_block_sizes.push_back(
@@ -767,6 +782,9 @@ build_path_kernel_executor(luisa::compute::Device &device,
     if (vt_active && staged_path.scene->virtual_texture_cache->async_worker_enabled()) {
         scheduler_config.max_async_in_flight_batches =
             staged_path.scene->virtual_texture_cache->async_batch_slots();
+    }
+    if (config.on_after_coroutine_build) {
+        config.on_after_coroutine_build();
     }
     auto scheduler = std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);

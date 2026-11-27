@@ -51,9 +51,32 @@ namespace {
 
 }// namespace
 
+void LuisaRenderSession::clear_film_buffers(std::size_t count) {
+    const auto diagnostic_layout = path_diagnostic_buffer_layout(_options);
+    const auto clear_count = std::max<std::size_t>(
+        count, diagnostic_layout.allocation_slot_count);
+    _stream << _scene->film_pass_accessor
+                   ->clear_film(
+                       _combined,
+                       _normal,
+                       _albedo,
+                       _light_passes,
+                       _sample_count,
+                       _volume_guiding_raw,
+                       _volume_guiding_denoised,
+                       _volume_guiding_intermediate,
+                       _path_trace,
+                       static_cast<std::uint32_t>(count),
+                       static_cast<std::uint32_t>(
+                           diagnostic_layout.allocation_slot_count))
+                   .dispatch(clear_count)
+            << synchronize();
+}
+
 void LuisaRenderSession::prepare_film_buffers(
     std::size_t count,
-    const RenderSettings &settings) {
+    const RenderSettings &settings,
+    bool clear_now) {
     const auto diagnostic_layout = path_diagnostic_buffer_layout(_options);
     if (count != _allocated_pixel_count ||
         !_combined || !_normal || !_albedo || !_light_passes ||
@@ -100,24 +123,9 @@ void LuisaRenderSession::prepare_film_buffers(
     }
 
     prepare_film_pass_accessor();
-    const auto clear_count = std::max<std::size_t>(
-        count, diagnostic_layout.allocation_slot_count);
-    _stream << _scene->film_pass_accessor
-                   ->clear_film(
-                       _combined,
-                       _normal,
-                       _albedo,
-                       _light_passes,
-                       _sample_count,
-                       _volume_guiding_raw,
-                       _volume_guiding_denoised,
-                       _volume_guiding_intermediate,
-                       _path_trace,
-                       static_cast<std::uint32_t>(count),
-                       static_cast<std::uint32_t>(
-                           diagnostic_layout.allocation_slot_count))
-                   .dispatch(clear_count)
-            << synchronize();
+    if (clear_now) {
+        clear_film_buffers(count);
+    }
     if (_scene->volume_metadata.has_volumes()) {
         if (!_volume_guiding_filter) {
             _volume_guiding_filter =
@@ -340,7 +348,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
     _last_render_timings.reset();
     _window = effective_window(settings);
     const auto count = std::max<std::size_t>(pixel_count(), 1u);
-    prepare_film_buffers(count, settings);
+    prepare_film_buffers(count, settings, /*clear_now=*/false);
 
     const auto signature = update_kernel_parameters(settings);
     if (signature.spectral_rendering && !_scene->spectral_tables) {
@@ -476,11 +484,22 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         };
     }
 
+    bool film_cleared = false;
+    executor_config.on_after_coroutine_build = [this, count, &film_cleared]() {
+        // Clear film after coroutine lowering (while GPU is still in P3) so
+        // the subsequent shader-compile phase fits within the P3->P5 timeout.
+        clear_film_buffers(count);
+        film_cleared = true;
+    };
+
     const auto pso_t0 = std::chrono::steady_clock::now();
     _render_executor = build_path_kernel_executor(
         _scene->device, kernel_config, executor_config);
     const auto pso_t1 = std::chrono::steady_clock::now();
     preflight_handle.join();
+    if (!film_cleared) {
+        clear_film_buffers(count);
+    }
     if (tl_active) {
         static_cast<void>(
             _scene->device.impl()->query("vk_timeline_mark:pso_compile_end"));

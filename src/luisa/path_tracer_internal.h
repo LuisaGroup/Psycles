@@ -679,7 +679,9 @@ private:
     [[nodiscard]] std::size_t pixel_count() const noexcept;
     void prepare_sobol_table(std::uint32_t total_samples);
     void prepare_film_pass_accessor();
-    void prepare_film_buffers(std::size_t count, const RenderSettings &settings);
+    void prepare_film_buffers(std::size_t count, const RenderSettings &settings,
+                              bool clear_now = true);
+    void clear_film_buffers(std::size_t count);
     [[nodiscard]] SessionKernelSignature update_kernel_parameters(
         const RenderSettings &settings);
     void initialize(const RenderSettings &settings);
