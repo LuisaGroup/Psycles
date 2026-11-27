@@ -444,6 +444,139 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
             traversal_tables.material_flags.size());
     scene->light_buffer =
         scene->device.create_buffer<LightGpu>(input.lights.size());
+    luisa::vector<luisa::float4> intersectable_light_bounds;
+    luisa::vector<luisa::uint> intersectable_light_indices;
+    std::uint32_t intersectable_light_type_mask = 0u;
+    bool any_intersectable_light_camera_visible = false;
+    bool any_intersectable_light_indirect_mis = false;
+    {
+        const std::size_t regular_light_count = std::min<std::size_t>(
+            scene->light_count, input.lights.size());
+        intersectable_light_bounds.reserve(regular_light_count);
+        intersectable_light_indices.reserve(regular_light_count);
+        constexpr auto area_type =
+            static_cast<std::uint32_t>(LightType::area);
+        constexpr auto point_type =
+            static_cast<std::uint32_t>(LightType::point);
+        constexpr auto spot_type =
+            static_cast<std::uint32_t>(LightType::spot);
+        for (std::size_t light_index = 0u;
+             light_index < regular_light_count; ++light_index) {
+            const auto &light = input.lights[light_index];
+            const bool use_mis = (light.flags & light_flag_use_mis) != 0u;
+            if (!use_mis && light.visibility_mask == 0u) {
+                continue;
+            }
+            float bound_w = 0.0f;
+            if (light.type == area_type) {
+                if (!(light.size_u > 0.0f && light.size_v > 0.0f)) {
+                    continue;
+                }
+                const auto az = light.axis_z;
+                const auto dot3 = [](luisa::float3 a, luisa::float3 b) noexcept {
+                    return a.x * b.x + a.y * b.y + a.z * b.z;
+                };
+                const auto ax_z = dot3(light.axis_x, az);
+                const auto ay_z = dot3(light.axis_y, az);
+                const auto u_proj = luisa::make_float3(
+                    light.axis_x.x - ax_z * az.x,
+                    light.axis_x.y - ax_z * az.y,
+                    light.axis_x.z - ax_z * az.z);
+                const auto v_proj = luisa::make_float3(
+                    light.axis_y.x - ay_z * az.x,
+                    light.axis_y.y - ay_z * az.y,
+                    light.axis_y.z - ay_z * az.z);
+                const double a = static_cast<double>(dot3(u_proj, u_proj));
+                const double b = static_cast<double>(dot3(u_proj, v_proj));
+                const double d = static_cast<double>(dot3(v_proj, v_proj));
+                const double det = a * d - b * b;
+                if (det > 1.0e-12) {
+                    const double inv_det = 1.0 / det;
+                    const double su = 0.5 * static_cast<double>(light.size_u);
+                    const double sv = 0.5 * static_cast<double>(light.size_v);
+                    const double ex = (d * static_cast<double>(u_proj.x) -
+                                       b * static_cast<double>(v_proj.x)) *
+                                      inv_det;
+                    const double ey = (d * static_cast<double>(u_proj.y) -
+                                       b * static_cast<double>(v_proj.y)) *
+                                      inv_det;
+                    const double ez = (d * static_cast<double>(u_proj.z) -
+                                       b * static_cast<double>(v_proj.z)) *
+                                      inv_det;
+                    const double fx = (a * static_cast<double>(v_proj.x) -
+                                       b * static_cast<double>(u_proj.x)) *
+                                      inv_det;
+                    const double fy = (a * static_cast<double>(v_proj.y) -
+                                       b * static_cast<double>(u_proj.y)) *
+                                      inv_det;
+                    const double fz = (a * static_cast<double>(v_proj.z) -
+                                       b * static_cast<double>(u_proj.z)) *
+                                      inv_det;
+                    const double hux = su * ex;
+                    const double huy = su * ey;
+                    const double huz = su * ez;
+                    const double hvx = sv * fx;
+                    const double hvy = sv * fy;
+                    const double hvz = sv * fz;
+                    const double px = hux + hvx;
+                    const double py = huy + hvy;
+                    const double pz = huz + hvz;
+                    const double mx = hux - hvx;
+                    const double my = huy - hvy;
+                    const double mz = huz - hvz;
+                    const double r_sq = std::max(
+                        px * px + py * py + pz * pz,
+                        mx * mx + my * my + mz * mz);
+                    const double r = std::sqrt(std::max(r_sq, 0.0));
+                    const double r_pad = r * 1.01 + 1.0e-2;
+                    const double bound_w_d = std::min(r_pad * r_pad, 1.0e36);
+                    bound_w = std::isfinite(bound_w_d)
+                                  ? static_cast<float>(bound_w_d)
+                                  : 1.0e38f;
+                } else {
+                    bound_w = 1.0e38f;
+                }
+            } else if (light.type == point_type || light.type == spot_type) {
+                if (!(light.radius > 0.0f)) {
+                    continue;
+                }
+                const double r_pad =
+                    static_cast<double>(light.radius) * 1.01 + 1.0e-2;
+                const double bound_w_d = std::min(r_pad * r_pad, 1.0e36);
+                bound_w = std::isfinite(bound_w_d)
+                              ? static_cast<float>(bound_w_d)
+                              : 1.0e38f;
+            } else {
+                continue;
+            }
+            intersectable_light_bounds.emplace_back(
+                luisa::make_float4(light.position.x, light.position.y,
+                                   light.position.z, bound_w));
+            intersectable_light_indices.emplace_back(
+                static_cast<luisa::uint>(light_index));
+            intersectable_light_type_mask |= (1u << light.type);
+            any_intersectable_light_camera_visible |=
+                ((light.visibility_mask & camera_visibility) != 0u);
+            any_intersectable_light_indirect_mis |= use_mis;
+        }
+    }
+    scene->intersectable_light_count =
+        static_cast<std::uint32_t>(intersectable_light_indices.size());
+    scene->intersectable_light_type_mask = intersectable_light_type_mask;
+    scene->any_intersectable_light_camera_visible =
+        any_intersectable_light_camera_visible;
+    scene->any_intersectable_light_indirect_mis =
+        any_intersectable_light_indirect_mis;
+    if (intersectable_light_bounds.empty()) {
+        intersectable_light_bounds.emplace_back(luisa::make_float4(0.0f));
+        intersectable_light_indices.emplace_back(0u);
+    }
+    scene->intersectable_light_bounds =
+        scene->device.create_buffer<luisa::float4>(
+            intersectable_light_bounds.size());
+    scene->intersectable_light_indices =
+        scene->device.create_buffer<luisa::uint>(
+            intersectable_light_indices.size());
     scene->emissive_triangle_buffer =
         scene->device.create_buffer<EmissiveTriangleGpu>(
             input.emissive_triangles.size());
@@ -532,6 +665,10 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
            << scene->traversal_material_flags_buffer.copy_from(
                   luisa::span{traversal_tables.material_flags})
            << scene->light_buffer.copy_from(luisa::span{input.lights})
+           << scene->intersectable_light_bounds.copy_from(
+                  luisa::span{intersectable_light_bounds})
+           << scene->intersectable_light_indices.copy_from(
+                  luisa::span{intersectable_light_indices})
            << scene->emissive_triangle_buffer.copy_from(
                   luisa::span{input.emissive_triangles})
            << scene->light_distribution_buffer.copy_from(

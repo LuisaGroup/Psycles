@@ -460,8 +460,14 @@ struct LuisaSceneData {
     std::optional<Buffer<luisa::uint>> primary_to_volume_local_buffer;
     bool all_volume_boundary_primitives_have_volume{false};
     Buffer<LightGpu> light_buffer;
+    Buffer<luisa::float4> intersectable_light_bounds;
+    Buffer<luisa::uint> intersectable_light_indices;
     std::uint32_t light_count{};
     std::uint32_t light_type_mask{0xfu};
+    std::uint32_t intersectable_light_count{};
+    std::uint32_t intersectable_light_type_mask{0u};
+    bool any_intersectable_light_camera_visible{false};
+    bool any_intersectable_light_indirect_mis{false};
     // Portal records follow regular lights in light_buffer and never enter
     // the direct-light distribution. Their offset is exactly light_count.
     std::uint32_t portal_count{};
