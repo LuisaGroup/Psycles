@@ -168,10 +168,12 @@ bool run(const char *program, const char *backend) {
                                     .sobol_table = floats,
                                     .filter_table = unused,
                                     .parameters = parameters};
-    PathSampleContext sample{.invocation = invocation};
+    PathSampleContext sample{
+        .invocation = invocation,
+        .throughput =
+            psycles::luisa_backend::cycles_spectrum::Spectrum::one(false)};
     sample.ray =
         make_ray(make_float3(0), make_float3(0, 0, 1), 0.0f, f::maximum);
-    sample.throughput = make_float3(1);
     sample.ray_source_object = f::initial_object;
     sample.ray_source_primitive = f::initial_primitive;
     sample.path_flags = path::flag_mis_skip | path::flag_reflect;
