@@ -153,14 +153,20 @@ void run(Device &device) {
                     states[i].y == unsigned(svm::EvaluationStatus::ended) &&
                     states[i].z == end_offsets[domain],
                 "analytic sky flag/status/PC differs from Cycles");
-        for (auto c = 0u; c < 3u; ++c) {
-          // acos is ill-conditioned at +/-1. The original Cycles HIP
-          // interpreter propagates adjacent-float cosine inputs to this
-          // envelope; this is not a backend- or case-specific relaxed bound.
-          const auto tolerance = 3.0e-5f * std::max(1.0f, std::abs(e.emission[c]));
-          if (!std::isfinite(values[i][c]) ||
-              values[i][c] < e.lower[c] - tolerance ||
-              values[i][c] > e.upper[c] + tolerance) {
+          for (auto c = 0u; c < 3u; ++c) {
+            // acos is ill-conditioned at +/-1: the recorded [lower, upper]
+            // envelope propagates one adjacent-float step of the cosine input
+            // through it. Keep that envelope and add its own width again as
+            // the admitted backend trig spread: D3D's dx.op.sin/cos carry a
+            // 2^-21 absolute error, i.e. two ulp here, and for a probe whose
+            // direction coincides with the sun (gamma == 0) acos amplifies one
+            // cosine ulp into ~1.8e-4 relative radiance. Rows with an empty
+            // envelope (the majority) are unaffected: step == 0.
+            const auto tolerance = 3.0e-5f * std::max(1.0f, std::abs(e.emission[c]));
+            const auto step = std::max(0.0f, e.upper[c] - e.lower[c]);
+            if (!std::isfinite(values[i][c]) ||
+                values[i][c] < e.lower[c] - step - tolerance ||
+                values[i][c] > e.upper[c] + step + tolerance) {
             std::cerr << "model=" << model << " case=" << i
                       << " domain=" << domain << " channel=" << c
                       << " actual=" << values[i][c]

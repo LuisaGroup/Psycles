@@ -1821,13 +1821,27 @@ if(PSYCLES_ENABLE_LUISA)
                 psycles_luisa_caustics_mnee_tests
                 PRIVATE
                     "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
-            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
-                if(TEST psycles.luisa_caustics_mnee_${_backend})
-                    set_tests_properties(
-                        psycles.luisa_caustics_mnee_${_backend}
-                        PROPERTIES TIMEOUT 180)
-                endif()
-            endforeach()
+              foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
+                  if(TEST psycles.luisa_caustics_sms_${_backend})
+                      set_tests_properties(
+                          psycles.luisa_caustics_sms_${_backend}
+                          PROPERTIES TIMEOUT 240)
+                  endif()
+              endforeach()
+              if(TEST psycles.luisa_caustics_sms_dx)
+                  set_tests_properties(
+                      psycles.luisa_caustics_sms_dx
+                      PROPERTIES TIMEOUT 900)
+              endif()
+              # The DX backend re-JITs the whole staged coroutine from HLSL for
+              # every session, which is several times slower than the
+              # SPIR-V/CUDA code generators on the same scene; the 180 s gate is
+              # sized for those backends.
+              if(TEST psycles.luisa_caustics_mnee_dx)
+                  set_tests_properties(
+                      psycles.luisa_caustics_mnee_dx
+                      PROPERTIES TIMEOUT 900)
+              endif()
 
             psycles_add_luisa_backend_test(
                 TARGET

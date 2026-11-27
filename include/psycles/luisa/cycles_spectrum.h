@@ -151,6 +151,12 @@ private:
       : _data{std::move(value)} {}
 
 public:
+  // Default construction selects RGB transport with a zero-initialized lane
+  // var. Host-side path-kernel contexts rely on this so that they stay
+  // aggregate-initializable; spectral pipelines must build their transport
+  // explicitly (zero(true) / constant(true, ...) / from_lanes(...)).
+  Spectrum() noexcept : _data{luisa::compute::Float3{}} {}
+
   Spectrum(const Spectrum &other) noexcept
       : _data{other.is_spectral()
                   ? std::variant<luisa::compute::Float3, luisa::compute::Float4>{
@@ -173,6 +179,20 @@ public:
 
   Spectrum &operator=(Spectrum &&other) noexcept {
     return *this = static_cast<const Spectrum &>(other);
+  }
+
+  // Raw lane assignment keeps the active variant and only rebinds its value.
+  // It mirrors from_rgb_raw()/from_lanes() for already-constructed transports.
+  void operator=(luisa::compute::Expr<luisa::float3> value) noexcept {
+    LUISA_ASSERT(!is_spectral(),
+                 "Assigning RGB lanes to a spectral Spectrum; use from_lanes().");
+    std::get<luisa::compute::Float3>(_data) = std::move(value);
+  }
+
+  void operator=(luisa::compute::Expr<luisa::float4> value) noexcept {
+    LUISA_ASSERT(is_spectral(),
+                 "Assigning spectral lanes to an RGB Spectrum; use from_rgb_raw().");
+    std::get<luisa::compute::Float4>(_data) = std::move(value);
   }
 
   [[nodiscard]] bool is_spectral() const noexcept {

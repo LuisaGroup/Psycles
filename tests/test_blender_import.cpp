@@ -403,7 +403,7 @@ void test_integrator_settings_round_trip() {
             "label": "",
             "type": "ADD_SHADER",
             "bl_idname": "ShaderNodeAddShader",
-            "inputs": [
+)JSON" R"JSON(            "inputs": [
               {
                 "identifier": "Shader",
                 "name": "Shader",

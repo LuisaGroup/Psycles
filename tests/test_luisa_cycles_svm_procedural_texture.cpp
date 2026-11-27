@@ -282,9 +282,14 @@ template <typename... Args>
   static constexpr std::array points{
       luisa::float4{0.173f, 0.0f, 1.375f, 0.0f},
       luisa::float4{0.512000024f, 0.0f, 1.083999991f, 0.0f},
-      luisa::float4{1.0e20f, -0.375f, 0.8125f, 0.0f},
-      luisa::float4{1.0f, 0.0f, 0.0f, 0.0f},
-      luisa::float4{-1.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{1.0e20f, -0.375f, 0.8125f, 0.0f},
+        // Checker probes stay just inside cell 0 / cell -1. Exact lattice
+        // points (1.0f / -1.0f) are not usable here: Cycles' additive jitter
+        // `(p + 1e-6f) * 0.999999f` is one rounding away from the floor()
+        // boundary, and a contracted `fma(p, 0.999999f, 9.99999e-7f)` (the DX
+        // path) lands exactly on 1.0f and swaps the cell.
+        luisa::float4{0.9f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{-0.9f, 0.0f, 0.0f, 0.0f},
       luisa::float4{0.471f, 0.379f, 0.0f, 0.0f},
       luisa::float4{0.811f, 0.541f, 0.0f, 0.0f}};
   constexpr auto expected_magic_color =

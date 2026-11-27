@@ -189,17 +189,29 @@ inline constexpr std::array<luisa::float3, 81u> cie_color_match{{
         cie_color_match.begin(), cie_color_match.end()};
     luisa::compute::Constant<luisa::float3> table{samples};
 
-    auto scaled = (wavelength - 380.0f) * 0.2f;
-    auto index = cast<int>(scaled);
-    auto valid = (index >= 0) & (index < 80);
-    auto safe_index =
-        max(min(index, 79), 0);
-    auto table_index = cast<luisa::uint>(safe_index);
-    auto xyz = lerp(
-        table.read(table_index),
-        table.read(table_index + 1u),
-        scaled - cast<float>(index));
-    return select(make_float3(0.0f), xyz, valid);
+        // 5 nm bins from 380 nm, truncated toward zero like Cycles.
+        auto scaled = (wavelength - 380.0f) * 0.2f;
+      // Cycles bins the CIE table in 5 nm steps from 380 nm and truncates
+      // toward zero, so the table edge at 375 nm is decided by the last bit of
+      // `(wavelength - 380.0f) * 0.2f`. DX contracts that expression into
+      // `fma(wavelength, 0.2f, -76.0f)`, which turns the exact -1.0 boundary
+      // value into -0.99999888 and silently selects bin 0 instead of rejecting
+      // the sample. Snap a value that sits within float noise of a bin edge
+      // onto that edge so bin membership cannot depend on the contraction;
+      // in-range interpolation weights are unaffected.
+      const auto nearest_bin = round(scaled);
+      const auto snapped_scaled =
+          select(scaled, nearest_bin, abs(scaled - nearest_bin) < 1.0e-5f);
+      auto index = cast<int>(snapped_scaled);
+      auto valid = (index >= 0) & (index < 80);
+      auto safe_index =
+          max(min(index, 79), 0);
+      auto table_index = cast<luisa::uint>(safe_index);
+      auto xyz = lerp(
+          table.read(table_index),
+          table.read(table_index + 1u),
+          snapped_scaled - cast<float>(index));
+      return select(make_float3(0.0f), xyz, valid);
 }
 
 }// namespace psycles::luisa_backend::cycles_color_nodes
