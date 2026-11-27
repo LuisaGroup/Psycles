@@ -982,6 +982,58 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
          !(luisa::compute::isnan(G_term) | luisa::compute::isinf(G_term));
 }
 
+[[nodiscard]] Float3 eval_xyz3_caustic_raw_rgb(
+    const cycles_spectrum::SpectralTablesGpu &tables,
+    const cycles_spectrum::SpectralContext &spec_ctx,
+    Expr<luisa::float4> path_throughput_and_cf,
+    Expr<luisa::float4> bsdf_spec,
+    Expr<luisa::float4> chain_spec,
+    Expr<luisa::float4> light_factor_spec,
+    Expr<float> g_term,
+    Expr<float> hero_lambda,
+    Expr<bool> secondary_terminated,
+    Expr<bool> any_dispersive) noexcept {
+  const auto prod_eval4 = bsdf_spec * chain_spec * light_factor_spec * g_term;
+  const auto prod_xyz3 =
+      cycles_spectrum::Spectrum::from_eval4(&spec_ctx, prod_eval4).xyz3();
+  const auto collapsed_prev_xyz3 = path_throughput_and_cf.xyz() * prod_eval4.x;
+  const auto t_h = cycles_spectrum::xyz3_hero(path_throughput_and_cf.xyz(),
+                                              *spec_ctx.hero_index);
+  const auto cf = path_throughput_and_cf.w;
+  const auto w_raw = cycles_spectrum::xyz3_collapse_weight(tables, hero_lambda);
+  const auto collapsed_local_xyz3 = (t_h * cf * prod_eval4.x) * w_raw;
+  const auto base_xyz3 = select(path_throughput_and_cf.xyz() * prod_xyz3,
+                                collapsed_local_xyz3, any_dispersive);
+  const auto raw_xyz3 =
+      select(base_xyz3, collapsed_prev_xyz3, secondary_terminated);
+  return cycles_spectrum::xyz3_to_rgb(tables, raw_xyz3);
+}
+
+void compute_xyz3_bsdf_component_weights(
+    const cycles_spectrum::SpectralTablesGpu &tables,
+    const cycles_spectrum::SpectralContext &spec_ctx,
+    const LightComponentRatioCallable &light_component_ratio,
+    Expr<luisa::float4> bsdf_spec,
+    Expr<luisa::float4> diff_spec,
+    Expr<luisa::float4> gloss_spec,
+    Float3 &out_diff_w,
+    Float3 &out_gloss_w) noexcept {
+  const auto bsdf_rgb = cycles_spectrum::xyz3_reflectance_to_rgb(
+      tables,
+      cycles_spectrum::Spectrum::from_eval4(&spec_ctx, bsdf_spec).xyz3(),
+      *spec_ctx.lambdas_xyz);
+  const auto diff_rgb = cycles_spectrum::xyz3_reflectance_to_rgb(
+      tables,
+      cycles_spectrum::Spectrum::from_eval4(&spec_ctx, diff_spec).xyz3(),
+      *spec_ctx.lambdas_xyz);
+  const auto gloss_rgb = cycles_spectrum::xyz3_reflectance_to_rgb(
+      tables,
+      cycles_spectrum::Spectrum::from_eval4(&spec_ctx, gloss_spec).xyz3(),
+      *spec_ctx.lambdas_xyz);
+  out_diff_w = light_component_ratio(diff_rgb, bsdf_rgb);
+  out_gloss_w = light_component_ratio(gloss_rgb, bsdf_rgb);
+}
+
 [[nodiscard]] Float3 evaluate_sms_caustics(
     const CausticsTaskEvaluator &eval,
     const Var<CausticTaskCall> &task,
@@ -992,13 +1044,15 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
   const auto &scene = eval.scene;
   const bool need_weights =
       out_diffuse_weight != nullptr && out_glossy_weight != nullptr;
+  const bool is_xyz3 = eval.spectral_mode == contract::SpectralMode::xyz3;
   Float3 result_rgb = make_float3(0.0f);
   Bool eval_valid = false;
   Float3 eval_diff_w = make_float3(0.0f);
   Float3 eval_gloss_w = make_float3(0.0f);
 
-  $outline_with_name(eval.spectral_rendering ? "sms_evaluate_spectral"
-                                             : "sms_evaluate_rgb") {
+  $outline_with_name(is_xyz3 ? "sms_evaluate_xyz3"
+                             : (eval.spectral_rendering ? "sms_evaluate_spectral"
+                                                        : "sms_evaluate_rgb")) {
     const auto load_f4 = [](const std::array<Float4, kMaxChainLen> &arr,
                             Expr<std::uint32_t> idx) noexcept -> Float4 {
       Float4 res = arr[0u];
@@ -1081,12 +1135,13 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
       secondary_terminated =
           (task.path_flags &
            cycles_path_state::flag_spectral_secondary_terminated) != 0u;
-      spec_ctx.emplace(cycles_spectrum::SpectralContext{
-          .tables = eval.spectral_tables.get(),
-          .wavelengths =
-              cycles_spectrum::sample_visible_wavelengths(task.u_lambda),
-          .secondary_terminated = secondary_terminated});
-      hero_lambda = spec_ctx->wavelengths.lambdas.x;
+      spec_ctx.emplace(cycles_spectrum::make_spectral_context(
+          eval.spectral_tables.get(), eval.spectral_mode, task.u_lambda,
+          secondary_terminated));
+      hero_lambda = is_xyz3
+                        ? cycles_spectrum::xyz3_hero(*spec_ctx->lambdas_xyz,
+                                                     *spec_ctx->hero_index)
+                        : spec_ctx->wavelengths.lambdas.x;
     }
 
     const PathCyclesSvmKernelGlobals kg_caster{
@@ -1100,7 +1155,8 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
         false,
         nullptr,
         nullptr,
-        eval.spectral_rendering};
+        eval.spectral_rendering,
+        eval.spectral_mode};
 
     const svm_detail::ClosureTypeMask caster_closure_types =
         svm_detail::closure_types_for_kernel_features(
@@ -2053,7 +2109,11 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
               };
 
               $if(light_ok & (scalar_eval_over_pdf > 0.0f)) {
-                Float4 shader_val = task.light_shader;
+                Float4 shader_val =
+                    (is_xyz3 && spec_ctx)
+                        ? cycles_spectrum::xyz3_rotate_eval(
+                              task.light_shader.xyz(), *spec_ctx->hero_index)
+                        : task.light_shader;
                 $if(task.light_constant_shader == 0u) {
                   Var<DirectLightTaskCall> dl_task{};
                   dl_task.ray_origin = conv_plast;
@@ -2122,7 +2182,8 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
                     false,
                     nullptr,
                     nullptr,
-                    eval.spectral_rendering};
+                    eval.spectral_rendering,
+                    eval.spectral_mode};
                 const auto recv_pool_opts =
                     closure_pool_options_for_kg(kg_recv, eval.spectral_rendering);
                 svm::ClosurePool recv_closures{closure_cap, recv_pool_opts};
@@ -2157,7 +2218,32 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
                     kg_recv, sd_recv, wo_receiver, task.light_shader_flags,
                     caster_closure_types);
 
-                if (eval.spectral_rendering && spec_ctx) {
+                if (is_xyz3 && spec_ctx) {
+                  const auto bsdf_spec = bsdf_eval.spectral_sum.value_or(
+                      make_float4(bsdf_eval.sum, 0.0f));
+                  const auto raw_rgb = eval_xyz3_caustic_raw_rgb(
+                      *eval.spectral_tables, *spec_ctx, task.path_throughput,
+                      bsdf_spec, chain_weight, light_factor_spec, G_term,
+                      hero_lambda, secondary_terminated, any_refr_dispersive);
+                  const auto finite_nz =
+                      !(any(luisa::compute::isnan(raw_rgb)) |
+                        any(luisa::compute::isinf(raw_rgb))) &
+                      any(raw_rgb != 0.0f);
+                  $if(finite_nz) {
+                    cd_rgb = raw_rgb;
+                    cd_valid = true;
+                    if (need_weights) {
+                      compute_xyz3_bsdf_component_weights(
+                          *eval.spectral_tables, *spec_ctx,
+                          eval.light_component_ratio, bsdf_spec,
+                          bsdf_eval.spectral_diffuse.value_or(
+                              make_float4(bsdf_eval.diffuse, 0.0f)),
+                          bsdf_eval.spectral_glossy.value_or(
+                              make_float4(bsdf_eval.glossy, 0.0f)),
+                          cd_diff_w, cd_gloss_w);
+                    }
+                  };
+                } else if (eval.spectral_rendering && spec_ctx) {
                   const auto bsdf_spec = bsdf_eval.spectral_sum.value_or(
                       make_float4(bsdf_eval.sum, 0.0f));
                   const auto unclamped_spec = task.path_throughput * bsdf_spec *
@@ -2268,12 +2354,20 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
           const auto clamped = eval.clamp_contribution(
               unbiased_rgb, task.path_depth + star_len,
               parameters.sample_clamp_direct, parameters.sample_clamp_indirect);
-          const auto ok = !(any(luisa::compute::isnan(clamped)) |
-                            any(luisa::compute::isinf(clamped))) &
-                          any(clamped > 0.0f);
-          result_rgb =
-              select(make_float3(0.0f), max(clamped, make_float3(0.0f)), ok);
-          eval_valid = ok;
+          if (is_xyz3) {
+            const auto ok = !(any(luisa::compute::isnan(clamped)) |
+                              any(luisa::compute::isinf(clamped))) &
+                            any(clamped != 0.0f);
+            result_rgb = select(make_float3(0.0f), clamped, ok);
+            eval_valid = ok;
+          } else {
+            const auto ok = !(any(luisa::compute::isnan(clamped)) |
+                              any(luisa::compute::isinf(clamped))) &
+                            any(clamped > 0.0f);
+            result_rgb =
+                select(make_float3(0.0f), max(clamped, make_float3(0.0f)), ok);
+            eval_valid = ok;
+          }
           if (need_weights) {
             eval_diff_w = star_diff_w;
             eval_gloss_w = star_gloss_w;
@@ -2284,12 +2378,20 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
           const auto clamped = eval.clamp_contribution(
               biased_accum, biased_max_depth,
               parameters.sample_clamp_direct, parameters.sample_clamp_indirect);
-          const auto ok = !(any(luisa::compute::isnan(clamped)) |
-                            any(luisa::compute::isinf(clamped))) &
-                          any(clamped > 0.0f);
-          result_rgb =
-              select(make_float3(0.0f), max(clamped, make_float3(0.0f)), ok);
-          eval_valid = ok;
+          if (is_xyz3) {
+            const auto ok = !(any(luisa::compute::isnan(clamped)) |
+                              any(luisa::compute::isinf(clamped))) &
+                            any(clamped != 0.0f);
+            result_rgb = select(make_float3(0.0f), clamped, ok);
+            eval_valid = ok;
+          } else {
+            const auto ok = !(any(luisa::compute::isnan(clamped)) |
+                              any(luisa::compute::isinf(clamped))) &
+                            any(clamped > 0.0f);
+            result_rgb =
+                select(make_float3(0.0f), max(clamped, make_float3(0.0f)), ok);
+            eval_valid = ok;
+          }
           if (need_weights) {
             eval_diff_w = biased_diff_w;
             eval_gloss_w = biased_gloss_w;
@@ -2341,9 +2443,11 @@ Float3 CausticsTaskEvaluator::evaluate(
   Float3 eval_gloss_w = make_float3(0.0f);
   const bool need_weights =
       out_diffuse_weight != nullptr && out_glossy_weight != nullptr;
+  const bool is_xyz3 = spectral_mode == contract::SpectralMode::xyz3;
 
-  $outline_with_name(spectral_rendering ? "mnee_evaluate_spectral"
-                                        : "mnee_evaluate_rgb") {
+  $outline_with_name(is_xyz3 ? "mnee_evaluate_xyz3"
+                             : (spectral_rendering ? "mnee_evaluate_spectral"
+                                                   : "mnee_evaluate_rgb")) {
     const auto load_f4 = [](const std::array<Float4, kMaxChainLen> &arr,
                             Expr<std::uint32_t> idx) noexcept -> Float4 {
       Float4 res = arr[0u];
@@ -2385,12 +2489,13 @@ Float3 CausticsTaskEvaluator::evaluate(
       secondary_terminated =
           (task.path_flags &
            cycles_path_state::flag_spectral_secondary_terminated) != 0u;
-      spec_ctx.emplace(cycles_spectrum::SpectralContext{
-          .tables = spectral_tables.get(),
-          .wavelengths =
-              cycles_spectrum::sample_visible_wavelengths(task.u_lambda),
-          .secondary_terminated = secondary_terminated});
-      hero_lambda = spec_ctx->wavelengths.lambdas.x;
+      spec_ctx.emplace(cycles_spectrum::make_spectral_context(
+          spectral_tables.get(), spectral_mode, task.u_lambda,
+          secondary_terminated));
+      hero_lambda = is_xyz3
+                        ? cycles_spectrum::xyz3_hero(*spec_ctx->lambdas_xyz,
+                                                     *spec_ctx->hero_index)
+                        : spec_ctx->wavelengths.lambdas.x;
     }
 
     const PathCyclesSvmKernelGlobals kg_caster{
@@ -2404,7 +2509,8 @@ Float3 CausticsTaskEvaluator::evaluate(
         false,
         nullptr,
         nullptr,
-        spectral_rendering};
+        spectral_rendering,
+        spectral_mode};
 
     const svm_detail::ClosureTypeMask caster_closure_types =
         svm_detail::closure_types_for_kernel_features(
@@ -2935,7 +3041,11 @@ Float3 CausticsTaskEvaluator::evaluate(
         };
 
         $if(light_ok & (scalar_eval_over_pdf > 0.0f)) {
-          Float4 shader_val = task.light_shader;
+          Float4 shader_val =
+              (is_xyz3 && spec_ctx)
+                  ? cycles_spectrum::xyz3_rotate_eval(task.light_shader.xyz(),
+                                                      *spec_ctx->hero_index)
+                  : task.light_shader;
           $if(task.light_constant_shader == 0u) {
             Var<DirectLightTaskCall> dl_task{};
             dl_task.ray_origin = last_v.p;
@@ -3004,7 +3114,8 @@ Float3 CausticsTaskEvaluator::evaluate(
               false,
               nullptr,
               nullptr,
-              spectral_rendering};
+              spectral_rendering,
+              spectral_mode};
           const auto recv_pool_opts =
               closure_pool_options_for_kg(kg_recv, spectral_rendering);
           svm::ClosurePool recv_closures{closure_cap, recv_pool_opts};
@@ -3036,7 +3147,32 @@ Float3 CausticsTaskEvaluator::evaluate(
               kg_recv, sd_recv, wo_receiver, task.light_shader_flags,
               caster_closure_types);
 
-          if (spectral_rendering && spec_ctx) {
+          if (is_xyz3 && spec_ctx) {
+            const auto bsdf_spec = bsdf_eval.spectral_sum.value_or(
+                make_float4(bsdf_eval.sum, 0.0f));
+            const auto raw_rgb = eval_xyz3_caustic_raw_rgb(
+                *spectral_tables, *spec_ctx, task.path_throughput, bsdf_spec,
+                chain_transmittance, light_factor_spec, G_term, hero_lambda,
+                secondary_terminated, any_dispersive);
+            const auto clamped = clamp_contribution(
+                raw_rgb, task.path_depth + chain_len,
+                parameters.sample_clamp_direct, parameters.sample_clamp_indirect);
+            const auto finite_nz =
+                !(any(luisa::compute::isnan(clamped)) |
+                  any(luisa::compute::isinf(clamped))) &
+                any(clamped != 0.0f);
+            result_rgb = select(make_float3(0.0f), clamped, finite_nz);
+            eval_valid = finite_nz;
+            if (need_weights) {
+              compute_xyz3_bsdf_component_weights(
+                  *spectral_tables, *spec_ctx, light_component_ratio, bsdf_spec,
+                  bsdf_eval.spectral_diffuse.value_or(
+                      make_float4(bsdf_eval.diffuse, 0.0f)),
+                  bsdf_eval.spectral_glossy.value_or(
+                      make_float4(bsdf_eval.glossy, 0.0f)),
+                  eval_diff_w, eval_gloss_w);
+            }
+          } else if (spectral_rendering && spec_ctx) {
             const auto bsdf_spec = bsdf_eval.spectral_sum.value_or(
                 make_float4(bsdf_eval.sum, 0.0f));
             const auto unclamped_spec =
