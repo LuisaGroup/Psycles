@@ -974,6 +974,14 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
   return make_float4(common.weight * fresnel_val * glossy_factor, 0.0f);
 }
 
+[[nodiscard]] Bool manifold_jacobian_within_bounds(
+    Expr<float> cos_v0, Expr<float> det_Y0, Expr<float> G_term) noexcept {
+  constexpr float kMaxManifoldJacobian = 1.0e4f;
+  return (cos_v0 > 1.0e-4f) & (det_Y0 <= kMaxManifoldJacobian) &
+         (G_term <= kMaxManifoldJacobian) &
+         !(luisa::compute::isnan(G_term) | luisa::compute::isinf(G_term));
+}
+
 [[nodiscard]] Float3 evaluate_sms_caustics(
     const CausticsTaskEvaluator &eval,
     const Var<CausticTaskCall> &task,
@@ -1216,16 +1224,92 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
     const auto is_area =
         light.type == static_cast<std::uint32_t>(LightType::area);
     const auto &caster_tris = *scene->caustics_caster_triangles;
-    const std::uint32_t tri_count = scene->caustics_caster_triangle_count;
+    const auto &caster_objs = *scene->caustics_caster_objects;
+    const std::uint32_t obj_count = scene->caustics_caster_object_count;
 
-    // Sample a random point on the caustics casters weighted by world area.
+    // Receiver front-facing geometric normal for above-horizon caster culling.
+    const Float3 recv_n =
+        select(-task.receiver_ng, task.receiver_ng,
+               dot(task.receiver_ng, task.receiver_wi) >= 0.0f);
+    const auto caster_solid_angle_weight =
+        [&](const Var<CausticsCasterObjectGpu> &obj) noexcept -> Float {
+          const Float3 obj_center = obj.center_radius.xyz();
+          const Float obj_radius = obj.center_radius.w;
+          const Float3 to_c = obj_center - task.receiver_p;
+          const Float dist2 =
+              max(length_squared(to_c), obj_radius * obj_radius);
+          const Bool above_horizon =
+              (dot(to_c, recv_n) + obj_radius) > -1.0e-3f;
+          return select(0.0f, obj.area / max(dist2, 1.0e-6f), above_horizon);
+        };
+
+    Float sum_omega = 0.0f;
+    UInt vis_count = 0u;
+    if (obj_count == 1u) {
+      const auto w0 = caster_solid_angle_weight(caster_objs->read(0u));
+      $if(w0 > 0.0f) {
+        sum_omega = w0;
+        vis_count = 1u;
+      };
+    } else {
+      UInt oi = 0u;
+      $while(oi < obj_count) {
+        const auto w = caster_solid_angle_weight(caster_objs->read(oi));
+        $if(w > 0.0f) {
+          sum_omega += w;
+          vis_count += 1u;
+        };
+        oi += 1u;
+      };
+    }
+
+    const auto sample_caster_object =
+        [&](Expr<float> u_obj, UInt &out_offset, UInt &out_count,
+            Float &out_pdf) noexcept {
+          if (obj_count == 1u) {
+            const auto obj0 = caster_objs->read(0u);
+            out_offset = obj0.tri_offset;
+            out_count = obj0.tri_count;
+            out_pdf = 1.0f;
+            return;
+          }
+          constexpr float kSolidAngleMix = 0.85f;
+          constexpr float kUniformMix = 0.15f;
+          const Float inv_vis = 1.0f / max(vis_count.cast<float>(), 1.0f);
+          const Float inv_sum = 1.0f / max(sum_omega, 1.0e-20f);
+          Float cdf = 0.0f;
+          Bool picked = false;
+          out_offset = 0u;
+          out_count = 1u;
+          out_pdf = inv_vis;
+          UInt oi = 0u;
+          $while(oi < obj_count) {
+            const auto obj = caster_objs->read(oi);
+            const auto w = caster_solid_angle_weight(obj);
+            $if(w > 0.0f) {
+              const Float pm =
+                  kSolidAngleMix * (w * inv_sum) + kUniformMix * inv_vis;
+              cdf += pm;
+              $if(!picked) {
+                out_offset = obj.tri_offset;
+                out_count = obj.tri_count;
+                out_pdf = pm;
+                $if(u_obj <= cdf) { picked = true; };
+              };
+            };
+            oi += 1u;
+          };
+        };
+
+    // Sample a random point within one caster object weighted by world area.
     const auto sample_caster_seed_point =
-        [&](Float3 &out_p, UInt &out_cobj) noexcept {
+        [&](Expr<std::uint32_t> tri_offset, Expr<std::uint32_t> tri_count_obj,
+            Float3 &out_p, UInt &out_cobj) noexcept {
           const auto u_tri = next_float();
           const auto ub0 = next_float();
           const auto ub1 = next_float();
-          UInt lo = 0u;
-          UInt hi = tri_count - 1u;
+          UInt lo = tri_offset;
+          UInt hi = tri_offset + tri_count_obj - 1u;
           $while(lo < hi) {
             const auto mid = (lo + hi) >> 1u;
             const auto c = caster_tris->read(mid).cdf;
@@ -1277,60 +1361,82 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
     const std::uint32_t max_loop_iters =
         eval.sms_unbiased ? (1u + max_bernoulli) : max_bernoulli;
 
-    UInt phase = 0u; // Unbiased: 0 = discovery, 1 = bernoulli.
-    UInt trial_idx = 0u;
-    Bool loop_done = false;
-    Float inv_prob = 1.0f;
-
-    // Discovered star solution (unbiased) & unique solution dedup cache (biased).
-    UInt star_len = 0u;
-    UInt star_mode_mask = 0u;
-    Float3 star_d0 = make_float3(0.0f);
-    Float3 star_dlast = make_float3(0.0f);
-    std::array<Float2, kMaxChainLen> star_h_offsets;
-    for (std::uint32_t k = 0u; k < kMaxChainLen; ++k) {
-      star_h_offsets[k] = make_float2(0.0f);
-    }
-    Float3 star_contrib = make_float3(0.0f);
-    Float3 star_diff_w = make_float3(0.0f);
-    Float3 star_gloss_w = make_float3(0.0f);
-
-    constexpr std::uint32_t kMaxUnique = 4u;
-    UInt unique_count = 0u;
-    std::array<UInt, kMaxUnique> uniq_len;
-    std::array<UInt, kMaxUnique> uniq_mode;
-    std::array<Float3, kMaxUnique> uniq_d0;
-    std::array<Float3, kMaxUnique> uniq_dlast;
-    for (std::uint32_t k = 0u; k < kMaxUnique; ++k) {
-      uniq_len[k] = 0u;
-      uniq_mode[k] = 0u;
-      uniq_d0[k] = make_float3(0.0f);
-      uniq_dlast[k] = make_float3(0.0f);
-    }
-    Float3 biased_accum = make_float3(0.0f);
-    Float3 biased_diff_w = make_float3(0.0f);
-    Float3 biased_gloss_w = make_float3(0.0f);
-    UInt biased_max_depth = task.path_depth;
-
     const auto &eval_cv = eval_sms_constraint_vertex_callable();
 
-    $while((trial_idx < max_loop_iters) & !loop_done) {
-      const Bool in_bernoulli = eval.sms_unbiased ? (phase == 1u) : Bool{false};
+    $if(vis_count > 0u) {
+      UInt chosen_offset = 0u;
+      UInt chosen_count = 1u;
+      Float chosen_pdf = 1.0f;
+      if (eval.sms_unbiased) {
+        sample_caster_object(next_float(), chosen_offset, chosen_count,
+                             chosen_pdf);
+      }
 
-      // =======================================================================
-      // Step A: Randomized Area-Weighted Specular Chain Seeding
-      // =======================================================================
-      std::array<CasterVertexVar, kMaxChainLen> v;
-      UInt chain_len = 0u;
-      UInt mode_mask = 0u;
-      UInt num_refl = 0u;
-      UInt num_refr = 0u;
-      Bool chain_ok = true;
-      Bool unused_disp = false;
+      UInt phase = 0u; // Unbiased: 0 = discovery, 1 = bernoulli.
+      UInt trial_idx = 0u;
+      Bool loop_done = false;
+      Float inv_prob = 1.0f;
 
-      Float3 p_seed = make_float3(0.0f);
-      UInt seed_cobj = 0u;
-      sample_caster_seed_point(p_seed, seed_cobj);
+      // Discovered star solution (unbiased) & unique solution dedup cache (biased).
+      UInt star_len = 0u;
+      UInt star_mode_mask = 0u;
+      Float3 star_d0 = make_float3(0.0f);
+      Float3 star_dlast = make_float3(0.0f);
+      std::array<Float2, kMaxChainLen> star_h_offsets;
+      for (std::uint32_t k = 0u; k < kMaxChainLen; ++k) {
+        star_h_offsets[k] = make_float2(0.0f);
+      }
+      Float3 star_contrib = make_float3(0.0f);
+      Float3 star_diff_w = make_float3(0.0f);
+      Float3 star_gloss_w = make_float3(0.0f);
+
+      constexpr std::uint32_t kMaxUnique = 4u;
+      UInt unique_count = 0u;
+      std::array<UInt, kMaxUnique> uniq_len;
+      std::array<UInt, kMaxUnique> uniq_mode;
+      std::array<Float3, kMaxUnique> uniq_d0;
+      std::array<Float3, kMaxUnique> uniq_dlast;
+      for (std::uint32_t k = 0u; k < kMaxUnique; ++k) {
+        uniq_len[k] = 0u;
+        uniq_mode[k] = 0u;
+        uniq_d0[k] = make_float3(0.0f);
+        uniq_dlast[k] = make_float3(0.0f);
+      }
+      Float3 biased_accum = make_float3(0.0f);
+      Float3 biased_diff_w = make_float3(0.0f);
+      Float3 biased_gloss_w = make_float3(0.0f);
+      UInt biased_max_depth = task.path_depth;
+
+      $while((trial_idx < max_loop_iters) & !loop_done) {
+        const Bool in_bernoulli =
+            eval.sms_unbiased ? (phase == 1u) : Bool{false};
+
+        // =====================================================================
+        // Step A: Solid-Angle Conditioned Area-Weighted Chain Seeding
+        // =====================================================================
+        std::array<CasterVertexVar, kMaxChainLen> v;
+        UInt chain_len = 0u;
+        UInt mode_mask = 0u;
+        UInt num_refl = 0u;
+        UInt num_refr = 0u;
+        Bool chain_ok = true;
+        Bool unused_disp = false;
+
+        Float3 p_seed = make_float3(0.0f);
+        UInt seed_cobj = 0u;
+        if (eval.sms_unbiased) {
+          sample_caster_seed_point(chosen_offset, chosen_count, p_seed,
+                                   seed_cobj);
+        } else {
+          UInt trial_offset = 0u;
+          UInt trial_count = 1u;
+          Float trial_pdf = 1.0f;
+          sample_caster_object(next_float(), trial_offset, trial_count,
+                               trial_pdf);
+          static_cast<void>(trial_pdf);
+          sample_caster_seed_point(trial_offset, trial_count, p_seed,
+                                   seed_cobj);
+        }
 
       {
         const auto off0 = p_seed - task.receiver_p;
@@ -2004,105 +2110,110 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
               const auto cos_v0 = abs(dot(wo_receiver, v[0u].ng));
               const auto G_term = (cos_v0 / dist0_sq) * det_Y0;
 
-              const PathCyclesSvmKernelGlobals kg_recv{
-                  scene,
-                  parameters,
-                  eval.camera_projection,
-                  true,
-                  true,
-                  PathCyclesSvmShaderDomain::surface_only,
-                  scene->caustics_receiver_shader_mask,
-                  false,
-                  nullptr,
-                  nullptr,
-                  eval.spectral_rendering};
-              const auto recv_pool_opts =
-                  closure_pool_options_for_kg(kg_recv, eval.spectral_rendering);
-              svm::ClosurePool recv_closures{closure_cap, recv_pool_opts};
-              const auto recv_cam_ray =
-                  make_ray(task.receiver_p + task.receiver_wi,
-                           -task.receiver_wi, 0.0f, 2.0f);
-              const auto recv_lcg = cycles_noise::hash_uint3(
-                  task.rng_hash ^ 0x9e3779b9u, task.rng_offset,
-                  task.sample_index);
-              auto recv_setup = setup_cycles_svm_ray_shader_data(
-                  scene, kg_recv, recv_cam_ray, task.receiver_inst,
-                  task.receiver_prim, task.receiver_bary, 0.0f, task.ray_dP,
-                  task.ray_dD, task.ray_time, recv_lcg, parameters);
-              auto &sd_recv = recv_setup.shader_data;
-              sd_recv.closure = &recv_closures;
-              if (spec_ctx) {
-                sd_recv.spectral = *spec_ctx;
-              }
-              const svm::PathState recv_state{
-                  task.path_visibility,
-                  0u,
-                  task.path_depth,
-                  task.transparent_depth,
-                  task.diffuse_depth,
-                  task.glossy_depth,
-                  task.transmission_depth,
-                  task.portal_depth};
-              evaluate_masked_svm(scene, kg_recv, recv_setup.transforms, sd_recv,
-                                  recv_state,
-                                  scene->caustics_receiver_shader_mask);
-              const auto bsdf_eval = svm_detail::surface_shader_bsdf_eval(
-                  kg_recv, sd_recv, wo_receiver, task.light_shader_flags,
-                  caster_closure_types);
+              $if(manifold_jacobian_within_bounds(cos_v0, det_Y0, G_term)) {
+                const PathCyclesSvmKernelGlobals kg_recv{
+                    scene,
+                    parameters,
+                    eval.camera_projection,
+                    true,
+                    true,
+                    PathCyclesSvmShaderDomain::surface_only,
+                    scene->caustics_receiver_shader_mask,
+                    false,
+                    nullptr,
+                    nullptr,
+                    eval.spectral_rendering};
+                const auto recv_pool_opts =
+                    closure_pool_options_for_kg(kg_recv, eval.spectral_rendering);
+                svm::ClosurePool recv_closures{closure_cap, recv_pool_opts};
+                const auto recv_cam_ray =
+                    make_ray(task.receiver_p + task.receiver_wi,
+                             -task.receiver_wi, 0.0f, 2.0f);
+                const auto recv_lcg = cycles_noise::hash_uint3(
+                    task.rng_hash ^ 0x9e3779b9u, task.rng_offset,
+                    task.sample_index);
+                auto recv_setup = setup_cycles_svm_ray_shader_data(
+                    scene, kg_recv, recv_cam_ray, task.receiver_inst,
+                    task.receiver_prim, task.receiver_bary, 0.0f, task.ray_dP,
+                    task.ray_dD, task.ray_time, recv_lcg, parameters);
+                auto &sd_recv = recv_setup.shader_data;
+                sd_recv.closure = &recv_closures;
+                if (spec_ctx) {
+                  sd_recv.spectral = *spec_ctx;
+                }
+                const svm::PathState recv_state{
+                    task.path_visibility,
+                    0u,
+                    task.path_depth,
+                    task.transparent_depth,
+                    task.diffuse_depth,
+                    task.glossy_depth,
+                    task.transmission_depth,
+                    task.portal_depth};
+                evaluate_masked_svm(scene, kg_recv, recv_setup.transforms,
+                                    sd_recv, recv_state,
+                                    scene->caustics_receiver_shader_mask);
+                const auto bsdf_eval = svm_detail::surface_shader_bsdf_eval(
+                    kg_recv, sd_recv, wo_receiver, task.light_shader_flags,
+                    caster_closure_types);
 
-              if (eval.spectral_rendering && spec_ctx) {
-                const auto bsdf_spec = bsdf_eval.spectral_sum.value_or(
-                    make_float4(bsdf_eval.sum, 0.0f));
-                const auto unclamped_spec = task.path_throughput * bsdf_spec *
-                                            chain_weight * light_factor_spec *
-                                            G_term;
-                const auto raw_rgb = cycles_spectrum::spectrum_to_rgb(
-                    *eval.spectral_tables, unclamped_spec, spec_ctx->wavelengths,
-                    secondary_terminated | any_refr_dispersive);
-                const auto finite_pos =
-                    !(any(luisa::compute::isnan(raw_rgb)) |
-                      any(luisa::compute::isinf(raw_rgb))) &
-                    any(raw_rgb > 0.0f);
-                $if(finite_pos) {
-                  cd_rgb = max(raw_rgb, make_float3(0.0f));
-                  cd_valid = true;
-                  if (need_weights) {
-                    const auto bsdf_rgb = cycles_spectrum::spectrum_to_rgb(
-                        *eval.spectral_tables, bsdf_spec, spec_ctx->wavelengths,
-                        secondary_terminated);
-                    const auto diff_rgb = cycles_spectrum::spectrum_to_rgb(
-                        *eval.spectral_tables,
-                        bsdf_eval.spectral_diffuse.value_or(
-                            make_float4(bsdf_eval.diffuse, 0.0f)),
-                        spec_ctx->wavelengths, secondary_terminated);
-                    const auto gloss_rgb = cycles_spectrum::spectrum_to_rgb(
-                        *eval.spectral_tables,
-                        bsdf_eval.spectral_glossy.value_or(
-                            make_float4(bsdf_eval.glossy, 0.0f)),
-                        spec_ctx->wavelengths, secondary_terminated);
-                    cd_diff_w = eval.light_component_ratio(diff_rgb, bsdf_rgb);
-                    cd_gloss_w = eval.light_component_ratio(gloss_rgb, bsdf_rgb);
-                  }
-                };
-              } else {
-                const auto raw_rgb = task.path_throughput.xyz() *
-                                     bsdf_eval.sum * chain_weight.xyz() *
-                                     light_factor_rgb * G_term;
-                const auto finite_pos =
-                    !(any(luisa::compute::isnan(raw_rgb)) |
-                      any(luisa::compute::isinf(raw_rgb))) &
-                    any(raw_rgb > 0.0f);
-                $if(finite_pos) {
-                  cd_rgb = max(raw_rgb, make_float3(0.0f));
-                  cd_valid = true;
-                  if (need_weights) {
-                    cd_diff_w = eval.light_component_ratio(bsdf_eval.diffuse,
-                                                           bsdf_eval.sum);
-                    cd_gloss_w = eval.light_component_ratio(bsdf_eval.glossy,
-                                                            bsdf_eval.sum);
-                  }
-                };
-              }
+                if (eval.spectral_rendering && spec_ctx) {
+                  const auto bsdf_spec = bsdf_eval.spectral_sum.value_or(
+                      make_float4(bsdf_eval.sum, 0.0f));
+                  const auto unclamped_spec = task.path_throughput * bsdf_spec *
+                                              chain_weight * light_factor_spec *
+                                              G_term;
+                  const auto raw_rgb = cycles_spectrum::spectrum_to_rgb(
+                      *eval.spectral_tables, unclamped_spec,
+                      spec_ctx->wavelengths,
+                      secondary_terminated | any_refr_dispersive);
+                  const auto finite_pos =
+                      !(any(luisa::compute::isnan(raw_rgb)) |
+                        any(luisa::compute::isinf(raw_rgb))) &
+                      any(raw_rgb > 0.0f);
+                  $if(finite_pos) {
+                    cd_rgb = max(raw_rgb, make_float3(0.0f));
+                    cd_valid = true;
+                    if (need_weights) {
+                      const auto bsdf_rgb = cycles_spectrum::spectrum_to_rgb(
+                          *eval.spectral_tables, bsdf_spec,
+                          spec_ctx->wavelengths, secondary_terminated);
+                      const auto diff_rgb = cycles_spectrum::spectrum_to_rgb(
+                          *eval.spectral_tables,
+                          bsdf_eval.spectral_diffuse.value_or(
+                              make_float4(bsdf_eval.diffuse, 0.0f)),
+                          spec_ctx->wavelengths, secondary_terminated);
+                      const auto gloss_rgb = cycles_spectrum::spectrum_to_rgb(
+                          *eval.spectral_tables,
+                          bsdf_eval.spectral_glossy.value_or(
+                              make_float4(bsdf_eval.glossy, 0.0f)),
+                          spec_ctx->wavelengths, secondary_terminated);
+                      cd_diff_w =
+                          eval.light_component_ratio(diff_rgb, bsdf_rgb);
+                      cd_gloss_w =
+                          eval.light_component_ratio(gloss_rgb, bsdf_rgb);
+                    }
+                  };
+                } else {
+                  const auto raw_rgb = task.path_throughput.xyz() *
+                                       bsdf_eval.sum * chain_weight.xyz() *
+                                       light_factor_rgb * G_term;
+                  const auto finite_pos =
+                      !(any(luisa::compute::isnan(raw_rgb)) |
+                        any(luisa::compute::isinf(raw_rgb))) &
+                      any(raw_rgb > 0.0f);
+                  $if(finite_pos) {
+                    cd_rgb = max(raw_rgb, make_float3(0.0f));
+                    cd_valid = true;
+                    if (need_weights) {
+                      cd_diff_w = eval.light_component_ratio(
+                          bsdf_eval.diffuse, bsdf_eval.sum);
+                      cd_gloss_w = eval.light_component_ratio(
+                          bsdf_eval.glossy, bsdf_eval.sum);
+                    }
+                  };
+                }
+              };
             };
           };
         };
@@ -2147,42 +2258,45 @@ select_sms_closures(const PathCyclesSvmKernelGlobals &kg,
           };
         }
       };
-      trial_idx += 1u;
-    };
+        trial_idx += 1u;
+      };
 
-    if (eval.sms_unbiased) {
-      $if(phase == 1u) {
-        const auto clamped = eval.clamp_contribution(
-            star_contrib * inv_prob, task.path_depth + star_len,
-            parameters.sample_clamp_direct, parameters.sample_clamp_indirect);
-        const auto ok = !(any(luisa::compute::isnan(clamped)) |
-                          any(luisa::compute::isinf(clamped))) &
-                        any(clamped > 0.0f);
-        result_rgb = select(make_float3(0.0f), max(clamped, make_float3(0.0f)),
-                            ok);
-        eval_valid = ok;
-        if (need_weights) {
-          eval_diff_w = star_diff_w;
-          eval_gloss_w = star_gloss_w;
-        }
-      };
-    } else {
-      $if(unique_count > 0u) {
-        const auto clamped = eval.clamp_contribution(
-            biased_accum, biased_max_depth,
-            parameters.sample_clamp_direct, parameters.sample_clamp_indirect);
-        const auto ok = !(any(luisa::compute::isnan(clamped)) |
-                          any(luisa::compute::isinf(clamped))) &
-                        any(clamped > 0.0f);
-        result_rgb = select(make_float3(0.0f), max(clamped, make_float3(0.0f)),
-                            ok);
-        eval_valid = ok;
-        if (need_weights) {
-          eval_diff_w = biased_diff_w;
-          eval_gloss_w = biased_gloss_w;
-        }
-      };
-    }
+      if (eval.sms_unbiased) {
+        $if(phase == 1u) {
+          const auto unbiased_rgb =
+              star_contrib * (inv_prob / max(chosen_pdf, 1.0e-6f));
+          const auto clamped = eval.clamp_contribution(
+              unbiased_rgb, task.path_depth + star_len,
+              parameters.sample_clamp_direct, parameters.sample_clamp_indirect);
+          const auto ok = !(any(luisa::compute::isnan(clamped)) |
+                            any(luisa::compute::isinf(clamped))) &
+                          any(clamped > 0.0f);
+          result_rgb =
+              select(make_float3(0.0f), max(clamped, make_float3(0.0f)), ok);
+          eval_valid = ok;
+          if (need_weights) {
+            eval_diff_w = star_diff_w;
+            eval_gloss_w = star_gloss_w;
+          }
+        };
+      } else {
+        $if(unique_count > 0u) {
+          const auto clamped = eval.clamp_contribution(
+              biased_accum, biased_max_depth,
+              parameters.sample_clamp_direct, parameters.sample_clamp_indirect);
+          const auto ok = !(any(luisa::compute::isnan(clamped)) |
+                            any(luisa::compute::isinf(clamped))) &
+                          any(clamped > 0.0f);
+          result_rgb =
+              select(make_float3(0.0f), max(clamped, make_float3(0.0f)), ok);
+          eval_valid = ok;
+          if (need_weights) {
+            eval_diff_w = biased_diff_w;
+            eval_gloss_w = biased_gloss_w;
+          }
+        };
+      }
+    };
   };
 
   out_valid = eval_valid;
@@ -2214,7 +2328,9 @@ Float3 CausticsTaskEvaluator::evaluate(
   }
   if (caustics_method == contract::CausticsMethod::sms &&
       scene->caustics_caster_triangles &&
-      scene->caustics_caster_triangle_count > 0u) {
+      scene->caustics_caster_triangle_count > 0u &&
+      scene->caustics_caster_objects &&
+      scene->caustics_caster_object_count > 0u) {
     return evaluate_sms_caustics(*this, task, parameters, valid,
                                  out_diffuse_weight, out_glossy_weight);
   }
@@ -2875,107 +2991,112 @@ Float3 CausticsTaskEvaluator::evaluate(
         const auto eta_sq_factor = 1.0f / max(eta_prod * eta_prod, 1.0e-8f);
         const auto G_term = (cos_v0 / dist0_sq) * det_Y0 * eta_sq_factor;
 
-        // Receiver BSDF evaluation (masked to caustics_receiver_shader_mask).
-        const PathCyclesSvmKernelGlobals kg_recv{
-            scene,
-            parameters,
-            camera_projection,
-            true,
-            true,
-            PathCyclesSvmShaderDomain::surface_only,
-            scene->caustics_receiver_shader_mask,
-            false,
-            nullptr,
-            nullptr,
-            spectral_rendering};
-        const auto recv_pool_opts =
-            closure_pool_options_for_kg(kg_recv, spectral_rendering);
-        svm::ClosurePool recv_closures{closure_cap, recv_pool_opts};
-        const auto recv_cam_ray = make_ray(
-            task.receiver_p + task.receiver_wi, -task.receiver_wi, 0.0f, 2.0f);
-        const auto recv_lcg = cycles_noise::hash_uint3(
-            task.rng_hash ^ 0x9e3779b9u, task.rng_offset, task.sample_index);
-        auto recv_setup = setup_cycles_svm_ray_shader_data(
-            scene, kg_recv, recv_cam_ray, task.receiver_inst, task.receiver_prim,
-            task.receiver_bary, 0.0f, task.ray_dP, task.ray_dD, task.ray_time,
-            recv_lcg, parameters);
-        auto &sd_recv = recv_setup.shader_data;
-        sd_recv.closure = &recv_closures;
-        if (spec_ctx) {
-          sd_recv.spectral = *spec_ctx;
-        }
-        const svm::PathState recv_state{
-            task.path_visibility,
-            0u,
-            task.path_depth,
-            task.transparent_depth,
-            task.diffuse_depth,
-            task.glossy_depth,
-            task.transmission_depth,
-            task.portal_depth};
-        evaluate_masked_svm(scene, kg_recv, recv_setup.transforms, sd_recv,
-                            recv_state, scene->caustics_receiver_shader_mask);
-        const auto bsdf_eval = svm_detail::surface_shader_bsdf_eval(
-            kg_recv, sd_recv, wo_receiver, task.light_shader_flags,
-            caster_closure_types);
+        $if(manifold_jacobian_within_bounds(cos_v0, det_Y0, G_term)) {
+          // Receiver BSDF evaluation (masked to caustics_receiver_shader_mask).
+          const PathCyclesSvmKernelGlobals kg_recv{
+              scene,
+              parameters,
+              camera_projection,
+              true,
+              true,
+              PathCyclesSvmShaderDomain::surface_only,
+              scene->caustics_receiver_shader_mask,
+              false,
+              nullptr,
+              nullptr,
+              spectral_rendering};
+          const auto recv_pool_opts =
+              closure_pool_options_for_kg(kg_recv, spectral_rendering);
+          svm::ClosurePool recv_closures{closure_cap, recv_pool_opts};
+          const auto recv_cam_ray = make_ray(
+              task.receiver_p + task.receiver_wi, -task.receiver_wi, 0.0f, 2.0f);
+          const auto recv_lcg = cycles_noise::hash_uint3(
+              task.rng_hash ^ 0x9e3779b9u, task.rng_offset, task.sample_index);
+          auto recv_setup = setup_cycles_svm_ray_shader_data(
+              scene, kg_recv, recv_cam_ray, task.receiver_inst,
+              task.receiver_prim, task.receiver_bary, 0.0f, task.ray_dP,
+              task.ray_dD, task.ray_time, recv_lcg, parameters);
+          auto &sd_recv = recv_setup.shader_data;
+          sd_recv.closure = &recv_closures;
+          if (spec_ctx) {
+            sd_recv.spectral = *spec_ctx;
+          }
+          const svm::PathState recv_state{
+              task.path_visibility,
+              0u,
+              task.path_depth,
+              task.transparent_depth,
+              task.diffuse_depth,
+              task.glossy_depth,
+              task.transmission_depth,
+              task.portal_depth};
+          evaluate_masked_svm(scene, kg_recv, recv_setup.transforms, sd_recv,
+                              recv_state, scene->caustics_receiver_shader_mask);
+          const auto bsdf_eval = svm_detail::surface_shader_bsdf_eval(
+              kg_recv, sd_recv, wo_receiver, task.light_shader_flags,
+              caster_closure_types);
 
-        if (spectral_rendering && spec_ctx) {
-          const auto bsdf_spec =
-              bsdf_eval.spectral_sum.value_or(make_float4(bsdf_eval.sum, 0.0f));
-          const auto unclamped_spec =
-              task.path_throughput * bsdf_spec * chain_transmittance *
-              light_factor_spec * G_term;
-          const auto raw_rgb = cycles_spectrum::spectrum_to_rgb(
-              *spectral_tables, unclamped_spec, spec_ctx->wavelengths,
-              secondary_terminated | any_dispersive);
-          const auto clamped = clamp_contribution(
-              raw_rgb, task.path_depth + chain_len,
-              parameters.sample_clamp_direct, parameters.sample_clamp_indirect);
-          const auto finite_pos =
-              !(any(luisa::compute::isnan(clamped)) |
-                any(luisa::compute::isinf(clamped))) &
-              any(clamped > 0.0f);
-          result_rgb = select(make_float3(0.0f), max(clamped, make_float3(0.0f)),
-                              finite_pos);
-          eval_valid = finite_pos;
-          if (need_weights) {
-            const auto bsdf_rgb = cycles_spectrum::spectrum_to_rgb(
-                *spectral_tables, bsdf_spec, spec_ctx->wavelengths,
-                secondary_terminated);
-            const auto diff_rgb = cycles_spectrum::spectrum_to_rgb(
-                *spectral_tables,
-                bsdf_eval.spectral_diffuse.value_or(
-                    make_float4(bsdf_eval.diffuse, 0.0f)),
-                spec_ctx->wavelengths, secondary_terminated);
-            const auto gloss_rgb = cycles_spectrum::spectrum_to_rgb(
-                *spectral_tables,
-                bsdf_eval.spectral_glossy.value_or(
-                    make_float4(bsdf_eval.glossy, 0.0f)),
-                spec_ctx->wavelengths, secondary_terminated);
-            eval_diff_w = light_component_ratio(diff_rgb, bsdf_rgb);
-            eval_gloss_w = light_component_ratio(gloss_rgb, bsdf_rgb);
-          }
-        } else {
-          const auto unclamped_rgb =
-              task.path_throughput.xyz() * bsdf_eval.sum *
-              chain_transmittance.xyz() * light_factor_rgb * G_term;
-          const auto clamped = clamp_contribution(
-              unclamped_rgb, task.path_depth + chain_len,
-              parameters.sample_clamp_direct, parameters.sample_clamp_indirect);
-          const auto finite_pos =
-              !(any(luisa::compute::isnan(clamped)) |
-                any(luisa::compute::isinf(clamped))) &
-              any(clamped > 0.0f);
-          result_rgb = select(make_float3(0.0f), max(clamped, make_float3(0.0f)),
-                              finite_pos);
-          eval_valid = finite_pos;
-          if (need_weights) {
-            eval_diff_w =
-                light_component_ratio(bsdf_eval.diffuse, bsdf_eval.sum);
-            eval_gloss_w =
-                light_component_ratio(bsdf_eval.glossy, bsdf_eval.sum);
+          if (spectral_rendering && spec_ctx) {
+            const auto bsdf_spec = bsdf_eval.spectral_sum.value_or(
+                make_float4(bsdf_eval.sum, 0.0f));
+            const auto unclamped_spec =
+                task.path_throughput * bsdf_spec * chain_transmittance *
+                light_factor_spec * G_term;
+            const auto raw_rgb = cycles_spectrum::spectrum_to_rgb(
+                *spectral_tables, unclamped_spec, spec_ctx->wavelengths,
+                secondary_terminated | any_dispersive);
+            const auto clamped = clamp_contribution(
+                raw_rgb, task.path_depth + chain_len,
+                parameters.sample_clamp_direct, parameters.sample_clamp_indirect);
+            const auto finite_pos =
+                !(any(luisa::compute::isnan(clamped)) |
+                  any(luisa::compute::isinf(clamped))) &
+                any(clamped > 0.0f);
+            result_rgb = select(
+                make_float3(0.0f), max(clamped, make_float3(0.0f)), finite_pos);
+            eval_valid = finite_pos;
+            if (need_weights) {
+              const auto bsdf_rgb = cycles_spectrum::spectrum_to_rgb(
+                  *spectral_tables, bsdf_spec, spec_ctx->wavelengths,
+                  secondary_terminated);
+              const auto diff_rgb = cycles_spectrum::spectrum_to_rgb(
+                  *spectral_tables,
+                  bsdf_eval.spectral_diffuse.value_or(
+                      make_float4(bsdf_eval.diffuse, 0.0f)),
+                  spec_ctx->wavelengths, secondary_terminated);
+              const auto gloss_rgb = cycles_spectrum::spectrum_to_rgb(
+                  *spectral_tables,
+                  bsdf_eval.spectral_glossy.value_or(
+                      make_float4(bsdf_eval.glossy, 0.0f)),
+                  spec_ctx->wavelengths, secondary_terminated);
+              eval_diff_w = light_component_ratio(diff_rgb, bsdf_rgb);
+              eval_gloss_w = light_component_ratio(gloss_rgb, bsdf_rgb);
+            }
+          } else {
+            const auto unclamped_rgb =
+                task.path_throughput.xyz() * bsdf_eval.sum *
+                chain_transmittance.xyz() * light_factor_rgb * G_term;
+            const auto clamped = clamp_contribution(
+                unclamped_rgb, task.path_depth + chain_len,
+                parameters.sample_clamp_direct, parameters.sample_clamp_indirect);
+            const auto finite_pos =
+                !(any(luisa::compute::isnan(clamped)) |
+                  any(luisa::compute::isinf(clamped))) &
+                any(clamped > 0.0f);
+            result_rgb = select(
+                make_float3(0.0f), max(clamped, make_float3(0.0f)), finite_pos);
+            eval_valid = finite_pos;
+            if (need_weights) {
+              eval_diff_w =
+                  light_component_ratio(bsdf_eval.diffuse, bsdf_eval.sum);
+              eval_gloss_w =
+                  light_component_ratio(bsdf_eval.glossy, bsdf_eval.sum);
+            }
           }
         }
+        $else {
+          eval_valid = false;
+        };
       }
       $else {
         eval_valid = false;

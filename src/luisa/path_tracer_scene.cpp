@@ -1526,7 +1526,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
     std::vector<float> emissive_triangle_areas;
     luisa::vector<CausticsCasterTriangleGpu> caustics_caster_tris;
-    double caustics_caster_total_area = 0.0;
+    luisa::vector<CausticsCasterObjectGpu> caustics_caster_objs;
     data->accel = data->device.create_accel(static_scene_accel_option());
     subsurface_scene.initialize_accel(data, subsurface_scene_plan);
     source_instance_index = 0u;
@@ -1651,6 +1651,33 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         if (instance.is_caustics_caster) {
             const auto &caster_positions =
                 uploads[geometry_iter->second].positions;
+            const std::uint32_t obj_tri_offset =
+                static_cast<std::uint32_t>(caustics_caster_tris.size());
+            double obj_area = 0.0;
+            std::vector<Vec3f> world_verts(caster_positions.size());
+            std::vector<bool> vert_transformed(caster_positions.size(), false);
+            Vec3f min_p{std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::infinity()};
+            Vec3f max_p{-std::numeric_limits<float>::infinity(),
+                        -std::numeric_limits<float>::infinity(),
+                        -std::numeric_limits<float>::infinity()};
+            auto fetch_world_vert = [&](std::uint32_t v_idx) -> Vec3f {
+                if (!vert_transformed[v_idx]) {
+                    const Vec3f wp = cycles_transform_point(
+                        instance.transform,
+                        from_luisa(caster_positions[v_idx]));
+                    world_verts[v_idx] = wp;
+                    vert_transformed[v_idx] = true;
+                    min_p.x = std::min(min_p.x, wp.x);
+                    min_p.y = std::min(min_p.y, wp.y);
+                    min_p.z = std::min(min_p.z, wp.z);
+                    max_p.x = std::max(max_p.x, wp.x);
+                    max_p.y = std::max(max_p.y, wp.y);
+                    max_p.z = std::max(max_p.z, wp.z);
+                }
+                return world_verts[v_idx];
+            };
             for (std::size_t primitive_index = 0u;
                  primitive_index < geometry.triangles.size();
                  ++primitive_index) {
@@ -1660,21 +1687,62 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     triangle[2u] >= caster_positions.size()) {
                     continue;
                 }
-                const float area = world_triangle_area(
-                    instance.transform,
-                    from_luisa(caster_positions[triangle[0u]]),
-                    from_luisa(caster_positions[triangle[1u]]),
-                    from_luisa(caster_positions[triangle[2u]]));
+                const Vec3f v0 = fetch_world_vert(triangle[0u]);
+                const Vec3f v1 = fetch_world_vert(triangle[1u]);
+                const Vec3f v2 = fetch_world_vert(triangle[2u]);
+                const float ex = v1.x - v0.x;
+                const float ey = v1.y - v0.y;
+                const float ez = v1.z - v0.z;
+                const float fx = v2.x - v0.x;
+                const float fy = v2.y - v0.y;
+                const float fz = v2.z - v0.z;
+                const float cx = ey * fz - ez * fy;
+                const float cy = ez * fx - ex * fz;
+                const float cz = ex * fy - ey * fx;
+                const float area =
+                    0.5f * std::sqrt(cx * cx + cy * cy + cz * cz);
                 if (area > 0.0f) {
-                    caustics_caster_total_area += static_cast<double>(area);
+                    obj_area += static_cast<double>(area);
                     caustics_caster_tris.emplace_back(CausticsCasterTriangleGpu{
                         .instance_id = instance_index,
                         .primitive_id =
                             static_cast<luisa::uint>(primitive_index),
                         .cycles_object_index = cycles_object_index,
-                        .cdf =
-                            static_cast<float>(caustics_caster_total_area)});
+                        .cdf = static_cast<float>(obj_area)});
                 }
+            }
+            const std::uint32_t obj_tri_count =
+                static_cast<std::uint32_t>(caustics_caster_tris.size()) -
+                obj_tri_offset;
+            if (obj_tri_count > 0u && obj_area > 0.0) {
+                const double inv_obj_area = 1.0 / obj_area;
+                for (std::size_t ti = obj_tri_offset;
+                     ti < caustics_caster_tris.size(); ++ti) {
+                    caustics_caster_tris[ti].cdf = static_cast<float>(
+                        static_cast<double>(caustics_caster_tris[ti].cdf) *
+                        inv_obj_area);
+                }
+                caustics_caster_tris.back().cdf = 1.0f;
+                const Vec3f center{0.5f * (min_p.x + max_p.x),
+                                   0.5f * (min_p.y + max_p.y),
+                                   0.5f * (min_p.z + max_p.z)};
+                float max_r2 = 0.0f;
+                for (std::size_t vi = 0u; vi < world_verts.size(); ++vi) {
+                    if (!vert_transformed[vi]) {
+                        continue;
+                    }
+                    const float dx = world_verts[vi].x - center.x;
+                    const float dy = world_verts[vi].y - center.y;
+                    const float dz = world_verts[vi].z - center.z;
+                    max_r2 = std::max(max_r2, dx * dx + dy * dy + dz * dz);
+                }
+                const float radius = std::max(1.0e-4f, std::sqrt(max_r2));
+                caustics_caster_objs.emplace_back(CausticsCasterObjectGpu{
+                    .center_radius = luisa::make_float4(center.x, center.y, center.z, radius),
+                    .tri_offset = obj_tri_offset,
+                    .tri_count = obj_tri_count,
+                    .area = static_cast<float>(obj_area),
+                    .cycles_object_index = cycles_object_index});
             }
         }
         const auto light_visible =
@@ -1835,12 +1903,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     if (!result.diagnostics.empty()) {
         return result;
     }
-    if (!caustics_caster_tris.empty() && caustics_caster_total_area > 0.0) {
-        const double inv_total = 1.0 / caustics_caster_total_area;
-        for (auto &rec : caustics_caster_tris) {
-            rec.cdf = static_cast<float>(static_cast<double>(rec.cdf) * inv_total);
-        }
-        caustics_caster_tris.back().cdf = 1.0f;
+    if (!caustics_caster_tris.empty() && !caustics_caster_objs.empty()) {
         data->caustics_caster_triangle_count =
             static_cast<std::uint32_t>(caustics_caster_tris.size());
         data->caustics_caster_triangles.emplace(
@@ -1848,6 +1911,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 caustics_caster_tris.size()));
         stream << data->caustics_caster_triangles->copy_from(
             luisa::span{caustics_caster_tris});
+        data->caustics_caster_object_count =
+            static_cast<std::uint32_t>(caustics_caster_objs.size());
+        data->caustics_caster_objects.emplace(
+            data->device.create_buffer<CausticsCasterObjectGpu>(
+                caustics_caster_objs.size()));
+        stream << data->caustics_caster_objects->copy_from(
+            luisa::span{caustics_caster_objs});
     }
     data->ambient_occlusion_object_distance_count =
         has_ambient_occlusion_object_distance

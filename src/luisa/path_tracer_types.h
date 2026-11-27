@@ -240,6 +240,15 @@ struct CausticsCasterTriangleGpu {
 };
 static_assert(sizeof(CausticsCasterTriangleGpu) == 16u);
 
+struct CausticsCasterObjectGpu {
+    luisa::float4 center_radius{};
+    luisa::uint tri_offset{};
+    luisa::uint tri_count{};
+    float area{};
+    luisa::uint cycles_object_index{};
+};
+static_assert(sizeof(CausticsCasterObjectGpu) == 32u);
+
 struct LightDistributionGpu {
     float cumulative{};
     float selection_pdf{};
@@ -600,6 +609,13 @@ LUISA_STRUCT(
     primitive_id,
     cycles_object_index,
     cdf) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::CausticsCasterObjectGpu,
+    center_radius,
+    tri_offset,
+    tri_count,
+    area,
+    cycles_object_index) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::LightDistributionGpu,
     cumulative,
