@@ -6,6 +6,8 @@
 
 #include "cycles_svm_bsdf.h"
 
+#include <psycles/luisa/cycles_spectrum.h>
+
 #include <optional>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
@@ -81,6 +83,11 @@ void surface_shader_prepare_closures(
 [[nodiscard]] luisa::compute::Float3 surface_shader_bssrdf_sample_weight(
     const ShaderData &shader_data,
     luisa::compute::Expr<std::uint32_t> closure_index) noexcept;
+
+[[nodiscard]] luisa::compute::Float4 surface_shader_bssrdf_sample_weight_spectral(
+    const ShaderData &shader_data,
+    luisa::compute::Expr<std::uint32_t> closure_index,
+    const cycles_spectrum::SpectralContext &spectral) noexcept;
 
 [[nodiscard]] SurfaceShaderBsdfSample surface_shader_bsdf_sample_closure(
     const KernelGlobals &kernel_globals, ShaderData &shader_data,

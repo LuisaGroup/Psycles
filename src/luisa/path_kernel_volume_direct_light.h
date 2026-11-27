@@ -5,6 +5,7 @@
 #include <psycles/luisa/homogeneous_volume_segment.h>
 
 #include <memory>
+#include <optional>
 
 namespace psycles::luisa_backend::detail {
 
@@ -21,6 +22,7 @@ struct VolumeDirectLightSample {
     Bool emission_is_constant;
     Bool use_mis;
     Bool valid;
+    std::optional<Float4> spectral_radiance{};
 };
 
 struct VolumeDirectLightProposal {
@@ -37,6 +39,7 @@ struct VolumeDirectScatter {
     Float distance;
     VolumePhaseSetEvaluation phase;
     Bool scattered;
+    std::optional<Float4> spectral_throughput{};
 };
 
 // The light is sampled before volume-distance integration because Cycles

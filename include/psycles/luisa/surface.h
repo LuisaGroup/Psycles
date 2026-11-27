@@ -105,15 +105,24 @@ struct VolumeCoefficients {
     Bool has_extinction;
     Bool has_scatter;
     Bool has_emission;
+    std::optional<Float4> spectral_sigma_t{};
+    std::optional<Float4> spectral_sigma_s{};
+    std::optional<Float4> spectral_emission{};
 
-    [[nodiscard]] static VolumeCoefficients zero() noexcept {
-        return {
+    [[nodiscard]] static VolumeCoefficients zero(bool spectral = false) noexcept {
+        VolumeCoefficients out{
             .sigma_t = make_float3(0.0f),
             .sigma_s = make_float3(0.0f),
             .emission = make_float3(0.0f),
             .has_extinction = false,
             .has_scatter = false,
             .has_emission = false};
+        if (spectral) {
+            out.spectral_sigma_t.emplace(make_float4(0.0f));
+            out.spectral_sigma_s.emplace(make_float4(0.0f));
+            out.spectral_emission.emplace(make_float4(0.0f));
+        }
+        return out;
     }
 };
 

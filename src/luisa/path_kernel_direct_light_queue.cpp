@@ -64,6 +64,7 @@ private:
   std::uint32_t _scratch_slot{0u};
   std::uint32_t _chain_count_slot{0u};
   std::uint32_t _chain_buf_slot{0u};
+  std::uint32_t _consecutive_stage1_dispatches{0u};
   bool _fuse_unoccluded_shadow{false};
   bool _may_have_shade_shadow{true};
   bool _may_continue_shadow{true};
@@ -1235,6 +1236,7 @@ public:
     _scratch_slot = 0u;
     _chain_count_slot = 0u;
     _chain_buf_slot = 0u;
+    _consecutive_stage1_dispatches = 0u;
     stream << _initialize(_capacity).dispatch(std::max(_capacity, 5u));
   }
 
@@ -1243,6 +1245,7 @@ public:
     _scratch_slot = 0u;
     _chain_count_slot = 0u;
     _chain_buf_slot = 0u;
+    _consecutive_stage1_dispatches = 0u;
     commands << _initialize(_capacity).dispatch(std::max(_capacity, 5u));
   }
 
@@ -1400,6 +1403,9 @@ public:
       _chain_count_slot = (_chain_count_slot + 1u) % 3u;
       return (use_buf1 ? 4u : 1u) + slot;
     };
+    if (stage == 0u) {
+      _consecutive_stage1_dispatches = 0u;
+    }
     if (stage == 0u && _fuse_unoccluded_shadow) {
       const auto prior_stage1 = _host_counts[1u];
       const auto scratch_slot = _scratch_slot;
@@ -1467,7 +1473,7 @@ public:
         _host_counts[2u] == 0u) {
       std::uint32_t rounds = 1u;
       if (_may_continue_shadow && _vt_cache == nullptr) {
-        rounds = 2u;
+        rounds = (_consecutive_stage1_dispatches == 0u) ? 1u : 2u;
         if (const auto *raw = std::getenv("PSYCLES_SHADOW_CHAIN_MAX_ROUNDS");
             raw != nullptr && raw[0] != '\0') {
           char *end = nullptr;
@@ -1477,6 +1483,7 @@ public:
           }
         }
       }
+      ++_consecutive_stage1_dispatches;
       const auto scratch_slot = _scratch_slot;
       _scratch_slot ^= 1u;
       commands << _gather(2u, _host_counts[3], scratch_slot, 0u)
@@ -1506,6 +1513,9 @@ public:
         }
       }
       return;
+    }
+    if (stage == 1u) {
+      ++_consecutive_stage1_dispatches;
     }
     const auto scratch_slot = _scratch_slot;
     _scratch_slot ^= 1u;

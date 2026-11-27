@@ -557,7 +557,7 @@ VolumeMajorantSceneComponent::build(
             .minimum = grid_minimum, .maximum = grid_maximum,
             .object_to_world = make_float4x4(1.0f), .resolution = grid_resolution};
         const auto extrema = evaluate_cycles_svm_volume_density_cell(
-            scene, parameters, entry, grid, dispatch_x());
+            scene, parameters, entry, grid, dispatch_x(), true);
         output.write(dispatch_x(), make_float2(extrema.minimum, extrema.maximum));
     };
     luisa::compute::ShaderOption shader_options;

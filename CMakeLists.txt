@@ -1863,6 +1863,33 @@ if(PSYCLES_ENABLE_LUISA)
                 endif()
             endforeach()
 
+            psycles_add_luisa_backend_test(
+                TARGET
+                    psycles_luisa_spectral_volume_sss_tests
+                SOURCE
+                    tests/test_luisa_spectral_volume_sss.cpp
+                TEST_STEM
+                    luisa_spectral_volume_sss
+                LIBRARIES Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_luisa_spectral_volume_sss_tests
+                PRIVATE
+                    "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
+                if(TEST psycles.luisa_spectral_volume_sss_${_backend})
+                    set_tests_properties(
+                        psycles.luisa_spectral_volume_sss_${_backend}
+                        PROPERTIES TIMEOUT 240)
+                endif()
+            endforeach()
+            if(TEST psycles.luisa_spectral_volume_sss_vk)
+                set_tests_properties(
+                    psycles.luisa_spectral_volume_sss_vk
+                    PROPERTIES ENVIRONMENT
+                        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+            endif()
+
             include(cmake/PsyclesLuisaVtTests.cmake)
 
             add_executable(

@@ -677,7 +677,9 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 coroutine.frame().frame_field_count(),
                 coroutine.frame().frame_type()->size(),
                 config.wavefront_frame_capacity);
-    auto shade_surface_block_size = 64u;
+    const auto backend_name = device.backend_name();
+    auto shade_surface_block_size =
+        (backend_name == "dx" || backend_name == "vk") ? 32u : 64u;
     if (const auto *override_block =
             std::getenv("PSYCLES_SHADE_SURFACE_BLOCK_SIZE")) {
       const auto parsed =

@@ -85,6 +85,63 @@ struct HeterogeneousVolumeSegmentResult {
     Bool phase_failed;
 };
 
+struct HeterogeneousVolumeTransportResultSpectral {
+    Float4 throughput;
+    Float4 emission;
+    Float distance;
+    Float optical_depth;
+    UInt next_tracking_rng_offset;
+    UInt steps;
+    Bool selected_scatter;
+    Bool traversal_exhausted;
+    Bool step_limit_exceeded;
+    Bool active;
+};
+
+struct HeterogeneousVolumeDirectSampleSpectral {
+    Float4 throughput;
+    Float distance;
+    Float distance_pdf;
+    Float equiangular_pdf;
+    Float mis_weight;
+    UInt sample_method;
+    Bool use_mis;
+    Bool scattered;
+};
+
+struct HeterogeneousVolumeSegmentInputSpectral {
+    VolumeMajorantSegmentSequence &segments;
+    const HeterogeneousVolumeTrackingRandomSource
+        &random;
+    const HeterogeneousVolumeCollisionProvider
+        &collisions;
+    Float majorant_scale;
+    HeterogeneousVolumeDirectInput direct;
+    const VolumeDirectLightProvider
+        *direct_light;
+    Float ray_minimum;
+    Float ray_maximum;
+    Float3 segment_origin;
+    Float3 phase_axis;
+    Float4 throughput;
+    Float direct_random;
+    Float reservoir_random;
+    Float2 phase_random;
+    UInt tracking_rng_offset;
+    Bool terminate;
+    Bool secondary_terminated;
+};
+
+struct HeterogeneousVolumeSegmentResultSpectral {
+    VolumeCoefficients coefficients;
+    HeterogeneousVolumeTransportResultSpectral transport;
+    VolumePhaseSetSample phase;
+    HeterogeneousVolumeDirectSampleSpectral direct_transport;
+    VolumePhaseSetEvaluation direct_phase;
+    Bool scattered;
+    Bool phase_failed;
+};
+
 // Cycles' heterogeneous weighted-delta segment. Traversal, raw closure
 // evaluation, VSPG reservoir selection, direct distance/equiangular transport,
 // MIS, phase recovery, and low-throughput roulette remain typed host-stage
@@ -98,6 +155,11 @@ class HeterogeneousVolumeSegmentComponent {
     [[nodiscard]] virtual HeterogeneousVolumeSegmentResult
     emit(
         const HeterogeneousVolumeSegmentInput
+            &input) const noexcept = 0;
+
+    [[nodiscard]] virtual HeterogeneousVolumeSegmentResultSpectral
+    emit_spectral(
+        const HeterogeneousVolumeSegmentInputSpectral
             &input) const noexcept = 0;
 
     // Compatibility entry point for focused unguided/no-NEE fixtures. The
@@ -140,3 +202,12 @@ LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
     psycles::luisa_backend::
         HeterogeneousVolumeSegmentResult)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
+    psycles::luisa_backend::
+        HeterogeneousVolumeTransportResultSpectral)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
+    psycles::luisa_backend::
+        HeterogeneousVolumeDirectSampleSpectral)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
+    psycles::luisa_backend::
+        HeterogeneousVolumeSegmentResultSpectral)

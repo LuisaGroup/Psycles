@@ -184,6 +184,16 @@ class AnalyticVolumeLightProvider final
                 _result.radiance,
                 radiance,
                 valid);
+        if (_event.bounce.sample.is_spectral() &&
+            _result.spectral_radiance.has_value()) {
+            const auto ctx = _event.bounce.sample.spectral_context();
+            const auto spec_rad =
+                cycles_spectrum::rgb_to_spectrum_reflectance(
+                    *ctx->tables, light.color, ctx->wavelengths.lambdas) *
+                (light.power * distant_sample.evaluation_factor);
+            *_result.spectral_radiance = select(
+                *_result.spectral_radiance, spec_rad, valid);
+        }
         _result.pdf =
             select(
                 _result.pdf,
@@ -240,6 +250,16 @@ class AnalyticVolumeLightProvider final
                 _result.radiance,
                 radiance,
                 valid);
+        if (_event.bounce.sample.is_spectral() &&
+            _result.spectral_radiance.has_value()) {
+            const auto ctx = _event.bounce.sample.spectral_context();
+            const auto spec_rad =
+                cycles_spectrum::rgb_to_spectrum_reflectance(
+                    *ctx->tables, light.color, ctx->wavelengths.lambdas) *
+                (light.power * finite.evaluation_factor);
+            *_result.spectral_radiance = select(
+                *_result.spectral_radiance, spec_rad, valid);
+        }
         _result.pdf =
             select(
                 _result.pdf,
@@ -437,6 +457,13 @@ class AnalyticVolumeLightProvider final
                 _event.bounce.sample
                     .analytic_light_constant_shader(
                         light);
+            if (_event.bounce.sample.is_spectral() &&
+                _result.spectral_radiance.has_value()) {
+                *_result.spectral_radiance *=
+                    _event.bounce.sample
+                        .analytic_light_constant_shader_spectrum(light)
+                        .lanes();
+            }
         };
     }
 };
@@ -536,8 +563,15 @@ class CombinedVolumeLightProvider final
                 task.glossy_depth = sample.glossy_depth;
                 task.transmission_depth = sample.transmission_depth;
                 task.portal_depth = sample.portal_depth.cast<std::uint16_t>();
-                _result.radiance *= _native_emission->evaluate(
-                    task, sample.invocation.parameters);
+                if (sample.is_spectral() && _result.spectral_radiance.has_value()) {
+                    const auto ctx = sample.spectral_context();
+                    *_result.spectral_radiance *=
+                        _native_emission->evaluate_spectral(
+                            task, sample.invocation.parameters, *ctx);
+                } else {
+                    _result.radiance *= _native_emission->evaluate(
+                        task, sample.invocation.parameters);
+                }
             };
         }
     }
@@ -961,112 +995,140 @@ class PathVolumeDirectLightingComponent final
                     .nee_light_weight(
                         light.pdf,
                         phase_pdf);
-            const auto unshadowed =
-                make_float3(
-                    volume.phase.value) *
-                light.radiance *
-                (mis_weight /
-                 max(
-                     light.pdf,
-                     1.0e-20f));
-            const auto roulette_weight =
-                invocation
-                    .sample_light_roulette(
-                        unshadowed,
-                        bounce.random()
-                            .light_terminate_sample);
-            // Cycles terminates the complete unshadowed light sample before
-            // branching to INTERSECT_SHADOW. A zero roulette weight therefore
-            // cannot perform either surface or volume shadow traversal.
-            $if(roulette_weight > 0.0f) {
+            const auto run_shadow_and_accumulate = [&](
+                Float3 &contribution_out) noexcept {
                 const auto position =
                     segment_position +
-                    sample.ray->direction() *
-                        volume.distance;
-                Var<luisa::compute::Ray>
-                    surface_shadow_ray =
-                        make_ray(
-                            position,
-                            light.direction,
-                            0.0f,
-                            light.maximum_distance);
-                Var<luisa::compute::Ray>
-                    volume_shadow_ray =
-                        make_ray(
-                            position,
-                            light.direction,
-                            0.0f,
-                            light.maximum_distance);
+                    sample.ray->direction() * volume.distance;
+                Var<luisa::compute::Ray> surface_shadow_ray = make_ray(
+                    position, light.direction, 0.0f, light.maximum_distance);
+                Var<luisa::compute::Ray> volume_shadow_ray = make_ray(
+                    position, light.direction, 0.0f, light.maximum_distance);
                 const auto surface_shadow =
                     _config.trace_shadow(
                         surface_shadow_ray,
-                        // Current Cycles shader_setup_from_volume leaves
-                        // both compact differentials at zero (with a source
-                        // TODO for future ray-differential support).
                         0.0f,
                         0.0f,
-                        surface_ray::
-                            invalid_primitive,
-                        surface_ray::
-                            invalid_primitive,
+                        surface_ray::invalid_primitive,
+                        surface_ray::invalid_primitive,
                         light.light_object,
                         light.light_primitive,
-                        invocation.parameters
-                            .transparent_max_bounces,
-                        invocation.parameters
-                            .shadow_storage_capacity,
-                        invocation.parameters
-                            .shadow_storage_block_size,
+                        invocation.parameters.transparent_max_bounces,
+                        invocation.parameters.shadow_storage_capacity,
+                        invocation.parameters.shadow_storage_block_size,
                         make_float3(1.0f),
                         make_shadow_shader_context(pack_shader_evaluation_state(
-                            cycles_path_state::
-                                shadow_shader_state(
-                                    sample.path_depth,
-                                    sample.diffuse_depth,
-                                    sample.glossy_depth,
-                                    sample
-                                        .transparent_depth,
-                                    sample
-                                        .transmission_depth)),
-                            // The current production ray domain is static;
-                            // volume setup carries the same time value.
+                            cycles_path_state::shadow_shader_state(
+                                sample.path_depth,
+                                sample.diffuse_depth,
+                                sample.glossy_depth,
+                                sample.transparent_depth,
+                                sample.transmission_depth)),
                             0.0f, sample.sample_index, sample.rng_hash,
                             sample.cycles_rng_offset, sample.volume_bounds_bounce),
                         invocation.parameters);
-                const auto surface_transmittance =
-                    surface_shadow->transmittance;
-                const auto volume_transmittance =
-                    _volume_shadow->emit(
+                const auto surface_transmittance = surface_shadow->transmittance;
+                if (sample.is_spectral()) {
+                    const auto ctx = sample.spectral_context();
+                    auto surface_trans_4 = cycles_spectrum::rgb_to_spectrum_reflectance(
+                        *ctx->tables, surface_transmittance,
+                        ctx->wavelengths.lambdas);
+                    surface_trans_4 = select(
+                        surface_trans_4, make_float4(1.0f),
+                        (surface_transmittance.x == 1.0f) &
+                            (surface_transmittance.y == 1.0f) &
+                            (surface_transmittance.z == 1.0f));
+                    surface_trans_4 = select(
+                        surface_trans_4, make_float4(0.0f),
+                        (surface_transmittance.x == 0.0f) &
+                            (surface_transmittance.y == 0.0f) &
+                            (surface_transmittance.z == 0.0f));
+                    const auto volume_trans_4 = _volume_shadow->emit_spectral(
                         sample,
                         path_stack,
                         volume_shadow_ray,
                         light.light_instance,
                         light.light_accel_primitive);
-                Float3 contribution_unclamped;
-                if (sample.is_spectral()) {
-                    const auto ctx = sample.spectral_context();
+                    const auto vol_t4 = volume.spectral_throughput.value_or(
+                        make_float4(volume.throughput, 0.0f));
+                    const auto rad_spec = light.spectral_radiance.value_or(
+                        make_float4(light.radiance, 0.0f));
+                    const auto unshadowed_spec =
+                        make_float4(volume.phase.value) * rad_spec *
+                        (mis_weight / max(light.pdf, 1.0e-20f));
+                    const auto roulette_max = cycles_spectrum::max_abs_active(
+                        unshadowed_spec, sample.spectral_secondary_terminated());
+                    const auto roulette_weight = invocation.sample_light_roulette(
+                        make_float3(roulette_max, 0.0f, 0.0f),
+                        bounce.random().light_terminate_sample);
                     const auto spec_contrib =
-                        (sample.throughput / sample.continuation_probability) *
-                        cycles_spectrum::Spectrum::from_rgb_reflectance(
-                            ctx->tables,
-                            volume.throughput * surface_transmittance *
-                                volume_transmittance,
-                            &ctx->wavelengths, true) *
-                        cycles_spectrum::Spectrum::from_rgb_illuminant(
-                            ctx->tables, unshadowed * roulette_weight,
-                            &ctx->wavelengths, true);
-                    contribution_unclamped = sample.spectrum_to_rgb(spec_contrib);
+                        (vol_t4 / sample.continuation_probability) *
+                        unshadowed_spec * surface_trans_4 * volume_trans_4 *
+                        roulette_weight;
+                    contribution_out = sample.spectrum_to_rgb(
+                        cycles_spectrum::Spectrum::from_lanes(spec_contrib));
                 } else {
+                    const auto volume_transmittance =
+                        _volume_shadow->emit(
+                            sample,
+                            path_stack,
+                            volume_shadow_ray,
+                            light.light_instance,
+                            light.light_accel_primitive);
+                    const auto unshadowed =
+                        make_float3(volume.phase.value) *
+                        light.radiance *
+                        (mis_weight / max(light.pdf, 1.0e-20f));
+                    const auto roulette_weight = invocation.sample_light_roulette(
+                        unshadowed,
+                        bounce.random().light_terminate_sample);
                     const auto continuation =
                         volume.throughput / sample.continuation_probability;
-                    contribution_unclamped =
+                    contribution_out =
                         continuation * unshadowed * surface_transmittance *
                         volume_transmittance * roulette_weight;
                 }
-                const auto contribution = invocation.clamp_contribution(
-                    contribution_unclamped, sample.path_depth);
-                accumulate_volume_nee_film(sample, contribution);
             };
+            if (sample.is_spectral()) {
+                const auto rad_spec = light.spectral_radiance.value_or(
+                    make_float4(light.radiance, 0.0f));
+                const auto unshadowed_spec =
+                    make_float4(volume.phase.value) * rad_spec *
+                    (mis_weight / max(light.pdf, 1.0e-20f));
+                const auto roulette_max = cycles_spectrum::max_abs_active(
+                    unshadowed_spec, sample.spectral_secondary_terminated());
+                const auto roulette_weight = invocation.sample_light_roulette(
+                    make_float3(roulette_max, 0.0f, 0.0f),
+                    bounce.random().light_terminate_sample);
+                $if(roulette_weight > 0.0f) {
+                    Float3 contribution_unclamped;
+                    run_shadow_and_accumulate(contribution_unclamped);
+                    const auto contribution = invocation.clamp_contribution(
+                        contribution_unclamped, sample.path_depth);
+                    accumulate_volume_nee_film(sample, contribution);
+                };
+            } else {
+                const auto unshadowed =
+                    make_float3(volume.phase.value) *
+                    light.radiance *
+                    (mis_weight /
+                     max(
+                         light.pdf,
+                         1.0e-20f));
+                const auto roulette_weight =
+                    invocation
+                        .sample_light_roulette(
+                            unshadowed,
+                            bounce.random()
+                                .light_terminate_sample);
+                $if(roulette_weight > 0.0f) {
+                    Float3 contribution_unclamped;
+                    run_shadow_and_accumulate(contribution_unclamped);
+                    const auto contribution = invocation.clamp_contribution(
+                        contribution_unclamped, sample.path_depth);
+                    accumulate_volume_nee_film(sample, contribution);
+                };
+            }
         };
     }
 };

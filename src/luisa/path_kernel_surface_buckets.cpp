@@ -368,14 +368,9 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
     return raw != nullptr && *raw != '\0';
   }();
   std::size_t bucket_weight_cap = jit_weight_cap;
-  if (!explicit_weight_env) {
-    if (backend_name == "hip") {
-      bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 9000u);
-    } else if (backend_name == "dx") {
-      bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 7000u);
-    } else if (backend_name == "vk") {
-      bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 5000u);
-    }
+  if (!explicit_weight_env &&
+      (backend_name == "hip" || backend_name == "dx" || backend_name == "vk")) {
+    bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 9000u);
   }
   const SurfaceBucketMode effective_mode = [&]() noexcept {
     if (mode != SurfaceBucketMode::auto_select) {

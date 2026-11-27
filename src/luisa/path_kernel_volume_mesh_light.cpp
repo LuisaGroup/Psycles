@@ -99,7 +99,7 @@ class MeshVolumeLightProvider final
             const auto valid =
                 light.valid &
                 visible;
-            _sample = light;
+            _sample.emplace(light);
             _sample_valid = valid;
             _emission_is_constant =
                 light.geometry
@@ -112,6 +112,10 @@ class MeshVolumeLightProvider final
                 _result.position = light.light.position;
                 _result.radiance =
                     make_float3(1.0f);
+                if (_event.bounce.sample.is_spectral() &&
+                    _result.spectral_radiance.has_value()) {
+                    *_result.spectral_radiance = make_float4(1.0f);
+                }
                 _result.pdf = light.pdf;
                 _result.maximum_distance =
                     light.light.distance;
@@ -148,12 +152,21 @@ class MeshVolumeLightProvider final
         if (_sample) {
             $if(_sample_valid &
                 _emission_is_constant) {
-                _result.radiance *=
-                    _emissive_triangle
-                        ->evaluate_constant_emission(
-                            _event.bounce
-                                .sample,
-                            *_sample);
+                if (_event.bounce.sample.is_spectral() &&
+                    _result.spectral_radiance.has_value()) {
+                    *_result.spectral_radiance *=
+                        _emissive_triangle
+                            ->evaluate_constant_emission_spectral(
+                                _event.bounce.sample,
+                                *_sample);
+                } else {
+                    _result.radiance *=
+                        _emissive_triangle
+                            ->evaluate_constant_emission(
+                                _event.bounce
+                                    .sample,
+                                *_sample);
+                }
             };
         }
     }

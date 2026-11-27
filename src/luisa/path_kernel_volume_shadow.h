@@ -22,6 +22,14 @@ class VolumeShadowComponent {
          Var<luisa::compute::Ray> shadow_ray,
          UInt light_instance,
          UInt light_primitive) const noexcept = 0;
+
+    [[nodiscard]] virtual Float4
+    emit_spectral(
+         const PathSampleContext &sample,
+         const VolumeStack &path_stack,
+         Var<luisa::compute::Ray> shadow_ray,
+         UInt light_instance,
+         UInt light_primitive) const noexcept = 0;
 };
 
 [[nodiscard]]

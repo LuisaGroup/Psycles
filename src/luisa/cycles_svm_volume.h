@@ -22,14 +22,17 @@ inline constexpr std::uint32_t fournier_forand_c3 = 28u;
 void node_closure_volume(const KernelGlobals &kg, Cursor &cursor, Stack &stack,
                          luisa::compute::Expr<luisa::float3> closure_weight,
                          ShaderData &sd,
-                         const EvaluationTransition &transition) noexcept;
+                         const EvaluationTransition &transition,
+                         const SpectralClosureWeight *spectral_weight = nullptr) noexcept;
 void node_volume_coefficients(
     const KernelGlobals &kg, Cursor &cursor, Stack &stack,
     luisa::compute::Expr<luisa::float3> scatter_coeffs, ShaderData &sd,
-    const PathState &path, const EvaluationTransition &transition) noexcept;
+    const PathState &path, const EvaluationTransition &transition,
+    const SpectralClosureWeight *spectral_weight = nullptr) noexcept;
 void node_principled_volume(const KernelGlobals &kg, Cursor &cursor,
                             Stack &stack,
                             luisa::compute::Expr<luisa::float3> closure_weight,
                             ShaderData &sd, const PathState &path,
-                            const EvaluationTransition &transition) noexcept;
+                            const EvaluationTransition &transition,
+                            const SpectralClosureWeight *spectral_weight = nullptr) noexcept;
 } // namespace psycles::luisa_backend::cycles_svm::detail

@@ -1,3 +1,4 @@
+#include <psycles/luisa/cycles_spectrum.h>
 #include <psycles/luisa/homogeneous_volume_transport.h>
 
 #include <luisa/dsl/sugar.h>
@@ -408,6 +409,346 @@ HomogeneousVolumeTransport::sample_direct(
             result.transmittance = transmittance(coefficients.sigma_t, sampled_distance);
             result.throughput = throughput *
                 _safe_divide(coefficients.sigma_s * result.transmittance, selected_pdf) * mis_weight;
+            result.channel_pdf = channel_sample.pdf;
+            result.distance = sampled_distance;
+            result.distance_pdf = distance_pdf;
+            result.equiangular_pdf = equiangular_pdf;
+            result.mis_weight = mis_weight;
+            result.channel = channel;
+            result.scattered = true;
+        };
+    };
+    return result;
+}
+
+Float4 HomogeneousVolumeTransport::_safe_divide4(
+    Float4 numerator,
+    Float4 denominator,
+    float fallback) noexcept {
+    const auto nonzero = denominator != make_float4(0.0f);
+    const auto safe_denominator =
+        select(make_float4(1.0f), denominator, nonzero);
+    return select(
+        make_float4(fallback),
+        numerator / safe_denominator,
+        nonzero);
+}
+
+Float4 HomogeneousVolumeTransport::_safe_divide4(
+    Float4 numerator,
+    Float denominator) noexcept {
+    const auto nonzero = denominator != 0.0f;
+    return select(
+        make_float4(0.0f),
+        numerator / select(1.0f, denominator, nonzero),
+        nonzero);
+}
+
+Float4 HomogeneousVolumeTransport::transmittance_spectral(
+    Float4 sigma_t,
+    Float distance) const noexcept {
+    const auto active = sigma_t > 0.0f;
+    const auto safe_sigma_t = select(make_float4(0.0f), sigma_t, active);
+    const auto optical_depth = min(safe_sigma_t * distance, make_float4(105.0f));
+    return select(make_float4(1.0f), exp(-optical_depth), active);
+}
+
+Float4 HomogeneousVolumeTransport::emission_integral_spectral(
+    const VolumeCoefficients &coefficients,
+    Float distance) const noexcept {
+    const auto sigma_t = coefficients.spectral_sigma_t.value_or(
+        make_float4(coefficients.sigma_t, 0.0f));
+    const auto emission = coefficients.spectral_emission.value_or(
+        make_float4(coefficients.emission, 0.0f));
+    const auto active = sigma_t > 0.0f;
+    const auto safe_sigma_t = select(make_float4(0.0f), sigma_t, active);
+    const auto optical_depth = min(safe_sigma_t * distance, make_float4(105.0f));
+    const auto analytic = optical_depth > make_float4(1.0e-5f);
+    const auto safe_div_sigma = select(make_float4(1.0f), safe_sigma_t, analytic);
+    const auto attenuated = select(
+        distance * (make_float4(1.0f) - 0.5f * optical_depth),
+        (make_float4(1.0f) - exp(-optical_depth)) / safe_div_sigma,
+        analytic);
+    return emission *
+           select(make_float4(distance), attenuated, coefficients.has_extinction);
+}
+
+Float4 HomogeneousVolumeTransport::channel_pdf_spectral(
+    Float4 albedo,
+    Float4 throughput,
+    Bool secondary_terminated) const noexcept {
+    const auto weights = abs(throughput * albedo);
+    const auto active_weights = select(
+        weights, make_float4(weights.x, 0.0f, 0.0f, 0.0f), secondary_terminated);
+    const auto sum =
+        active_weights.x + active_weights.y + active_weights.z + active_weights.w;
+    const auto usable = (1.0f - sum) < 1.0f;
+    const auto normalized = active_weights / select(1.0f, sum, usable);
+    const auto fallback = select(
+        make_float4(0.25f), make_float4(1.0f, 0.0f, 0.0f, 0.0f),
+        secondary_terminated);
+    return select(fallback, normalized, usable);
+}
+
+VolumeChannelSampleSpectral HomogeneousVolumeTransport::sample_channel_spectral(
+    Float4 albedo,
+    Float4 throughput,
+    Float random,
+    Bool secondary_terminated) const noexcept {
+    const auto pdf = channel_pdf_spectral(albedo, throughput, secondary_terminated);
+    const auto cdf0 = pdf.x;
+    const auto cdf1 = cdf0 + pdf.y;
+    const auto cdf2 = cdf1 + pdf.z;
+    const auto cdf3 = cdf2 + pdf.w;
+    const auto c0 = random < cdf0;
+    const auto c1 = !c0 & (random < cdf1);
+    const auto c2 = !c0 & !c1 & (random < cdf2);
+    const auto c3 = !c0 & !c1 & !c2 & (random < cdf3);
+    const auto matched = c0 | c1 | c2 | c3;
+    auto channel = select(select(3u, 2u, c2), select(1u, 0u, c0), c0 | c1);
+    channel = select(0u, channel, matched);
+    channel = select(channel, 0u, secondary_terminated);
+    const auto lower = select(select(cdf2, cdf1, c2), select(cdf0, 0.0f, c0), c0 | c1);
+    auto selected_pdf =
+        select(select(pdf.w, pdf.z, c2), select(pdf.y, pdf.x, c0), c0 | c1);
+    selected_pdf = select(pdf.x, selected_pdf, matched & !secondary_terminated);
+    const auto rescaled = (random - lower) / select(1.0f, selected_pdf, matched);
+    return {
+        .channel = channel,
+        .pdf = pdf,
+        .random = select(random, rescaled, matched),
+        .matched = matched};
+}
+
+Float4 HomogeneousVolumeTransport::bounded_exponential_pdf_spectral(
+    Float distance,
+    Float4 rate,
+    Float minimum,
+    Float maximum) const noexcept {
+    const auto active = rate > 0.0f;
+    const auto safe_rate = select(make_float4(0.0f), rate, active);
+    const auto d0 = exp(-min(safe_rate * minimum, make_float4(105.0f)));
+    const auto d1 = exp(-min(safe_rate * maximum, make_float4(105.0f)));
+    const auto attenuation = select(make_float4(0.0f), d0 - d1, active);
+    const auto clamped =
+        clamp(make_float4(distance), make_float4(minimum), make_float4(maximum));
+    const auto numerator =
+        safe_rate * exp(-min(safe_rate * clamped, make_float4(105.0f)));
+    return _safe_divide4(numerator, attenuation);
+}
+
+Float4 HomogeneousVolumeTransport::unguided_scatter_probability_spectral(
+    const VolumeCoefficients &coefficients,
+    Float distance,
+    Bool terminate) const noexcept {
+    const auto sigma_t = coefficients.spectral_sigma_t.value_or(
+        make_float4(coefficients.sigma_t, 0.0f));
+    const auto sigma_s = coefficients.spectral_sigma_s.value_or(
+        make_float4(coefficients.sigma_s, 0.0f));
+    const auto has_scatter =
+        coefficients.has_scatter & any(sigma_s != make_float4(0.0f));
+    return select(
+        make_float4(0.0f),
+        make_float4(1.0f) - transmittance_spectral(sigma_t, distance),
+        !terminate & has_scatter);
+}
+
+HomogeneousVolumeSampleSpectral HomogeneousVolumeTransport::sample_spectral(
+    const VolumeCoefficients &coefficients,
+    Float distance,
+    Float4 throughput,
+    Float scatter_random,
+    Float channel_random,
+    Bool terminate,
+    Bool secondary_terminated) const noexcept {
+    return sample_with_probability_spectral(
+        coefficients,
+        distance,
+        throughput,
+        scatter_random,
+        channel_random,
+        unguided_scatter_probability_spectral(coefficients, distance, terminate),
+        terminate,
+        secondary_terminated);
+}
+
+HomogeneousVolumeSampleSpectral
+HomogeneousVolumeTransport::sample_with_probability_spectral(
+    const VolumeCoefficients &coefficients,
+    Float distance,
+    Float4 throughput,
+    Float scatter_random,
+    Float channel_random,
+    Float4 scatter_probability,
+    Bool terminate,
+    Bool secondary_terminated) const noexcept {
+    const auto sigma_t = coefficients.spectral_sigma_t.value_or(
+        make_float4(coefficients.sigma_t, 0.0f));
+    const auto sigma_s = coefficients.spectral_sigma_s.value_or(
+        make_float4(coefficients.sigma_s, 0.0f));
+    const auto active_throughput = select(
+        throughput, make_float4(throughput.x, 0.0f, 0.0f, 0.0f),
+        secondary_terminated);
+    const auto segment_transmittance = transmittance_spectral(sigma_t, distance);
+    Float4 segment_emission = make_float4(0.0f);
+    $if(coefficients.has_emission) {
+        segment_emission =
+            active_throughput * emission_integral_spectral(coefficients, distance);
+    };
+    const auto has_scatter =
+        coefficients.has_scatter &
+        select(any(sigma_s != make_float4(0.0f)), sigma_s.x != 0.0f,
+               secondary_terminated);
+    const auto eligible = !terminate & has_scatter & (distance > 0.0f);
+    HomogeneousVolumeSampleSpectral result{
+        .transmittance = segment_transmittance,
+        .emission = segment_emission,
+        .throughput = active_throughput * segment_transmittance,
+        .scatter_probability = make_float4(0.0f),
+        .channel_pdf = make_float4(0.0f),
+        .distance = distance,
+        .event_pdf = 1.0f,
+        .scatter_random = scatter_random,
+        .reservoir_random = channel_random,
+        .channel = 0u,
+        .scattered = false,
+        .active = coefficients.has_extinction | coefficients.has_scatter |
+                  coefficients.has_emission};
+
+    $if(eligible) {
+        const auto albedo = _safe_divide4(sigma_s, sigma_t);
+        const auto multiple_scattering_albedo =
+            albedo * (make_float4(1.0f) - segment_transmittance) * active_throughput;
+        const auto channel_sample = sample_channel_spectral(
+            multiple_scattering_albedo + segment_transmittance,
+            active_throughput, channel_random, secondary_terminated);
+        const auto channel = channel_sample.channel;
+        const auto select4 = [channel](Float4 v) noexcept {
+            return select(select(v.w, v.z, channel == 2u),
+                          select(v.y, v.x, channel == 0u), channel < 2u);
+        };
+        const auto channel_scatter_probability = select4(scatter_probability);
+        result.scatter_probability = scatter_probability;
+        result.channel_pdf = channel_sample.pdf;
+        result.reservoir_random = channel_sample.random;
+        result.channel = channel;
+        $if(scatter_random < channel_scatter_probability) {
+            result.scattered = true;
+            result.scatter_random = scatter_random / channel_scatter_probability;
+            const auto rate = select4(sigma_t);
+            result.distance = bounded_exponential_sample(
+                result.scatter_random, rate, 0.0f, distance);
+            result.event_pdf = dot(
+                bounded_exponential_pdf_spectral(result.distance, sigma_t, 0.0f,
+                                                 distance) *
+                    scatter_probability,
+                channel_sample.pdf);
+            result.throughput = active_throughput * _safe_divide4(
+                sigma_s * transmittance_spectral(sigma_t, result.distance),
+                result.event_pdf);
+        }
+        $else {
+            result.event_pdf =
+                dot(make_float4(1.0f) - scatter_probability, channel_sample.pdf);
+            result.throughput = active_throughput *
+                                _safe_divide4(segment_transmittance, result.event_pdf);
+            result.scatter_random =
+                (scatter_random - channel_scatter_probability) /
+                (1.0f - channel_scatter_probability);
+        };
+    };
+    return result;
+}
+
+HomogeneousVolumeDirectSampleSpectral
+HomogeneousVolumeTransport::sample_direct_spectral(
+    const VolumeCoefficients &coefficients,
+    Float distance,
+    Float4 throughput,
+    Float scatter_random,
+    Float reservoir_random,
+    const VolumeDirectSamplingState &sampling,
+    Float3 ray_origin,
+    Float3 ray_direction,
+    const VolumeEquiangularCoefficients &equiangular,
+    const VolumeEquiangularSample &equiangular_sample,
+    Bool secondary_terminated) const noexcept {
+    HomogeneousVolumeDirectSampleSpectral result{
+        .transmittance = make_float4(1.0f),
+        .throughput = make_float4(0.0f),
+        .channel_pdf = make_float4(0.0f),
+        .distance = 0.0f, .distance_pdf = 0.0f, .equiangular_pdf = 0.0f,
+        .mis_weight = 0.0f, .channel = 0u, .sample_method = sampling.method,
+        .use_mis = sampling.use_mis, .scattered = false};
+    const auto sigma_t = coefficients.spectral_sigma_t.value_or(
+        make_float4(coefficients.sigma_t, 0.0f));
+    const auto sigma_s = coefficients.spectral_sigma_s.value_or(
+        make_float4(coefficients.sigma_s, 0.0f));
+    const auto active_throughput = select(
+        throughput, make_float4(throughput.x, 0.0f, 0.0f, 0.0f),
+        secondary_terminated);
+    const auto has_scatter =
+        coefficients.has_scatter &
+        select(any(sigma_s != make_float4(0.0f)), sigma_s.x != 0.0f,
+               secondary_terminated);
+    const auto scattered =
+        sampling.enabled & has_scatter & (distance > 0.0f) &
+        (equiangular.interval.minimum < equiangular.interval.maximum);
+
+    $if(scattered) {
+        const auto segment_transmittance =
+            transmittance_spectral(sigma_t, distance);
+        const auto albedo = _safe_divide4(sigma_s, sigma_t);
+        const auto volume_albedo =
+            albedo * (make_float4(1.0f) - segment_transmittance) *
+            active_throughput;
+        const auto channel_sample = sample_channel_spectral(
+            volume_albedo, active_throughput, reservoir_random,
+            secondary_terminated);
+        const auto channel = channel_sample.channel;
+        const VolumeDirectSampling direct_sampling;
+        const auto select_equiangular =
+            sampling.method == volume_sample_equiangular;
+        Float sampled_distance = equiangular_sample.distance;
+        Float distance_pdf = 0.0f;
+        Float equiangular_pdf = equiangular_sample.pdf;
+        $if(!select_equiangular) {
+            const auto rate = select(
+                select(sigma_t.w, sigma_t.z, channel == 2u),
+                select(sigma_t.y, sigma_t.x, channel == 0u), channel < 2u);
+            sampled_distance = bounded_exponential_sample(
+                scatter_random, rate, equiangular.interval.minimum,
+                equiangular.interval.maximum);
+        };
+        $if(!select_equiangular | sampling.use_mis) {
+            distance_pdf = dot(
+                bounded_exponential_pdf_spectral(
+                    sampled_distance, sigma_t, equiangular.interval.minimum,
+                    equiangular.interval.maximum),
+                channel_sample.pdf);
+        };
+        $if(!select_equiangular & sampling.use_mis) {
+            equiangular_pdf = direct_sampling.equiangular_pdf(
+                ray_origin, ray_direction, equiangular, sampled_distance);
+        };
+        const auto selected_pdf =
+            select(distance_pdf, equiangular_pdf, select_equiangular);
+        const auto valid =
+            (!select_equiangular | equiangular_sample.valid) & (selected_pdf > 0.0f);
+        $if(valid) {
+            Float mis_weight = 1.0f;
+            $if(sampling.use_mis) {
+                const auto competing_pdf =
+                    select(equiangular_pdf, distance_pdf, select_equiangular);
+                mis_weight =
+                    2.0f *
+                    direct_sampling.power_heuristic(selected_pdf, competing_pdf);
+            };
+            result.transmittance = transmittance_spectral(sigma_t, sampled_distance);
+            result.throughput =
+                active_throughput *
+                _safe_divide4(sigma_s * result.transmittance, selected_pdf) *
+                mis_weight;
             result.channel_pdf = channel_sample.pdf;
             result.distance = sampled_distance;
             result.distance_pdf = distance_pdf;

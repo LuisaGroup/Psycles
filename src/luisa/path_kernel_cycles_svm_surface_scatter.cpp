@@ -259,14 +259,13 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
         out.bssrdf_sample.bssrdf_ior = bssrdf.param.ior;
         out.bssrdf_sample.bssrdf_roughness = bssrdf.param.alpha;
         out.bssrdf_sample.bssrdf_anisotropy = bssrdf.param.anisotropy;
-        const auto bssrdf_w =
-            native::surface_shader_bssrdf_sample_weight(sd, pick.index);
         if (spectral) {
-          const auto ctx = sample.spectral_context();
-          out.throughput_weight =
-              cycles_spectrum::Spectrum::from_rgb_reflectance(
-                  ctx->tables, bssrdf_w, &ctx->wavelengths, true);
+          out.throughput_weight = cycles_spectrum::Spectrum::from_lanes(
+              native::surface_shader_bssrdf_sample_weight_spectral(
+                  sd, pick.index, *sample.spectral_context()));
         } else {
+          const auto bssrdf_w =
+              native::surface_shader_bssrdf_sample_weight(sd, pick.index);
           out.throughput_weight =
               cycles_spectrum::Spectrum::from_rgb_raw(bssrdf_w);
         }
@@ -656,13 +655,13 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
         bssrdf_sample.bssrdf_ior = bssrdf.param.ior;
         bssrdf_sample.bssrdf_roughness = bssrdf.param.alpha;
         bssrdf_sample.bssrdf_anisotropy = bssrdf.param.anisotropy;
-        const auto bssrdf_w =
-            native::surface_shader_bssrdf_sample_weight(sd, pick.index);
         if (spectral) {
-          const auto ctx = sample.spectral_context();
-          sample.throughput *= cycles_spectrum::Spectrum::from_rgb_reflectance(
-              ctx->tables, bssrdf_w, &ctx->wavelengths, true);
+          sample.throughput *= cycles_spectrum::Spectrum::from_lanes(
+              native::surface_shader_bssrdf_sample_weight_spectral(
+                  sd, pick.index, *sample.spectral_context()));
         } else {
+          const auto bssrdf_w =
+              native::surface_shader_bssrdf_sample_weight(sd, pick.index);
           sample.throughput *= cycles_spectrum::Spectrum::from_rgb_raw(bssrdf_w);
         }
         sample.cycles_rng_offset += path::bounce_dimension_count;

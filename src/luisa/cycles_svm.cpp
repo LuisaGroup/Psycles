@@ -207,7 +207,8 @@ void eval_nodes_impl(
             if (shader_type == SHADER_TYPE_VOLUME &&
                 (kernel_features & kernel_feature_volume) != 0u) {
               detail::node_closure_volume(kernel_globals, cursor, stack,
-                                           closure_weight, shader_data, transition);
+                                           closure_weight, shader_data,
+                                           transition, spectral_weight_ptr);
             } else {
               cursor.advance(static_cast<unsigned>(sizeof(SVMNodeClosureVolume) / sizeof(std::uint32_t)));
             }
@@ -220,7 +221,9 @@ void eval_nodes_impl(
             if (shader_type == SHADER_TYPE_VOLUME &&
                 (kernel_features & kernel_feature_volume) != 0u) {
               detail::node_volume_coefficients(kernel_globals, cursor, stack,
-                                                closure_weight, shader_data, path_state, transition);
+                                                closure_weight, shader_data,
+                                                path_state, transition,
+                                                spectral_weight_ptr);
             } else {
               cursor.advance(static_cast<unsigned>(sizeof(SVMNodeVolumeCoefficients) / sizeof(std::uint32_t)));
             }
@@ -233,7 +236,9 @@ void eval_nodes_impl(
             if (shader_type == SHADER_TYPE_VOLUME &&
                 (kernel_features & kernel_feature_volume) != 0u) {
               detail::node_principled_volume(kernel_globals, cursor, stack,
-                                             closure_weight, shader_data, path_state, transition);
+                                             closure_weight, shader_data,
+                                             path_state, transition,
+                                             spectral_weight_ptr);
             } else {
               cursor.advance(static_cast<unsigned>(sizeof(SVMNodePrincipledVolume) / sizeof(std::uint32_t)));
             }

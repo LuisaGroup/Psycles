@@ -25,6 +25,17 @@ struct HeterogeneousVolumeShadowResult {
     Bool throughput_terminated;
 };
 
+struct HeterogeneousVolumeShadowResultSpectral {
+    Float4 throughput;
+    UInt next_tracking_rng_offset;
+    UInt groups;
+    UInt source_segments;
+    UInt closure_evaluations;
+    Bool traversal_exhausted;
+    Bool lookup_complete;
+    Bool throughput_terminated;
+};
+
 // Cycles' shadow-only majorant coalescing and residual-ratio traversal.
 // Adjacent immutable hierarchy segments are merged until
 // sigma_range * length >= 1, reducing the mandatory one-sample-per-segment
@@ -46,6 +57,19 @@ class HeterogeneousVolumeShadowComponent {
         Float3 throughput,
         UInt tracking_rng_offset)
         const noexcept = 0;
+
+    [[nodiscard]]
+    virtual HeterogeneousVolumeShadowResultSpectral
+    emit_spectral(
+        VolumeMajorantSegmentSequence &segments,
+        const HeterogeneousVolumeTrackingRandomSource
+            &random,
+        const HeterogeneousVolumeCollisionProvider
+            &collisions,
+        Float4 throughput,
+        UInt tracking_rng_offset,
+        Bool secondary_terminated)
+        const noexcept = 0;
 };
 
 [[nodiscard]]
@@ -57,3 +81,6 @@ make_heterogeneous_volume_shadow_component();
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
     psycles::luisa_backend::
         HeterogeneousVolumeShadowResult)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(
+    psycles::luisa_backend::
+        HeterogeneousVolumeShadowResultSpectral)
