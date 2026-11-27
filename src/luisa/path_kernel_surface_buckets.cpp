@@ -100,6 +100,7 @@ struct RoutineGroup {
   std::size_t ir_ops{0u};
   std::size_t jit_weight{0u};
   bool has_bssrdf{false};
+  bool is_heavy_closure_model{false};
   bool has_emission{false};
   bool has_holdout{false};
 };
@@ -429,6 +430,30 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
         (flags & static_cast<std::uint32_t>(abi::SD_HAS_EMISSION)) != 0u ||
         entry.node_types_used[abi::NODE_CLOSURE_EMISSION];
     const bool has_hold = entry.node_types_used[abi::NODE_CLOSURE_HOLDOUT];
+    constexpr std::uint64_t heavy_closure_mask =
+        abi::ClosureUsage::bit(cycles_closure::type_microfacet_ggx_glass) |
+        abi::ClosureUsage::bit(cycles_closure::type_microfacet_beckmann_glass) |
+        abi::ClosureUsage::bit(
+            cycles_closure::type_microfacet_multi_ggx_glass) |
+        abi::ClosureUsage::bit(
+            cycles_closure::type_microfacet_ggx_refraction) |
+        abi::ClosureUsage::bit(
+            cycles_closure::type_microfacet_beckmann_refraction) |
+        abi::ClosureUsage::bit(cycles_closure::type_thin_glass_transmission) |
+        abi::ClosureUsage::bit(cycles_closure::type_hair_reflection) |
+        abi::ClosureUsage::bit(cycles_closure::type_hair_transmission) |
+        abi::ClosureUsage::bit(cycles_closure::type_hair_chiang) |
+        abi::ClosureUsage::bit(cycles_closure::type_hair_huang) |
+        abi::ClosureUsage::bit(cycles_closure::type_sheen);
+    const bool has_concrete_closure_mask =
+        meta.surface_closure_usage.surface_closure_mask != ~0ull;
+    const bool heavy_model =
+        meta.surface_num_closures > 4u ||
+        (has_concrete_closure_mask &&
+         ((meta.surface_closure_usage.surface_closure_mask &
+           heavy_closure_mask) != 0ull ||
+          meta.surface_closure_usage.has_fresnel(
+              abi::ClosureUsage::fresnel_anisotropic)));
 
     bool merged = false;
     for (auto &g : groups) {
@@ -436,6 +461,7 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
         g.shader_ids.push_back(i);
         g.max_closures = std::max(g.max_closures, meta.surface_num_closures);
         g.has_bssrdf = g.has_bssrdf || meta.has_surface_bssrdf;
+        g.is_heavy_closure_model = g.is_heavy_closure_model || heavy_model;
         g.has_emission = g.has_emission || has_emit;
         g.has_holdout = g.has_holdout || has_hold;
         merged = true;
@@ -455,6 +481,7 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
                                     false),
           1u);
       g.has_bssrdf = meta.has_surface_bssrdf;
+      g.is_heavy_closure_model = heavy_model;
       g.has_emission = has_emit;
       g.has_holdout = has_hold;
       groups.push_back(std::move(g));
@@ -469,11 +496,13 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
               const bool b_multi = b.max_closures > 1u;
               const bool a_special = a.has_emission || a.has_holdout;
               const bool b_special = b.has_emission || b.has_holdout;
-              return std::tuple{a.has_bssrdf, a_heavy_closures, a_multi,
-                                a_special, a.max_closures, a.ir_ops,
+              return std::tuple{a.has_bssrdf, a.is_heavy_closure_model,
+                                a_heavy_closures, a_multi, a_special,
+                                a.max_closures, a.ir_ops,
                                 a.shader_ids.front()} <
-                     std::tuple{b.has_bssrdf, b_heavy_closures, b_multi,
-                                b_special, b.max_closures, b.ir_ops,
+                     std::tuple{b.has_bssrdf, b.is_heavy_closure_model,
+                                b_heavy_closures, b_multi, b_special,
+                                b.max_closures, b.ir_ops,
                                 b.shader_ids.front()};
             });
 
@@ -488,6 +517,9 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
   std::size_t low_closure_non_bssrdf_shaders = 0u;
   std::size_t low_closure_non_bssrdf_weight = 0u;
   std::size_t low_closure_non_bssrdf_groups = 0u;
+  std::size_t compact_non_bssrdf_shaders = 0u;
+  std::size_t compact_non_bssrdf_weight = 0u;
+  std::size_t compact_non_bssrdf_groups = 0u;
   std::size_t non_bssrdf_shaders = 0u;
   std::size_t non_bssrdf_weight = 0u;
   std::size_t non_bssrdf_groups = 0u;
@@ -498,19 +530,24 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       non_bssrdf_shaders += g.shader_ids.size();
       non_bssrdf_weight += g.jit_weight;
       ++non_bssrdf_groups;
-      if (g.max_closures <= 2u) {
-        low_closure_non_bssrdf_shaders += g.shader_ids.size();
-        low_closure_non_bssrdf_weight += g.jit_weight;
-        ++low_closure_non_bssrdf_groups;
-      }
-      if (g.max_closures <= 1u) {
-        simple_single_closure_shaders += g.shader_ids.size();
-        simple_single_closure_weight += g.jit_weight;
-        ++simple_single_closure_groups;
-        if (!g.has_emission && !g.has_holdout) {
-          pure_simple_shaders += g.shader_ids.size();
-          pure_simple_weight += g.jit_weight;
-          ++pure_simple_groups;
+      if (!g.is_heavy_closure_model) {
+        compact_non_bssrdf_shaders += g.shader_ids.size();
+        compact_non_bssrdf_weight += g.jit_weight;
+        ++compact_non_bssrdf_groups;
+        if (g.max_closures <= 2u) {
+          low_closure_non_bssrdf_shaders += g.shader_ids.size();
+          low_closure_non_bssrdf_weight += g.jit_weight;
+          ++low_closure_non_bssrdf_groups;
+        }
+        if (g.max_closures <= 1u) {
+          simple_single_closure_shaders += g.shader_ids.size();
+          simple_single_closure_weight += g.jit_weight;
+          ++simple_single_closure_groups;
+          if (!g.has_emission && !g.has_holdout) {
+            pure_simple_shaders += g.shader_ids.size();
+            pure_simple_weight += g.jit_weight;
+            ++pure_simple_groups;
+          }
         }
       }
     }
@@ -580,7 +617,10 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
                                     std::size_t s_cnt) noexcept {
       return g_cnt >= 3u && s_cnt * 5u >= total_active_nonempty;
     };
-    if (low_closure_non_bssrdf_groups < groups.size() &&
+    const bool has_bssrdf_groups = non_bssrdf_groups < groups.size();
+    if ((!has_bssrdf_groups ||
+         low_closure_non_bssrdf_groups * 2u >= non_bssrdf_groups) &&
+        low_closure_non_bssrdf_groups < groups.size() &&
         non_degenerate(low_closure_non_bssrdf_groups,
                        low_closure_non_bssrdf_shaders) &&
         (groups[low_closure_non_bssrdf_groups].has_bssrdf ||
@@ -590,8 +630,18 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
         fits_slice(total_active_nonempty - low_closure_non_bssrdf_shaders,
                    total_jit_weight - low_closure_non_bssrdf_weight)) {
       cut = low_closure_non_bssrdf_groups;
-    } else if (non_bssrdf_groups >= 1u &&
-               non_bssrdf_groups < groups.size() &&
+    } else if (compact_non_bssrdf_groups < non_bssrdf_groups &&
+               (!has_bssrdf_groups ||
+                compact_non_bssrdf_groups * 2u >= non_bssrdf_groups) &&
+               non_degenerate(compact_non_bssrdf_groups,
+                              compact_non_bssrdf_shaders) &&
+               fits_slice(compact_non_bssrdf_shaders,
+                          compact_non_bssrdf_weight) &&
+               fits_slice(total_active_nonempty - compact_non_bssrdf_shaders,
+                          total_jit_weight - compact_non_bssrdf_weight)) {
+      cut = compact_non_bssrdf_groups;
+    } else if (has_bssrdf_groups &&
+               non_bssrdf_groups >= 1u &&
                fits_slice(non_bssrdf_shaders, non_bssrdf_weight) &&
                fits_slice(total_active_nonempty - non_bssrdf_shaders,
                           total_jit_weight - non_bssrdf_weight)) {

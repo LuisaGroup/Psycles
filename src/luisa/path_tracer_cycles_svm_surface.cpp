@@ -297,9 +297,17 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
       // would instead make an uninitialized [count, capacity) slot readable.
       const auto closure_index = pick.index;
       const auto common = _closures->common(closure_index);
+      constexpr auto bssrdf_mask =
+          (svm_detail::ClosureTypeMask{1u} << closure::type_bssrdf_burley) |
+          (svm_detail::ClosureTypeMask{1u} << closure::type_bssrdf_random_walk) |
+          (svm_detail::ClosureTypeMask{1u} <<
+           closure::type_bssrdf_random_walk_legacy) |
+          (svm_detail::ClosureTypeMask{1u} <<
+           closure::type_bssrdf_random_walk_skin);
       const auto has_subsurface =
-          (_scene->cycles_svm->kernel_features &
-           svm::kernel_feature_subsurface) != 0u;
+          ((_scene->cycles_svm->kernel_features &
+            svm::kernel_feature_subsurface) != 0u) &&
+          ((_closure_types & bssrdf_mask) != 0ull);
       const auto selected =
           (has_subsurface ? closure::is_bsdf_or_bssrdf(common.type)
                           : closure::is_bsdf(common.type)) &
@@ -435,34 +443,47 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
               _scene, context,
               std::span<const std::uint8_t>{bucket.active_shader_mask},
               false, context.vt_miss_page, context.spectral.has_value()},
-          _closures{std::make_unique<svm::ClosurePool>(
-              std::clamp<std::size_t>(
-                  bucket.max_surface_closures != 0u
-                      ? bucket.max_surface_closures
-                      : (_scene->cycles_svm
-                             ? _scene->cycles_svm->compilation.max_surface_closures
-                             : _scene->volume_metadata.closure_allocation_budget),
-                  1u, svm::maximum_closure_capacity),
-              svm::ClosurePool::Options{
-                  .may_have_thin_film = _kernel_globals.may_have_thin_film(),
-                  .may_have_anisotropic_microfacet =
-                      _kernel_globals.closure_usage().has_fresnel(
-                          abi::ClosureUsage::fresnel_anisotropic),
-                  .may_have_custom_generalized_schlick =
-                      _kernel_globals.closure_usage().has_fresnel(
-                          abi::ClosureUsage::fresnel_custom_generalized_schlick),
-                  .may_have_positive_exponent =
-                      _kernel_globals.closure_usage().has_fresnel(
-                          abi::ClosureUsage::fresnel_positive_exponent),
-                  .may_have_extra_fresnel =
-                      _kernel_globals.closure_usage().has_fresnel(
-                          abi::ClosureUsage::fresnel_conductor |
-                          abi::ClosureUsage::fresnel_f82_tint |
-                          abi::ClosureUsage::fresnel_generalized_schlick),
-                  .outline_transparent_merge =
-                      _scene->device.backend_name() == "simd" &&
-                      _scene->device.compute_warp_size() > 1u,
-                  .spectral = context.spectral.has_value()})},
+          _closures{[&]() noexcept {
+            const auto &cu = _kernel_globals.closure_usage();
+            constexpr std::uint64_t wide_closure_mask =
+                abi::ClosureUsage::bit(closure::type_sheen) |
+                abi::ClosureUsage::bit(closure::type_hair_chiang) |
+                abi::ClosureUsage::bit(closure::type_hair_huang) |
+                abi::ClosureUsage::bit(closure::type_bssrdf_burley) |
+                abi::ClosureUsage::bit(closure::type_bssrdf_random_walk) |
+                abi::ClosureUsage::bit(closure::type_bssrdf_random_walk_legacy) |
+                abi::ClosureUsage::bit(closure::type_bssrdf_random_walk_skin);
+            const bool compact_64b =
+                !cu.has_fresnel(abi::ClosureUsage::fresnel_anisotropic) &&
+                (cu.surface_closure_mask & wide_closure_mask) == 0ull;
+            return std::make_unique<svm::ClosurePool>(
+                std::clamp<std::size_t>(
+                    bucket.max_surface_closures != 0u
+                        ? bucket.max_surface_closures
+                        : (_scene->cycles_svm
+                               ? _scene->cycles_svm->compilation
+                                     .max_surface_closures
+                               : _scene->volume_metadata
+                                     .closure_allocation_budget),
+                    1u, svm::maximum_closure_capacity),
+                svm::ClosurePool::Options{
+                    .may_have_thin_film = _kernel_globals.may_have_thin_film(),
+                    .may_have_anisotropic_microfacet = cu.has_fresnel(
+                        abi::ClosureUsage::fresnel_anisotropic),
+                    .may_have_custom_generalized_schlick = cu.has_fresnel(
+                        abi::ClosureUsage::fresnel_custom_generalized_schlick),
+                    .may_have_positive_exponent = cu.has_fresnel(
+                        abi::ClosureUsage::fresnel_positive_exponent),
+                    .may_have_extra_fresnel = cu.has_fresnel(
+                        abi::ClosureUsage::fresnel_conductor |
+                        abi::ClosureUsage::fresnel_f82_tint |
+                        abi::ClosureUsage::fresnel_generalized_schlick),
+                    .outline_transparent_merge =
+                        _scene->device.backend_name() == "simd" &&
+                        _scene->device.compute_warp_size() > 1u,
+                    .spectral = context.spectral.has_value(),
+                    .compact_64b_slots = compact_64b});
+          }()},
           _closure_types{
               svm_detail::closure_types_for_kernel_features(
                   _scene->cycles_svm->kernel_features) &

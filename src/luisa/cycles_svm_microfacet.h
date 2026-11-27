@@ -64,7 +64,10 @@ bsdf_allocate(ShaderData &shader_data,
     luisa::compute::Expr<luisa::float3> specular_tint,
     luisa::compute::Expr<float> thin_film_thickness,
     luisa::compute::Expr<float> thin_film_ior,
-    luisa::compute::Expr<bool> preserve_energy) noexcept;
+    luisa::compute::Expr<bool> preserve_energy,
+    bool cursor_is_static = false,
+    bool node_static_pure_dielectric = false,
+    luisa::compute::Expr<float> specular_ior_level = 0.5f) noexcept;
 
 /* Exact Cycles Principled Coat dielectric-GGX transition. This includes
  * bsdf_alloc_maybe_emission, dielectric albedo estimation, and Cycles'

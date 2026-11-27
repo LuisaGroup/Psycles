@@ -11,6 +11,10 @@
 
 #include <psycles/luisa/native_vector_math.h>
 
+#include <cmath>
+#include <cstring>
+#include <optional>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
@@ -198,6 +202,35 @@ public:
   void advance() noexcept {
     _cursor.advance(static_cast<std::uint32_t>(
         sizeof(SVMNodePrincipledBsdfData) / sizeof(std::uint32_t)));
+  }
+
+  [[nodiscard]] bool is_static_pure_dielectric_specular() const noexcept {
+    if (!_cursor.is_static()) {
+      return false;
+    }
+    const auto read_const_float =
+        [&](std::uint32_t word) noexcept -> std::optional<float> {
+      const auto bits = try_const_uint(_cursor.word_at(word));
+      if (!bits || (*bits >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+        return std::nullopt;
+      }
+      float value = 0.0f;
+      std::memcpy(&value, &*bits, sizeof(value));
+      if (!std::isfinite(value)) {
+        return std::nullopt;
+      }
+      return value;
+    };
+    const auto ior_val = read_const_float(ior_word);
+    const auto spec_ior_val = read_const_float(specular_ior_level_word);
+    const auto tint_r = read_const_float(specular_tint_word);
+    const auto tint_g = read_const_float(specular_tint_word + 1u);
+    const auto tint_b = read_const_float(specular_tint_word + 2u);
+    const auto tf_val = read_const_float(thin_film_thickness_word);
+    return ior_val && *ior_val > 1.0f && spec_ior_val &&
+           *spec_ior_val == 0.5f && tint_r && tint_g && tint_b &&
+           *tint_r == 1.0f && *tint_g == 1.0f && *tint_b == 1.0f &&
+           tf_val && *tf_val <= THINFILM_THICKNESS_CUTOFF;
   }
 };
 
@@ -565,9 +598,9 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
 
       Float eta = ior;
       Float f0 = f0_from_ior(eta);
+      Float specular_ior_level = 0.5f;
       if (has_nondefault_specular_ior) {
-        const auto specular_ior_level =
-            max(data.specular_ior_level(stack), 0.0f);
+        specular_ior_level = max(data.specular_ior_level(stack), 0.0f);
         $if(specular_ior_level != 0.5f) {
           f0 *= 2.0f * specular_ior_level;
           eta = ior_from_f0(f0);
@@ -585,7 +618,9 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
         const auto layer_albedo = principled_specular_setup(
             kernel_globals, shader_data, weight, valid_reflection_normal,
             tangent, alpha_x, alpha_y, eta, f0, specular_tint,
-            thin_film_thickness, thin_film_ior, preserve_energy);
+            thin_film_thickness, thin_film_ior, preserve_energy,
+            cursor.is_static(), data.is_static_pure_dielectric_specular(),
+            specular_ior_level);
         weight = closure_layering_weight(layer_albedo, weight);
       };
 

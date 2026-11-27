@@ -582,7 +582,9 @@ Float3 principled_specular_setup(
     Expr<luisa::float3> tangent, Expr<float> alpha_x,
     Expr<float> alpha_y, Expr<float> eta, Expr<float> f0,
     Expr<luisa::float3> specular_tint, Expr<float> thin_film_thickness,
-    Expr<float> thin_film_ior, Expr<bool> preserve_energy) noexcept {
+    Expr<float> thin_film_ior, Expr<bool> preserve_energy,
+    bool cursor_is_static, bool node_static_pure_dielectric,
+    Expr<float> specular_ior_level) noexcept {
     if (shader_data.closure == nullptr) {
         return make_float3(0.0f);
     }
@@ -592,6 +594,13 @@ Float3 principled_specular_setup(
         usage.has_principled(Usage::principled_multi_ggx);
     const bool may_single_ggx =
         usage.has_principled(Usage::principled_single_ggx);
+    const bool has_thin_film =
+        kernel_globals.may_have_thin_film() &&
+        usage.has_principled(Usage::principled_thin_film);
+    const bool has_specular_tint =
+        usage.has_principled(Usage::principled_specular_tint);
+    const bool has_nondefault_specular_ior =
+        usage.has_principled(Usage::principled_nondefault_specular_ior);
     auto &pool = *shader_data.closure;
     Float3 layer_albedo = make_float3(0.0f);
     const Float3 clamped_weight = max(weight, make_float3(0.0f));
@@ -599,69 +608,164 @@ Float3 principled_specular_setup(
     const Bool survives_cutoff =
         (initial_sample_weight >= CLOSURE_WEIGHT_CUTOFF) |
         ((shader_data.flag & shader_data_is_volume_shader_eval) != 0u);
-    $if (survives_cutoff & (initial_sample_weight > 0.0f) & (pool.left() >= 2u)) {
-        const auto allocated = pool.allocate(
-            static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID),
-            clamped_weight);
-        const auto extra_allocated = pool.allocate_extra(allocated, 1u);
-        $if (extra_allocated) {
-        MicrofacetParam microfacet{
-            .alpha_x = clamp(alpha_x, 0.0f, 1.0f),
-            .alpha_y = clamp(alpha_y, 0.0f, 1.0f),
-            .ior = eta,
-            .energy_scale = 1.0f,
-            .fresnel_type = static_cast<std::uint32_t>(
-                MicrofacetFresnel::generalized_schlick),
-            .T = tangent};
-        const FresnelGeneralizedSchlick fresnel{
-            .thin_film = {.thickness = thin_film_thickness,
-                          .ior = thin_film_ior},
-            .reflection_tint = make_float3(1.0f),
-            .transmission_tint = make_float3(0.0f),
-            .f0 = clamp(make_float3(f0) * specular_tint,
-                        make_float3(0.0f), make_float3(1.0f)),
-            .f90 = make_float3(1.0f),
-            .exponent = -eta};
 
-        pool.set_generalized_schlick(allocated.index, fresnel);
+    const auto emit_dielectric_specular = [&] {
+        $if (survives_cutoff & (initial_sample_weight > 0.0f) & (pool.left() >= 1u)) {
+            const auto allocated = pool.allocate(
+                static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID),
+                clamped_weight);
+            $if (allocated.valid) {
+                MicrofacetParam microfacet{
+                    .alpha_x = clamp(alpha_x, 0.0f, 1.0f),
+                    .alpha_y = clamp(alpha_y, 0.0f, 1.0f),
+                    .ior = eta,
+                    .energy_scale = 1.0f,
+                    .fresnel_type = static_cast<std::uint32_t>(
+                        MicrofacetFresnel::dielectric),
+                    .T = tangent};
+                const auto albedo = dielectric_reflection_albedo(
+                    kernel_globals, shader_data.wi, normal, microfacet);
+                pool.set_sample_weight_and_normal(
+                    allocated.index, initial_sample_weight * albedo, normal);
+                const auto run_dielectric_preserve = [&] {
+                    const auto real_f0 = f0_from_ior(eta);
+                    const auto real_fss = fresnel_dielectric_fss(eta);
+                    const auto interpolation =
+                        clamp((real_fss - real_f0) / (1.0f - real_f0), 0.0f, 1.0f);
+                    const auto average_fresnel =
+                        make_float3(lerp(real_f0, 1.0f, interpolation));
+                    preserve_multi_ggx_reflection_energy(
+                        kernel_globals, pool, allocated, shader_data.wi, normal,
+                        microfacet, average_fresnel);
+                };
+                if (may_multi_ggx) {
+                    if (!may_single_ggx) {
+                        run_dielectric_preserve();
+                    } else {
+                        $if (preserve_energy) { run_dielectric_preserve(); };
+                    }
+                }
+                pool.set_microfacet_param(allocated.index, microfacet);
 
-        const auto albedo = generalized_schlick_albedo(
-            kernel_globals, shader_data.wi, normal, microfacet, fresnel, true,
-            true);
-        pool.set_sample_weight_and_normal(
-            allocated.index, initial_sample_weight * average(albedo), normal);
-        const auto run_preserve = [&] {
-            const auto real_f0 = f0_from_ior(eta);
-            const auto real_fss = fresnel_dielectric_fss(eta);
-            const auto interpolation =
-                clamp((real_fss - real_f0) / (1.0f - real_f0), 0.0f, 1.0f);
-            const auto average_fresnel = fresnel.reflection_tint *
-                                         lerp(fresnel.f0, fresnel.f90,
-                                              interpolation);
-            preserve_multi_ggx_reflection_energy(
-                kernel_globals, pool, allocated, shader_data.wi, normal,
-                microfacet, average_fresnel);
-        };
-        if (may_multi_ggx) {
-            if (!may_single_ggx) {
-                run_preserve();
-            } else {
-                $if (preserve_energy) { run_preserve(); };
-            }
-        }
-        pool.set_microfacet_param(allocated.index, microfacet);
-
-        UInt flags = shader_data_bsdf;
-        $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
-            flags |= shader_data_bsdf_has_eval;
-        };
-        shader_data.flag |= flags;
-        layer_albedo =
-            (may_multi_ggx ? pool.common(allocated.index).weight
-                           : clamped_weight) *
-            albedo;
+                UInt flags = shader_data_bsdf;
+                $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
+                    flags |= shader_data_bsdf_has_eval;
+                };
+                shader_data.flag |= flags;
+                layer_albedo =
+                    (may_multi_ggx ? pool.common(allocated.index).weight
+                                   : clamped_weight) *
+                    make_float3(albedo);
+            };
         };
     };
+
+    const auto emit_generalized_schlick_specular = [&] {
+        $if (survives_cutoff & (initial_sample_weight > 0.0f) & (pool.left() >= 2u)) {
+            const auto allocated = pool.allocate(
+                static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID),
+                clamped_weight);
+            const auto extra_allocated = pool.allocate_extra(allocated, 1u);
+            $if (extra_allocated) {
+                MicrofacetParam microfacet{
+                    .alpha_x = clamp(alpha_x, 0.0f, 1.0f),
+                    .alpha_y = clamp(alpha_y, 0.0f, 1.0f),
+                    .ior = eta,
+                    .energy_scale = 1.0f,
+                    .fresnel_type = static_cast<std::uint32_t>(
+                        MicrofacetFresnel::generalized_schlick),
+                    .T = tangent};
+                const FresnelGeneralizedSchlick fresnel{
+                    .thin_film = {.thickness = thin_film_thickness,
+                                  .ior = thin_film_ior},
+                    .reflection_tint = make_float3(1.0f),
+                    .transmission_tint = make_float3(0.0f),
+                    .f0 = clamp(make_float3(f0) * specular_tint,
+                                make_float3(0.0f), make_float3(1.0f)),
+                    .f90 = make_float3(1.0f),
+                    .exponent = -eta};
+
+                pool.set_generalized_schlick(allocated.index, fresnel);
+
+                const auto albedo = generalized_schlick_albedo(
+                    kernel_globals, shader_data.wi, normal, microfacet, fresnel, true,
+                    true);
+                pool.set_sample_weight_and_normal(
+                    allocated.index, initial_sample_weight * average(albedo), normal);
+                const auto run_preserve = [&] {
+                    const auto real_f0 = f0_from_ior(eta);
+                    const auto real_fss = fresnel_dielectric_fss(eta);
+                    const auto interpolation =
+                        clamp((real_fss - real_f0) / (1.0f - real_f0), 0.0f, 1.0f);
+                    const auto average_fresnel = fresnel.reflection_tint *
+                                                 lerp(fresnel.f0, fresnel.f90,
+                                                      interpolation);
+                    preserve_multi_ggx_reflection_energy(
+                        kernel_globals, pool, allocated, shader_data.wi, normal,
+                        microfacet, average_fresnel);
+                };
+                if (may_multi_ggx) {
+                    if (!may_single_ggx) {
+                        run_preserve();
+                    } else {
+                        $if (preserve_energy) { run_preserve(); };
+                    }
+                }
+                pool.set_microfacet_param(allocated.index, microfacet);
+
+                UInt flags = shader_data_bsdf;
+                $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
+                    flags |= shader_data_bsdf_has_eval;
+                };
+                shader_data.flag |= flags;
+                layer_albedo =
+                    (may_multi_ggx ? pool.common(allocated.index).weight
+                                   : clamped_weight) *
+                    albedo;
+            };
+        };
+    };
+
+    if (!usage.has_principled(Usage::principled_generalized_specular)) {
+        static_cast<void>(cursor_is_static);
+        static_cast<void>(node_static_pure_dielectric);
+        static_cast<void>(specular_ior_level);
+        static_cast<void>(f0);
+        static_cast<void>(specular_tint);
+        static_cast<void>(thin_film_thickness);
+        static_cast<void>(thin_film_ior);
+        emit_dielectric_specular();
+    } else if (usage.principled_mask == Usage::principled_all) {
+        static_cast<void>(cursor_is_static);
+        static_cast<void>(node_static_pure_dielectric);
+        static_cast<void>(specular_ior_level);
+        emit_generalized_schlick_specular();
+    } else if (cursor_is_static) {
+        static_cast<void>(specular_ior_level);
+        if (node_static_pure_dielectric) {
+            emit_dielectric_specular();
+        } else {
+            emit_generalized_schlick_specular();
+        }
+    } else {
+        Bool is_pure_dielectric = eta > 1.0f;
+        if (has_specular_tint) {
+            is_pure_dielectric &= all(specular_tint == make_float3(1.0f));
+        }
+        if (has_thin_film) {
+            is_pure_dielectric &=
+                thin_film_thickness <= table_detail::thin_film_thickness_cutoff;
+        }
+        if (has_nondefault_specular_ior) {
+            is_pure_dielectric &= (specular_ior_level == 0.5f);
+        }
+        $if (is_pure_dielectric) {
+            emit_dielectric_specular();
+        }
+        $else {
+            emit_generalized_schlick_specular();
+        };
+    }
     return layer_albedo;
 }
 

@@ -639,7 +639,17 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
         ordinary_bsdf();
       }
     };
-    if ((features & svm::kernel_feature_subsurface) != 0u) {
+    constexpr auto bssrdf_mask =
+        (native::ClosureTypeMask{1u} << closure::type_bssrdf_burley) |
+        (native::ClosureTypeMask{1u} << closure::type_bssrdf_random_walk) |
+        (native::ClosureTypeMask{1u} <<
+         closure::type_bssrdf_random_walk_legacy) |
+        (native::ClosureTypeMask{1u} <<
+         closure::type_bssrdf_random_walk_skin);
+    const bool has_subsurface =
+        ((features & svm::kernel_feature_subsurface) != 0u) &&
+        ((population.closure_types & bssrdf_mask) != 0ull);
+    if (has_subsurface) {
       $if(closure::is_bssrdf(sc.type)) {
         const auto bssrdf = pool.bssrdf(pick.index);
         bssrdf_sample.bssrdf_method = static_cast<unsigned>(SurfaceBssrdfMethod::random_walk);

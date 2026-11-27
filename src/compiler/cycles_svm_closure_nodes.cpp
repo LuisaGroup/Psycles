@@ -1103,6 +1103,39 @@ private:
     return !color_zero && !strength_zero;
   }
 
+  [[nodiscard]] bool is_nonunit_color(std::string_view name) const noexcept {
+    const auto *s = input(name);
+    if (s == nullptr || s->link != nullptr) {
+      return true;
+    }
+    const auto v = literal<Vec3f>(s, contract::SocketType::color);
+    return !v || !std::isfinite(v->x) || !std::isfinite(v->y) ||
+           !std::isfinite(v->z) || v->x != 1.0f || v->y != 1.0f ||
+           v->z != 1.0f;
+  }
+
+  [[nodiscard]] bool is_nonhalf_float(std::string_view name) const noexcept {
+    const auto *s = input(name);
+    if (s == nullptr || s->link != nullptr) {
+      return true;
+    }
+    const auto v = literal<float>(s, contract::SocketType::floating);
+    return !v || !std::isfinite(*v) || *v != 0.5f;
+  }
+
+  [[nodiscard]] bool specular_needs_generalized_schlick() const noexcept {
+    if (is_nonunit_color("SpecularTint") || thin_film_possible() ||
+        is_nonhalf_float("SpecularIORLevel")) {
+      return true;
+    }
+    const auto *ior = input("IOR");
+    if (ior == nullptr || ior->link != nullptr) {
+      return true;
+    }
+    const auto ior_val = literal<float>(ior, contract::SocketType::floating);
+    return !ior_val || !std::isfinite(*ior_val) || *ior_val <= 1.0f;
+  }
+
 public:
   [[nodiscard]] std::uint32_t
   get_surface_closure_slots() const noexcept override {
@@ -1127,7 +1160,7 @@ public:
         slots += 2u;
       }
       if (!full_transmission) {
-        slots += 2u; // Specular (ordinary + Generalized Schlick extra)
+        slots += specular_needs_generalized_schlick() ? 2u : 1u;
         const auto full_subsurface = is_always_unit_weight("SubsurfaceWeight");
         if (has_positive_weight("SubsurfaceWeight") &&
             (has_surface_bssrdf() || thin_wall_possible())) {
@@ -1156,24 +1189,6 @@ public:
       usage.principled_mask |= ClosureUsage::principled_single_ggx;
     }
 
-    const auto is_nonunit_color = [this](std::string_view name) noexcept {
-      const auto *s = input(name);
-      if (s == nullptr || s->link != nullptr) {
-        return true;
-      }
-      const auto v = literal<Vec3f>(s, contract::SocketType::color);
-      return !v || !std::isfinite(v->x) || !std::isfinite(v->y) ||
-             !std::isfinite(v->z) || v->x != 1.0f || v->y != 1.0f ||
-             v->z != 1.0f;
-    };
-    const auto is_nonhalf_float = [this](std::string_view name) noexcept {
-      const auto *s = input(name);
-      if (s == nullptr || s->link != nullptr) {
-        return true;
-      }
-      const auto v = literal<float>(s, contract::SocketType::floating);
-      return !v || !std::isfinite(*v) || *v != 0.5f;
-    };
     const auto *coat_normal_in = input("CoatNormal");
     const bool has_coat_normal =
         coat_normal_in != nullptr && coat_normal_in->link != nullptr;
@@ -1257,8 +1272,13 @@ public:
         // Specular
         usage.surface_closure_mask |=
             ClosureUsage::bit(CLOSURE_BSDF_MICROFACET_GGX_ID);
-        usage.microfacet_fresnel_mask |=
-            ClosureUsage::fresnel_generalized_schlick;
+        if (specular_needs_generalized_schlick()) {
+          usage.principled_mask |= ClosureUsage::principled_generalized_specular;
+          usage.microfacet_fresnel_mask |=
+              ClosureUsage::fresnel_generalized_schlick;
+        } else {
+          usage.microfacet_fresnel_mask |= ClosureUsage::fresnel_dielectric;
+        }
 
         const auto oren_nayar = diffuse_oren_nayar_possible();
         if (oren_nayar) {

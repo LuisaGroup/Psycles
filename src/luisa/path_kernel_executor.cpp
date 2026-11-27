@@ -656,16 +656,26 @@ build_path_kernel_executor(luisa::compute::Device &device,
     const auto can_publish_direct_light = can_stage_direct_light_queue(
         config.staged_direct_light_queue, path.path_trace_enabled, stage_plan);
     const auto pso_t0 = VtProfileRecorder::steady_ns();
+    const auto backend_name = device.backend_name();
+    auto effective_execution_block_size = config.wavefront_execution_block_size;
+    if (const auto *override_ebs =
+            std::getenv("PSYCLES_WAVEFRONT_EXECUTION_BLOCK_SIZE")) {
+      const auto parsed =
+          static_cast<std::uint32_t>(std::strtoul(override_ebs, nullptr, 10));
+      if (valid_luisa_execution_block_size(parsed)) {
+        effective_execution_block_size = parsed;
+      }
+    }
     if (can_publish_direct_light) {
       direct_light_queue = make_direct_light_task_queue(
           device, staged_path, config.wavefront_frame_capacity,
-          config.wavefront_execution_block_size, config.shader_option);
+          effective_execution_block_size, config.shader_option);
       staged_path.direct_light_task_sink = direct_light_queue.sink;
     }
     if (staged_path.caustics_active() && !path.path_trace_enabled) {
       caustics_queue = make_caustics_task_queue(
           device, staged_path, config.wavefront_frame_capacity,
-          config.wavefront_execution_block_size, config.shader_option);
+          effective_execution_block_size, config.shader_option);
       staged_path.caustics_task_sink = caustics_queue.sink;
     }
             auto coroutine =
@@ -680,7 +690,6 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 coroutine.frame().frame_field_count(),
                 coroutine.frame().frame_type()->size(),
                 config.wavefront_frame_capacity);
-    const auto backend_name = device.backend_name();
     bool has_surface_block_override = false;
     auto shade_surface_block_size =
         (backend_name == "vk") ? 32u : 64u;
@@ -707,8 +716,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
     const auto surface_buckets = make_path_surface_bucket_plan(staged_path);
     luisa::compute::coro::WavefrontCoroSchedulerConfig scheduler_config;
     scheduler_config.thread_count = config.wavefront_frame_capacity;
-    scheduler_config.execution_block_size =
-        config.wavefront_execution_block_size;
+    scheduler_config.execution_block_size = effective_execution_block_size;
     for (std::size_t b = 0u; b < surface_buckets.buckets.size(); ++b) {
       std::uint32_t block_size = shade_surface_block_size;
       if (b == 0u && has_bucket0_block_override) {
@@ -726,7 +734,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
     if (surface_buckets.post_closure_substage) {
       scheduler_config.continuation_block_sizes.push_back(
           {.continuation = path_transition::shade_surface_post,
-           .execution_block_size = config.wavefront_execution_block_size});
+           .execution_block_size = effective_execution_block_size});
     }
             scheduler_config.largest_continuation_first = true;
             scheduler_config.incremental_continuation_counts = true;

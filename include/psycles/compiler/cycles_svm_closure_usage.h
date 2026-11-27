@@ -36,7 +36,8 @@ struct ClosureUsage {
   static constexpr std::uint32_t principled_nondefault_specular_ior = 1u << 14u;
   static constexpr std::uint32_t principled_specular_tint = 1u << 15u;
   static constexpr std::uint32_t principled_subsurface = 1u << 16u;
-  static constexpr std::uint32_t principled_all = (1u << 17u) - 1u;
+  static constexpr std::uint32_t principled_generalized_specular = 1u << 17u;
+  static constexpr std::uint32_t principled_all = (1u << 18u) - 1u;
 
   static constexpr std::uint32_t diffuse_lambertian = 1u << 0u;
   static constexpr std::uint32_t diffuse_oren_nayar = 1u << 1u;

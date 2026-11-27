@@ -975,17 +975,22 @@ public:
     bool may_have_extra_fresnel{true};
     bool outline_transparent_merge{false};
     bool spectral{false};
+    bool compact_64b_slots{false};
   };
 
 private:
   std::size_t _capacity;
   Options _options;
+  std::uint32_t _slot_vec4s;
   luisa::compute::Local<luisa::uint4> _storage;
   std::optional<luisa::compute::Local<luisa::float4>> _spectral_weight;
   std::optional<luisa::compute::Local<luisa::uint>> _spectral_weight_valid;
   luisa::compute::UInt _count;
   luisa::compute::UInt _left;
 
+  [[nodiscard]] luisa::compute::Expr<std::uint32_t> slot_storage_index(
+      luisa::compute::Expr<std::uint32_t> slot,
+      std::uint32_t vec_index) const noexcept;
   [[nodiscard]] luisa::compute::UInt4 load_vec4(
       luisa::compute::Expr<std::uint32_t> slot,
       std::uint32_t vec_index) const noexcept;

@@ -624,43 +624,49 @@ inline void hash_mix(UInt &a, UInt &b, UInt &c) noexcept {
 }
 
 [[nodiscard]] inline Float signed_noise_inline(Float p) noexcept {
-    auto correction = select(
-        0.0f, 0.5f, abs(p) >= 1000000.0f);
-    return 0.25f *
-           perlin(fmod(p, 100000.0f) + correction);
+    Float q = p;
+    $if (!(abs(p) < 100000.0f)) {
+        auto correction = select(
+            0.0f, 0.5f, abs(p) >= 1000000.0f);
+        q = fmod(p, 100000.0f) + correction;
+    };
+    return 0.25f * perlin(q);
 }
 
 [[nodiscard]] inline Float signed_noise_inline(Float2 p) noexcept {
-    auto correction = make_float2(
-        select(0.0f, 0.5f, abs(p.x) >= 1000000.0f),
-        select(0.0f, 0.5f, abs(p.y) >= 1000000.0f));
-    return 0.6616f *
-           perlin(
-               fmod(p, make_float2(100000.0f)) +
-               correction);
+    Float2 q = p;
+    $if (!all(abs(p) < make_float2(100000.0f))) {
+        auto correction = make_float2(
+            select(0.0f, 0.5f, abs(p.x) >= 1000000.0f),
+            select(0.0f, 0.5f, abs(p.y) >= 1000000.0f));
+        q = fmod(p, make_float2(100000.0f)) + correction;
+    };
+    return 0.6616f * perlin(q);
 }
 
 [[nodiscard]] inline Float signed_noise_inline(Float3 p) noexcept {
-    auto correction = make_float3(
-        select(0.0f, 0.5f, abs(p.x) >= 1000000.0f),
-        select(0.0f, 0.5f, abs(p.y) >= 1000000.0f),
-        select(0.0f, 0.5f, abs(p.z) >= 1000000.0f));
-    return 0.9820f *
-           perlin(
-               fmod(p, make_float3(100000.0f)) +
-               correction);
+    Float3 q = p;
+    $if (!all(abs(p) < make_float3(100000.0f))) {
+        auto correction = make_float3(
+            select(0.0f, 0.5f, abs(p.x) >= 1000000.0f),
+            select(0.0f, 0.5f, abs(p.y) >= 1000000.0f),
+            select(0.0f, 0.5f, abs(p.z) >= 1000000.0f));
+        q = fmod(p, make_float3(100000.0f)) + correction;
+    };
+    return 0.9820f * perlin(q);
 }
 
 [[nodiscard]] inline Float signed_noise_inline(Float4 p) noexcept {
-    auto correction = make_float4(
-        select(0.0f, 0.5f, abs(p.x) >= 1000000.0f),
-        select(0.0f, 0.5f, abs(p.y) >= 1000000.0f),
-        select(0.0f, 0.5f, abs(p.z) >= 1000000.0f),
-        select(0.0f, 0.5f, abs(p.w) >= 1000000.0f));
-    return 0.8344f *
-           perlin(
-               fmod(p, make_float4(100000.0f)) +
-               correction);
+    Float4 q = p;
+    $if (!all(abs(p) < make_float4(100000.0f))) {
+        auto correction = make_float4(
+            select(0.0f, 0.5f, abs(p.x) >= 1000000.0f),
+            select(0.0f, 0.5f, abs(p.y) >= 1000000.0f),
+            select(0.0f, 0.5f, abs(p.z) >= 1000000.0f),
+            select(0.0f, 0.5f, abs(p.w) >= 1000000.0f));
+        q = fmod(p, make_float4(100000.0f)) + correction;
+    };
+    return 0.8344f * perlin(q);
 }
 
 // Perlin evaluation is the substantial common subexpression shared by Noise

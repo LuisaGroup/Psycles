@@ -39,7 +39,10 @@ ClosurePool::ClosurePool(std::size_t capacity) noexcept
 ClosurePool::ClosurePool(std::size_t capacity, Options options) noexcept
     : _capacity{std::min(capacity, maximum_closure_capacity)},
       _options{options},
-      _storage{std::max(_capacity, std::size_t{1u}) * closure_vec4s},
+      _slot_vec4s{_options.compact_64b_slots
+                      ? 4u
+                      : static_cast<std::uint32_t>(closure_vec4s)},
+      _storage{std::max(_capacity, std::size_t{1u}) * _slot_vec4s},
       _count{0u},
       _left{static_cast<std::uint32_t>(_capacity)} {
   if (_options.spectral) {
@@ -49,54 +52,61 @@ ClosurePool::ClosurePool(std::size_t capacity, Options options) noexcept
   }
 }
 
-UInt4 ClosurePool::load_vec4(Expr<std::uint32_t> slot,
-                             std::uint32_t vec_index) const noexcept {
+Expr<std::uint32_t> ClosurePool::slot_storage_index(
+    Expr<std::uint32_t> slot, std::uint32_t vec_index) const noexcept {
+  LUISA_ASSERT(
+      vec_index < _slot_vec4s,
+      "ClosurePool vec4 index {} exceeds slot stride {} (byte offset {}).",
+      vec_index, _slot_vec4s, vec_index * 16u);
   if (_capacity <= 1u) {
-    return _storage[vec_index];
+    return Expr<std::uint32_t>{vec_index};
   }
   if (const auto c = detail::try_const_uint(slot)) {
-    if (*c >= _capacity) {
-      return luisa::compute::make_uint4(0u);
-    }
-    return _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_index];
+    return Expr<std::uint32_t>{*c * _slot_vec4s + vec_index};
   }
-  return _storage[slot * static_cast<std::uint32_t>(closure_vec4s) + vec_index];
+  if (_slot_vec4s == 4u) {
+    return (slot << 2u) + vec_index;
+  }
+  return slot * _slot_vec4s + vec_index;
+}
+
+UInt4 ClosurePool::load_vec4(Expr<std::uint32_t> slot,
+                             std::uint32_t vec_index) const noexcept {
+  if (_capacity > 1u) {
+    if (const auto c = detail::try_const_uint(slot)) {
+      if (*c >= _capacity) {
+        return luisa::compute::make_uint4(0u);
+      }
+    }
+  }
+  return _storage[slot_storage_index(slot, vec_index)];
 }
 
 void ClosurePool::store_vec4(Expr<std::uint32_t> slot,
                              std::uint32_t vec_index,
                              Expr<luisa::uint4> value) noexcept {
-  if (_capacity <= 1u) {
-    _storage[vec_index] = value;
-    return;
-  }
-  if (const auto c = detail::try_const_uint(slot)) {
-    if (*c >= _capacity) {
-      return;
+  if (_capacity > 1u) {
+    if (const auto c = detail::try_const_uint(slot)) {
+      if (*c >= _capacity) {
+        return;
+      }
     }
-    _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_index] =
-        value;
-    return;
   }
-  _storage[slot * static_cast<std::uint32_t>(closure_vec4s) + vec_index] = value;
+  _storage[slot_storage_index(slot, vec_index)] = value;
 }
 
 UInt ClosurePool::load_word(Expr<std::uint32_t> slot,
                             std::uint32_t byte_offset) const noexcept {
   const auto vec_offset = static_cast<std::uint32_t>(byte_offset / 16u);
   const auto lane = static_cast<std::uint32_t>((byte_offset / 4u) & 3u);
-  if (_capacity <= 1u) {
-    return _storage[vec_offset][lane];
-  }
-  if (const auto c = detail::try_const_uint(slot)) {
-    if (*c >= _capacity) {
-      return 0u;
+  if (_capacity > 1u) {
+    if (const auto c = detail::try_const_uint(slot)) {
+      if (*c >= _capacity) {
+        return 0u;
+      }
     }
-    return _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_offset]
-                   [lane];
   }
-  return _storage[slot * static_cast<std::uint32_t>(closure_vec4s) + vec_offset]
-                 [lane];
+  return _storage[slot_storage_index(slot, vec_offset)][lane];
 }
 
 void ClosurePool::store_word(Expr<std::uint32_t> slot,
@@ -104,20 +114,14 @@ void ClosurePool::store_word(Expr<std::uint32_t> slot,
                              Expr<std::uint32_t> value) noexcept {
   const auto vec_offset = static_cast<std::uint32_t>(byte_offset / 16u);
   const auto lane = static_cast<std::uint32_t>((byte_offset / 4u) & 3u);
-  if (_capacity <= 1u) {
-    _storage[vec_offset][lane] = value;
-    return;
-  }
-  if (const auto c = detail::try_const_uint(slot)) {
-    if (*c >= _capacity) {
-      return;
+  if (_capacity > 1u) {
+    if (const auto c = detail::try_const_uint(slot)) {
+      if (*c >= _capacity) {
+        return;
+      }
     }
-    _storage[*c * static_cast<std::uint32_t>(closure_vec4s) + vec_offset][lane] =
-        value;
-    return;
   }
-  _storage[slot * static_cast<std::uint32_t>(closure_vec4s) + vec_offset]
-          [lane] = value;
+  _storage[slot_storage_index(slot, vec_offset)][lane] = value;
 }
 
 Float ClosurePool::load_float(Expr<std::uint32_t> slot,

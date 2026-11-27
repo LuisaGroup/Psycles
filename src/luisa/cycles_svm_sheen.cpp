@@ -75,6 +75,21 @@ void node_sheen(const KernelGlobals &kernel_globals, Cursor &cursor,
   if (shader_data.closure == nullptr) {
     return;
   }
+  const auto const_type = try_const_uint(type);
+  const auto usage = kernel_globals.closure_usage();
+  const bool may_sheen =
+      (!const_type.has_value() ||
+       *const_type == static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID)) &&
+      ((usage.surface_closure_mask &
+        ClosureUsage::bit(CLOSURE_BSDF_SHEEN_ID)) != 0ull);
+  const bool may_velvet =
+      (!const_type.has_value() ||
+       *const_type != static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID)) &&
+      ((usage.surface_closure_mask &
+        ClosureUsage::bit(CLOSURE_BSDF_ASHIKHMIN_VELVET_ID)) != 0ull);
+  if (!may_sheen && !may_velvet) {
+    return;
+  }
   const auto normal_offset = cursor.byte(normal_packed, 0u);
   auto normal =
       stack_load_float3_default(stack, normal_offset, shader_data.N);
@@ -87,7 +102,7 @@ void node_sheen(const KernelGlobals &kernel_globals, Cursor &cursor,
     pool.set_normal(allocated.index, normal);
     const auto roughness =
         clamp(stack_load_input_float(stack, roughness_input), 0.0f, 1.0f);
-    $if(type == static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID)) {
+    const auto emit_sheen = [&] noexcept {
       const auto setup =
           sheen_setup_result(kernel_globals, shader_data, normal, roughness);
       pool.set_type(allocated.index,
@@ -105,8 +120,8 @@ void node_sheen(const KernelGlobals &kernel_globals, Cursor &cursor,
                                common.sample_weight * setup.albedo);
         shader_data.flag |= shader_data_bsdf | shader_data_bsdf_has_eval;
       };
-    }
-    $else {
+    };
+    const auto emit_velvet = [&] noexcept {
       const auto canonical_sigma = max(roughness, 0.01f);
       pool.set_velvet_param(
           allocated.index,
@@ -117,6 +132,16 @@ void node_sheen(const KernelGlobals &kernel_globals, Cursor &cursor,
           static_cast<std::uint32_t>(CLOSURE_BSDF_ASHIKHMIN_VELVET_ID));
       shader_data.flag |= shader_data_bsdf | shader_data_bsdf_has_eval;
     };
+    if (may_sheen && may_velvet) {
+      $if(type == static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID)) {
+        emit_sheen();
+      }
+      $else { emit_velvet(); };
+    } else if (may_sheen) {
+      emit_sheen();
+    } else {
+      emit_velvet();
+    }
   };
 }
 
