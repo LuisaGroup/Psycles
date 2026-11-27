@@ -1821,27 +1821,28 @@ if(PSYCLES_ENABLE_LUISA)
                 psycles_luisa_caustics_mnee_tests
                 PRIVATE
                     "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
-              foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
-                  if(TEST psycles.luisa_caustics_sms_${_backend})
-                      set_tests_properties(
-                          psycles.luisa_caustics_sms_${_backend}
-                          PROPERTIES TIMEOUT 240)
-                  endif()
-              endforeach()
-              if(TEST psycles.luisa_caustics_sms_dx)
-                  set_tests_properties(
-                      psycles.luisa_caustics_sms_dx
-                      PROPERTIES TIMEOUT 900)
-              endif()
-              # The DX backend re-JITs the whole staged coroutine from HLSL for
-              # every session, which is several times slower than the
-              # SPIR-V/CUDA code generators on the same scene; the 180 s gate is
-              # sized for those backends.
-              if(TEST psycles.luisa_caustics_mnee_dx)
-                  set_tests_properties(
-                      psycles.luisa_caustics_mnee_dx
-                      PROPERTIES TIMEOUT 900)
-              endif()
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
+                if(TEST psycles.luisa_caustics_mnee_${_backend})
+                    set_tests_properties(
+                        psycles.luisa_caustics_mnee_${_backend}
+                        PROPERTIES TIMEOUT 180)
+                endif()
+            endforeach()
+            # The DX backend re-JITs the whole staged coroutine from HLSL for
+            # every session, which is several times slower than the
+            # SPIR-V/CUDA code generators on the same scene; the 180 s gate is
+            # sized for those backends.
+            if(TEST psycles.luisa_caustics_mnee_dx)
+                set_tests_properties(
+                    psycles.luisa_caustics_mnee_dx
+                    PROPERTIES TIMEOUT 900)
+            endif()
+            if(TEST psycles.luisa_caustics_mnee_vk)
+                set_tests_properties(
+                    psycles.luisa_caustics_mnee_vk
+                    PROPERTIES ENVIRONMENT
+                        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+            endif()
 
             psycles_add_luisa_backend_test(
                 TARGET
@@ -1862,6 +1863,17 @@ if(PSYCLES_ENABLE_LUISA)
                         PROPERTIES TIMEOUT 240)
                 endif()
             endforeach()
+            if(TEST psycles.luisa_caustics_sms_dx)
+                set_tests_properties(
+                    psycles.luisa_caustics_sms_dx
+                    PROPERTIES TIMEOUT 900)
+            endif()
+            if(TEST psycles.luisa_caustics_sms_vk)
+                set_tests_properties(
+                    psycles.luisa_caustics_sms_vk
+                    PROPERTIES ENVIRONMENT
+                        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+            endif()
 
             psycles_add_luisa_backend_test(
                 TARGET
@@ -1886,6 +1898,33 @@ if(PSYCLES_ENABLE_LUISA)
             if(TEST psycles.luisa_spectral_volume_sss_vk)
                 set_tests_properties(
                     psycles.luisa_spectral_volume_sss_vk
+                    PROPERTIES ENVIRONMENT
+                        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+            endif()
+
+            psycles_add_luisa_backend_test(
+                TARGET
+                    psycles_luisa_spectral_caustics_kitchen_sink_tests
+                SOURCE
+                    tests/test_luisa_spectral_caustics_kitchen_sink.cpp
+                TEST_STEM
+                    luisa_spectral_caustics_kitchen_sink
+                LIBRARIES Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_luisa_spectral_caustics_kitchen_sink_tests
+                PRIVATE
+                    "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
+                if(TEST psycles.luisa_spectral_caustics_kitchen_sink_${_backend})
+                    set_tests_properties(
+                        psycles.luisa_spectral_caustics_kitchen_sink_${_backend}
+                        PROPERTIES TIMEOUT 240)
+                endif()
+            endforeach()
+            if(TEST psycles.luisa_spectral_caustics_kitchen_sink_vk)
+                set_tests_properties(
+                    psycles.luisa_spectral_caustics_kitchen_sink_vk
                     PROPERTIES ENVIRONMENT
                         "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
             endif()
