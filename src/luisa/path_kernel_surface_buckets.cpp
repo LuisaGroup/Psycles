@@ -3,6 +3,7 @@
 #include "path_kernel_surface_queue.h"
 #include "path_kernel_transitions.h"
 #include "path_tracer_cycles_svm_kernel_globals.h"
+#include "virtual_texture_cache.h"
 
 #include <psycles/compiler/cycles_svm_ir.h>
 #include <psycles/luisa/cycles_closure.h>
@@ -338,6 +339,36 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
   std::size_t domain_active_nonempty = 0u;
   std::size_t domain_unique_jit_weight = 0u;
   const auto host_words = std::span<const std::uint32_t>{compilation.table.words};
+  const auto &img_bindings = scene.cycles_svm->image_bindings;
+  const auto &vt = scene.virtual_texture_cache;
+  const bool direct_isotropic =
+      (scene.direct_texture_mip_mode == LuisaTextureMipMode::isotropic) ||
+      (vt && !vt->eager_fallback_active() &&
+       vt->mip_mode() == LuisaTextureMipMode::isotropic);
+  const auto direct_slot_query =
+      [&](std::int32_t image_id) noexcept
+      -> std::optional<svm::DirectImageSlotInfo> {
+    if (image_id < 0 ||
+        static_cast<std::size_t>(image_id) >= img_bindings.size()) {
+      return std::nullopt;
+    }
+    if (vt && !vt->eager_fallback_active() &&
+        vt->is_virtual_binding(image_id)) {
+      return std::nullopt;
+    }
+    if (direct_isotropic && scene.direct_image_mip_descs) {
+      return std::nullopt;
+    }
+    const auto &b = img_bindings[static_cast<std::size_t>(image_id)];
+    if ((b.sampler & cycles_svm_image_load_failed_flag) != 0u ||
+        (b.sampler & cycles_svm_image_interpolation_mask) == 2u) {
+      return std::nullopt;
+    }
+    return svm::DirectImageSlotInfo{
+        .texture_slot = b.texture_slot,
+        .channel_mode = (b.sampler & cycles_svm_image_channel_mode_mask) >>
+                        cycles_svm_image_channel_mode_shift};
+  };
   luisa::vector<const abi::SvmBlockIr *> domain_unique_routines;
   for (std::uint32_t i = 0u; i < count; ++i) {
     if (i < domain_mask.size() && domain_mask[i] == 0u) {
@@ -349,7 +380,8 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       ++domain_active_nonempty;
       bool merged = false;
       for (const abi::SvmBlockIr *existing : domain_unique_routines) {
-        if (abi::same_linked_svm_block(host_words, *existing, routine)) {
+        if (svm::can_merge_svm_blocks_structurally(
+                host_words, *existing, routine, false, direct_slot_query)) {
           merged = true;
           break;
         }
@@ -388,7 +420,7 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
     // severely degrades DX/VK throughput, so split into <=80-shader buckets.
     if (!has_subsurface &&
         (backend_name == "dx" || backend_name == "vk") &&
-        domain_active_nonempty <= svm::direct_jit_max_shaders() &&
+        domain_unique_routines.size() <= svm::direct_jit_max_shaders() &&
         domain_unique_jit_weight <= bucket_weight_cap) {
       return SurfaceBucketMode::off;
     }
@@ -457,7 +489,8 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
 
     bool merged = false;
     for (auto &g : groups) {
-      if (abi::same_linked_svm_block(host_words, *g.routine, routine)) {
+      if (svm::can_merge_svm_blocks_structurally(
+              host_words, *g.routine, routine, false, direct_slot_query)) {
         g.shader_ids.push_back(i);
         g.max_closures = std::max(g.max_closures, meta.surface_num_closures);
         g.has_bssrdf = g.has_bssrdf || meta.has_surface_bssrdf;
@@ -559,13 +592,13 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
 
   std::vector<std::size_t> suffix_min_buckets(groups.size() + 1u, 0u);
   for (std::size_t i = groups.size(); i-- > 0u;) {
-    std::size_t s = groups[i].shader_ids.size();
+    std::size_t g_cnt = 1u;
     std::size_t w = groups[i].jit_weight;
     std::size_t j = i + 1u;
     while (j < groups.size() &&
-           s + groups[j].shader_ids.size() <= jit_shader_cap &&
+           g_cnt + 1u <= jit_shader_cap &&
            w + groups[j].jit_weight <= bucket_weight_cap) {
-      s += groups[j].shader_ids.size();
+      ++g_cnt;
       w += groups[j].jit_weight;
       ++j;
     }
@@ -603,15 +636,15 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
   }
 
   // Partition sorted routine groups into `bucket_count` contiguous slices so
-  // every bucket fits within DirectJitTranslator's shader and weight budgets
+  // every bucket fits within DirectJitTranslator's group and weight budgets
   // whenever feasible (`min_buckets_for_jit <= bucket_count`), while snapping
   // Bucket 0 to the single-closure boundary when compatible.
   std::vector<std::size_t> group_cuts;
   if (bucket_count == 2u) {
     std::size_t cut = groups.size() / 2u;
-    const auto fits_slice = [&](std::size_t shaders,
+    const auto fits_slice = [&](std::size_t slice_groups,
                                 std::size_t weight) noexcept {
-      return shaders <= jit_shader_cap && weight <= bucket_weight_cap;
+      return slice_groups <= jit_shader_cap && weight <= bucket_weight_cap;
     };
     const auto non_degenerate = [&](std::size_t g_cnt,
                                     std::size_t s_cnt) noexcept {
@@ -625,9 +658,9 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
                        low_closure_non_bssrdf_shaders) &&
         (groups[low_closure_non_bssrdf_groups].has_bssrdf ||
          groups.back().max_closures >= 4u) &&
-        fits_slice(low_closure_non_bssrdf_shaders,
+        fits_slice(low_closure_non_bssrdf_groups,
                    low_closure_non_bssrdf_weight) &&
-        fits_slice(total_active_nonempty - low_closure_non_bssrdf_shaders,
+        fits_slice(groups.size() - low_closure_non_bssrdf_groups,
                    total_jit_weight - low_closure_non_bssrdf_weight)) {
       cut = low_closure_non_bssrdf_groups;
     } else if (compact_non_bssrdf_groups < non_bssrdf_groups &&
@@ -635,29 +668,29 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
                 compact_non_bssrdf_groups * 2u >= non_bssrdf_groups) &&
                non_degenerate(compact_non_bssrdf_groups,
                               compact_non_bssrdf_shaders) &&
-               fits_slice(compact_non_bssrdf_shaders,
+               fits_slice(compact_non_bssrdf_groups,
                           compact_non_bssrdf_weight) &&
-               fits_slice(total_active_nonempty - compact_non_bssrdf_shaders,
+               fits_slice(groups.size() - compact_non_bssrdf_groups,
                           total_jit_weight - compact_non_bssrdf_weight)) {
       cut = compact_non_bssrdf_groups;
     } else if (has_bssrdf_groups &&
                non_bssrdf_groups >= 1u &&
-               fits_slice(non_bssrdf_shaders, non_bssrdf_weight) &&
-               fits_slice(total_active_nonempty - non_bssrdf_shaders,
+               fits_slice(non_bssrdf_groups, non_bssrdf_weight) &&
+               fits_slice(groups.size() - non_bssrdf_groups,
                           total_jit_weight - non_bssrdf_weight)) {
       cut = non_bssrdf_groups;
     } else if (pure_simple_groups < groups.size() &&
                non_degenerate(pure_simple_groups, pure_simple_shaders) &&
-               fits_slice(pure_simple_shaders, pure_simple_weight) &&
-               fits_slice(total_active_nonempty - pure_simple_shaders,
+               fits_slice(pure_simple_groups, pure_simple_weight) &&
+               fits_slice(groups.size() - pure_simple_groups,
                           total_jit_weight - pure_simple_weight)) {
       cut = pure_simple_groups;
     } else if (simple_single_closure_groups < groups.size() &&
                non_degenerate(simple_single_closure_groups,
                               simple_single_closure_shaders) &&
-               fits_slice(simple_single_closure_shaders,
+               fits_slice(simple_single_closure_groups,
                           simple_single_closure_weight) &&
-               fits_slice(total_active_nonempty - simple_single_closure_shaders,
+               fits_slice(groups.size() - simple_single_closure_groups,
                           total_jit_weight - simple_single_closure_weight)) {
       cut = simple_single_closure_groups;
     } else {
@@ -669,10 +702,11 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       for (std::size_t gi = 0u; gi + 1u < groups.size(); ++gi) {
         acc_s += groups[gi].shader_ids.size();
         acc_w += groups[gi].jit_weight;
-        const std::size_t rem_s = total_active_nonempty - acc_s;
+        const std::size_t slice_groups = gi + 1u;
+        const std::size_t rem_groups = groups.size() - slice_groups;
         const std::size_t rem_w = total_jit_weight - acc_w;
         const bool feasible =
-            fits_slice(acc_s, acc_w) && fits_slice(rem_s, rem_w);
+            fits_slice(slice_groups, acc_w) && fits_slice(rem_groups, rem_w);
         const std::size_t diff =
             acc_w > rem_w ? (acc_w - rem_w) : (rem_w - acc_w);
         if (feasible && (!found_feasible || diff < best_diff)) {
@@ -702,10 +736,12 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       std::size_t end = start + 1u;
       std::size_t acc_weight = groups[start].jit_weight;
       std::size_t acc_shaders = groups[start].shader_ids.size();
+      std::size_t acc_groups = 1u;
       if (jit_feasible) {
         while (end < max_end && suffix_min_buckets[end] > rem_buckets) {
           acc_weight += groups[end].jit_weight;
           acc_shaders += groups[end].shader_ids.size();
+          ++acc_groups;
           ++end;
         }
         while (end < max_end) {
@@ -717,12 +753,13 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
           const std::size_t next_s = groups[end].shader_ids.size();
           const std::size_t next_w = groups[end].jit_weight;
           if (acc_weight >= target_weight ||
-              acc_shaders + next_s > jit_shader_cap ||
+              acc_groups + 1u > jit_shader_cap ||
               acc_weight + next_w > bucket_weight_cap) {
             break;
           }
           acc_weight += next_w;
           acc_shaders += next_s;
+          ++acc_groups;
           ++end;
         }
       } else {

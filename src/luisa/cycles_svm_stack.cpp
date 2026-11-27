@@ -374,20 +374,45 @@ Cursor::Cursor(
 Cursor::Cursor(
     luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> words,
     std::span<const std::uint32_t> static_words,
-    std::uint32_t global_base_offset) noexcept
+    std::uint32_t global_base_offset,
+    const luisa::compute::Constant<luisa::uint> *param_lut,
+    const luisa::compute::UInt *param_base,
+    const std::uint32_t *param_indices,
+    std::optional<std::uint32_t> direct_image_ch_mode) noexcept
     : _words{words},
       _offset{nullptr},
       _static_words{static_words.data()},
       _static_count{static_words.size()},
       _static_index{0u},
-      _global_base_offset{global_base_offset} {}
+      _global_base_offset{global_base_offset},
+      _param_lut{param_lut},
+      _param_base{param_base},
+      _param_indices{param_indices},
+      _direct_image_ch_mode{direct_image_ch_mode} {}
+
+std::optional<std::uint32_t>
+Cursor::static_word_at(std::uint32_t relative_word) const noexcept {
+  if (_static_words == nullptr) {
+    return std::nullopt;
+  }
+  const auto idx = _static_index + static_cast<std::size_t>(relative_word);
+  if (idx >= _static_count) {
+    return std::nullopt;
+  }
+  return _static_words[idx];
+}
 
 luisa::compute::Expr<std::uint32_t> Cursor::word() noexcept {
   if (_static_words != nullptr) {
     LUISA_ASSERT(_static_index < _static_count,
                  "Static SVM Cursor word() out of bounds ({} >= {}).",
                  _static_index, _static_count);
-    return luisa::compute::Expr<std::uint32_t>{_static_words[_static_index++]};
+    const auto idx = _static_index++;
+    if (_param_indices != nullptr && _param_lut != nullptr &&
+        _param_base != nullptr && _param_indices[idx] != ~0u) {
+      return (*_param_lut)[*_param_base + _param_indices[idx]];
+    }
+    return luisa::compute::Expr<std::uint32_t>{_static_words[idx]};
   }
   auto value = _words.read(*_offset);
   *_offset += 1u;
@@ -402,6 +427,10 @@ luisa::compute::Expr<std::uint32_t> Cursor::word_at(
       LUISA_ASSERT(idx < _static_count,
                    "Static SVM Cursor word_at({}) out of bounds ({} >= {}).",
                    *rel, idx, _static_count);
+      if (_param_indices != nullptr && _param_lut != nullptr &&
+          _param_base != nullptr && _param_indices[idx] != ~0u) {
+        return (*_param_lut)[*_param_base + _param_indices[idx]];
+      }
       return luisa::compute::Expr<std::uint32_t>{_static_words[idx]};
     }
     const auto base =
@@ -418,8 +447,13 @@ luisa::compute::Expr<float> Cursor::floating() noexcept {
     LUISA_ASSERT(_static_index < _static_count,
                  "Static SVM Cursor floating() out of bounds ({} >= {}).",
                  _static_index, _static_count);
+    const auto idx = _static_index++;
+    if (_param_indices != nullptr && _param_lut != nullptr &&
+        _param_base != nullptr && _param_indices[idx] != ~0u) {
+      return (*_param_lut)[*_param_base + _param_indices[idx]].bitcast<float>();
+    }
     return luisa::compute::Expr<float>{
-        std::bit_cast<float>(_static_words[_static_index++])};
+        std::bit_cast<float>(_static_words[idx])};
   }
   return word().bitcast<float>();
 }
@@ -433,6 +467,10 @@ luisa::compute::Expr<float> Cursor::floating_at(
           idx < _static_count,
           "Static SVM Cursor floating_at({}) out of bounds ({} >= {}).", *rel,
           idx, _static_count);
+      if (_param_indices != nullptr && _param_lut != nullptr &&
+          _param_base != nullptr && _param_indices[idx] != ~0u) {
+        return (*_param_lut)[*_param_base + _param_indices[idx]].bitcast<float>();
+      }
       return luisa::compute::Expr<float>{
           std::bit_cast<float>(_static_words[idx])};
     }
@@ -551,6 +589,11 @@ luisa::compute::Float stack_load_input_float(
     }
     return std::bit_cast<float>(*b);
   }
+  if (stack.is_direct_jit()) {
+    // Structural dedup parameterizes literal float words only; connected
+    // stack inputs remain invariant compile-time constants caught above.
+    return bits.bitcast<float>();
+  }
   Float result = bits.bitcast<float>();
   $if ((bits >> 8u) ==
        (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
@@ -568,16 +611,25 @@ luisa::compute::Float3 stack_load_input_float3(
   const auto cx = try_const_uint(x_bits);
   const auto cy = try_const_uint(y_bits);
   const auto cz = try_const_uint(z_bits);
+  if (cx && (*cx >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+    const auto off = *cx & 0xffu;
+    return make_float3(stack.load_const_expr(off),
+                       stack.load_const_expr(off + 1u),
+                       stack.load_const_expr(off + 2u));
+  }
   if (cx && cy && cz) {
-    if ((*cx >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
-      const auto off = *cx & 0xffu;
-      return make_float3(stack.load_const_expr(off),
-                         stack.load_const_expr(off + 1u),
-                         stack.load_const_expr(off + 2u));
-    }
     return make_float3(std::bit_cast<float>(*cx),
                        std::bit_cast<float>(*cy),
                        std::bit_cast<float>(*cz));
+  }
+  const auto component_float = [](const std::optional<std::uint32_t> &c,
+                                  Expr<std::uint32_t> raw) noexcept -> Float {
+    return c ? Float{std::bit_cast<float>(*c)} : raw.bitcast<float>();
+  };
+  if (stack.is_direct_jit()) {
+    return make_float3(component_float(cx, x_bits),
+                       component_float(cy, y_bits),
+                       component_float(cz, z_bits));
   }
   Float3 result = make_float3(x_bits.bitcast<float>(),
                               y_bits.bitcast<float>(),
@@ -601,6 +653,9 @@ Dual1 stack_load_input_dual_float(
     }
     return {.val = std::bit_cast<float>(*b), .dx = 0.0f, .dy = 0.0f};
   }
+  if (stack.is_direct_jit()) {
+    return {.val = bits.bitcast<float>(), .dx = 0.0f, .dy = 0.0f};
+  }
   Dual1 result{.val = bits.bitcast<float>(), .dx = 0.0f, .dy = 0.0f};
   $if ((bits >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
     const UInt offset = bits & 0xffu;
@@ -619,22 +674,33 @@ Dual3 stack_load_input_dual_float3(
   const auto cx = try_const_uint(x_bits);
   const auto cy = try_const_uint(y_bits);
   const auto cz = try_const_uint(z_bits);
+  if (cx && (*cx >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+    const auto off = *cx & 0xffu;
+    return {.val = make_float3(stack.load_const_expr(off),
+                               stack.load_const_expr(off + 1u),
+                               stack.load_const_expr(off + 2u)),
+            .dx = make_float3(stack.load_const_expr(off + 3u),
+                              stack.load_const_expr(off + 4u),
+                              stack.load_const_expr(off + 5u)),
+            .dy = make_float3(stack.load_const_expr(off + 6u),
+                              stack.load_const_expr(off + 7u),
+                              stack.load_const_expr(off + 8u))};
+  }
   if (cx && cy && cz) {
-    if ((*cx >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
-      const auto off = *cx & 0xffu;
-      return {.val = make_float3(stack.load_const_expr(off),
-                                 stack.load_const_expr(off + 1u),
-                                 stack.load_const_expr(off + 2u)),
-              .dx = make_float3(stack.load_const_expr(off + 3u),
-                                stack.load_const_expr(off + 4u),
-                                stack.load_const_expr(off + 5u)),
-              .dy = make_float3(stack.load_const_expr(off + 6u),
-                                stack.load_const_expr(off + 7u),
-                                stack.load_const_expr(off + 8u))};
-    }
     return {.val = make_float3(std::bit_cast<float>(*cx),
                                std::bit_cast<float>(*cy),
                                std::bit_cast<float>(*cz)),
+            .dx = make_float3(0.0f),
+            .dy = make_float3(0.0f)};
+  }
+  const auto component_float = [](const std::optional<std::uint32_t> &c,
+                                  Expr<std::uint32_t> raw) noexcept -> Float {
+    return c ? Float{std::bit_cast<float>(*c)} : raw.bitcast<float>();
+  };
+  if (stack.is_direct_jit()) {
+    return {.val = make_float3(component_float(cx, x_bits),
+                               component_float(cy, y_bits),
+                               component_float(cz, z_bits)),
             .dx = make_float3(0.0f),
             .dy = make_float3(0.0f)};
   }

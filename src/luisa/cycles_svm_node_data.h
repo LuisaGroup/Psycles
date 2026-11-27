@@ -25,6 +25,9 @@ class NodeDataView final {
   luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> _words;
   luisa::compute::UInt _offset{0u};
   const std::uint32_t *_static_base{nullptr};
+  const luisa::compute::Constant<luisa::uint> *_param_lut{nullptr};
+  const luisa::compute::UInt *_param_base{nullptr};
+  const std::uint32_t *_param_indices_base{nullptr};
 
  public:
   explicit NodeDataView(Cursor& cursor) noexcept
@@ -35,6 +38,12 @@ class NodeDataView final {
       LUISA_ASSERT(cursor._static_index + payload_words <= cursor._static_count,
                    "Static SVM Cursor overflow in NodeDataView.");
       _static_base = cursor._static_words + cursor._static_index;
+      if (cursor._param_indices != nullptr && cursor._param_lut != nullptr &&
+          cursor._param_base != nullptr) {
+        _param_lut = cursor._param_lut;
+        _param_base = cursor._param_base;
+        _param_indices_base = cursor._param_indices + cursor._static_index;
+      }
       cursor._static_index += payload_words;
     } else {
       _offset = *cursor._offset;
@@ -49,6 +58,9 @@ class NodeDataView final {
     constexpr auto word_idx =
         static_cast<std::uint32_t>(ByteOffset / sizeof(std::uint32_t));
     if (_static_base != nullptr) {
+      if (_param_indices_base != nullptr && _param_indices_base[word_idx] != ~0u) {
+        return (*_param_lut)[*_param_base + _param_indices_base[word_idx]];
+      }
       return luisa::compute::Expr<std::uint32_t>{_static_base[word_idx]};
     }
     return luisa::compute::Expr<std::uint32_t>{
@@ -62,7 +74,8 @@ class NodeDataView final {
     constexpr auto word_idx =
         static_cast<std::uint32_t>((ByteOffset - ByteOffset % 4u) / 4u);
     constexpr auto shift = static_cast<std::uint32_t>(8u * (ByteOffset % 4u));
-    if (_static_base != nullptr) {
+    if (_static_base != nullptr &&
+        (_param_indices_base == nullptr || _param_indices_base[word_idx] == ~0u)) {
       return luisa::compute::Expr<std::uint32_t>{
           (_static_base[word_idx] >> shift) & 0xffu};
     }
@@ -79,15 +92,9 @@ class NodeDataView final {
       Stack& stack) const noexcept {
     using namespace luisa::compute;
     if (_static_base != nullptr) {
-      constexpr auto base_idx =
-          static_cast<std::uint32_t>(ByteOffset / sizeof(std::uint32_t));
-      const auto x_bits = _static_base[base_idx];
-      if ((x_bits >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
-        return stack_load_float3(stack, x_bits & 0xffu);
-      }
-      return make_float3(std::bit_cast<float>(x_bits),
-                         std::bit_cast<float>(_static_base[base_idx + 1u]),
-                         std::bit_cast<float>(_static_base[base_idx + 2u]));
+      return stack_load_input_float3(stack, word<ByteOffset>(),
+                                     word<ByteOffset + 4u>(),
+                                     word<ByteOffset + 8u>());
     }
     const auto x_bits = word<ByteOffset>();
     Float3 result = make_float3(0.0f);

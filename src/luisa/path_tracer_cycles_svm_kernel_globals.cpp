@@ -1089,6 +1089,58 @@ Float3 PathCyclesSvmKernelGlobals::object_inverse_position_transform(
                   shader_data.object, value);
 }
 
+std::optional<svm::DirectImageSlotInfo>
+PathCyclesSvmKernelGlobals::direct_image_slot_info(
+    std::int32_t image_texture_id) const noexcept {
+  if (_vt_preflight_weight != nullptr || !_scene || !_scene->cycles_svm ||
+      image_texture_id < 0 ||
+      static_cast<std::size_t>(image_texture_id) >=
+          _scene->cycles_svm->image_bindings.size()) {
+    return std::nullopt;
+  }
+  const auto &vt = _scene->virtual_texture_cache;
+  const bool use_vt =
+      vt && !_force_direct_textures && _vt_miss_page != nullptr &&
+      !vt->eager_fallback_active();
+  if (use_vt && vt->is_virtual_binding(image_texture_id)) {
+    return std::nullopt;
+  }
+  const bool vt_isotropic =
+      use_vt && (vt->mip_mode() == LuisaTextureMipMode::isotropic);
+  const bool direct_isotropic =
+      (_scene->direct_texture_mip_mode == LuisaTextureMipMode::isotropic) ||
+      vt_isotropic;
+  if (direct_isotropic && _scene->direct_image_mip_descs) {
+    return std::nullopt;
+  }
+  const auto &b = _scene->cycles_svm->image_bindings[static_cast<std::size_t>(
+      image_texture_id)];
+  if ((b.sampler & cycles_svm_image_load_failed_flag) != 0u ||
+      (b.sampler & cycles_svm_image_interpolation_mask) == 2u) {
+    return std::nullopt;
+  }
+  const std::uint32_t ch_mode =
+      (b.sampler & cycles_svm_image_channel_mode_mask) >>
+      cycles_svm_image_channel_mode_shift;
+  return svm::DirectImageSlotInfo{
+      .texture_slot = b.texture_slot,
+      .channel_mode = ch_mode};
+}
+
+Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_direct_slot(
+    svm::ShaderData &, Expr<std::uint32_t> texture_slot,
+    std::uint32_t channel_mode, const svm::Dual2 &uv) const noexcept {
+  const auto sample_uv = make_float2(uv.val.x, 1.0f - uv.val.y);
+  const auto s = _scene->texture_heap->tex2d(texture_slot).sample(sample_uv);
+  if (channel_mode == cycles_svm_image_channel_mode_gray_opaque) {
+    return make_float4(s.x, s.x, s.x, 1.0f);
+  }
+  if (channel_mode == cycles_svm_image_channel_mode_gray_alpha) {
+    return make_float4(s.x, s.x, s.x, s.y);
+  }
+  return s;
+}
+
 Float4 PathCyclesSvmKernelGlobals::kernel_image_interp_with_udim(
     svm::ShaderData &, Expr<std::int32_t> image_texture_id,
     const svm::Dual2 &uv) const noexcept {

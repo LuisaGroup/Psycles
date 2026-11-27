@@ -848,7 +848,7 @@ void node_emission_weight(Cursor &cursor, Stack &stack, Float3 &closure_weight,
             select(spectral_weight->spd, spd * strength_val, found);
         spectral_weight->valid = select(0u, 1u, found);
       }
-    } else {
+    } else if (!stack.is_direct_jit()) {
       $if((color_x >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
         Float4 spd = make_float4(0.0f);
         const Bool found = stack.try_load_spectral_slot(color_x & 0xffu, spd);

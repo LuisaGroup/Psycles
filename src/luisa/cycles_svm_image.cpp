@@ -310,13 +310,9 @@ constexpr auto inverse_two_pi = 0.5f / pi;
   return make_dual2(scale(x, 0.5f), scale(z, 0.5f));
 }
 
-[[nodiscard]] Float4 sample_image(const KernelGlobals &kernel_globals,
-                                  ShaderData &shader_data,
-                                  Expr<std::int32_t> image_id,
-                                  const Dual2 &uv,
-                                  Expr<std::uint32_t> flags) noexcept {
-  const auto sampled = kernel_globals.kernel_image_interp_with_udim(
-      shader_data, image_id, uv);
+[[nodiscard]] Float4 decode_image_sample_flags(
+    Float4 sampled,
+    Expr<std::uint32_t> flags) noexcept {
   if (const auto cf = try_const_uint(flags)) {
     const bool unassociate =
         (*cf & static_cast<std::uint32_t>(NODE_IMAGE_ALPHA_UNASSOCIATE)) != 0u;
@@ -332,6 +328,16 @@ constexpr auto inverse_two_pi = 0.5f / pi;
       sampled,
       (flags & static_cast<std::uint32_t>(NODE_IMAGE_ALPHA_UNASSOCIATE)) != 0u,
       (flags & static_cast<std::uint32_t>(NODE_IMAGE_COMPRESS_AS_SRGB)) != 0u);
+}
+
+[[nodiscard]] Float4 sample_image(const KernelGlobals &kernel_globals,
+                                  ShaderData &shader_data,
+                                  Expr<std::int32_t> image_id,
+                                  const Dual2 &uv,
+                                  Expr<std::uint32_t> flags) noexcept {
+  return decode_image_sample_flags(
+      kernel_globals.kernel_image_interp_with_udim(shader_data, image_id, uv),
+      flags);
 }
 
 [[nodiscard]] UInt
@@ -473,13 +479,8 @@ void node_tex_image(Cursor &cursor, Stack &stack,
                     const KernelGlobals &kernel_globals,
                     ShaderData &shader_data, const PathState &path_state,
                     bool use_derivatives) noexcept {
+  const auto direct_ch_mode = cursor.direct_image_slot_channel_mode();
   const auto image_w = cursor.word();
-  const auto image_id = [&]() noexcept -> Expr<std::int32_t> {
-    if (const auto cw = try_const_uint(image_w)) {
-      return Expr<std::int32_t>{std::bit_cast<std::int32_t>(*cw)};
-    }
-    return image_w.bitcast<std::int32_t>();
-  }();
   const auto projection = cursor.word();
   const auto packed = cursor.word();
   const auto flags = cursor.byte(packed, 0u);
@@ -495,6 +496,19 @@ void node_tex_image(Cursor &cursor, Stack &stack,
           : Dual2{.val = image_mapping(coordinate.val, projection),
                   .dx = make_float2(0.0f),
                   .dy = make_float2(0.0f)};
+  if (direct_ch_mode.has_value()) {
+    const auto sampled = kernel_globals.kernel_image_interp_direct_slot(
+        shader_data, image_w, *direct_ch_mode, uv);
+    store_image_sample(stack, color_offset, alpha_offset,
+                       decode_image_sample_flags(sampled, flags));
+    return;
+  }
+  const auto image_id = [&]() noexcept -> Expr<std::int32_t> {
+    if (const auto cw = try_const_uint(image_w)) {
+      return Expr<std::int32_t>{std::bit_cast<std::int32_t>(*cw)};
+    }
+    return image_w.bitcast<std::int32_t>();
+  }();
   store_image_sample(
       stack, color_offset, alpha_offset,
       sample_image(kernel_globals, shader_data, image_id, uv, flags));

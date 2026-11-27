@@ -11,6 +11,7 @@
 #include <span>
 
 #include <luisa/dsl/builtin.h>
+#include <luisa/dsl/constant.h>
 #include <luisa/dsl/local.h>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
@@ -132,16 +133,30 @@ private:
   std::size_t _static_count{};
   std::size_t _static_index{};
   std::uint32_t _global_base_offset{};
+  const luisa::compute::Constant<luisa::uint> *_param_lut{nullptr};
+  const luisa::compute::UInt *_param_base{nullptr};
+  const std::uint32_t *_param_indices{nullptr};
+  std::optional<std::uint32_t> _direct_image_ch_mode{std::nullopt};
 
 public:
   Cursor(luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> words,
          luisa::compute::UInt &offset) noexcept;
   Cursor(luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> words,
          std::span<const std::uint32_t> static_words,
-         std::uint32_t global_base_offset) noexcept;
+         std::uint32_t global_base_offset,
+         const luisa::compute::Constant<luisa::uint> *param_lut = nullptr,
+         const luisa::compute::UInt *param_base = nullptr,
+         const std::uint32_t *param_indices = nullptr,
+         std::optional<std::uint32_t> direct_image_ch_mode = std::nullopt) noexcept;
 
   [[nodiscard]] bool is_static() const noexcept {
     return _static_words != nullptr;
+  }
+  [[nodiscard]] std::optional<std::uint32_t>
+  static_word_at(std::uint32_t relative_word) const noexcept;
+  [[nodiscard]] std::optional<std::uint32_t>
+  direct_image_slot_channel_mode() const noexcept {
+    return _direct_image_ch_mode;
   }
   [[nodiscard]] luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>>
   words_buffer() const noexcept {
@@ -864,6 +879,18 @@ public:
       const ShaderData &shader_data,
       luisa::compute::Expr<luisa::float3> value) const noexcept override {
     return _inner.object_inverse_position_transform(shader_data, value);
+  }
+  [[nodiscard]] std::optional<DirectImageSlotInfo>
+  direct_image_slot_info(std::int32_t image_texture_id) const noexcept override {
+    return _inner.direct_image_slot_info(image_texture_id);
+  }
+  [[nodiscard]] luisa::compute::Float4 kernel_image_interp_direct_slot(
+      ShaderData &shader_data,
+      luisa::compute::Expr<std::uint32_t> texture_slot,
+      std::uint32_t channel_mode,
+      const Dual2 &uv) const noexcept override {
+    return _inner.kernel_image_interp_direct_slot(shader_data, texture_slot,
+                                                  channel_mode, uv);
   }
   [[nodiscard]] luisa::compute::Float4 kernel_image_interp_with_udim(
       ShaderData &shader_data,

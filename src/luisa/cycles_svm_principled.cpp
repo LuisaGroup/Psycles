@@ -11,6 +11,7 @@
 
 #include <psycles/luisa/native_vector_math.h>
 
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <optional>
@@ -199,6 +200,21 @@ public:
     return value;
   }
 
+  [[nodiscard]] std::optional<std::int32_t>
+  try_const_thin_wall() const noexcept {
+    const auto offset =
+        _cursor.byte(_cursor.word_at(thin_wall_offset_word), 0u);
+    const auto c = try_const_uint(offset);
+    if (!c || *c != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+      return std::nullopt;
+    }
+    const auto v = try_const_uint(_cursor.word_at(thin_wall_value_word));
+    if (!v) {
+      return std::nullopt;
+    }
+    return std::bit_cast<std::int32_t>(*v);
+  }
+
   void advance() noexcept {
     _cursor.advance(static_cast<std::uint32_t>(
         sizeof(SVMNodePrincipledBsdfData) / sizeof(std::uint32_t)));
@@ -221,7 +237,20 @@ public:
       }
       return value;
     };
-    const auto ior_val = read_const_float(ior_word);
+    const auto read_ior_word_const_float =
+        [&](std::uint32_t word) noexcept -> std::optional<float> {
+      const auto bits = _cursor.static_word_at(word);
+      if (!bits || (*bits >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+        return std::nullopt;
+      }
+      float value = 0.0f;
+      std::memcpy(&value, &*bits, sizeof(value));
+      if (!std::isfinite(value)) {
+        return std::nullopt;
+      }
+      return value;
+    };
+    const auto ior_val = read_ior_word_const_float(ior_word);
     const auto spec_ior_val = read_const_float(specular_ior_level_word);
     const auto tint_r = read_const_float(specular_tint_word);
     const auto tint_g = read_const_float(specular_tint_word + 1u);
@@ -335,6 +364,21 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
   const bool has_subsurface =
       subsurface_enabled &&
       usage.has_principled(ClosureUsage::principled_subsurface);
+  const auto const_thin_wall =
+      (has_thin_wall && (has_transmission || has_subsurface))
+          ? data.try_const_thin_wall()
+          : std::nullopt;
+  const bool thin_wall_always_on =
+      const_thin_wall.has_value() && *const_thin_wall != 0;
+  const bool thin_wall_always_off =
+      const_thin_wall.has_value() && *const_thin_wall == 0;
+  constexpr std::uint64_t bssrdf_closure_mask =
+      ClosureUsage::bit(CLOSURE_BSSRDF_BURLEY_ID) |
+      ClosureUsage::bit(CLOSURE_BSSRDF_RANDOM_WALK_ID) |
+      ClosureUsage::bit(CLOSURE_BSSRDF_RANDOM_WALK_LEGACY_ID) |
+      ClosureUsage::bit(CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID);
+  const bool may_emit_bssrdf =
+      (usage.surface_closure_mask & bssrdf_closure_mask) != 0ull;
 
   Float sheen_weight = 0.0f;
   if (has_sheen) {
@@ -360,7 +404,8 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
     if (has_subsurface) {
       subsurface_weight = clamp(data.subsurface_weight(stack), 0.0f, 1.0f);
     }
-    if (has_thin_wall && (has_transmission || has_subsurface)) {
+    if (has_thin_wall && (has_transmission || has_subsurface) &&
+        !const_thin_wall.has_value()) {
       thin_wall = data.thin_wall(stack);
     }
     if (!compiler_validated_dist) {
@@ -496,7 +541,7 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
               if ((*c >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
                 apply_direct(*c & 0xffu);
               }
-            } else {
+            } else if (!stack.is_direct_jit()) {
               $if((em_bits >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
                 apply_direct(em_bits & 0xffu);
               };
@@ -567,7 +612,14 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
       if (has_transmission) {
         $if(transmission_weight > CLOSURE_WEIGHT_CUTOFF) {
           $if(reflective_caustics | refractive_caustics) {
-            if (has_thin_wall) {
+            if (has_thin_wall && thin_wall_always_on) {
+              principled_thin_wall_setup(
+                  kernel_globals, shader_data, path_state,
+                  transmission_weight * weight, valid_reflection_normal,
+                  square(roughness), ior, reflective_caustics,
+                  refractive_caustics, specular_tint, clamped_base_color,
+                  thin_film_thickness, thin_film_ior);
+            } else if (has_thin_wall && !thin_wall_always_off) {
               $if(thin_wall != 0) {
                 principled_thin_wall_setup(
                     kernel_globals, shader_data, path_state,
@@ -632,7 +684,18 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
           const auto subsurface_anisotropy = data.subsurface_anisotropy(stack);
           const auto closure_weight =
               clamped_base_color * subsurface_weight * weight;
-          const auto emit_bssrdf = [&] {
+          const auto emit_thin_subsurface = [&] {
+            thin_subsurface_setup(
+                shader_data, normal, closure_weight, subsurface_anisotropy,
+                clamp(data.diffuse_roughness(stack), 0.0f, 1.0f),
+                clamped_base_color);
+          };
+          const auto emit_thick_subsurface = [&] {
+            if (!may_emit_bssrdf) {
+              diffuse_setup(shader_data, valid_reflection_normal,
+                            closure_weight);
+              return;
+            }
             const auto method = data.subsurface_method();
             Float subsurface_ior = eta;
             $if(method == static_cast<std::uint32_t>(
@@ -647,16 +710,13 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                 clamped_base_color, valid_reflection_normal,
                 square(roughness), subsurface_ior, subsurface_anisotropy);
           };
-          if (has_thin_wall) {
-            $if(thin_wall != 0) {
-              thin_subsurface_setup(
-                  shader_data, normal, closure_weight, subsurface_anisotropy,
-                  clamp(data.diffuse_roughness(stack), 0.0f, 1.0f),
-                  clamped_base_color);
-            }
-            $else { emit_bssrdf(); };
+          if (has_thin_wall && thin_wall_always_on) {
+            emit_thin_subsurface();
+          } else if (has_thin_wall && !thin_wall_always_off) {
+            $if(thin_wall != 0) { emit_thin_subsurface(); }
+            $else { emit_thick_subsurface(); };
           } else {
-            emit_bssrdf();
+            emit_thick_subsurface();
           }
         };
       }

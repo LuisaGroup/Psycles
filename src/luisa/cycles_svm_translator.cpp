@@ -9,12 +9,14 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <span>
 #include <string_view>
+#include <utility>
 
 #include <luisa/core/logging.h>
 #include <luisa/dsl/sugar.h>
@@ -35,6 +37,535 @@ namespace {
 // BytecodeVmTranslator.
 inline constexpr std::size_t default_auto_direct_jit_max_shaders = 80u;
 inline constexpr std::size_t default_auto_direct_jit_max_weight = 9000u;
+inline constexpr std::size_t max_group_param_stride = 64u;
+inline constexpr std::size_t max_group_param_lut_words = 4096u;
+inline constexpr std::size_t max_group_id_lut_span = 4096u;
+
+[[nodiscard]] bool structural_dedup_enabled() noexcept {
+  const char *raw = std::getenv("PSYCLES_SVM_STRUCTURAL_DEDUP");
+  if (raw == nullptr || *raw == '\0') {
+    return true;
+  }
+  const std::string_view v{raw};
+  return v != "0" && v != "false" && v != "off";
+}
+
+[[nodiscard]] constexpr bool
+is_svm_input_stack_offset(std::uint32_t bits) noexcept {
+  return (bits >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u);
+}
+
+[[nodiscard]] inline float decode_bits_as_float(std::uint32_t bits) noexcept {
+  float value = 0.0f;
+  std::memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
+enum class WordMergeKind : std::uint8_t {
+  identical = 0u,
+  param_raw = 1u,
+  param_direct_image_slot = 2u,
+  incompatible = 3u,
+};
+
+struct CondStackOffsetMask {
+  std::array<bool, 256u> used{};
+
+  void collect(const SvmBlockIr &block) noexcept {
+    for (const auto &op : block) {
+      if (op.is_conditional) {
+        used[op.cond_stack_offset] = true;
+        collect(op.children);
+      }
+    }
+  }
+
+  [[nodiscard]] bool contains(std::uint32_t offset) const noexcept {
+    return offset < used.size() && used[offset];
+  }
+};
+
+using DirectImageSlotQueryFn =
+    std::function<std::optional<DirectImageSlotInfo>(std::int32_t)>;
+
+[[nodiscard]] WordMergeKind classify_word_merge(
+    ShaderNodeType opcode,
+    std::span<const std::uint32_t> wa,
+    std::span<const std::uint32_t> wb,
+    std::size_t word_idx,
+    const CondStackOffsetMask &cond_offsets,
+    bool shadow_eval_only,
+    const DirectImageSlotQueryFn &slot_query) noexcept {
+  if (wa[word_idx] == wb[word_idx]) {
+    return WordMergeKind::identical;
+  }
+  const auto both_literal_float = [&](std::size_t idx) noexcept {
+    return idx < wa.size() && idx < wb.size() &&
+           !is_svm_input_stack_offset(wa[idx]) &&
+           !is_svm_input_stack_offset(wb[idx]);
+  };
+  const auto both_input_float3_literal = [&](std::size_t base) noexcept {
+    return base + 2u < wa.size() && base + 2u < wb.size() &&
+           both_literal_float(base) && both_literal_float(base + 1u) &&
+           both_literal_float(base + 2u);
+  };
+  const auto in_range = [](std::size_t idx, std::size_t lo,
+                           std::size_t hi_incl) noexcept {
+    return idx >= lo && idx <= hi_incl;
+  };
+  const auto float3_base_if_in = [&](std::size_t idx, std::size_t lo,
+                                     std::size_t hi_incl) noexcept
+      -> std::optional<std::size_t> {
+    if (idx < lo || idx > hi_incl) {
+      return std::nullopt;
+    }
+    const auto rel = idx - lo;
+    return lo + (rel / 3u) * 3u;
+  };
+
+  switch (opcode) {
+    case NODE_TEX_IMAGE:
+    case NODE_TEX_IMAGE_DERIVATIVE: {
+      if (word_idx == 0u && slot_query) {
+        const auto id_a = std::bit_cast<std::int32_t>(wa[0u]);
+        const auto id_b = std::bit_cast<std::int32_t>(wb[0u]);
+        const auto info_a = slot_query(id_a);
+        const auto info_b = slot_query(id_b);
+        if (info_a && info_b && info_a->channel_mode == info_b->channel_mode) {
+          return WordMergeKind::param_direct_image_slot;
+        }
+      }
+      return WordMergeKind::incompatible;
+    }
+    case NODE_VALUE_F:
+    case NODE_VALUE_F_DERIVATIVE: {
+      if (word_idx == 0u && wa.size() >= 2u && !cond_offsets.contains(wa[1u] & 0xffu)) {
+        return WordMergeKind::param_raw;
+      }
+      return WordMergeKind::incompatible;
+    }
+    case NODE_VALUE_V:
+    case NODE_VALUE_V_DERIVATIVE:
+      return in_range(word_idx, 1u, 3u) ? WordMergeKind::param_raw
+                                        : WordMergeKind::incompatible;
+    case NODE_CLOSURE_SET_WEIGHT:
+      return in_range(word_idx, 0u, 2u) ? WordMergeKind::param_raw
+                                        : WordMergeKind::incompatible;
+    case NODE_EMISSION_WEIGHT:
+      if (word_idx <= 2u) {
+        return both_input_float3_literal(0u) ? WordMergeKind::param_raw
+                                             : WordMergeKind::incompatible;
+      }
+      if (word_idx == 3u && both_literal_float(3u)) {
+        return WordMergeKind::param_raw;
+      }
+      return WordMergeKind::incompatible;
+    case NODE_CLOSURE_BSDF: {
+      constexpr std::size_t h = sizeof(SVMNodeClosureBsdf) / sizeof(std::uint32_t);
+      if (word_idx < h || wa[0u] != wb[0u] || wa[1u] != wb[1u]) {
+        return WordMergeKind::incompatible;
+      }
+      const auto ct = static_cast<ClosureType>(wa[0u]);
+      const std::size_t r = word_idx - h;
+      switch (ct) {
+        case CLOSURE_BSDF_DIFFUSE_ID: {
+          if (r <= 2u) {
+            return both_input_float3_literal(h) ? WordMergeKind::param_raw
+                                                : WordMergeKind::incompatible;
+          }
+          if (r == 3u && both_literal_float(h + 3u)) {
+            const float ra = decode_bits_as_float(wa[h + 3u]);
+            const float rb = decode_bits_as_float(wb[h + 3u]);
+            if (!std::isnan(ra) && !std::isnan(rb) &&
+                (ra < 1.0e-5f) == (rb < 1.0e-5f)) {
+              return WordMergeKind::param_raw;
+            }
+          }
+          return WordMergeKind::incompatible;
+        }
+        case CLOSURE_BSDF_MICROFACET_GGX_ID:
+        case CLOSURE_BSDF_MICROFACET_BECKMANN_ID:
+        case CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID:
+        case CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID: {
+          if (r <= 2u) {
+            return both_input_float3_literal(h) ? WordMergeKind::param_raw
+                                                : WordMergeKind::incompatible;
+          }
+          if (in_range(r, 3u, 5u) && both_literal_float(word_idx)) {
+            return WordMergeKind::param_raw;
+          }
+          return WordMergeKind::incompatible;
+        }
+        case CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID:
+        case CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID:
+        case CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID: {
+          if (r <= 2u) {
+            return both_input_float3_literal(h) ? WordMergeKind::param_raw
+                                                : WordMergeKind::incompatible;
+          }
+          if ((r == 3u || r == 4u || r == 6u) && both_literal_float(word_idx)) {
+            return WordMergeKind::param_raw;
+          }
+          return WordMergeKind::incompatible;
+        }
+        case CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID:
+        case CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID:
+          return (r <= 1u && both_literal_float(word_idx))
+                     ? WordMergeKind::param_raw
+                     : WordMergeKind::incompatible;
+        case CLOSURE_BSDF_TRANSLUCENT_ID:
+        case CLOSURE_BSDF_ASHIKHMIN_VELVET_ID:
+          return (r == 0u && both_literal_float(word_idx))
+                     ? WordMergeKind::param_raw
+                     : WordMergeKind::incompatible;
+        case CLOSURE_BSDF_PRINCIPLED_ID: {
+          if (r == 1u) {
+            if (!both_literal_float(word_idx)) {
+              return WordMergeKind::incompatible;
+            }
+            const float va = decode_bits_as_float(wa[word_idx]);
+            const float vb = decode_bits_as_float(wb[word_idx]);
+            if (std::isfinite(va) && std::isfinite(vb) &&
+                (va > 1.0f) == (vb > 1.0f)) {
+              return WordMergeKind::param_raw;
+            }
+            return WordMergeKind::incompatible;
+          }
+          if (r == 11u) {
+            if (!both_literal_float(word_idx)) {
+              return WordMergeKind::incompatible;
+            }
+            if (shadow_eval_only) {
+              const float va = decode_bits_as_float(wa[word_idx]);
+              const float vb = decode_bits_as_float(wb[word_idx]);
+              if (std::isnan(va) || std::isnan(vb) ||
+                  (va >= 1.0f) != (vb >= 1.0f)) {
+                return WordMergeKind::incompatible;
+              }
+            }
+            return WordMergeKind::param_raw;
+          }
+          if (r == 6u) {
+            if (!both_literal_float(word_idx)) {
+              return WordMergeKind::incompatible;
+            }
+            if (shadow_eval_only) {
+              const float va = decode_bits_as_float(wa[word_idx]);
+              const float vb = decode_bits_as_float(wb[word_idx]);
+              if (std::isnan(va) || std::isnan(vb) ||
+                  (va <= 0.0f) != (vb <= 0.0f)) {
+                return WordMergeKind::incompatible;
+              }
+            }
+            return WordMergeKind::param_raw;
+          }
+          if (in_range(r, 8u, 10u) || in_range(r, 20u, 22u) ||
+              in_range(r, 24u, 26u) || in_range(r, 28u, 30u) ||
+              in_range(r, 34u, 36u)) {
+            const auto base = float3_base_if_in(r, r <= 10u ? 8u
+                                                   : (r <= 22u ? 20u
+                                                      : (r <= 26u ? 24u
+                                                         : (r <= 30u ? 28u
+                                                                     : 34u))),
+                                                36u);
+            if (base && both_input_float3_literal(h + *base)) {
+              return WordMergeKind::param_raw;
+            }
+            return WordMergeKind::incompatible;
+          }
+          if ((in_range(r, 2u, 5u) || r == 7u || r == 12u || r == 18u ||
+               r == 19u || r == 23u || r == 27u || r == 31u || r == 32u ||
+               in_range(r, 37u, 39u) || r == 41u) &&
+              both_literal_float(word_idx)) {
+            return WordMergeKind::param_raw;
+          }
+          return WordMergeKind::incompatible;
+        }
+        default:
+          return WordMergeKind::incompatible;
+      }
+    }
+    case NODE_NORMAL_MAP:
+      if (in_range(word_idx, 5u, 7u)) {
+        return both_input_float3_literal(5u) ? WordMergeKind::param_raw
+                                             : WordMergeKind::incompatible;
+      }
+      return (word_idx == 8u && both_literal_float(8u))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_MAPPING:
+    case NODE_MAPPING_DERIVATIVE:
+      if (const auto base = float3_base_if_in(word_idx, 1u, 12u)) {
+        if (in_range(word_idx, 7u, 9u) &&
+            (((wa[word_idx] & 0x7fffffffu) == 0u) !=
+             ((wb[word_idx] & 0x7fffffffu) == 0u))) {
+          return WordMergeKind::incompatible;
+        }
+        return both_input_float3_literal(*base) ? WordMergeKind::param_raw
+                                                : WordMergeKind::incompatible;
+      }
+      return WordMergeKind::incompatible;
+    case NODE_MATH:
+      return (in_range(word_idx, 1u, 3u) && both_literal_float(word_idx))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_VECTOR_MATH:
+    case NODE_VECTOR_MATH_DERIVATIVE:
+      if (const auto base = float3_base_if_in(word_idx, 1u, 9u)) {
+        return both_input_float3_literal(*base) ? WordMergeKind::param_raw
+                                                : WordMergeKind::incompatible;
+      }
+      return (word_idx == 10u && both_literal_float(10u))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_MIX:
+    case NODE_MIX_COLOR:
+      if (const auto base = float3_base_if_in(word_idx, 1u, 6u)) {
+        return both_input_float3_literal(*base) ? WordMergeKind::param_raw
+                                                : WordMergeKind::incompatible;
+      }
+      return (word_idx == 7u && both_literal_float(7u))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_MIX_FLOAT:
+      return (word_idx <= 2u && both_literal_float(word_idx))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_MIX_VECTOR:
+      if (const auto base = float3_base_if_in(word_idx, 0u, 5u)) {
+        return both_input_float3_literal(*base) ? WordMergeKind::param_raw
+                                                : WordMergeKind::incompatible;
+      }
+      return (word_idx == 6u && both_literal_float(6u))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_MIX_VECTOR_NON_UNIFORM:
+      if (const auto base = float3_base_if_in(word_idx, 0u, 8u)) {
+        return both_input_float3_literal(*base) ? WordMergeKind::param_raw
+                                                : WordMergeKind::incompatible;
+      }
+      return WordMergeKind::incompatible;
+    case NODE_MAP_RANGE:
+      return (in_range(word_idx, 1u, 6u) && both_literal_float(word_idx))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_VECTOR_MAP_RANGE:
+      if (const auto base = float3_base_if_in(word_idx, 2u, 19u)) {
+        return both_input_float3_literal(*base) ? WordMergeKind::param_raw
+                                                : WordMergeKind::incompatible;
+      }
+      return WordMergeKind::incompatible;
+    case NODE_CLAMP:
+      return (in_range(word_idx, 1u, 3u) && both_literal_float(word_idx))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_GAMMA:
+      if (word_idx <= 2u) {
+        return both_input_float3_literal(0u) ? WordMergeKind::param_raw
+                                             : WordMergeKind::incompatible;
+      }
+      return (word_idx == 3u && both_literal_float(3u))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_BRIGHTCONTRAST:
+      if (word_idx <= 2u) {
+        return both_input_float3_literal(0u) ? WordMergeKind::param_raw
+                                             : WordMergeKind::incompatible;
+      }
+      return ((word_idx == 3u || word_idx == 4u) && both_literal_float(word_idx))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_INVERT:
+      if (word_idx <= 2u) {
+        return both_input_float3_literal(0u) ? WordMergeKind::param_raw
+                                             : WordMergeKind::incompatible;
+      }
+      return (word_idx == 3u && both_literal_float(3u))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_HSV:
+      if (word_idx <= 2u) {
+        return both_input_float3_literal(0u) ? WordMergeKind::param_raw
+                                             : WordMergeKind::incompatible;
+      }
+      return (in_range(word_idx, 3u, 6u) && both_literal_float(word_idx))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_FRESNEL:
+      return (word_idx == 0u && both_literal_float(0u))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_LAYER_WEIGHT:
+      return (word_idx == 1u && both_literal_float(1u))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_SET_BUMP:
+      if ((word_idx == 0u || word_idx == 1u) && both_literal_float(word_idx)) {
+        return WordMergeKind::param_raw;
+      }
+      return (word_idx == 2u) ? WordMergeKind::param_raw
+                              : WordMergeKind::incompatible;
+    case NODE_MIX_CLOSURE: {
+      if (word_idx == 0u && wa.size() >= 2u && both_literal_float(0u)) {
+        const auto w1 = (wa[1u] >> 8u) & 0xffu;
+        const auto w2 = (wa[1u] >> 16u) & 0xffu;
+        if (!cond_offsets.contains(w1) && !cond_offsets.contains(w2)) {
+          return WordMergeKind::param_raw;
+        }
+      }
+      return WordMergeKind::incompatible;
+    }
+    case NODE_TEX_NOISE:
+    case NODE_TEX_VORONOI:
+      return (in_range(word_idx, 3u, 10u) && both_literal_float(word_idx))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_TEX_WAVE:
+      return (in_range(word_idx, 4u, 9u) && both_literal_float(word_idx))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_TEX_CHECKER:
+      if (const auto base = float3_base_if_in(word_idx, 0u, 5u)) {
+        return both_input_float3_literal(*base) ? WordMergeKind::param_raw
+                                                : WordMergeKind::incompatible;
+      }
+      return (word_idx == 6u && both_literal_float(6u))
+                 ? WordMergeKind::param_raw
+                 : WordMergeKind::incompatible;
+    case NODE_TEX_BRICK:
+      if (const auto base = float3_base_if_in(word_idx, 0u, 8u)) {
+        return both_input_float3_literal(*base) ? WordMergeKind::param_raw
+                                                : WordMergeKind::incompatible;
+      }
+      if (in_range(word_idx, 9u, 14u) && both_literal_float(word_idx)) {
+        return WordMergeKind::param_raw;
+      }
+      if (word_idx == 15u || word_idx == 16u) {
+        return WordMergeKind::param_raw;
+      }
+      return WordMergeKind::incompatible;
+    default:
+      return WordMergeKind::incompatible;
+  }
+}
+
+[[nodiscard]] bool can_merge_inst_structurally(
+    std::span<const std::uint32_t> words,
+    const SvmInstructionIr &lhs,
+    const SvmInstructionIr &rhs,
+    const CondStackOffsetMask &cond_offsets,
+    bool shadow_eval_only,
+    const DirectImageSlotQueryFn &slot_query,
+    std::size_t leaf_idx,
+    luisa::vector<std::uint64_t> *out_diff_keys = nullptr) noexcept {
+  if (lhs.opcode != rhs.opcode ||
+      lhs.payload_word_count != rhs.payload_word_count ||
+      lhs.specialization != rhs.specialization) {
+    return false;
+  }
+  const auto a_end =
+      static_cast<std::size_t>(lhs.payload_offset) + lhs.payload_word_count;
+  const auto b_end =
+      static_cast<std::size_t>(rhs.payload_offset) + rhs.payload_word_count;
+  if (a_end > words.size() || b_end > words.size()) {
+    return lhs.payload_offset == rhs.payload_offset;
+  }
+  const auto wa = words.subspan(lhs.payload_offset, lhs.payload_word_count);
+  const auto wb = words.subspan(rhs.payload_offset, rhs.payload_word_count);
+  for (std::size_t w = 0u; w < wa.size(); ++w) {
+    if (wa[w] == wb[w]) {
+      continue;
+    }
+    const auto kind = classify_word_merge(
+        lhs.opcode, wa, wb, w, cond_offsets, shadow_eval_only, slot_query);
+    if (kind == WordMergeKind::incompatible) {
+      return false;
+    }
+    if (out_diff_keys != nullptr) {
+      out_diff_keys->emplace_back(
+          (static_cast<std::uint64_t>(leaf_idx) << 32u) |
+          static_cast<std::uint64_t>(w));
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool can_merge_block_structurally_impl(
+    std::span<const std::uint32_t> words,
+    const SvmBlockIr &lhs,
+    const SvmBlockIr &rhs,
+    const CondStackOffsetMask &cond_offsets,
+    bool shadow_eval_only,
+    const DirectImageSlotQueryFn &slot_query,
+    std::size_t &leaf_idx,
+    luisa::vector<std::uint64_t> *out_diff_keys) noexcept {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (std::size_t i = 0u; i < lhs.size(); ++i) {
+    const auto &a = lhs[i];
+    const auto &b = rhs[i];
+    if (a.is_conditional != b.is_conditional) {
+      return false;
+    }
+    if (a.is_conditional) {
+      if (a.jump_if_one != b.jump_if_one ||
+          a.cond_stack_offset != b.cond_stack_offset ||
+          !can_merge_block_structurally_impl(
+              words, a.children, b.children, cond_offsets, shadow_eval_only,
+              slot_query, leaf_idx, out_diff_keys)) {
+        return false;
+      }
+      continue;
+    }
+    if (!can_merge_inst_structurally(
+            words, a.instruction, b.instruction, cond_offsets, shadow_eval_only,
+            slot_query, leaf_idx, out_diff_keys)) {
+      return false;
+    }
+    ++leaf_idx;
+  }
+  return true;
+}
+
+[[nodiscard]] std::size_t count_leaf_ops(const SvmBlockIr &block) noexcept {
+  std::size_t total = 0u;
+  for (const auto &op : block) {
+    if (op.is_conditional) {
+      total += count_leaf_ops(op.children);
+    } else {
+      ++total;
+    }
+  }
+  return total;
+}
+
+void flatten_leaf_instructions(
+    const SvmBlockIr &block,
+    luisa::vector<const SvmInstructionIr *> &out) noexcept {
+  for (const auto &op : block) {
+    if (op.is_conditional) {
+      flatten_leaf_instructions(op.children, out);
+    } else {
+      out.push_back(&op.instruction);
+    }
+  }
+}
+
+struct GroupParameterPlan {
+  std::size_t param_stride{};
+  luisa::vector<luisa::uint> param_data;
+  luisa::vector<luisa::vector<std::uint32_t>> inst_param_indices;
+  luisa::vector<std::optional<std::uint32_t>> inst_direct_ch_mode;
+
+  [[nodiscard]] bool has_params() const noexcept { return param_stride > 0u; }
+};
+
+struct CursorParamBinding {
+  const luisa::compute::Constant<luisa::uint> *param_lut{nullptr};
+  const luisa::compute::UInt *param_base{nullptr};
+  const GroupParameterPlan *plan{nullptr};
+};
 
 [[nodiscard]] std::size_t configured_direct_jit_max_shaders() noexcept {
   const char *raw = std::getenv("PSYCLES_SVM_JIT_MAX_SHADERS");
@@ -1890,7 +2421,9 @@ public:
 void emit_jit_instruction(
     const SvmTranslationRequest &req, const SvmInstructionIr &inst,
     detail::Stack &stack, Float3 &closure_weight,
-    detail::SpectralClosureWeight *spectral_weight = nullptr) noexcept {
+    detail::SpectralClosureWeight *spectral_weight = nullptr,
+    const CursorParamBinding *param_binding = nullptr,
+    std::size_t leaf_idx = 0u) noexcept {
   const auto host_words = std::span<const std::uint32_t>{req.table.words};
   LUISA_ASSERT(
       static_cast<std::size_t>(inst.payload_offset) + inst.payload_word_count <=
@@ -1900,7 +2433,27 @@ void emit_jit_instruction(
   const auto payload_span = host_words.subspan(
       static_cast<std::size_t>(inst.payload_offset),
       static_cast<std::size_t>(inst.payload_word_count));
-  detail::Cursor cursor{req.words, payload_span, inst.payload_offset};
+  const std::uint32_t *param_indices_ptr = nullptr;
+  std::optional<std::uint32_t> direct_ch_mode;
+  if (param_binding != nullptr && param_binding->plan != nullptr &&
+      leaf_idx < param_binding->plan->inst_param_indices.size()) {
+    const auto &indices = param_binding->plan->inst_param_indices[leaf_idx];
+    if (!indices.empty()) {
+      LUISA_ASSERT(indices.size() == inst.payload_word_count,
+                   "Parameterized Cursor index count {} != payload count {}.",
+                   indices.size(), inst.payload_word_count);
+      param_indices_ptr = indices.data();
+    }
+    direct_ch_mode = param_binding->plan->inst_direct_ch_mode[leaf_idx];
+  }
+  detail::Cursor cursor{
+      req.words,
+      payload_span,
+      inst.payload_offset,
+      param_binding != nullptr ? param_binding->param_lut : nullptr,
+      param_binding != nullptr ? param_binding->param_base : nullptr,
+      param_indices_ptr,
+      direct_ch_mode};
   const InstructionScopedKernelGlobals kg{req.kernel_globals,
                                           inst.specialization,
                                           req.table.osl_scripts};
@@ -2399,7 +2952,13 @@ void emit_jit_instruction(
 void emit_jit_block(
     const SvmTranslationRequest &req, const SvmBlockIr &block,
     detail::Stack &stack, Float3 &closure_weight,
-    detail::SpectralClosureWeight *spectral_weight = nullptr) noexcept {
+    detail::SpectralClosureWeight *spectral_weight = nullptr,
+    const CursorParamBinding *param_binding = nullptr,
+    std::size_t *leaf_cursor = nullptr) noexcept {
+  std::size_t local_leaf_cursor = 0u;
+  if (leaf_cursor == nullptr) {
+    leaf_cursor = &local_leaf_cursor;
+  }
   for (const auto &op : block) {
     if (op.is_conditional) {
       if (op.children.empty()) {
@@ -2411,7 +2970,9 @@ void emit_jit_block(
             op.jump_if_one ? !(*c_cond >= 1.0f) : !(*c_cond <= 0.0f);
         if (take) {
           emit_jit_block(req, op.children, stack, closure_weight,
-                         spectral_weight);
+                         spectral_weight, param_binding, leaf_cursor);
+        } else {
+          *leaf_cursor += count_leaf_ops(op.children);
         }
         continue;
       }
@@ -2420,16 +2981,264 @@ void emit_jit_block(
           op.jump_if_one ? !(cond_val >= 1.0f) : !(cond_val <= 0.0f);
       $if(take_children) {
         emit_jit_block(req, op.children, stack, closure_weight,
-                       spectral_weight);
+                       spectral_weight, param_binding, leaf_cursor);
       };
     } else {
+      const auto cur_leaf = (*leaf_cursor)++;
       emit_jit_instruction(req, op.instruction, stack, closure_weight,
-                           spectral_weight);
+                           spectral_weight, param_binding, cur_leaf);
     }
   }
 }
 
+struct StructuralShaderGroup {
+  luisa::vector<std::uint32_t> shader_ids;
+  luisa::vector<const SvmBlockIr *> routines;
+  CondStackOffsetMask cond_offsets;
+  luisa::vector<std::uint64_t> varying_keys;
+
+  [[nodiscard]] const SvmBlockIr *representative() const noexcept {
+    return routines.front();
+  }
+};
+
+[[nodiscard]] bool try_merge_into_group(
+    StructuralShaderGroup &group,
+    std::uint32_t sid,
+    const SvmBlockIr &routine,
+    std::span<const std::uint32_t> host_words,
+    bool shadow_eval_only,
+    const DirectImageSlotQueryFn &slot_query,
+    bool allow_structural) noexcept {
+  if (same_linked_svm_block(host_words, *group.representative(), routine)) {
+    group.shader_ids.emplace_back(sid);
+    group.routines.emplace_back(&routine);
+    return true;
+  }
+  if (!allow_structural || group.shader_ids.empty()) {
+    return false;
+  }
+  if (sid >= group.shader_ids.front() &&
+      (sid - group.shader_ids.front()) >= max_group_id_lut_span) {
+    return false;
+  }
+  luisa::vector<std::uint64_t> new_diffs;
+  std::size_t leaf_idx = 0u;
+  if (!can_merge_block_structurally_impl(
+          host_words, *group.representative(), routine, group.cond_offsets,
+          shadow_eval_only, slot_query, leaf_idx, &new_diffs)) {
+    return false;
+  }
+  luisa::vector<std::uint64_t> merged_keys = group.varying_keys;
+  for (const auto key : new_diffs) {
+    if (std::find(merged_keys.begin(), merged_keys.end(), key) ==
+        merged_keys.end()) {
+      merged_keys.emplace_back(key);
+    }
+  }
+  const auto new_stride = merged_keys.size();
+  const auto new_count = group.shader_ids.size() + 1u;
+  if (new_stride > max_group_param_stride ||
+      new_count * new_stride > max_group_param_lut_words) {
+    return false;
+  }
+  group.shader_ids.emplace_back(sid);
+  group.routines.emplace_back(&routine);
+  group.varying_keys = std::move(merged_keys);
+  return true;
+}
+
+[[nodiscard]] StructuralShaderGroup make_shader_group(
+    std::uint32_t sid, const SvmBlockIr &routine) noexcept {
+  StructuralShaderGroup g;
+  g.shader_ids.emplace_back(sid);
+  g.routines.emplace_back(&routine);
+  g.cond_offsets.collect(routine);
+  return g;
+}
+
+[[nodiscard]] GroupParameterPlan build_group_parameter_plan(
+    const SvmTranslationRequest &req,
+    const StructuralShaderGroup &group) noexcept {
+  GroupParameterPlan plan{};
+  const auto G = group.routines.size();
+  if (G <= 1u || group.varying_keys.empty()) {
+    return plan;
+  }
+  const auto host_words = std::span<const std::uint32_t>{req.table.words};
+  luisa::vector<luisa::vector<const SvmInstructionIr *>> leaf_insts(G);
+  for (std::size_t s = 0u; s < G; ++s) {
+    flatten_leaf_instructions(*group.routines[s], leaf_insts[s]);
+  }
+  const auto K = leaf_insts[0u].size();
+  plan.inst_param_indices.resize(K);
+  plan.inst_direct_ch_mode.resize(K, std::nullopt);
+
+  struct ParamSource {
+    std::size_t leaf_idx{};
+    std::size_t word_idx{};
+    bool direct_image_slot{};
+  };
+  luisa::vector<ParamSource> sources;
+
+  for (std::size_t k = 0u; k < K; ++k) {
+    const auto *inst0 = leaf_insts[0u][k];
+    const auto wc = inst0->payload_word_count;
+    bool inst_has_any_param = false;
+    luisa::vector<std::uint32_t> indices(wc, ~0u);
+    for (std::size_t w = 0u; w < wc; ++w) {
+      const auto word0 = host_words[inst0->payload_offset + w];
+      bool differs = false;
+      for (std::size_t s = 1u; s < G; ++s) {
+        if (host_words[leaf_insts[s][k]->payload_offset + w] != word0) {
+          differs = true;
+          break;
+        }
+      }
+      if (!differs) {
+        continue;
+      }
+      inst_has_any_param = true;
+      const bool is_direct_img =
+          (inst0->opcode == NODE_TEX_IMAGE ||
+           inst0->opcode == NODE_TEX_IMAGE_DERIVATIVE) &&
+          w == 0u;
+      if (is_direct_img) {
+        const auto info0 = req.kernel_globals.direct_image_slot_info(
+            std::bit_cast<std::int32_t>(word0));
+        LUISA_ASSERT(
+            info0.has_value(),
+            "Parameterized NODE_TEX_IMAGE missing DirectImageSlotInfo.");
+        plan.inst_direct_ch_mode[k] = info0->channel_mode;
+      }
+      indices[w] = static_cast<std::uint32_t>(sources.size());
+      sources.push_back(ParamSource{
+          .leaf_idx = k,
+          .word_idx = w,
+          .direct_image_slot = is_direct_img});
+    }
+    if (inst_has_any_param) {
+      plan.inst_param_indices[k] = std::move(indices);
+    }
+  }
+
+  plan.param_stride = sources.size();
+  if (plan.param_stride == 0u) {
+    plan.inst_param_indices.clear();
+    plan.inst_direct_ch_mode.clear();
+    return plan;
+  }
+  plan.param_data.resize(G * plan.param_stride);
+  for (std::size_t s = 0u; s < G; ++s) {
+    for (std::size_t p = 0u; p < plan.param_stride; ++p) {
+      const auto &src = sources[p];
+      const auto raw =
+          host_words[leaf_insts[s][src.leaf_idx]->payload_offset + src.word_idx];
+      if (src.direct_image_slot) {
+        const auto info = req.kernel_globals.direct_image_slot_info(
+            std::bit_cast<std::int32_t>(raw));
+        LUISA_ASSERT(
+            info.has_value(),
+            "Parameterized NODE_TEX_IMAGE shader {} missing DirectImageSlotInfo.",
+            group.shader_ids[s]);
+        plan.param_data[s * plan.param_stride + p] = info->texture_slot;
+      } else {
+        plan.param_data[s * plan.param_stride + p] = raw;
+      }
+    }
+  }
+  return plan;
+}
+
+[[nodiscard]] UInt resolve_group_local_index(
+    const StructuralShaderGroup &group,
+    Expr<luisa::uint> shader_index) noexcept {
+  const auto G = group.shader_ids.size();
+  if (G <= 1u) {
+    return 0u;
+  }
+  if (G == 2u) {
+    using ::operator==;
+    return select(UInt{0u}, UInt{1u},
+                  shader_index == def<luisa::uint>(group.shader_ids[1u]));
+  }
+  const auto min_id = group.shader_ids.front();
+  const auto max_id = group.shader_ids.back();
+  const auto span = static_cast<std::size_t>(max_id - min_id) + 1u;
+  if (span == G) {
+    return shader_index - def<luisa::uint>(min_id);
+  }
+  luisa::vector<luisa::uint> id_map(span, 0u);
+  for (std::size_t s = 0u; s < G; ++s) {
+    id_map[group.shader_ids[s] - min_id] = static_cast<luisa::uint>(s);
+  }
+  Constant<luisa::uint> id_lut{id_map};
+  const UInt idx = min(shader_index - def<luisa::uint>(min_id),
+                       def<luisa::uint>(static_cast<std::uint32_t>(span - 1u)));
+  return id_lut[idx];
+}
+
+void emit_jit_group_body(
+    const SvmTranslationRequest &req,
+    const StructuralShaderGroup &group,
+    Expr<luisa::uint> shader_index,
+    std::optional<GroupParameterPlan> plan = std::nullopt) noexcept {
+  detail::DirectJitCaseCacheGuard attr_cache_guard;
+  const bool has_spectral =
+      req.kernel_globals.is_spectral() &&
+      req.shader_data.spectral.has_value() &&
+      block_has_spectral_source(*group.representative());
+  auto case_stack = detail::Stack::direct_jit(req.stack_size, has_spectral);
+  Float3 closure_weight = make_float3(0.0f);
+  std::optional<detail::SpectralClosureWeight> spectral_weight;
+  if (has_spectral) {
+    spectral_weight.emplace();
+  }
+  if (!plan.has_value() && group.shader_ids.size() > 1u &&
+      !group.varying_keys.empty()) {
+    plan = build_group_parameter_plan(req, group);
+  }
+  if (plan.has_value() && plan->has_params()) {
+    const UInt local_idx = resolve_group_local_index(group, shader_index);
+    const Constant<luisa::uint> param_lut{plan->param_data};
+    const UInt param_base =
+        local_idx * static_cast<std::uint32_t>(plan->param_stride);
+    const CursorParamBinding binding{
+        .param_lut = &param_lut,
+        .param_base = &param_base,
+        .plan = &*plan};
+    std::size_t leaf_cursor = 0u;
+    emit_jit_block(req, *group.representative(), case_stack, closure_weight,
+                   spectral_weight ? &*spectral_weight : nullptr, &binding,
+                   &leaf_cursor);
+    return;
+  }
+  emit_jit_block(req, *group.representative(), case_stack, closure_weight,
+                 spectral_weight ? &*spectral_weight : nullptr);
+}
+
 } // namespace
+
+bool can_merge_svm_blocks_structurally(
+    std::span<const std::uint32_t> words,
+    const SvmBlockIr &lhs,
+    const SvmBlockIr &rhs,
+    bool shadow_eval_only,
+    const std::function<
+        std::optional<DirectImageSlotInfo>(std::int32_t)> &slot_query) noexcept {
+  if (same_linked_svm_block(words, lhs, rhs)) {
+    return true;
+  }
+  if (!structural_dedup_enabled()) {
+    return false;
+  }
+  CondStackOffsetMask cond_offsets;
+  cond_offsets.collect(lhs);
+  std::size_t leaf_idx = 0u;
+  return can_merge_block_structurally_impl(
+      words, lhs, rhs, cond_offsets, shadow_eval_only, slot_query, leaf_idx,
+      nullptr);
+}
 
 std::size_t svm_block_jit_weight(
     const SvmBlockIr &block, std::uint32_t node_feature_mask) noexcept {
@@ -2497,19 +3306,20 @@ void DirectJitTranslator::translate(
                "Cycles SVM stack extent must be in [1, {}], got {}.",
                SVM_STACK_SIZE, request.stack_size);
 
-  struct ShaderGroup {
-    luisa::vector<std::uint32_t> shader_ids;
-    const SvmBlockIr *routine{nullptr};
-  };
-
   const auto shader_count =
       static_cast<std::size_t>(request.table.shader_count);
   const bool has_mask = request.active_shader_mask.size() == shader_count;
   const auto host_words = std::span<const std::uint32_t>{request.table.words};
+  const bool allow_structural = structural_dedup_enabled();
+  const DirectImageSlotQueryFn slot_query =
+      [&request](std::int32_t image_id) noexcept {
+        return request.kernel_globals.direct_image_slot_info(image_id);
+      };
 
   luisa::vector<SvmBlockIr> pruned_routines(shader_count);
-  luisa::vector<ShaderGroup> groups;
+  luisa::vector<StructuralShaderGroup> groups;
   std::size_t active_empty_count = 0u;
+  std::size_t active_nonempty_count = 0u;
   for (std::size_t i = 0u; i < shader_count; ++i) {
     if (has_mask && request.active_shader_mask[i] == 0u) {
       continue;
@@ -2523,27 +3333,44 @@ void DirectJitTranslator::translate(
       ++active_empty_count;
       continue;
     }
+    ++active_nonempty_count;
+    const auto sid = static_cast<std::uint32_t>(i);
     bool merged = false;
     for (auto &group : groups) {
-      if (same_linked_svm_block(host_words, *group.routine, routine)) {
-        group.shader_ids.emplace_back(static_cast<std::uint32_t>(i));
+      if (try_merge_into_group(group, sid, routine, host_words,
+                               request.shadow_eval_only, slot_query,
+                               allow_structural)) {
         merged = true;
         break;
       }
     }
     if (!merged) {
-      ShaderGroup g;
-      g.shader_ids.emplace_back(static_cast<std::uint32_t>(i));
-      g.routine = &routine;
-      groups.emplace_back(std::move(g));
+      groups.emplace_back(make_shader_group(sid, routine));
     }
+  }
+
+  std::size_t param_groups = 0u;
+  std::size_t max_param_stride = 0u;
+  for (const auto &g : groups) {
+    if (!g.varying_keys.empty()) {
+      ++param_groups;
+      max_param_stride = std::max(max_param_stride, g.varying_keys.size());
+    }
+  }
+  if (allow_structural && active_nonempty_count > groups.size() &&
+      param_groups > 0u) {
+    LUISA_INFO("DirectJit structural dedup: shader_type={} shadow_only={} "
+               "active_nonempty={} groups={} param_groups={} max_param_stride={}.",
+               static_cast<std::uint32_t>(request.shader_type),
+               request.shadow_eval_only, active_nonempty_count, groups.size(),
+               param_groups, max_param_stride);
   }
 
   std::size_t total_jit_weight = 0u;
   for (const auto &g : groups) {
     total_jit_weight += svm_block_jit_weight_impl(
-        *g.routine, request.node_feature_mask, request.shadow_eval_only,
-        host_words);
+        *g.representative(), request.node_feature_mask,
+        request.shadow_eval_only, host_words);
   }
 
   const bool explicit_chunk_env = []() noexcept {
@@ -2586,7 +3413,7 @@ void DirectJitTranslator::translate(
     struct OutlinedChunk {
       std::uint32_t max_shader_id{};
       std::size_t weight{};
-      luisa::vector<ShaderGroup> groups;
+      luisa::vector<StructuralShaderGroup> groups;
     };
     luisa::vector<OutlinedChunk> chunks;
     OutlinedChunk current;
@@ -2601,8 +3428,9 @@ void DirectJitTranslator::translate(
       const auto sid = static_cast<std::uint32_t>(i);
       bool merged_in_chunk = false;
       for (auto &group : current.groups) {
-        if (same_linked_svm_block(host_words, *group.routine, routine)) {
-          group.shader_ids.emplace_back(sid);
+        if (try_merge_into_group(group, sid, routine, host_words,
+                                 request.shadow_eval_only, slot_query,
+                                 allow_structural)) {
           current.max_shader_id = sid;
           merged_in_chunk = true;
           break;
@@ -2621,12 +3449,9 @@ void DirectJitTranslator::translate(
         chunks.emplace_back(std::move(current));
         current = OutlinedChunk{};
       }
-      ShaderGroup g;
-      g.shader_ids.emplace_back(sid);
-      g.routine = &routine;
       current.max_shader_id = sid;
       current.weight += routine_weight;
-      current.groups.emplace_back(std::move(g));
+      current.groups.emplace_back(make_shader_group(sid, routine));
     }
     if (!current.groups.empty()) {
       chunks.emplace_back(std::move(current));
@@ -2645,21 +3470,8 @@ void DirectJitTranslator::translate(
                 using ::operator==;
                 $if(shader_index ==
                     def<luisa::uint>(chunk.groups.front().shader_ids.front())) {
-                  detail::DirectJitCaseCacheGuard attr_cache_guard;
-                  const bool has_spectral =
-                      request.kernel_globals.is_spectral() &&
-                      request.shader_data.spectral.has_value() &&
-                      block_has_spectral_source(*chunk.groups.front().routine);
-                  auto group_stack = detail::Stack::direct_jit(
-                      request.stack_size, has_spectral);
-                  Float3 closure_weight = make_float3(0.0f);
-                  std::optional<detail::SpectralClosureWeight> spectral_weight;
-                  if (has_spectral) {
-                    spectral_weight.emplace();
-                  }
-                  emit_jit_block(request, *chunk.groups.front().routine,
-                                 group_stack, closure_weight,
-                                 spectral_weight ? &*spectral_weight : nullptr);
+                  emit_jit_group_body(request, chunk.groups.front(),
+                                      shader_index);
                 };
               } else {
                 $switch(shader_index) {
@@ -2667,23 +3479,7 @@ void DirectJitTranslator::translate(
                     luisa::compute::detail::SwitchCaseStmtBuilder{
                         luisa::span<const std::uint32_t>{group.shader_ids}} %
                         [&]() noexcept {
-                          detail::DirectJitCaseCacheGuard attr_cache_guard;
-                          const bool has_spectral =
-                              request.kernel_globals.is_spectral() &&
-                              request.shader_data.spectral.has_value() &&
-                              block_has_spectral_source(*group.routine);
-                          auto case_stack = detail::Stack::direct_jit(
-                              request.stack_size, has_spectral);
-                          Float3 closure_weight = make_float3(0.0f);
-                          std::optional<detail::SpectralClosureWeight>
-                              spectral_weight;
-                          if (has_spectral) {
-                            spectral_weight.emplace();
-                          }
-                          emit_jit_block(
-                              request, *group.routine, case_stack,
-                              closure_weight,
-                              spectral_weight ? &*spectral_weight : nullptr);
+                          emit_jit_group_body(request, group, shader_index);
                         };
                   }
                   $default {};
@@ -2717,45 +3513,17 @@ void DirectJitTranslator::translate(
     if (groups.empty()) {
       return;
     }
+    const UInt shader_index = request.shader_data.shader & shader_mask;
     if (groups.size() == 1u && active_empty_count == 0u) {
-      detail::DirectJitCaseCacheGuard attr_cache_guard;
-      const bool has_spectral =
-          request.kernel_globals.is_spectral() &&
-          request.shader_data.spectral.has_value() &&
-          block_has_spectral_source(*groups.front().routine);
-      auto case_stack =
-          detail::Stack::direct_jit(request.stack_size, has_spectral);
-      Float3 closure_weight = make_float3(0.0f);
-      std::optional<detail::SpectralClosureWeight> spectral_weight;
-      if (has_spectral) {
-        spectral_weight.emplace();
-      }
-      emit_jit_block(request, *groups.front().routine, case_stack,
-                     closure_weight,
-                     spectral_weight ? &*spectral_weight : nullptr);
+      emit_jit_group_body(request, groups.front(), shader_index);
       return;
     }
-    const UInt shader_index = request.shader_data.shader & shader_mask;
     $switch(shader_index) {
       for (const auto &group : groups) {
         luisa::compute::detail::SwitchCaseStmtBuilder{
             luisa::span<const std::uint32_t>{group.shader_ids}} %
             [&]() noexcept {
-              detail::DirectJitCaseCacheGuard attr_cache_guard;
-              const bool has_spectral =
-                  request.kernel_globals.is_spectral() &&
-                  request.shader_data.spectral.has_value() &&
-                  block_has_spectral_source(*group.routine);
-              auto case_stack =
-                  detail::Stack::direct_jit(request.stack_size, has_spectral);
-              Float3 closure_weight = make_float3(0.0f);
-              std::optional<detail::SpectralClosureWeight> spectral_weight;
-              if (has_spectral) {
-                spectral_weight.emplace();
-              }
-              emit_jit_block(request, *group.routine, case_stack,
-                             closure_weight,
-                             spectral_weight ? &*spectral_weight : nullptr);
+              emit_jit_group_body(request, group, shader_index);
             };
       }
       $default {};
@@ -2782,26 +3550,32 @@ SvmBackendStrategy resolve_svm_backend_strategy(
   const auto sc = static_cast<std::size_t>(request.table.shader_count);
   const bool has_mask = request.active_shader_mask.size() == sc;
   const auto host_words = std::span<const std::uint32_t>{request.table.words};
-  luisa::vector<SvmBlockIr> pruned_routines;
-  pruned_routines.reserve(sc);
-  luisa::vector<const SvmBlockIr *> unique_routines;
-  std::size_t active_nonempty = 0u;
+  const bool allow_structural = structural_dedup_enabled();
+  const DirectImageSlotQueryFn slot_query =
+      [&request](std::int32_t image_id) noexcept {
+        return request.kernel_globals.direct_image_slot_info(image_id);
+      };
+  luisa::vector<SvmBlockIr> pruned_routines(sc);
+  luisa::vector<StructuralShaderGroup> unique_groups;
   std::size_t unique_jit_weight = 0u;
   for (std::size_t i = 0u; i < sc; ++i) {
     if (has_mask && request.active_shader_mask[i] == 0u) {
       continue;
     }
-    auto pruned = prune_svm_block_for_eval(
+    pruned_routines[i] = prune_svm_block_for_eval(
         request.table.ir.shaders[i].routine_for(request.shader_type),
         host_words, request.shader_type, request.node_feature_mask,
         request.shadow_eval_only);
+    const auto &pruned = pruned_routines[i];
     if (pruned.empty()) {
       continue;
     }
-    ++active_nonempty;
+    const auto sid = static_cast<std::uint32_t>(i);
     bool merged = false;
-    for (const SvmBlockIr *existing : unique_routines) {
-      if (same_linked_svm_block(host_words, *existing, pruned)) {
+    for (auto &g : unique_groups) {
+      if (try_merge_into_group(g, sid, pruned, host_words,
+                               request.shadow_eval_only, slot_query,
+                               allow_structural)) {
         merged = true;
         break;
       }
@@ -2810,18 +3584,17 @@ SvmBackendStrategy resolve_svm_backend_strategy(
       unique_jit_weight += svm_block_jit_weight_impl(
           pruned, request.node_feature_mask, request.shadow_eval_only,
           host_words);
-      pruned_routines.emplace_back(std::move(pruned));
-      unique_routines.push_back(&pruned_routines.back());
+      unique_groups.emplace_back(make_shader_group(sid, pruned));
     }
   }
-  if (active_nonempty > configured_direct_jit_max_shaders()) {
+  if (unique_groups.size() > configured_direct_jit_max_shaders()) {
     return SvmBackendStrategy::bytecode_vm;
   }
   const auto max_weight = configured_direct_jit_max_weight();
   if (unique_jit_weight > max_weight) {
     LUISA_INFO("Cycles SVM auto_select: falling back to BytecodeVm "
-               "(active_nonempty={}, unique_jit_weight={}, limit={}).",
-               active_nonempty, unique_jit_weight, max_weight);
+               "(unique_groups={}, unique_jit_weight={}, limit={}).",
+               unique_groups.size(), unique_jit_weight, max_weight);
     return SvmBackendStrategy::bytecode_vm;
   }
   return SvmBackendStrategy::direct_jit;

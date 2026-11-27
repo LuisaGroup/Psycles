@@ -230,6 +230,13 @@ class PathCyclesSvmKernelGlobals final
     [[nodiscard]] Float3 object_inverse_position_transform(
         const cycles_svm::ShaderData &shader_data,
         Expr<luisa::float3> value) const noexcept override;
+    [[nodiscard]] std::optional<cycles_svm::DirectImageSlotInfo>
+    direct_image_slot_info(std::int32_t image_texture_id) const noexcept override;
+    [[nodiscard]] Float4 kernel_image_interp_direct_slot(
+        cycles_svm::ShaderData &shader_data,
+        Expr<std::uint32_t> texture_slot,
+        std::uint32_t channel_mode,
+        const cycles_svm::Dual2 &uv) const noexcept override;
     [[nodiscard]] Float4 kernel_image_interp_with_udim(
         cycles_svm::ShaderData &shader_data,
         Expr<std::int32_t> image_texture_id,

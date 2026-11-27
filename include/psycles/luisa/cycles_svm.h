@@ -430,6 +430,11 @@ struct WaveStaticOptions {
   bool may_have_distortion{true};
 };
 
+struct DirectImageSlotInfo {
+  std::uint32_t texture_slot{};
+  std::uint32_t channel_mode{};
+};
+
 /* Host/JIT projection of the exact KernelGlobals services consumed by the
  * copied SVM handlers. Virtual dispatch happens while Luisa records the AST;
  * generated device code contains only the resulting buffer operations. */
@@ -704,6 +709,23 @@ public:
   object_inverse_position_transform(
       const ShaderData &shader_data,
       luisa::compute::Expr<luisa::float3> value) const noexcept = 0;
+  [[nodiscard]] virtual std::optional<DirectImageSlotInfo>
+  direct_image_slot_info(std::int32_t image_texture_id) const noexcept {
+    static_cast<void>(image_texture_id);
+    return std::nullopt;
+  }
+  [[nodiscard]] virtual luisa::compute::Float4
+  kernel_image_interp_direct_slot(
+      ShaderData &shader_data,
+      luisa::compute::Expr<std::uint32_t> texture_slot,
+      std::uint32_t channel_mode,
+      const Dual2 &uv) const noexcept {
+    static_cast<void>(shader_data);
+    static_cast<void>(texture_slot);
+    static_cast<void>(channel_mode);
+    static_cast<void>(uv);
+    return luisa::compute::make_float4(1.0f, 0.0f, 1.0f, 1.0f);
+  }
   [[nodiscard]] virtual luisa::compute::Float4 kernel_image_interp_with_udim(
       ShaderData &shader_data,
       luisa::compute::Expr<std::int32_t> image_texture_id,

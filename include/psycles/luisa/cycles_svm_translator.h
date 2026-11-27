@@ -14,6 +14,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <span>
 
 namespace psycles::luisa_backend::cycles_svm {
@@ -91,6 +93,14 @@ public:
 
   void translate(const SvmTranslationRequest &request) const noexcept override;
 };
+
+[[nodiscard]] bool can_merge_svm_blocks_structurally(
+    std::span<const std::uint32_t> words,
+    const compiler::cycles_svm::SvmBlockIr &lhs,
+    const compiler::cycles_svm::SvmBlockIr &rhs,
+    bool shadow_eval_only,
+    const std::function<
+        std::optional<DirectImageSlotInfo>(std::int32_t)> &slot_query = {}) noexcept;
 
 [[nodiscard]] std::size_t svm_block_jit_weight(
     const compiler::cycles_svm::SvmBlockIr &block,
