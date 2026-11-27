@@ -130,6 +130,8 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_background_portal.cpp
     src/luisa/path_kernel_bounce_random.cpp
     src/luisa/path_kernel_bounce_setup.cpp
+    src/luisa/path_kernel_caustics_manifold.cpp
+    src/luisa/path_kernel_caustics_queue.cpp
     src/luisa/path_kernel_closest_event.cpp
     src/luisa/path_kernel_curve_geometry.cpp
     src/luisa/path_kernel_curve_primitive.cpp

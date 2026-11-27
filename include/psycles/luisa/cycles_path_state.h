@@ -50,6 +50,10 @@ inline constexpr std::uint32_t
     flag_volume_primary_transmit = 1u << 24u;
 inline constexpr std::uint32_t
     flag_spectral_secondary_terminated = 1u << 25u;
+inline constexpr std::uint32_t
+    flag_caustic_receiver_parent = 1u << 26u;
+inline constexpr std::uint32_t
+    flag_caustic_caster_chain = 1u << 27u;
 inline constexpr std::uint32_t flag_any_pass =
     flag_surface_pass | flag_volume_pass;
 

@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_caustics_manifold.h"
 #include "path_kernel_coro_transitions.h"
 #include "path_kernel_scene_traversal.h"
 #include "path_kernel_cycles_svm_surface_scatter.h"
@@ -13,6 +14,7 @@
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_svm.h>
 #include <psycles/luisa/cycles_volume_boundary.h>
+#include <psycles/sampling/light_distribution.h>
 
 #include <charconv>
 #include <cstdlib>
@@ -46,6 +48,7 @@ public:
   std::unique_ptr<DirectLightTransportStage> direct_light_transport;
   std::unique_ptr<SurfaceScatterStage> surface_scatter;
   std::unique_ptr<SubsurfaceTransportStage> subsurface_transport;
+  std::optional<CausticsTaskEvaluator> caustics_evaluator;
 
   explicit Impl(const PathKernelConfig &config)
       : direct_light_trace{
@@ -127,6 +130,9 @@ public:
         direct_light_transport = make_direct_light_transport_stage(
             direct_light_trace, make_direct_light_task_evaluator(config),
             config.direct_light_task_sink, config.path_trace_enabled);
+      }
+      if (config.caustics_active() && !config.caustics_task_sink) {
+        caustics_evaluator.emplace(make_caustics_task_evaluator(config));
       }
       if (config.has_subsurface) {
         subsurface_transport = make_subsurface_transport_stage();
@@ -473,6 +479,114 @@ void PathKernelPipeline::emit(
               }
               for (const auto &provider : light_providers) {
                 provider->sample();
+              }
+
+              if (config.caustics_active()) {
+                $if(direct_light.valid &
+                    (direct_light.emitter_kind ==
+                     static_cast<std::uint32_t>(
+                         sampling::LightDistributionEmitterKind::
+                             analytic_light))) {
+                  const Var<LightGpu> caustic_light =
+                      config.scene->light_buffer->read(direct_light.emitter_index);
+                  const auto is_caustic_light =
+                      (caustic_light.flags & light_flag_caustics) != 0u;
+                  $if(((sample.path_flags &
+                        cycles_path_state::flag_caustic_caster_chain) != 0u) &
+                      is_caustic_light) {
+                    direct_light.valid = false;
+                  };
+                  const auto surface_object_flags =
+                      lighting.surface.cycles_object_flags
+                          ? *lighting.surface.cycles_object_flags
+                          : config.scene->cycles_svm->objects->object_flag_buffer
+                                ->read(lighting.surface.cycles_object_index);
+                  const auto on_receiver =
+                      ((surface_object_flags &
+                        static_cast<std::uint32_t>(
+                            compiler::cycles_svm::SD_OBJECT_CAUSTICS_RECEIVER)) !=
+                       0u) &
+                      !lighting.surface.is_curve;
+                  const auto emit_caustic =
+                      on_receiver & is_caustic_light & direct_light.valid &
+                      ((sample.path_flags &
+                        cycles_path_state::flag_caustic_caster_chain) == 0u) &
+                      (sample.path_depth < sample.invocation.parameters.max_bounces);
+                  $if(emit_caustic) {
+                    Var<CausticTaskCall> caustic_task{};
+                    caustic_task.path_throughput =
+                        config.spectral_rendering
+                            ? sample.throughput.lanes()
+                            : make_float4(sample.throughput.rgb(), 0.0f);
+                    caustic_task.light_shader =
+                        config.spectral_rendering
+                            ? direct_light.spectral_light_shader.value_or(
+                                  make_float4(direct_light.light_shader, 0.0f))
+                            : make_float4(direct_light.light_shader, 0.0f);
+                    caustic_task.receiver_p = lighting.surface.hit_position;
+                    caustic_task.ray_time = lighting.surface.point.time;
+                    caustic_task.receiver_wi = lighting.surface.point.incoming;
+                    caustic_task.ray_dP = lighting.surface.differential_radius;
+                    caustic_task.receiver_ng = lighting.surface.geometric_normal;
+                    caustic_task.ray_dD = sample.ray_dD;
+                    caustic_task.light_p = direct_light.target_position;
+                    caustic_task.light_dir = direct_light.direction;
+                    const auto cos_l = abs(dot(direct_light.direction,
+                                               direct_light.light_normal));
+                    const auto dist_sq =
+                        max(direct_light.distance * direct_light.distance,
+                            1.0e-20f);
+                    caustic_task.light_area_pdf = select(
+                        direct_light.pdf * cos_l / dist_sq, direct_light.pdf,
+                        direct_light.distant);
+                    caustic_task.light_normal = direct_light.light_normal;
+                    caustic_task.light_distance = direct_light.distance;
+                    caustic_task.path_diffuse_weight = sample.path_diffuse_weight;
+                    caustic_task.path_glossy_weight = sample.path_glossy_weight;
+                    caustic_task.receiver_bary =
+                        lighting.surface.point.barycentric;
+                    caustic_task.light_uv = direct_light.light_uv;
+                    caustic_task.receiver_inst =
+                        lighting.surface.point.instance_id;
+                    caustic_task.receiver_prim =
+                        lighting.surface.point.primitive_id;
+                    caustic_task.receiver_cycles_object =
+                        lighting.surface.cycles_object_index;
+                    caustic_task.receiver_cycles_shader =
+                        lighting.surface.cycles_surface_shader;
+                    caustic_task.light_index = direct_light.emitter_index;
+                    caustic_task.light_cycles_object =
+                        direct_light.light_object;
+                    caustic_task.light_shader_flags = direct_light.shader_flags;
+                    caustic_task.light_constant_shader =
+                        direct_light.constant_light_shader.cast<luisa::uint>();
+                    caustic_task.pixel = sample.invocation.pixel;
+                    caustic_task.path_depth = sample.path_depth;
+                    caustic_task.path_flags = sample.path_flags;
+                    caustic_task.path_visibility = sample.cycles_path_visibility;
+                    caustic_task.diffuse_depth = sample.diffuse_depth;
+                    caustic_task.glossy_depth = sample.glossy_depth;
+                    caustic_task.transmission_depth = sample.transmission_depth;
+                    caustic_task.transparent_depth = sample.transparent_depth;
+                    caustic_task.portal_depth = sample.portal_depth;
+                    caustic_task.sample_index = sample.sample_index;
+                    caustic_task.rng_hash = sample.rng_hash;
+                    caustic_task.rng_offset = sample.cycles_rng_offset;
+                    caustic_task.u_lambda =
+                        (config.spectral_rendering &&
+                         sample.spectral_u_lambda.has_value())
+                            ? *sample.spectral_u_lambda
+                            : Float{0.0f};
+                    if (config.caustics_task_sink) {
+                      config.caustics_task_sink->emit(
+                          caustic_task,
+                          sample.invocation.parameters.wavefront_frame_capacity);
+                    } else if (_impl->caustics_evaluator.has_value()) {
+                      _impl->caustics_evaluator->evaluate_and_accumulate_sample(
+                          sample, caustic_task, sample.invocation.parameters);
+                    }
+                  };
+                };
               }
 
               auto evaluation =

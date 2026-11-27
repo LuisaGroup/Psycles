@@ -1259,6 +1259,7 @@ def _light(
             getattr(cycles, "use_multiple_importance_sampling", True)
         ),
         "is_portal": bool(getattr(cycles, "is_portal", False)),
+        "is_caustics_light": bool(getattr(cycles, "is_caustics_light", False)),
         "max_bounces": int(getattr(cycles, "max_bounces", 1024)),
         "cast_shadow": bool(getattr(light, "use_shadow", True)),
         "visibility": (

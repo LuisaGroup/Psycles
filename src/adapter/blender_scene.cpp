@@ -1157,6 +1157,8 @@ using detail::unsigned_number;
                         member(light, "is_caustics_caster"), false),
                     .is_caustics_receiver = boolean(
                         member(light, "is_caustics_receiver"), false),
+                    .is_caustics_light = boolean(
+                        member(light, "is_caustics_light"), false),
                     .cycles_shader_index =
                         optional_unsigned_number(member(
                             cycles_sync,

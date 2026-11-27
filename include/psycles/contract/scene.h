@@ -509,6 +509,7 @@ struct LightDesc {
     bool use_holdout{};
     bool is_caustics_caster{};
     bool is_caustics_receiver{};
+    bool is_caustics_light{};
     std::optional<std::uint32_t> cycles_shader_index;
     std::optional<std::uint32_t> cycles_object_index;
     std::int32_t cycles_light_group{-1};

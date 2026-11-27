@@ -199,6 +199,7 @@ constexpr std::uint32_t light_flag_forward_intersectable =
     1u << 5u;
 constexpr std::uint32_t light_flag_constant_emission =
     1u << 6u;
+constexpr std::uint32_t light_flag_caustics = 1u << 7u;
 
 
 struct MaterialBinding {
@@ -392,8 +393,14 @@ struct LuisaSceneData {
     bool has_dispersive_materials{false};
     bool has_caustics_casters{false};
     bool has_caustics_receivers{false};
+    bool has_caustics_lights{false};
+    std::vector<std::uint8_t> caustics_caster_shader_mask;
+    std::vector<std::uint8_t> caustics_receiver_shader_mask;
     [[nodiscard]] bool scene_has_caustics() const noexcept {
         return has_caustics_casters && has_caustics_receivers;
+    }
+    [[nodiscard]] bool scene_has_mnee_caustics() const noexcept {
+        return has_caustics_casters && has_caustics_receivers && has_caustics_lights;
     }
     std::vector<GeometryResource> geometries;
     std::vector<CurveGeometryResource> curve_geometries;

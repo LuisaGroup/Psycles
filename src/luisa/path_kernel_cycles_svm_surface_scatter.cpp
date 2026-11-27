@@ -44,6 +44,45 @@ namespace closure = cycles_closure;
 namespace abi = compiler::cycles_svm;
 namespace path = cycles_path_state;
 
+void update_caustic_path_flags(PathSampleContext &sample,
+                               const SurfaceGeometryContext &surface,
+                               const PathKernelConfig &config,
+                               Expr<std::uint32_t> prev_flags,
+                               Expr<std::uint32_t> label) noexcept {
+  $if((label & closure::label_transparent) == 0u) {
+    const auto obj_flags =
+        surface.cycles_object_flags
+            ? *surface.cycles_object_flags
+            : config.scene->cycles_svm->objects->object_flag_buffer->read(
+                  surface.cycles_object_index);
+    const auto on_receiver =
+        (obj_flags &
+         static_cast<std::uint32_t>(abi::SD_OBJECT_CAUSTICS_RECEIVER)) != 0u;
+    const auto on_caster =
+        (obj_flags &
+         static_cast<std::uint32_t>(abi::SD_OBJECT_CAUSTICS_CASTER)) != 0u;
+    const auto from_recv_or_chain =
+        (prev_flags &
+         (path::flag_caustic_receiver_parent |
+          path::flag_caustic_caster_chain)) != 0u;
+    const auto enter_or_keep_chain =
+        on_caster & from_recv_or_chain &
+        ((label & closure::label_transmit) != 0u);
+    const auto enter_recv_parent =
+        !enter_or_keep_chain & on_receiver &
+        ((label & (closure::label_diffuse | closure::label_glossy)) != 0u) &
+        ((label & closure::label_transmit) == 0u);
+    sample.path_flags &=
+        ~(path::flag_caustic_receiver_parent | path::flag_caustic_caster_chain);
+    $if(enter_or_keep_chain) {
+      sample.path_flags |= path::flag_caustic_caster_chain;
+    }
+    $elif(enter_recv_parent) {
+      sample.path_flags |= path::flag_caustic_receiver_parent;
+    };
+  };
+}
+
 PreparedCyclesSvmSurfaceScatter
 PreparedCyclesSvmSurfaceScatter::empty(bool spectral) noexcept {
   PreparedCyclesSvmSurfaceScatter out{
@@ -284,10 +323,18 @@ SurfaceScatterStage::Result commit_cycles_svm_surface_continuation(
       }
       sample.previous_mis_origin_normal = prepared.shading_normal;
     };
+    UInt prev_caustic_flags = 0u;
+    if (config.caustics_active()) {
+      prev_caustic_flags = sample.path_flags;
+    }
     store_path(path::next_surface(
         path_state(), prepared.label,
         (prepared.sd_flag & unsigned(abi::SD_BSDF_HAS_TRANSMISSION)) != 0u,
         Bool{false}, limits));
+    if (config.caustics_active()) {
+      update_caustic_path_flags(sample, context.surface, config,
+                                prev_caustic_flags, prepared.label);
+    }
     if (sample.is_spectral() &&
         prepared.spectral_terminated_secondary.has_value()) {
       $if(*prepared.spectral_terminated_secondary) {
@@ -490,9 +537,17 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
           }
           sample.previous_mis_origin_normal = sd.N;
         };
+        UInt prev_caustic_flags = 0u;
+        if (config.caustics_active()) {
+          prev_caustic_flags = sample.path_flags;
+        }
         store_path(path::next_surface(path_state(), label,
             (sd.flag & unsigned(abi::SD_BSDF_HAS_TRANSMISSION)) != 0u,
             has_portal ? (sd.flag & unsigned(abi::SD_RAY_PORTAL)) != 0u : Bool{false}, limits));
+        if (config.caustics_active()) {
+          update_caustic_path_flags(sample, context.surface, config,
+                                    prev_caustic_flags, label);
+        }
         if (spectral) {
           $if(*bsdf_term_sec) {
             sample.path_flags |=

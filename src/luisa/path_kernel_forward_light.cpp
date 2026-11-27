@@ -34,7 +34,13 @@ public:
     Var<LightGpu> light = scene->light_buffer->read(event.light_index);
     const auto visible = cycles_light_shader_visible(
         light.cycles_shader_flags, sample.cycles_path_visibility, path_flags);
-    const auto evaluate_emission = (event.light_evaluation_factor != 0.0f) & visible;
+    auto evaluate_emission = (event.light_evaluation_factor != 0.0f) & visible;
+    if (config.caustics_active()) {
+      const auto suppressed_caustic =
+          ((path_flags & cycles_path_state::flag_caustic_caster_chain) != 0u) &
+          ((light.flags & light_flag_caustics) != 0u);
+      evaluate_emission &= !suppressed_caustic;
+    }
     const bool spectral = sample.is_spectral();
     Float3 light_radiance = make_float3(0.0f);
     std::optional<Float4> light_radiance_spec;

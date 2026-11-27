@@ -1,6 +1,7 @@
 #include "path_kernel_executor.h"
 
 #include "path_kernel_builder.h"
+#include "path_kernel_caustics_queue.h"
 #include "path_kernel_direct_light_queue.h"
 #include "path_kernel_surface_buckets.h"
 #include "path_kernel_surface_queue.h"
@@ -643,6 +644,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
     staged_path.staged_surface_sort_annotation = true;
     staged_path.enable_virtual_texture_cache = vt_active;
     DirectLightTaskQueueBinding direct_light_queue;
+    CausticsTaskQueueBinding caustics_queue;
     const auto stage_plan = make_path_kernel_scene_stage_plan(
         path.next_event_estimation,
         path.scene->environment_in_light_distribution,
@@ -656,6 +658,12 @@ build_path_kernel_executor(luisa::compute::Device &device,
           device, staged_path, config.wavefront_frame_capacity,
           config.wavefront_execution_block_size, config.shader_option);
       staged_path.direct_light_task_sink = direct_light_queue.sink;
+    }
+    if (staged_path.caustics_active() && !path.path_trace_enabled) {
+      caustics_queue = make_caustics_task_queue(
+          device, staged_path, config.wavefront_frame_capacity,
+          config.wavefront_execution_block_size, config.shader_option);
+      staged_path.caustics_task_sink = caustics_queue.sink;
     }
             auto coroutine =
                 build_cycles_stage_coroutine(staged_path, config.scheduler);
@@ -785,6 +793,9 @@ build_path_kernel_executor(luisa::compute::Device &device,
     }
     if (direct_light_queue.work) {
       scheduler->register_auxiliary_work(direct_light_queue.work);
+    }
+    if (caustics_queue.work) {
+      scheduler->register_auxiliary_work(caustics_queue.work);
     }
     LUISA_INFO("Psycles staged surface queue: keys={} requested={} "
                "typed_annotation={} direct_light_queue={}",

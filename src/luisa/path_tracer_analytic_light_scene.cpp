@@ -95,6 +95,7 @@ namespace {
             (binding.flags & material_flag_constant_emission) != 0u)
                ? light_flag_constant_emission
                : 0u;
+  flags |= light.is_caustics_light ? light_flag_caustics : 0u;
 
   return LightGpu{.type = static_cast<std::uint32_t>(light.type),
                   .position = to_luisa(matrix_translation(light.transform)),

@@ -1494,6 +1494,12 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             }
         }
     }
+    if (data->cycles_svm && data->cycles_svm->compilation.table.valid) {
+        const auto shader_count =
+            data->cycles_svm->compilation.table.shader_count;
+        data->caustics_caster_shader_mask.assign(shader_count, 0u);
+        data->caustics_receiver_shader_mask.assign(shader_count, 0u);
+    }
     for (auto &upload : uploads) {
         auto release = [](auto &vec) {
             std::remove_reference_t<decltype(vec)>{}.swap(vec);
@@ -1613,6 +1619,33 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         const auto &geometry =
             snapshot.geometries.at(instance.geometry);
+        if (instance.is_caustics_caster || instance.is_caustics_receiver) {
+            const auto mark_material_mask = [&](contract::MaterialId mat_id) {
+                const auto it = data->material_bindings.find(mat_id);
+                if (it == data->material_bindings.end()) {
+                    return;
+                }
+                const auto shader_idx =
+                    it->second.cycles_shader_index !=
+                            cycles_shader_identity::invalid_index
+                        ? it->second.cycles_shader_index
+                        : it->second.material_identity;
+                if (instance.is_caustics_caster &&
+                    shader_idx < data->caustics_caster_shader_mask.size()) {
+                    data->caustics_caster_shader_mask[shader_idx] = 1u;
+                }
+                if (instance.is_caustics_receiver &&
+                    shader_idx < data->caustics_receiver_shader_mask.size()) {
+                    data->caustics_receiver_shader_mask[shader_idx] = 1u;
+                }
+            };
+            for (const auto mat_id : geometry.material_slots) {
+                mark_material_mask(mat_id);
+            }
+            for (const auto mat_id : instance.material_overrides) {
+                mark_material_mask(mat_id);
+            }
+        }
         const auto light_visible =
             instance.visibility_mask ==
                 ~std::uint32_t{0u} ||
@@ -1824,11 +1857,17 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->light_count = analytic_lights.regular_count;
     {
         std::uint32_t light_type_mask = 0u;
+        bool has_caustics_lights = false;
         for (std::uint32_t i = 0u; i < analytic_lights.regular_count; ++i) {
             light_type_mask |=
                 (1u << analytic_lights.device_lights[i].type);
+            if ((analytic_lights.device_lights[i].flags &
+                 light_flag_caustics) != 0u) {
+                has_caustics_lights = true;
+            }
         }
         data->light_type_mask = light_type_mask;
+        data->has_caustics_lights = has_caustics_lights;
     }
     data->portal_count = analytic_lights.portal_count;
     data->emissive_triangle_count =

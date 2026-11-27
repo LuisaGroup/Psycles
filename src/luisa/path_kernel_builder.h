@@ -31,6 +31,7 @@ template <typename T> class Coroutine;
 
 namespace psycles::luisa_backend::detail {
 
+class CausticsTaskSink;
 class DirectLightTraceRecorder;
 
 using RenderKernelSignature = void(Buffer<luisa::float4>, Buffer<luisa::float4>,
@@ -96,6 +97,7 @@ struct PathKernelConfig {
   // evaluating it inline. The material/lighting algorithm remains the same
   // PathKernelPipeline in both cases.
   std::shared_ptr<const DirectLightTaskSink> direct_light_task_sink;
+  std::shared_ptr<const CausticsTaskSink> caustics_task_sink;
     std::uint32_t volume_stack_size{};
     std::uint32_t transparent_max_bounces{~0u};
     std::uint32_t max_volume_shadow_steps{1024u};
@@ -120,6 +122,11 @@ struct PathKernelConfig {
     contract::CausticsMethod caustics_method{contract::CausticsMethod::mnee};
     bool sms_unbiased{true};
     std::uint32_t sms_max_trials{8u};
+
+    [[nodiscard]] bool caustics_active() const noexcept {
+        return caustics_method == contract::CausticsMethod::mnee &&
+               scene && scene->scene_has_mnee_caustics();
+    }
 };
 
 struct MegakernelStageProfileState {
