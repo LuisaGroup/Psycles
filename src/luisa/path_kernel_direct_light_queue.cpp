@@ -1438,6 +1438,10 @@ public:
         const auto stage1_scratch = _scratch_slot;
         _scratch_slot ^= 1u;
         const auto upper_bound = count + prior_stage1;
+        const auto chain12 =
+            (_may_have_shade_shadow && _host_counts[2u] == 0u) ?
+                alloc_chain_slot(true) :
+                0u;
         commands << _gather(1u, _host_counts[3], scratch_slot, 0u)
                         .dispatch(gather_threads)
                  << _consumers[0u](combined, light_passes, volume_guiding_raw,
@@ -1448,8 +1452,14 @@ public:
                         .dispatch(gather_threads)
                  << _consumers[1u](combined, light_passes, volume_guiding_raw,
                                    consumer_parameters, upper_bound,
-                                   pack_chain_mode(7u + stage1_scratch, 0u))
+                                   pack_chain_mode(7u + stage1_scratch, chain12))
                         .dispatch(upper_bound);
+        if (chain12 != 0u) {
+          commands << _consumers[2u](combined, light_passes, volume_guiding_raw,
+                                     consumer_parameters, upper_bound,
+                                     pack_chain_mode(chain12, 0u))
+                          .dispatch(upper_bound);
+        }
       }
       return;
     }
