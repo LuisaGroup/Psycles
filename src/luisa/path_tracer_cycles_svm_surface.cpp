@@ -344,6 +344,13 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           result.evaluation.spectral_terminated_secondary =
               sampled_valid &
               sampled.spectral_terminated_secondary.value_or(Bool{false});
+          if (_kernel_globals.xyz3_rough_dispersion()) {
+            result.evaluation.spectral_lane_pdf = select(
+                make_float4(0.0f),
+                sampled.evaluation.spectral_lane_pdf.value_or(
+                    make_float4(sampled.evaluation.pdf)),
+                sampled_valid);
+          }
         }
         const auto sampled_events = events_from_label(sampled.label);
         result.evaluation.diffuse_pdf = select(
@@ -379,6 +386,9 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
             result.evaluation.spectral_f =
                 cycles_spectrum::rgb_to_spectrum_reflectance(
                     *sc.tables, bssrdf_weight, sc.wavelengths.lambdas);
+            if (_kernel_globals.xyz3_rough_dispersion()) {
+              result.evaluation.spectral_lane_pdf = make_float4(1.0f);
+            }
           }
           result.evaluation.pdf = 1.0f;
           result.evaluation.events =
@@ -758,10 +768,14 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
       std::optional<Float4> eval_spec_sum;
       std::optional<Float4> eval_spec_diffuse;
       std::optional<Float4> eval_spec_glossy;
+      std::optional<Float4> eval_spec_lane_pdf;
       if (_spectral) {
         eval_spec_sum.emplace(make_float4(0.0f));
         eval_spec_diffuse.emplace(make_float4(0.0f));
         eval_spec_glossy.emplace(make_float4(0.0f));
+        if (_kernel_globals.xyz3_rough_dispersion()) {
+          eval_spec_lane_pdf.emplace(make_float4(0.0f));
+        }
       }
       $outline_when_with_name(outline_bsdf, "simd_svm_bsdf_eval") {
         const auto evaluation = svm_detail::surface_shader_bsdf_eval(
@@ -776,6 +790,10 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           *eval_spec_sum = *evaluation.spectral_sum;
           *eval_spec_diffuse = *evaluation.spectral_diffuse;
           *eval_spec_glossy = *evaluation.spectral_glossy;
+          if (eval_spec_lane_pdf.has_value()) {
+            *eval_spec_lane_pdf = evaluation.spectral_lane_pdf.value_or(
+                make_float4(evaluation.pdf));
+          }
         }
         eval_events = evaluation_events(evaluation, *_shader_data, outgoing);
       };
@@ -793,6 +811,9 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
         result.spectral_f = *eval_spec_sum;
         result.spectral_diffuse_f = *eval_spec_diffuse;
         result.spectral_glossy_f = *eval_spec_glossy;
+        if (eval_spec_lane_pdf.has_value()) {
+          result.spectral_lane_pdf = *eval_spec_lane_pdf;
+        }
       }
       return result;
     }

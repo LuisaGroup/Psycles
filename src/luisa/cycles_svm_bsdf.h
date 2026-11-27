@@ -31,6 +31,7 @@ struct BsdfSample {
 struct BsdfSpectralEvaluation {
   luisa::compute::Float4 value;
   luisa::compute::Float pdf;
+  std::optional<luisa::compute::Float4> lane_pdf{};
 };
 
 struct BsdfSpectralSample {
@@ -41,6 +42,7 @@ struct BsdfSpectralSample {
   luisa::compute::Float eta;
   luisa::compute::UInt label;
   luisa::compute::Bool terminated_secondary;
+  std::optional<luisa::compute::Float4> lane_pdf{};
 };
 
 struct BsdfRoughnessEta {

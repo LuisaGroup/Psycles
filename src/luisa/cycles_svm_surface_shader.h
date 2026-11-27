@@ -24,6 +24,7 @@ struct SurfaceShaderBsdfEval {
   std::optional<luisa::compute::Float4> spectral_diffuse{};
   std::optional<luisa::compute::Float4> spectral_glossy{};
   std::optional<luisa::compute::Float4> spectral_sum{};
+  std::optional<luisa::compute::Float4> spectral_lane_pdf{};
 };
 
 /* Result of Cycles' surface_shader_bsdf_bssrdf_pick(). `random` contains the

@@ -232,7 +232,9 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
             *out.spectral_terminated_secondary =
                 bsdf.spectral_terminated_secondary.value_or(Bool{false});
             if (out.xyz3_eval_lane_pdf.has_value()) {
-              *out.xyz3_eval_lane_pdf = make_float4(bsdf.evaluation.pdf);
+              *out.xyz3_eval_lane_pdf =
+                  bsdf.evaluation.spectral_lane_pdf.value_or(
+                      make_float4(bsdf.evaluation.pdf));
             }
           } else {
             out.throughput_weight = cycles_spectrum::Spectrum::from_rgb_raw(
@@ -520,11 +522,15 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
       std::optional<Float4> bsdf_spec_sum;
       std::optional<Float4> bsdf_spec_diffuse;
       std::optional<Float4> bsdf_spec_glossy;
+      std::optional<Float4> bsdf_lane_pdf;
       std::optional<Bool> bsdf_term_sec;
       if (spectral) {
         bsdf_spec_sum.emplace(make_float4(0.0f));
         bsdf_spec_diffuse.emplace(make_float4(0.0f));
         bsdf_spec_glossy.emplace(make_float4(0.0f));
+        if (xyz3 && config.xyz3_rough_dispersion()) {
+          bsdf_lane_pdf.emplace(make_float4(0.0f));
+        }
         bsdf_term_sec.emplace(false);
       }
       Float bsdf_pdf = 0.0f;
@@ -543,6 +549,10 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
           *bsdf_spec_sum = *bsdf.evaluation.spectral_sum;
           *bsdf_spec_diffuse = *bsdf.evaluation.spectral_diffuse;
           *bsdf_spec_glossy = *bsdf.evaluation.spectral_glossy;
+          if (bsdf_lane_pdf.has_value()) {
+            *bsdf_lane_pdf = bsdf.evaluation.spectral_lane_pdf.value_or(
+                make_float4(bsdf.evaluation.pdf));
+          }
           *bsdf_term_sec =
               bsdf.spectral_terminated_secondary.value_or(Bool{false});
         }
@@ -593,7 +603,7 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
           }
           $else {
             xyz3_pdf.emplace(sample.apply_xyz3_bsdf_weight(
-                *bsdf_spec_sum, bsdf_pdf, std::nullopt));
+                *bsdf_spec_sum, bsdf_pdf, bsdf_lane_pdf));
           };
         } else {
           sample.throughput.rgb() *= bsdf_sum / bsdf_pdf;

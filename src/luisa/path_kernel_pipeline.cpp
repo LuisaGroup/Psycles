@@ -625,8 +625,14 @@ void PathKernelPipeline::emit(
               };
               $if(direct_light.valid) {
                 const auto cycles_mis_weight =
-                    config.light_transport.nee_light_weight(direct_light.pdf,
-                                                            evaluation.pdf);
+                    config.is_xyz3() && evaluation.spectral_lane_pdf.has_value()
+                        ? config.light_transport.nee_light_weight(
+                              direct_light.pdf,
+                              sample.xyz3_mis_pdf(
+                                  evaluation.pdf,
+                                  evaluation.spectral_lane_pdf))
+                        : config.light_transport.nee_light_weight(
+                              direct_light.pdf, evaluation.pdf);
                 _impl->direct_light_trace->record_evaluation(
                     bounce,
                     {.distance = direct_light.distance,

@@ -50,7 +50,8 @@ Float3 surface_shader_apply_holdout(ShaderData &sd) noexcept {
 
 namespace {
 
-[[nodiscard]] SurfaceShaderBsdfEval zero_evaluation(bool spectral = false) noexcept {
+[[nodiscard]] SurfaceShaderBsdfEval zero_evaluation(
+    bool spectral = false, bool lane_pdf = false) noexcept {
   SurfaceShaderBsdfEval out{.diffuse = make_float3(0.0f),
                             .glossy = make_float3(0.0f),
                             .sum = make_float3(0.0f),
@@ -60,6 +61,9 @@ namespace {
     out.spectral_diffuse.emplace(make_float4(0.0f));
     out.spectral_glossy.emplace(make_float4(0.0f));
     out.spectral_sum.emplace(make_float4(0.0f));
+    if (lane_pdf) {
+      out.spectral_lane_pdf.emplace(make_float4(0.0f));
+    }
   }
   return out;
 }
@@ -142,13 +146,18 @@ surface_shader_exclude(Expr<std::uint32_t> type,
     Expr<std::uint32_t> light_shader_flags, SurfaceShaderBsdfEval result,
     Expr<float> sum_pdf, Expr<float> sum_sample_weight,
     Expr<float> sum_pdf_roughness_squared,
-    ClosureTypeMask closure_types) noexcept {
+    ClosureTypeMask closure_types,
+    std::optional<Float4> initial_lane_pdf = std::nullopt) noexcept {
   const auto &pool = *shader_data.closure;
   Float accumulated_pdf = sum_pdf;
   Float accumulated_sample_weight = sum_sample_weight;
   Float accumulated_pdf_roughness_squared = sum_pdf_roughness_squared;
   const bool spectral =
       kernel_globals.is_spectral() && shader_data.spectral.has_value();
+  std::optional<Float4> accumulated_lane_pdf;
+  if (spectral && result.spectral_lane_pdf.has_value()) {
+    accumulated_lane_pdf.emplace(initial_lane_pdf.value_or(make_float4(0.0f)));
+  }
   const auto eval_slot = [&](Expr<std::uint32_t> index) noexcept {
     const auto common = pool.common(index);
     const auto eligible = closure::is_bsdf_or_bssrdf(common.type);
@@ -167,6 +176,11 @@ surface_shader_exclude(Expr<std::uint32_t> type,
             };
             const auto weighted_pdf = evaluation.pdf * common.sample_weight;
             accumulated_pdf += weighted_pdf;
+            if (accumulated_lane_pdf.has_value()) {
+              *accumulated_lane_pdf +=
+                  evaluation.lane_pdf.value_or(make_float4(evaluation.pdf)) *
+                  common.sample_weight;
+            }
             accumulated_pdf_roughness_squared +=
                 weighted_pdf * bsdf_get_specular_roughness_squared(pool, index);
           };
@@ -202,6 +216,13 @@ surface_shader_exclude(Expr<std::uint32_t> type,
              accumulated_pdf > 0.0f);
   result.pdf = select(0.0f, accumulated_pdf / accumulated_sample_weight,
                       accumulated_sample_weight > 0.0f);
+  if (result.spectral_lane_pdf.has_value() &&
+      accumulated_lane_pdf.has_value()) {
+    *result.spectral_lane_pdf =
+        select(make_float4(0.0f),
+               *accumulated_lane_pdf / accumulated_sample_weight,
+               accumulated_sample_weight > 0.0f);
+  }
   return result;
 }
 
@@ -253,11 +274,17 @@ surface_shader_bsdf_eval(const KernelGlobals &kernel_globals,
                          ClosureTypeMask closure_types) noexcept {
   const bool spectral =
       kernel_globals.is_spectral() && shader_data.spectral.has_value();
+  const bool lane_pdf = spectral && kernel_globals.xyz3_rough_dispersion();
   auto result = surface_shader_bsdf_eval_mis(
       kernel_globals, shader_data, wo, 0u, false, light_shader_flags,
-      zero_evaluation(spectral), 0.0f, 0.0f, 0.0f, closure_types);
+      zero_evaluation(spectral, lane_pdf), 0.0f, 0.0f, 0.0f, closure_types);
   result.pdf =
       select(0.0f, result.pdf, (light_shader_flags & shader_use_mis) != 0u);
+  if (result.spectral_lane_pdf.has_value()) {
+    *result.spectral_lane_pdf =
+        select(make_float4(0.0f), *result.spectral_lane_pdf,
+               (light_shader_flags & shader_use_mis) != 0u);
+  }
   return result;
 }
 
@@ -360,8 +387,9 @@ surface_shader_bsdf_sample_closure(const KernelGlobals &kernel_globals,
     const auto sampled = bsdf_sample_spectral(
         kernel_globals, shader_data, pick.index, pick.random, sc,
         closure_types);
+    const bool track_lane_pdf = kernel_globals.xyz3_rough_dispersion();
     auto result = SurfaceShaderBsdfSample{
-        .evaluation = zero_evaluation(true),
+        .evaluation = zero_evaluation(true, track_lane_pdf),
         .wo = sampled.wo,
         .sampled_roughness = sampled.sampled_roughness,
         .eta = sampled.eta,
@@ -377,29 +405,46 @@ surface_shader_bsdf_sample_closure(const KernelGlobals &kernel_globals,
       if (pool.capacity() <= 1u) {
         result.evaluation.pdf = sampled.pdf;
         result.evaluation.average_roughness_squared = roughness_squared;
+        if (result.evaluation.spectral_lane_pdf.has_value()) {
+          *result.evaluation.spectral_lane_pdf =
+              sampled.lane_pdf.value_or(make_float4(sampled.pdf));
+        }
       } else {
         $if(pool.count() > 1u) {
           const auto saved_terminated = shader_data.spectral->secondary_terminated;
           shader_data.spectral->secondary_terminated =
               saved_terminated | sampled.terminated_secondary;
           const auto weighted_pdf = sampled.pdf * common.sample_weight;
+          const std::optional<Float4> initial_lane_pdf =
+              track_lane_pdf
+                  ? std::optional<Float4>{
+                        sampled.lane_pdf.value_or(make_float4(sampled.pdf)) *
+                        common.sample_weight}
+                  : std::nullopt;
           result.evaluation = surface_shader_bsdf_eval_mis(
               kernel_globals, shader_data, sampled.wo, pick.index, true, 0u,
               result.evaluation, weighted_pdf, common.sample_weight,
-              weighted_pdf * roughness_squared, closure_types);
+              weighted_pdf * roughness_squared, closure_types,
+              initial_lane_pdf);
           shader_data.spectral->secondary_terminated = saved_terminated;
-          $if(sampled.terminated_secondary) {
-            *result.evaluation.spectral_sum =
-                make_float4(result.evaluation.spectral_sum->x, 0.0f, 0.0f, 0.0f);
-            *result.evaluation.spectral_diffuse = make_float4(
-                result.evaluation.spectral_diffuse->x, 0.0f, 0.0f, 0.0f);
-            *result.evaluation.spectral_glossy = make_float4(
-                result.evaluation.spectral_glossy->x, 0.0f, 0.0f, 0.0f);
-          };
+          if (kernel_globals.spectral_mode() != contract::SpectralMode::xyz3) {
+            $if(sampled.terminated_secondary) {
+              *result.evaluation.spectral_sum =
+                  make_float4(result.evaluation.spectral_sum->x, 0.0f, 0.0f, 0.0f);
+              *result.evaluation.spectral_diffuse = make_float4(
+                  result.evaluation.spectral_diffuse->x, 0.0f, 0.0f, 0.0f);
+              *result.evaluation.spectral_glossy = make_float4(
+                  result.evaluation.spectral_glossy->x, 0.0f, 0.0f, 0.0f);
+            };
+          }
         }
         $else {
           result.evaluation.pdf = sampled.pdf;
           result.evaluation.average_roughness_squared = roughness_squared;
+          if (result.evaluation.spectral_lane_pdf.has_value()) {
+            *result.evaluation.spectral_lane_pdf =
+                sampled.lane_pdf.value_or(make_float4(sampled.pdf));
+          }
         };
       }
     };

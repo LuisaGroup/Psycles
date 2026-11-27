@@ -183,6 +183,9 @@ void assign(BsdfSpectralEvaluation &destination,
             const BsdfSpectralEvaluation &source) noexcept {
   destination.value = source.value;
   destination.pdf = source.pdf;
+  if (destination.lane_pdf.has_value()) {
+    *destination.lane_pdf = source.lane_pdf.value_or(make_float4(source.pdf));
+  }
 }
 
 void assign(BsdfSpectralSample &destination,
@@ -194,6 +197,9 @@ void assign(BsdfSpectralSample &destination,
   destination.eta = source.eta;
   destination.label = source.label;
   destination.terminated_secondary = source.terminated_secondary;
+  if (destination.lane_pdf.has_value()) {
+    *destination.lane_pdf = source.lane_pdf.value_or(make_float4(source.pdf));
+  }
 }
 
 [[nodiscard]] BsdfEvaluation
@@ -945,6 +951,9 @@ BsdfSpectralSample bsdf_sample_spectral(
                             .eta = 0.0f,
                             .label = closure_type::label_none,
                             .terminated_secondary = false};
+  if (kernel_globals.xyz3_rough_dispersion()) {
+    result.lane_pdf.emplace(make_float4(0.0f));
+  }
   const Float abbe = kernel_globals.has_dispersive_materials()
                          ? kernel_globals.shader_dispersion_abbe(
                                shader_data.shader)
@@ -957,6 +966,9 @@ BsdfSpectralSample bsdf_sample_spectral(
     result.sampled_roughness = s.sampled_roughness;
     result.eta = s.eta;
     result.label = s.label;
+    if (result.lane_pdf.has_value()) {
+      *result.lane_pdf = make_float4(s.pdf);
+    }
   };
   Bool applied_tail = false;
   $switch(common.type) {
@@ -1038,6 +1050,9 @@ BsdfSpectralEvaluation bsdf_eval_spectral(
   auto &pool = *shader_data.closure;
   const auto common = pool.common(closure_index);
   BsdfSpectralEvaluation result{.value = make_float4(0.0f), .pdf = 0.0f};
+  if (kernel_globals.xyz3_rough_dispersion()) {
+    result.lane_pdf.emplace(make_float4(0.0f));
+  }
   const auto bump =
       bump_shadowing_term(kernel_globals, shader_data, common, wo, true);
   const Float abbe = kernel_globals.has_dispersive_materials()
@@ -1086,6 +1101,9 @@ BsdfSpectralEvaluation bsdf_eval_spectral(
         result.value = cycles_spectrum::rgb_to_spectrum_reflectance(
             *spectral.tables, eval_rgb.value, spectral.wavelengths.lambdas);
         result.pdf = eval_rgb.pdf;
+        if (result.lane_pdf.has_value()) {
+          *result.lane_pdf = make_float4(eval_rgb.pdf);
+        }
         applied_tail = true;
       };
     };

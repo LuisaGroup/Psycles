@@ -166,6 +166,7 @@ struct SurfaceEvaluation {
     std::optional<Float4> spectral_f{};
     std::optional<Float4> spectral_diffuse_f{};
     std::optional<Float4> spectral_glossy_f{};
+    std::optional<Float4> spectral_lane_pdf{};
     std::optional<Bool> spectral_terminated_secondary{};
 
     [[nodiscard]] static SurfaceEvaluation zero(bool spectral = false) noexcept {
