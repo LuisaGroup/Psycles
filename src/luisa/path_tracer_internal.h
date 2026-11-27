@@ -396,6 +396,8 @@ struct LuisaSceneData {
     bool has_caustics_lights{false};
     std::vector<std::uint8_t> caustics_caster_shader_mask;
     std::vector<std::uint8_t> caustics_receiver_shader_mask;
+    std::optional<Buffer<CausticsCasterTriangleGpu>> caustics_caster_triangles;
+    std::uint32_t caustics_caster_triangle_count{0u};
     [[nodiscard]] bool scene_has_caustics() const noexcept {
         return has_caustics_casters && has_caustics_receivers;
     }

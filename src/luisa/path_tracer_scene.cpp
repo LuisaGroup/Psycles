@@ -1525,6 +1525,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     luisa::vector<MaterialBindingGpu> override_materials;
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
     std::vector<float> emissive_triangle_areas;
+    luisa::vector<CausticsCasterTriangleGpu> caustics_caster_tris;
+    double caustics_caster_total_area = 0.0;
     data->accel = data->device.create_accel(static_scene_accel_option());
     subsurface_scene.initialize_accel(data, subsurface_scene_plan);
     source_instance_index = 0u;
@@ -1644,6 +1646,35 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             }
             for (const auto mat_id : instance.material_overrides) {
                 mark_material_mask(mat_id);
+            }
+        }
+        if (instance.is_caustics_caster) {
+            const auto &caster_positions =
+                uploads[geometry_iter->second].positions;
+            for (std::size_t primitive_index = 0u;
+                 primitive_index < geometry.triangles.size();
+                 ++primitive_index) {
+                const auto &triangle = geometry.triangles[primitive_index];
+                if (triangle[0u] >= caster_positions.size() ||
+                    triangle[1u] >= caster_positions.size() ||
+                    triangle[2u] >= caster_positions.size()) {
+                    continue;
+                }
+                const float area = world_triangle_area(
+                    instance.transform,
+                    from_luisa(caster_positions[triangle[0u]]),
+                    from_luisa(caster_positions[triangle[1u]]),
+                    from_luisa(caster_positions[triangle[2u]]));
+                if (area > 0.0f) {
+                    caustics_caster_total_area += static_cast<double>(area);
+                    caustics_caster_tris.emplace_back(CausticsCasterTriangleGpu{
+                        .instance_id = instance_index,
+                        .primitive_id =
+                            static_cast<luisa::uint>(primitive_index),
+                        .cycles_object_index = cycles_object_index,
+                        .cdf =
+                            static_cast<float>(caustics_caster_total_area)});
+                }
             }
         }
         const auto light_visible =
@@ -1803,6 +1834,20 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
     if (!result.diagnostics.empty()) {
         return result;
+    }
+    if (!caustics_caster_tris.empty() && caustics_caster_total_area > 0.0) {
+        const double inv_total = 1.0 / caustics_caster_total_area;
+        for (auto &rec : caustics_caster_tris) {
+            rec.cdf = static_cast<float>(static_cast<double>(rec.cdf) * inv_total);
+        }
+        caustics_caster_tris.back().cdf = 1.0f;
+        data->caustics_caster_triangle_count =
+            static_cast<std::uint32_t>(caustics_caster_tris.size());
+        data->caustics_caster_triangles.emplace(
+            data->device.create_buffer<CausticsCasterTriangleGpu>(
+                caustics_caster_tris.size()));
+        stream << data->caustics_caster_triangles->copy_from(
+            luisa::span{caustics_caster_tris});
     }
     data->ambient_occlusion_object_distance_count =
         has_ambient_occlusion_object_distance

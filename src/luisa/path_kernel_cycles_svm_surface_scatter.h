@@ -20,9 +20,10 @@ struct PreparedCyclesSvmSurfaceScatter {
   Bool subsurface;
   Bool valid;
   std::optional<Bool> spectral_terminated_secondary{};
+  std::optional<Bool> sms_caster_eligible{};
 
   [[nodiscard]] static PreparedCyclesSvmSurfaceScatter
-  empty(bool spectral = false) noexcept;
+  empty(bool spectral = false, bool sms = false) noexcept;
   [[nodiscard]] Bool needs_triangle_ray_origin() const noexcept;
   void accept(const PreparedCyclesSvmSurfaceScatter &other,
               bool include_bssrdf) noexcept;

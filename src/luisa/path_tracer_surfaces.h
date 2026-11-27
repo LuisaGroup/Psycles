@@ -40,6 +40,7 @@ struct SurfacePopulationContext {
     std::optional<Expr<std::uint32_t>> cycles_shader_flags{};
     std::optional<Expr<std::uint32_t>> cycles_object_flags{};
     bool may_filter_glossy{true};
+    bool record_sms_eligibility{false};
     UInt *vt_miss_page{nullptr};
     std::optional<cycles_spectrum::SpectralContext> spectral{};
 };
@@ -64,6 +65,10 @@ class PopulatedSurfaceShader {
     [[nodiscard]] virtual Expr<std::uint32_t>
     native_shader_data_flags() const noexcept {
       return Expr<std::uint32_t>{0u};
+    }
+
+    [[nodiscard]] virtual Bool has_sms_eligible_closure() const noexcept {
+      return Bool{false};
     }
 
     [[nodiscard]] virtual Expr<std::uint32_t>

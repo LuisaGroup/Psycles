@@ -232,6 +232,14 @@ struct EmissiveTriangleGpu {
     std::int32_t cycles_light_group{};
 };
 
+struct CausticsCasterTriangleGpu {
+    luisa::uint instance_id{};
+    luisa::uint primitive_id{};
+    luisa::uint cycles_object_index{};
+    float cdf{};
+};
+static_assert(sizeof(CausticsCasterTriangleGpu) == 16u);
+
 struct LightDistributionGpu {
     float cumulative{};
     float selection_pdf{};
@@ -586,6 +594,12 @@ LUISA_STRUCT(
     cycles_shader_id,
     cycles_shader_flags,
     cycles_light_group) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::CausticsCasterTriangleGpu,
+    instance_id,
+    primitive_id,
+    cycles_object_index,
+    cdf) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::LightDistributionGpu,
     cumulative,

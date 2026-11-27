@@ -141,6 +141,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                                *surface.cycles_object_flags}
                          : std::nullopt,
                  .may_filter_glossy = config.has_filter_glossy,
+                 .record_sms_eligibility = config.caustics_is_sms(),
                  .vt_miss_page = sample.vt_miss_page,
                  .spectral = sample.spectral_context()});
         }

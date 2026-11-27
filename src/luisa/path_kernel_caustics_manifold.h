@@ -11,6 +11,9 @@
 
 namespace psycles::luisa_backend::detail {
 
+inline constexpr float kMaxSmsAlpha = 0.25f;
+inline constexpr float kMaxSmsAlphaSquared = kMaxSmsAlpha * kMaxSmsAlpha;
+
 struct PathKernelConfig;
 struct PathSampleContext;
 
@@ -86,6 +89,9 @@ struct CausticsTaskEvaluator {
   bool volume_guiding{false};
   bool reflective_caustics{true};
   bool refractive_caustics{true};
+  contract::CausticsMethod caustics_method{contract::CausticsMethod::mnee};
+  bool sms_unbiased{true};
+  std::uint32_t sms_max_trials{8u};
 
   [[nodiscard]] Float3 evaluate(
       const Var<CausticTaskCall> &task,

@@ -268,8 +268,12 @@ CausticsTaskQueueBinding make_caustics_task_queue(
   auto queue = std::make_shared<CausticsTaskQueue>(
       device, std::move(evaluator), capacity, execution_block_size,
       shader_option, producers);
-  LUISA_INFO("Psycles caustics manifold queue: capacity={} payload_fields={} "
+  LUISA_INFO("Psycles caustics manifold queue: method={} unbiased={} "
+             "max_trials={} capacity={} payload_fields={} "
              "payload_aos_bytes={} stages=1 spectral={}.",
+             config.caustics_is_sms() ? "sms" : "mnee",
+             config.sms_unbiased,
+             config.sms_max_trials,
              capacity,
              luisa::compute::Type::of<CausticTaskCall>()->members().size(),
              luisa::compute::Type::of<CausticTaskCall>()->size(),

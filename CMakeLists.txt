@@ -1829,6 +1829,26 @@ if(PSYCLES_ENABLE_LUISA)
                 endif()
             endforeach()
 
+            psycles_add_luisa_backend_test(
+                TARGET
+                    psycles_luisa_caustics_sms_tests
+                SOURCE
+                    tests/test_luisa_caustics_sms.cpp
+                TEST_STEM
+                    luisa_caustics_sms
+                LIBRARIES Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_luisa_caustics_sms_tests
+                PRIVATE
+                    "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+            foreach(_backend IN ITEMS fallback simd metal metal4 hip vk dx cuda)
+                if(TEST psycles.luisa_caustics_sms_${_backend})
+                    set_tests_properties(
+                        psycles.luisa_caustics_sms_${_backend}
+                        PROPERTIES TIMEOUT 240)
+                endif()
+            endforeach()
+
             include(cmake/PsyclesLuisaVtTests.cmake)
 
             add_executable(

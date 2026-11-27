@@ -491,26 +491,45 @@ void PathKernelPipeline::emit(
                       config.scene->light_buffer->read(direct_light.emitter_index);
                   const auto is_caustic_light =
                       (caustic_light.flags & light_flag_caustics) != 0u;
-                  $if(((sample.path_flags &
-                        cycles_path_state::flag_caustic_caster_chain) != 0u) &
-                      is_caustic_light) {
-                    direct_light.valid = false;
-                  };
                   const auto surface_object_flags =
                       lighting.surface.cycles_object_flags
                           ? *lighting.surface.cycles_object_flags
                           : config.scene->cycles_svm->objects->object_flag_buffer
                                 ->read(lighting.surface.cycles_object_index);
+                  const auto on_caster =
+                      (surface_object_flags &
+                       static_cast<std::uint32_t>(
+                           compiler::cycles_svm::SD_OBJECT_CAUSTICS_CASTER)) != 0u;
                   const auto on_receiver =
                       ((surface_object_flags &
                         static_cast<std::uint32_t>(
                             compiler::cycles_svm::SD_OBJECT_CAUSTICS_RECEIVER)) !=
                        0u) &
                       !lighting.surface.is_curve;
+                  const auto in_caster_chain =
+                      (sample.path_flags &
+                       cycles_path_state::flag_caustic_caster_chain) != 0u;
+                  const auto from_receiver_parent =
+                      (sample.path_flags &
+                       cycles_path_state::flag_caustic_receiver_parent) != 0u;
+                  const auto sms_eligible =
+                      (config.caustics_is_sms() &&
+                       lighting.shading.populated_surface)
+                          ? lighting.shading.populated_surface
+                                ->has_sms_eligible_closure()
+                          : Bool{false};
+                  const auto suppress_nee =
+                      is_caustic_light & on_caster &
+                      (config.caustics_is_sms()
+                           ? ((in_caster_chain | from_receiver_parent) &
+                              sms_eligible)
+                           : in_caster_chain);
+                  $if(suppress_nee) {
+                    direct_light.valid = false;
+                  };
                   const auto emit_caustic =
                       on_receiver & is_caustic_light & direct_light.valid &
-                      ((sample.path_flags &
-                        cycles_path_state::flag_caustic_caster_chain) == 0u) &
+                      !(on_caster & in_caster_chain) &
                       (sample.path_depth < sample.invocation.parameters.max_bounces);
                   $if(emit_caustic) {
                     Var<CausticTaskCall> caustic_task{};
@@ -858,8 +877,8 @@ void PathKernelPipeline::emit(
         Bool merged_surface_has_volume = false;
         auto merged_transport =
             DirectLightTransportState::empty(config.spectral_rendering);
-        auto merged_scatter =
-            PreparedCyclesSvmSurfaceScatter::empty(config.spectral_rendering);
+        auto merged_scatter = PreparedCyclesSvmSurfaceScatter::empty(
+            config.spectral_rendering, config.caustics_is_sms());
 
         Bool vt_outer_break = false;
         Bool vt_outer_continue = false;

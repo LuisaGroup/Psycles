@@ -1,6 +1,7 @@
 #include "path_tracer_cycles_svm_surface.h"
 
 #include "path_tracer_cycles_svm_kernel_globals.h"
+#include "path_kernel_caustics_manifold.h"
 #include "cycles_svm_bsdf.h"
 #include "cycles_svm_internal.h"
 #include "cycles_svm_surface_shader.h"
@@ -142,6 +143,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
     SurfacePopulationQuery _preparation_query;
     bool _include_aov_roughness{};
     bool _spectral{false};
+    std::optional<Bool> _has_sms_eligible_closure{};
 
   private:
     [[nodiscard]] SurfacePreparation make_preparation(
@@ -644,8 +646,29 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
             cpu_backend ? svm::SvmBackendStrategy::direct_jit
                         : svm::SvmBackendStrategy::auto_select);
       };
+      if (context.record_sms_eligibility) {
+        _has_sms_eligible_closure.emplace(Bool{false});
+      }
       const bool may_filter_glossy = context.may_filter_glossy;
       const auto prepare_closures = [&] {
+        if (context.record_sms_eligibility) {
+          Bool eligible = false;
+          UInt ci = 0u;
+          $while(ci < _closures->count()) {
+            const auto common = _closures->common(ci);
+            const auto is_sms_cl =
+                cycles_closure::is_glass(common.type) |
+                cycles_closure::is_reflection_microfacet(common.type) |
+                cycles_closure::is_refraction_microfacet(common.type);
+            $if(is_sms_cl) {
+              const auto m = _closures->microfacet(ci);
+              const auto alpha2 = m.param.alpha_x * m.param.alpha_y;
+              eligible |= (alpha2 <= kMaxSmsAlphaSquared);
+            };
+            ci += 1u;
+          };
+          *_has_sms_eligible_closure = eligible;
+        }
         if (may_filter_glossy) {
           svm_detail::surface_shader_prepare_closures(
               *_shader_data, context.query.glossy_filter_roughness,
@@ -675,6 +698,10 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
     [[nodiscard]] Expr<std::uint32_t>
     native_shader_data_flags() const noexcept override {
       return _shader_data->flag;
+    }
+
+    [[nodiscard]] Bool has_sms_eligible_closure() const noexcept override {
+      return _has_sms_eligible_closure.value_or(Bool{false});
     }
 
     [[nodiscard]] Expr<std::uint32_t>

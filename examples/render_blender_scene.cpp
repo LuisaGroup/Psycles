@@ -537,12 +537,21 @@ int main(int argc, char **argv) {
             sms_unbiased_override = false;
             continue;
         }
-        if (arg == "--sms-max-trials") {
-            if (i + 1 >= argc) {
-                std::cerr << "error: --sms-max-trials requires a value\n";
+        if (arg.starts_with("--sms-max-trials")) {
+            std::string_view val_sv;
+            if (arg == "--sms-max-trials") {
+                if (i + 1 >= argc) {
+                    std::cerr << "error: --sms-max-trials requires a value\n";
+                    return EXIT_FAILURE;
+                }
+                val_sv = argv[++i];
+            } else if (arg.starts_with("--sms-max-trials=")) {
+                val_sv = arg.substr(17u);
+            } else {
+                std::cerr << "error: unknown option " << arg << '\n';
                 return EXIT_FAILURE;
             }
-            const auto v = parse_unsigned<std::uint32_t>(argv[++i]);
+            const auto v = parse_unsigned<std::uint32_t>(val_sv);
             if (!v || *v == 0u) {
                 std::cerr << "error: --sms-max-trials must be >= 1\n";
                 return EXIT_FAILURE;

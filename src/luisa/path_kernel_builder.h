@@ -124,8 +124,14 @@ struct PathKernelConfig {
     std::uint32_t sms_max_trials{8u};
 
     [[nodiscard]] bool caustics_active() const noexcept {
-        return caustics_method == contract::CausticsMethod::mnee &&
+        return (caustics_method == contract::CausticsMethod::mnee ||
+                caustics_method == contract::CausticsMethod::sms) &&
                scene && scene->scene_has_mnee_caustics();
+    }
+    [[nodiscard]] bool caustics_is_sms() const noexcept {
+        return caustics_method == contract::CausticsMethod::sms &&
+               scene && scene->scene_has_mnee_caustics() &&
+               scene->caustics_caster_triangle_count > 0u;
     }
 };
 
