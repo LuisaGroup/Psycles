@@ -371,10 +371,8 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
   if (!explicit_weight_env) {
     if (backend_name == "hip") {
       bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 9000u);
-    } else if (backend_name == "dx") {
+    } else if (backend_name == "dx" || backend_name == "vk") {
       bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 7000u);
-    } else if (backend_name == "vk") {
-      bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 5000u);
     }
   }
   const SurfaceBucketMode effective_mode = [&]() noexcept {
