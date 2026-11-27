@@ -1441,36 +1441,57 @@ public:
     if (stage == 0u) {
       _consecutive_stage1_dispatches = 0u;
     }
+    auto encode_chained_shade_and_intersect = [&](std::uint32_t in_kind,
+                                                  std::uint32_t threads) {
+      const auto chain12 = alloc_chain_slot(true);
+      const bool chain_extra_round =
+          _may_continue_shadow && _vt_cache == nullptr && threads <= 8192u;
+      if (chain_extra_round) {
+        const auto chain21 = alloc_chain_slot(false);
+        const auto chain12_b = alloc_chain_slot(true);
+        commands << _consumers[1u](combined, light_passes, volume_guiding_raw,
+                                   consumer_parameters, threads,
+                                   pack_chain_mode(in_kind, chain12))
+                        .dispatch(threads)
+                 << _consumers[2u](combined, light_passes, volume_guiding_raw,
+                                   consumer_parameters, threads,
+                                   pack_chain_mode(chain12, chain21))
+                        .dispatch(threads)
+                 << _consumers[1u](combined, light_passes, volume_guiding_raw,
+                                   consumer_parameters, threads,
+                                   pack_chain_mode(chain21, chain12_b))
+                        .dispatch(threads)
+                 << _consumers[2u](combined, light_passes, volume_guiding_raw,
+                                   consumer_parameters, threads,
+                                   pack_chain_mode(chain12_b, 0u))
+                        .dispatch(threads);
+      } else {
+        commands << _consumers[1u](combined, light_passes, volume_guiding_raw,
+                                   consumer_parameters, threads,
+                                   pack_chain_mode(in_kind, chain12))
+                        .dispatch(threads)
+                 << _consumers[2u](combined, light_passes, volume_guiding_raw,
+                                   consumer_parameters, threads,
+                                   pack_chain_mode(chain12, 0u))
+                        .dispatch(threads);
+      }
+    };
     if (stage == 0u && _fuse_unoccluded_shadow) {
       const auto prior_stage1 = _host_counts[1u];
       const auto scratch_slot = _scratch_slot;
       _scratch_slot ^= 1u;
       if (prior_stage1 == 0u) {
         const auto chain01 = alloc_chain_slot(false);
+        commands << _gather(1u, _host_counts[3], scratch_slot, 0u)
+                        .dispatch(gather_threads)
+                 << _consumers[0u](combined, light_passes, volume_guiding_raw,
+                                   consumer_parameters, count,
+                                   pack_chain_mode(0u, chain01))
+                        .dispatch(count);
         if (_may_have_shade_shadow && _host_counts[2u] == 0u) {
-          const auto chain12 = alloc_chain_slot(true);
-          commands << _gather(1u, _host_counts[3], scratch_slot, 0u)
-                          .dispatch(gather_threads)
-                   << _consumers[0u](combined, light_passes, volume_guiding_raw,
-                                     consumer_parameters, count,
-                                     pack_chain_mode(0u, chain01))
-                          .dispatch(count)
-                   << _consumers[1u](combined, light_passes, volume_guiding_raw,
-                                     consumer_parameters, count,
-                                     pack_chain_mode(chain01, chain12))
-                          .dispatch(count)
-                   << _consumers[2u](combined, light_passes, volume_guiding_raw,
-                                     consumer_parameters, count,
-                                     pack_chain_mode(chain12, 0u))
-                          .dispatch(count);
+          encode_chained_shade_and_intersect(chain01, count);
         } else {
-          commands << _gather(1u, _host_counts[3], scratch_slot, 0u)
-                          .dispatch(gather_threads)
-                   << _consumers[0u](combined, light_passes, volume_guiding_raw,
-                                     consumer_parameters, count,
-                                     pack_chain_mode(0u, chain01))
-                          .dispatch(count)
-                   << _consumers[1u](combined, light_passes, volume_guiding_raw,
+          commands << _consumers[1u](combined, light_passes, volume_guiding_raw,
                                      consumer_parameters, count,
                                      pack_chain_mode(chain01, 0u))
                           .dispatch(count);
@@ -1479,10 +1500,6 @@ public:
         const auto stage1_scratch = _scratch_slot;
         _scratch_slot ^= 1u;
         const auto upper_bound = count + prior_stage1;
-        const auto chain12 =
-            (_may_have_shade_shadow && _host_counts[2u] == 0u) ?
-                alloc_chain_slot(true) :
-                0u;
         commands << _gather(1u, _host_counts[3], scratch_slot, 0u)
                         .dispatch(gather_threads)
                  << _consumers[0u](combined, light_passes, volume_guiding_raw,
@@ -1490,15 +1507,13 @@ public:
                                    pack_chain_mode(0u, 0u))
                         .dispatch(count)
                  << _gather(2u, _host_counts[3], stage1_scratch, 1u)
-                        .dispatch(gather_threads)
-                 << _consumers[1u](combined, light_passes, volume_guiding_raw,
-                                   consumer_parameters, upper_bound,
-                                   pack_chain_mode(7u + stage1_scratch, chain12))
-                        .dispatch(upper_bound);
-        if (chain12 != 0u) {
-          commands << _consumers[2u](combined, light_passes, volume_guiding_raw,
+                        .dispatch(gather_threads);
+        if (_may_have_shade_shadow && _host_counts[2u] == 0u) {
+          encode_chained_shade_and_intersect(7u + stage1_scratch, upper_bound);
+        } else {
+          commands << _consumers[1u](combined, light_passes, volume_guiding_raw,
                                      consumer_parameters, upper_bound,
-                                     pack_chain_mode(chain12, 0u))
+                                     pack_chain_mode(7u + stage1_scratch, 0u))
                           .dispatch(upper_bound);
         }
       }
@@ -1508,7 +1523,13 @@ public:
         _host_counts[2u] == 0u) {
       std::uint32_t rounds = 1u;
       if (_may_continue_shadow && _vt_cache == nullptr) {
-        rounds = (_consecutive_stage1_dispatches == 0u) ? 1u : 2u;
+        if (count <= 256u) {
+          rounds = 4u;
+        } else if (count <= 4096u) {
+          rounds = (_consecutive_stage1_dispatches == 0u) ? 2u : 3u;
+        } else {
+          rounds = (_consecutive_stage1_dispatches == 0u) ? 1u : 2u;
+        }
         if (const auto *raw = std::getenv("PSYCLES_SHADOW_CHAIN_MAX_ROUNDS");
             raw != nullptr && raw[0] != '\0') {
           char *end = nullptr;
