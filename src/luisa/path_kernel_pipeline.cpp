@@ -449,7 +449,7 @@ void PathKernelPipeline::emit(
           [&](DirectLightingContext &lighting) noexcept
           -> DirectLightTransportState {
         auto transport =
-            DirectLightTransportState::empty(config.spectral_rendering);
+            DirectLightTransportState::empty(config.effective_spectral_mode());
         if (!_impl->direct_light_transport) {
           return transport;
         }
@@ -470,7 +470,7 @@ void PathKernelPipeline::emit(
                      cycles_closure::runtime_bsdf_has_transmission) != 0u);
               }
               auto direct_light =
-                  DirectLightSampleState::empty(config.spectral_rendering);
+                  DirectLightSampleState::empty(config.effective_spectral_mode());
               std::vector<std::unique_ptr<DirectLightProvider>> light_providers;
               light_providers.reserve(_impl->direct_lighting.size());
               for (const auto &component : _impl->direct_lighting) {
@@ -534,11 +534,14 @@ void PathKernelPipeline::emit(
                   $if(emit_caustic) {
                     Var<CausticTaskCall> caustic_task{};
                     caustic_task.path_throughput =
-                        config.spectral_rendering
+                        config.is_hero4()
                             ? sample.throughput.lanes()
-                            : make_float4(sample.throughput.rgb(), 0.0f);
+                            : (config.is_xyz3()
+                                   ? make_float4(sample.throughput.xyz3(),
+                                                 sample.xyz3_hero_caustic_factor())
+                                   : make_float4(sample.throughput.rgb(), 0.0f));
                     caustic_task.light_shader =
-                        config.spectral_rendering
+                        config.is_hero4()
                             ? direct_light.spectral_light_shader.value_or(
                                   make_float4(direct_light.light_shader, 0.0f))
                             : make_float4(direct_light.light_shader, 0.0f);
@@ -634,7 +637,7 @@ void PathKernelPipeline::emit(
                      .glossy = evaluation.glossy_f});
                 const auto mis_weight = select(1.0f, cycles_mis_weight,
                                                direct_light.apply_mis);
-                if (config.spectral_rendering) {
+                if (config.is_hero4()) {
                   const auto eval_spec =
                       evaluation.spectral_f.value_or(make_float4(evaluation.f, 0.0f));
                   const auto rad_spec =
@@ -666,6 +669,40 @@ void PathKernelPipeline::emit(
                         direct_light.distant, direct_light.light_object,
                         direct_light.light_primitive, direct_light.shader_flags,
                         direct_light.constant_light_shader);
+                    transport.light_terminate_sample =
+                        random.light_terminate_sample;
+                  };
+                } else if (config.is_xyz3()) {
+                  const auto ctx = sample.spectral_context();
+                  const auto eval_xyz3 =
+                      evaluation.spectral_f.has_value()
+                          ? sample.spectrum_from_eval(*evaluation.spectral_f).xyz3()
+                          : evaluation.f;
+                  const auto constant_emission_factor =
+                      select(make_float3(1.0f), direct_light.light_shader,
+                             direct_light.constant_light_shader);
+                  const auto weighted_bsdf_xyz3 =
+                      eval_xyz3 * direct_light.radiometric_weight *
+                      constant_emission_factor *
+                      (mis_weight / direct_light.normalization_pdf);
+                  _impl->direct_light_trace->record_weighted_bsdf(
+                      bounce, weighted_bsdf_xyz3);
+                  $if(any(weighted_bsdf_xyz3 != 0.0f)) {
+                    if (prof != nullptr) {
+                      prof->bump(MegakernelStageProfileState::count_shadow_traces);
+                    }
+                    const auto deferred_light_shader_xyz3 =
+                        select(direct_light.light_shader, make_float3(1.0f),
+                               direct_light.constant_light_shader);
+                    transport.accept(
+                        evaluation,
+                        cycles_spectrum::Spectrum::from_xyz3(weighted_bsdf_xyz3),
+                        cycles_spectrum::Spectrum::from_xyz3(
+                            deferred_light_shader_xyz3),
+                        direct_light.direction, direct_light.target_position,
+                        direct_light.distant, direct_light.light_object,
+                        direct_light.light_primitive, direct_light.shader_flags,
+                        direct_light.constant_light_shader, &*ctx);
                     transport.light_terminate_sample =
                         random.light_terminate_sample;
                   };
@@ -876,9 +913,10 @@ void PathKernelPipeline::emit(
         VolumeStackEntry merged_volume_entry{};
         Bool merged_surface_has_volume = false;
         auto merged_transport =
-            DirectLightTransportState::empty(config.spectral_rendering);
+            DirectLightTransportState::empty(config.effective_spectral_mode());
         auto merged_scatter = PreparedCyclesSvmSurfaceScatter::empty(
-            config.spectral_rendering, config.caustics_is_sms());
+            config.effective_spectral_mode(), config.caustics_is_sms(),
+            config.xyz3_rough_dispersion());
 
         Bool vt_outer_break = false;
         Bool vt_outer_continue = false;

@@ -519,13 +519,17 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     UInt ray_source_primitive = surface_ray::invalid_primitive;
 
     Float3 radiance = make_float3(0.0f);
-    auto throughput =
-        cycles_spectrum::Spectrum::one(config.spectral_rendering);
+    const auto mode = config.effective_spectral_mode();
+    auto throughput = cycles_spectrum::Spectrum::one(mode);
     std::optional<Float> spectral_u_lambda;
-    if (config.spectral_rendering) {
+    std::optional<Float3> spectral_pdf_ratio;
+    if (mode != contract::SpectralMode::none) {
         spectral_u_lambda.emplace(cycles_sampler::sample_1d(
             sobol_table, kernel_parameters.sobol_sequence_size,
             sample_index, rng_hash ^ 0x51a7b9d3u, 0u));
+    }
+    if (config.xyz3_rough_dispersion()) {
+        spectral_pdf_ratio.emplace(make_float3(1.0f));
     }
     Float3 sample_normal = make_float3(0.0f);
     Float3 sample_albedo = make_float3(0.0f);
@@ -565,6 +569,20 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     // threshold and writes the first single-value data passes.
     const auto initial_cycles_path_state = cycles_path_state::initial_state();
     UInt path_flags = initial_cycles_path_state.flag;
+    if (mode == contract::SpectralMode::xyz3 && config.xyz3_force_collapse) {
+        LUISA_ASSERT(config.scene && config.scene->spectral_tables &&
+                         spectral_u_lambda.has_value(),
+                     "xyz3_force_collapse requires SpectralTablesGpu.");
+        const auto decoded = cycles_spectrum::xyz3_decode_u(*spectral_u_lambda);
+        const auto lambdas = cycles_spectrum::sample_xyz3_lambdas(
+            *config.scene->spectral_tables, decoded.u);
+        const auto h_lambda =
+            cycles_spectrum::xyz3_hero(lambdas, decoded.hero_index);
+        throughput = cycles_spectrum::Spectrum::from_xyz3(
+            cycles_spectrum::xyz3_collapse_weight(
+                *config.scene->spectral_tables, h_lambda));
+        path_flags |= cycles_path_state::flag_spectral_collapsed;
+    }
     UInt cycles_path_visibility = initial_cycles_path_state.visibility;
     UInt cycles_rng_offset = initial_cycles_path_state.rng_offset;
     auto volume =
@@ -603,6 +621,7 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(radiance),
             std::move(throughput),
             std::move(spectral_u_lambda),
+            std::move(spectral_pdf_ratio),
             std::move(sample_normal),
             std::move(sample_albedo),
             std::move(sample_glossy_color),
@@ -726,14 +745,19 @@ void reset_path_sample(PathSampleContext &sample,
     sample.ray_source_object = surface_ray::invalid_primitive;
     sample.ray_source_primitive = surface_ray::invalid_primitive;
     sample.radiance = make_float3(0.0f);
-    sample.throughput =
-        cycles_spectrum::Spectrum::one(config.spectral_rendering);
-    if (config.spectral_rendering) {
+    const auto mode = config.effective_spectral_mode();
+    sample.throughput = cycles_spectrum::Spectrum::one(mode);
+    if (mode != contract::SpectralMode::none) {
         sample.spectral_u_lambda = cycles_sampler::sample_1d(
             sobol_table, kernel_parameters.sobol_sequence_size,
             sample.sample_index, sample.rng_hash ^ 0x51a7b9d3u, 0u);
     } else {
         sample.spectral_u_lambda.reset();
+    }
+    if (config.xyz3_rough_dispersion()) {
+        sample.spectral_pdf_ratio = make_float3(1.0f);
+    } else {
+        sample.spectral_pdf_ratio.reset();
     }
     sample.sample_normal = make_float3(0.0f);
     sample.sample_albedo = make_float3(0.0f);
@@ -768,6 +792,21 @@ void reset_path_sample(PathSampleContext &sample,
     sample.path_depth = 0u;
     const auto initial_cycles_path_state = cycles_path_state::initial_state();
     sample.path_flags = initial_cycles_path_state.flag;
+    if (mode == contract::SpectralMode::xyz3 && config.xyz3_force_collapse) {
+        LUISA_ASSERT(config.scene && config.scene->spectral_tables &&
+                         sample.spectral_u_lambda.has_value(),
+                     "xyz3_force_collapse requires SpectralTablesGpu.");
+        const auto decoded =
+            cycles_spectrum::xyz3_decode_u(*sample.spectral_u_lambda);
+        const auto lambdas = cycles_spectrum::sample_xyz3_lambdas(
+            *config.scene->spectral_tables, decoded.u);
+        const auto h_lambda =
+            cycles_spectrum::xyz3_hero(lambdas, decoded.hero_index);
+        sample.throughput = cycles_spectrum::Spectrum::from_xyz3(
+            cycles_spectrum::xyz3_collapse_weight(
+                *config.scene->spectral_tables, h_lambda));
+        sample.path_flags |= cycles_path_state::flag_spectral_collapsed;
+    }
     sample.cycles_path_visibility = initial_cycles_path_state.visibility;
     sample.cycles_rng_offset = initial_cycles_path_state.rng_offset;
     if (config.volume_state) {
@@ -788,8 +827,20 @@ void reset_path_sample(PathSampleContext &sample,
     sample.pending_subsurface_hit.committed_ray_t = 0.0f;
 }
 
+contract::SpectralMode PathSampleContext::spectral_mode() const noexcept {
+    return invocation.config.effective_spectral_mode();
+}
+
 bool PathSampleContext::is_spectral() const noexcept {
-    return invocation.config.spectral_rendering;
+    return spectral_mode() != contract::SpectralMode::none;
+}
+
+bool PathSampleContext::is_hero4() const noexcept {
+    return spectral_mode() == contract::SpectralMode::hero4;
+}
+
+bool PathSampleContext::is_xyz3() const noexcept {
+    return spectral_mode() == contract::SpectralMode::xyz3;
 }
 
 Bool PathSampleContext::spectral_secondary_terminated() const noexcept {
@@ -800,28 +851,54 @@ Bool PathSampleContext::spectral_secondary_terminated() const noexcept {
             cycles_path_state::flag_spectral_secondary_terminated) != 0u;
 }
 
+Bool PathSampleContext::spectral_lane_terminated() const noexcept {
+    if (!is_hero4()) {
+        return false;
+    }
+    return spectral_secondary_terminated();
+}
+
+Expr<luisa::float4> PathSampleContext::throughput_eval4() const noexcept {
+    if (is_xyz3()) {
+        const auto ctx = spectral_context();
+        return Expr<luisa::float4>{cycles_spectrum::xyz3_rotate_eval(
+            throughput.xyz3(), *ctx->hero_index)};
+    }
+    return Expr<luisa::float4>{throughput.lanes()};
+}
+
 std::optional<cycles_spectrum::SampledWavelengths>
 PathSampleContext::sampled_wavelengths() const noexcept {
-    if (!is_spectral() || !spectral_u_lambda.has_value()) {
+    const auto mode = spectral_mode();
+    if (mode == contract::SpectralMode::none || !spectral_u_lambda.has_value()) {
         return std::nullopt;
+    }
+    if (mode == contract::SpectralMode::xyz3) {
+        return spectral_context()->wavelengths;
     }
     return cycles_spectrum::sample_visible_wavelengths(*spectral_u_lambda);
 }
 
 std::optional<cycles_spectrum::SpectralContext>
 PathSampleContext::spectral_context() const noexcept {
-    if (!is_spectral()) {
+    const auto mode = spectral_mode();
+    if (mode == contract::SpectralMode::none) {
         return std::nullopt;
     }
     const auto &scene = invocation.config.scene;
     LUISA_ASSERT(scene && scene->spectral_tables &&
                      spectral_u_lambda.has_value(),
                  "Spectral path requires uploaded SpectralTablesGpu and u_lambda.");
-    return cycles_spectrum::SpectralContext{
-        .tables = scene->spectral_tables.get(),
-        .wavelengths =
-            cycles_spectrum::sample_visible_wavelengths(*spectral_u_lambda),
-        .secondary_terminated = spectral_secondary_terminated()};
+    if (mode == contract::SpectralMode::hero4) {
+        return cycles_spectrum::SpectralContext{
+            .tables = scene->spectral_tables.get(),
+            .wavelengths =
+                cycles_spectrum::sample_visible_wavelengths(*spectral_u_lambda),
+            .secondary_terminated = spectral_secondary_terminated()};
+    }
+    return cycles_spectrum::make_spectral_context(
+        scene->spectral_tables.get(), mode, *spectral_u_lambda,
+        spectral_secondary_terminated());
 }
 
 Float3 PathSampleContext::spectrum_to_rgb(
@@ -830,9 +907,7 @@ Float3 PathSampleContext::spectrum_to_rgb(
         return value.rgb();
     }
     const auto ctx = spectral_context();
-    return cycles_spectrum::spectrum_to_rgb(*ctx->tables, value.lanes(),
-                                            ctx->wavelengths,
-                                            ctx->secondary_terminated);
+    return cycles_spectrum::to_rgb(value, *ctx);
 }
 
 Float3 PathSampleContext::reflectance_to_rgb(
@@ -841,14 +916,114 @@ Float3 PathSampleContext::reflectance_to_rgb(
         return reflectance.rgb();
     }
     const auto ctx = spectral_context();
-    return cycles_spectrum::reflectance_to_rgb(*ctx->tables, reflectance.lanes(),
-                                               ctx->wavelengths,
-                                               ctx->secondary_terminated);
+    return cycles_spectrum::reflectance_to_rgb(reflectance, *ctx);
 }
 
 Float PathSampleContext::throughput_average() const noexcept {
     return cycles_spectrum::average(throughput,
                                     spectral_secondary_terminated());
+}
+
+cycles_spectrum::Spectrum PathSampleContext::spectrum_from_eval(
+    Expr<luisa::float4> eval4) const noexcept {
+    if (is_hero4()) {
+        return cycles_spectrum::Spectrum::from_lanes(eval4);
+    }
+    if (!is_spectral()) {
+        return cycles_spectrum::Spectrum::from_rgb_raw(eval4.xyz());
+    }
+    const auto ctx = spectral_context();
+    return cycles_spectrum::Spectrum::from_eval4(&*ctx, eval4);
+}
+
+Float PathSampleContext::xyz3_mis_pdf(
+    Expr<float> scalar_pdf,
+    const std::optional<Float4> &lane_pdf) const noexcept {
+    if (!is_xyz3() || !spectral_pdf_ratio.has_value() ||
+        !lane_pdf.has_value()) {
+        return scalar_pdf;
+    }
+    const auto ctx = spectral_context();
+    const auto h = *ctx->hero_index;
+    const Float3 p_xyz =
+        max(cycles_spectrum::xyz3_unrotate_eval(*lane_pdf, h),
+            make_float3(0.0f));
+    const Float3 &r = *spectral_pdf_ratio;
+    const Float r_sum = max(r.x + r.y + r.z, 1.0e-30f);
+    return select(dot(r, p_xyz) / r_sum, scalar_pdf,
+                  spectral_secondary_terminated());
+}
+
+Float PathSampleContext::apply_xyz3_bsdf_weight(
+    Expr<luisa::float4> f_eval, Expr<float> scalar_pdf,
+    const std::optional<Float4> &lane_pdf) noexcept {
+    LUISA_ASSERT(is_xyz3(), "apply_xyz3_bsdf_weight requires SpectralMode::xyz3.");
+    const auto ctx = spectral_context();
+    const auto h = *ctx->hero_index;
+    const Float3 f_xyz = cycles_spectrum::xyz3_unrotate_eval(f_eval, h);
+    if (!spectral_pdf_ratio.has_value() || !lane_pdf.has_value()) {
+        throughput *= cycles_spectrum::Spectrum::from_xyz3(f_xyz / scalar_pdf);
+        return scalar_pdf;
+    }
+    const Float3 p_xyz =
+        max(cycles_spectrum::xyz3_unrotate_eval(*lane_pdf, h),
+            make_float3(0.0f));
+    Float3 &r = *spectral_pdf_ratio;
+    const Float r_sum = max(r.x + r.y + r.z, 1.0e-30f);
+    const Float p_bar_raw = dot(r, p_xyz) / r_sum;
+    const Float p_bar = select(p_bar_raw, scalar_pdf,
+                               spectral_secondary_terminated());
+    throughput *= cycles_spectrum::Spectrum::from_xyz3(
+        f_xyz / max(p_bar, 1.0e-30f));
+    $if(!spectral_secondary_terminated()) {
+        const Float3 next_r = r * p_xyz;
+        const Float next_sum = next_r.x + next_r.y + next_r.z;
+        r = select(make_float3(1.0f), next_r * (3.0f / max(next_sum, 1.0e-30f)),
+                   next_sum > 1.0e-30f);
+    };
+    return p_bar;
+}
+
+void PathSampleContext::collapse_xyz3(Expr<float> hero_bsdf_weight) noexcept {
+    LUISA_ASSERT(is_xyz3(), "collapse_xyz3 requires SpectralMode::xyz3.");
+    $if(spectral_secondary_terminated()) {
+        throughput *= hero_bsdf_weight;
+    }
+    $else {
+        const auto ctx = spectral_context();
+        const auto h = *ctx->hero_index;
+        const auto h_lambda =
+            cycles_spectrum::xyz3_hero(*ctx->lambdas_xyz, h);
+        const auto w_raw = cycles_spectrum::xyz3_collapse_weight(
+            *ctx->tables, h_lambda);
+        const Float t_h = cycles_spectrum::xyz3_hero(throughput.xyz3(), h);
+        Float cf = 1.0f;
+        if (spectral_pdf_ratio.has_value()) {
+            const Float3 &r = *spectral_pdf_ratio;
+            const Float r_h = cycles_spectrum::xyz3_hero(r, h);
+            const Float r_mean = (r.x + r.y + r.z) * (1.0f / 3.0f);
+            cf = select(0.0f, r_mean / max(r_h, 1.0e-30f), r_h > 0.0f);
+        }
+        throughput = cycles_spectrum::Spectrum::from_xyz3(
+            (t_h * cf * hero_bsdf_weight) * w_raw);
+    };
+    path_flags |= cycles_path_state::flag_spectral_collapsed;
+    if (spectral_pdf_ratio.has_value()) {
+        *spectral_pdf_ratio = make_float3(1.0f);
+    }
+}
+
+Float PathSampleContext::xyz3_hero_caustic_factor() const noexcept {
+    if (!is_xyz3() || !spectral_pdf_ratio.has_value()) {
+        return 1.0f;
+    }
+    const auto ctx = spectral_context();
+    const auto h = *ctx->hero_index;
+    const Float3 &r = *spectral_pdf_ratio;
+    const Float r_h = cycles_spectrum::xyz3_hero(r, h);
+    const Float r_mean = (r.x + r.y + r.z) * (1.0f / 3.0f);
+    return select(1.0f, select(0.0f, r_mean / max(r_h, 1.0e-30f), r_h > 0.0f),
+                  !spectral_secondary_terminated());
 }
 
 Float3
@@ -899,9 +1074,9 @@ PathSampleContext::analytic_light_constant_shader_spectrum(
             *invocation.config.scene, light.cycles_shader_id, result);
         assume(constant);
     };
-    return cycles_spectrum::Spectrum::from_lanes(
-        cycles_spectrum::rgb_to_spectrum_illuminant(
-            *ctx->tables, result, ctx->wavelengths.lambdas));
+    return cycles_spectrum::Spectrum::from_eval4(
+        &*ctx, cycles_spectrum::rgb_to_spectrum_illuminant(
+                   *ctx->tables, result, ctx->wavelengths.lambdas));
 }
 
 cycles_spectrum::Spectrum
@@ -928,7 +1103,7 @@ PathSampleContext::analytic_light_shader_spectrum(
             light_position, light_normal, incoming, light_uv, light_distance,
             0.0f, state, *ctx, vt_miss_page);
     };
-    return cycles_spectrum::Spectrum::from_lanes(result);
+    return cycles_spectrum::Spectrum::from_eval4(&*ctx, result);
 }
 
 } // namespace psycles::luisa_backend::detail

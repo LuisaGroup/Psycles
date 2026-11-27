@@ -80,6 +80,7 @@ class PathCyclesSvmKernelGlobals final
     const UInt *_vt_preflight_weight{nullptr};
     const PathSurfaceAmbientOcclusionContext *_ambient_occlusion{nullptr};
     bool _spectral_rendering{false};
+    contract::SpectralMode _spectral_mode{contract::SpectralMode::none};
     Bool _caustics_reflective;
     Bool _caustics_refractive;
     luisa::compute::Float4x4 _camera_to_world;
@@ -98,14 +99,16 @@ class PathCyclesSvmKernelGlobals final
         bool force_direct_textures = false,
         UInt *vt_miss_page = nullptr,
         const UInt *vt_preflight_weight = nullptr,
-        bool spectral_rendering = false) noexcept;
+        bool spectral_rendering = false,
+        contract::SpectralMode spectral_mode = contract::SpectralMode::none) noexcept;
     PathCyclesSvmKernelGlobals(
         std::shared_ptr<LuisaSceneData> scene,
         const SurfacePopulationContext &context,
         std::span<const std::uint8_t> explicit_shader_mask = {},
         bool force_direct_textures = false,
         UInt *vt_miss_page = nullptr,
-        bool spectral_rendering = false) noexcept;
+        bool spectral_rendering = false,
+        contract::SpectralMode spectral_mode = contract::SpectralMode::none) noexcept;
 
     [[nodiscard]] Bool caustics_reflective() const noexcept override;
     [[nodiscard]] Bool caustics_refractive() const noexcept override;
@@ -113,6 +116,8 @@ class PathCyclesSvmKernelGlobals final
     [[nodiscard]] bool has_shadow_terminator_shading_offset() const noexcept override;
     [[nodiscard]] bool may_have_thin_film() const noexcept override;
     [[nodiscard]] bool is_spectral() const noexcept override;
+    [[nodiscard]] contract::SpectralMode spectral_mode() const noexcept override;
+    [[nodiscard]] bool xyz3_rough_dispersion() const noexcept override;
     [[nodiscard]] const cycles_spectrum::SpectralTablesGpu *
     spectral_tables() const noexcept override;
     [[nodiscard]] bool has_dispersive_materials() const noexcept override;

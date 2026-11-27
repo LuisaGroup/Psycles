@@ -190,7 +190,7 @@ Float4 evaluate_cycles_svm_background_emission_spectral(
     const PathCyclesSvmKernelGlobals kg{
         scene, parameters, scene->camera.projection, true, true,
         PathCyclesSvmShaderDomain::background, {},
-        force_direct_textures, vt_miss_page, nullptr, true};
+        force_direct_textures, vt_miss_page, nullptr, true, spectral.mode};
     auto sd = setup_cycles_svm_background_shader_data(
         *scene, origin, direction, differential, time, state.visibility,
         evaluation);

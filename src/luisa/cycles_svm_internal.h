@@ -629,6 +629,12 @@ public:
   [[nodiscard]] bool is_spectral() const noexcept override {
     return _inner.is_spectral();
   }
+  [[nodiscard]] contract::SpectralMode spectral_mode() const noexcept override {
+    return _inner.spectral_mode();
+  }
+  [[nodiscard]] bool xyz3_rough_dispersion() const noexcept override {
+    return _inner.xyz3_rough_dispersion();
+  }
   [[nodiscard]] const cycles_spectrum::SpectralTablesGpu *
   spectral_tables() const noexcept override {
     return _inner.spectral_tables();

@@ -119,9 +119,29 @@ struct PathKernelConfig {
         nullptr};
     bool enable_virtual_texture_cache{false};
     bool spectral_rendering{false};
+    contract::SpectralMode spectral_mode{contract::SpectralMode::none};
+    bool xyz3_force_collapse{false};
     contract::CausticsMethod caustics_method{contract::CausticsMethod::mnee};
     bool sms_unbiased{true};
     std::uint32_t sms_max_trials{8u};
+
+    [[nodiscard]] contract::SpectralMode
+    effective_spectral_mode() const noexcept {
+        if (spectral_mode != contract::SpectralMode::none) {
+            return spectral_mode;
+        }
+        return spectral_rendering ? contract::SpectralMode::hero4
+                                  : contract::SpectralMode::none;
+    }
+    [[nodiscard]] bool is_hero4() const noexcept {
+        return effective_spectral_mode() == contract::SpectralMode::hero4;
+    }
+    [[nodiscard]] bool is_xyz3() const noexcept {
+        return effective_spectral_mode() == contract::SpectralMode::xyz3;
+    }
+    [[nodiscard]] bool xyz3_rough_dispersion() const noexcept {
+        return is_xyz3() && scene && scene->has_dispersive_materials;
+    }
 
     [[nodiscard]] bool caustics_active() const noexcept {
         return (caustics_method == contract::CausticsMethod::mnee ||
@@ -384,6 +404,7 @@ struct PathSampleContext {
     Float3 radiance;
     cycles_spectrum::Spectrum throughput;
     std::optional<Float> spectral_u_lambda;
+    std::optional<Float3> spectral_pdf_ratio;
     Float3 sample_normal;
     Float3 sample_albedo;
     Float3 sample_glossy_color;
@@ -498,8 +519,13 @@ struct PathSampleContext {
       UInt event_path_visibility, UInt event_path_depth,
       Bool primary_volume_scatter_override = false) noexcept;
   void accumulate_transparency(Float transparency) noexcept;
+    [[nodiscard]] contract::SpectralMode spectral_mode() const noexcept;
     [[nodiscard]] bool is_spectral() const noexcept;
+    [[nodiscard]] bool is_hero4() const noexcept;
+    [[nodiscard]] bool is_xyz3() const noexcept;
     [[nodiscard]] Bool spectral_secondary_terminated() const noexcept;
+    [[nodiscard]] Bool spectral_lane_terminated() const noexcept;
+    [[nodiscard]] Expr<luisa::float4> throughput_eval4() const noexcept;
     [[nodiscard]] std::optional<cycles_spectrum::SampledWavelengths>
     sampled_wavelengths() const noexcept;
     [[nodiscard]] std::optional<cycles_spectrum::SpectralContext>
@@ -509,6 +535,16 @@ struct PathSampleContext {
     [[nodiscard]] Float3 reflectance_to_rgb(
         const cycles_spectrum::Spectrum &reflectance) const noexcept;
     [[nodiscard]] Float throughput_average() const noexcept;
+    [[nodiscard]] cycles_spectrum::Spectrum
+    spectrum_from_eval(Expr<luisa::float4> eval4) const noexcept;
+    [[nodiscard]] Float xyz3_mis_pdf(
+        Expr<float> scalar_pdf,
+        const std::optional<Float4> &lane_pdf) const noexcept;
+    [[nodiscard]] Float apply_xyz3_bsdf_weight(
+        Expr<luisa::float4> f_eval, Expr<float> scalar_pdf,
+        const std::optional<Float4> &lane_pdf) noexcept;
+    void collapse_xyz3(Expr<float> hero_bsdf_weight) noexcept;
+    [[nodiscard]] Float xyz3_hero_caustic_factor() const noexcept;
     [[nodiscard]] Float3
   analytic_light_constant_shader(Var<LightGpu> light) const noexcept;
     [[nodiscard]] Float3
@@ -707,7 +743,7 @@ struct DirectLightSampleState {
     std::optional<Float4> spectral_light_shader{};
 
     [[nodiscard]] static DirectLightSampleState
-    empty(bool spectral = false) noexcept;
+    empty(contract::SpectralMode spectral_mode = contract::SpectralMode::none) noexcept;
     void accept(const DirectLightSampleState &proposal) noexcept;
 };
 
@@ -739,7 +775,7 @@ struct DirectLightTransportState {
     std::optional<Float4> spectral_glossy_bsdf{};
 
     [[nodiscard]] static DirectLightTransportState
-    empty(bool spectral = false) noexcept;
+    empty(contract::SpectralMode spectral_mode = contract::SpectralMode::none) noexcept;
     void accept(const DirectLightTransportState &other) noexcept;
     void accept(const SurfaceEvaluation &evaluation,
                 Float3 proposal_weighted_bsdf, Float3 proposal_light_shader,
@@ -753,7 +789,8 @@ struct DirectLightTransportState {
                 Float3 proposal_direction, Float3 proposal_target_position,
                 Bool proposal_distant, UInt proposal_light_object,
                 UInt proposal_light_primitive, UInt proposal_shader_flags,
-                Bool proposal_constant_light_shader) noexcept;
+                Bool proposal_constant_light_shader,
+                const cycles_spectrum::SpectralContext *spectral = nullptr) noexcept;
 };
 
 // Per-emitter host/JIT protocol matching Cycles' light-sample state machine:

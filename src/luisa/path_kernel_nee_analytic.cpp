@@ -198,21 +198,33 @@ class AnalyticDirectLightProvider final : public DirectLightProvider {
                 Float3 light_shader = make_float3(0.0f);
                 std::optional<Float4> spectral_radiometric_weight{};
                 std::optional<Float4> spectral_light_shader{};
-                const auto spectral = sample.is_spectral();
-                if (spectral) {
+                const bool hero4 = sample.is_hero4();
+                const bool xyz3 = sample.is_xyz3();
+                if (hero4) {
                     const auto ctx = sample.spectral_context();
                     spectral_radiometric_weight.emplace(
                         cycles_spectrum::rgb_to_spectrum_reflectance(
                             *ctx->tables, light.color, ctx->wavelengths.lambdas) *
                         (light.power * light_eval_factor));
                     spectral_light_shader.emplace(make_float4(0.0f));
+                } else if (xyz3) {
+                    const auto ctx = sample.spectral_context();
+                    light_radiance =
+                        cycles_spectrum::Spectrum::from_rgb_reflectance(
+                            ctx->tables, light.color, &*ctx)
+                            .xyz3() *
+                        (light.power * light_eval_factor);
                 }
                 $if(constant_emission) {
-                    if (spectral) {
+                    if (hero4) {
                         *spectral_light_shader =
                             sample.analytic_light_constant_shader_spectrum(light)
                                 .lanes();
                         light_shader = spectral_light_shader->xyz();
+                    } else if (xyz3) {
+                        light_shader =
+                            sample.analytic_light_constant_shader_spectrum(light)
+                                .xyz3();
                     } else {
                         light_shader =
                             sample.analytic_light_constant_shader(light);

@@ -29,7 +29,13 @@ namespace {
 
 [[nodiscard]] Float3 spectral_component_ratio(
     Expr<luisa::float4> num, Expr<luisa::float4> den,
-    Expr<bool> secondary_terminated) noexcept {
+    Expr<bool> secondary_terminated,
+    std::uint32_t lane_count = 4u) noexcept {
+  if (lane_count == 3u) {
+    const Float n = (num.x + num.y + num.z) * (1.0f / 3.0f);
+    const Float d = (den.x + den.y + den.z) * (1.0f / 3.0f);
+    return make_float3(select(0.0f, n / d, d != 0.0f));
+  }
   const Float n = select((num.x + num.y + num.z + num.w) * 0.25f, num.x,
                          secondary_terminated);
   const Float d = select((den.x + den.y + den.z + den.w) * 0.25f, den.x,
@@ -92,10 +98,13 @@ void update_caustic_path_flags(PathSampleContext &sample,
 }
 
 PreparedCyclesSvmSurfaceScatter
-PreparedCyclesSvmSurfaceScatter::empty(bool spectral, bool sms) noexcept {
+PreparedCyclesSvmSurfaceScatter::empty(
+    contract::SpectralMode spectral_mode, bool sms,
+    bool xyz3_rough_dispersion) noexcept {
+  const bool spectral = spectral_mode != contract::SpectralMode::none;
   PreparedCyclesSvmSurfaceScatter out{
       .wo = make_float3(0.0f, 0.0f, 1.0f),
-      .throughput_weight = cycles_spectrum::Spectrum::zero(spectral),
+      .throughput_weight = cycles_spectrum::Spectrum::zero(spectral_mode),
       .diffuse_ratio = make_float3(0.0f),
       .glossy_ratio = make_float3(0.0f),
       .pdf = 0.0f,
@@ -110,6 +119,12 @@ PreparedCyclesSvmSurfaceScatter::empty(bool spectral, bool sms) noexcept {
       .valid = false};
   if (spectral) {
     out.spectral_terminated_secondary.emplace(false);
+  }
+  if (spectral_mode == contract::SpectralMode::xyz3) {
+    out.xyz3_eval_sum.emplace(make_float4(0.0f));
+    if (xyz3_rough_dispersion) {
+      out.xyz3_eval_lane_pdf.emplace(make_float4(0.0f));
+    }
   }
   if (sms) {
     out.sms_caster_eligible.emplace(false);
@@ -150,6 +165,13 @@ void PreparedCyclesSvmSurfaceScatter::accept(
       other.sms_caster_eligible.has_value()) {
     *sms_caster_eligible = *other.sms_caster_eligible;
   }
+  if (xyz3_eval_sum.has_value() && other.xyz3_eval_sum.has_value()) {
+    *xyz3_eval_sum = *other.xyz3_eval_sum;
+  }
+  if (xyz3_eval_lane_pdf.has_value() &&
+      other.xyz3_eval_lane_pdf.has_value()) {
+    *xyz3_eval_lane_pdf = *other.xyz3_eval_lane_pdf;
+  }
 }
 
 PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
@@ -163,10 +185,13 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
   const auto features = config.scene->cycles_svm->kernel_features;
   const bool bssrdf_enabled =
       may_have_bssrdf && ((features & svm::kernel_feature_subsurface) != 0u);
-  const bool spectral = sample.is_spectral();
+  const auto spectral_mode = sample.spectral_mode();
+  const bool spectral = spectral_mode != contract::SpectralMode::none;
+  const bool hero4 = spectral_mode == contract::SpectralMode::hero4;
+  const bool xyz3 = spectral_mode == contract::SpectralMode::xyz3;
 
   auto out = PreparedCyclesSvmSurfaceScatter::empty(
-      spectral, config.caustics_is_sms());
+      spectral_mode, config.caustics_is_sms(), config.xyz3_rough_dispersion());
   if (config.caustics_is_sms()) {
     *out.sms_caster_eligible =
         context.shading.populated_surface
@@ -197,11 +222,18 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
         $if((bsdf.evaluation.pdf != 0.0f) & non_zero_eval &
             (bsdf.label != closure::label_none)) {
           out.wo = bsdf.wo;
-          if (spectral) {
+          if (hero4) {
             out.throughput_weight = cycles_spectrum::Spectrum::from_lanes(
                 *bsdf.evaluation.spectral_sum / bsdf.evaluation.pdf);
             *out.spectral_terminated_secondary =
                 bsdf.spectral_terminated_secondary.value_or(Bool{false});
+          } else if (xyz3) {
+            *out.xyz3_eval_sum = *bsdf.evaluation.spectral_sum;
+            *out.spectral_terminated_secondary =
+                bsdf.spectral_terminated_secondary.value_or(Bool{false});
+            if (out.xyz3_eval_lane_pdf.has_value()) {
+              *out.xyz3_eval_lane_pdf = make_float4(bsdf.evaluation.pdf);
+            }
           } else {
             out.throughput_weight = cycles_spectrum::Spectrum::from_rgb_raw(
                 bsdf.evaluation.sum / bsdf.evaluation.pdf);
@@ -211,7 +243,7 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
               bsdf.evaluation.average_roughness_squared;
           out.label = bsdf.label;
           $if(sample.path_depth == 0u) {
-            if (spectral) {
+            if (hero4) {
               const auto eff_term =
                   sample.spectral_secondary_terminated() |
                   bsdf.spectral_terminated_secondary.value_or(Bool{false});
@@ -221,6 +253,13 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
               out.glossy_ratio = spectral_component_ratio(
                   *bsdf.evaluation.spectral_glossy,
                   *bsdf.evaluation.spectral_sum, eff_term);
+            } else if (xyz3) {
+              out.diffuse_ratio = spectral_component_ratio(
+                  *bsdf.evaluation.spectral_diffuse,
+                  *bsdf.evaluation.spectral_sum, Bool{false}, 3u);
+              out.glossy_ratio = spectral_component_ratio(
+                  *bsdf.evaluation.spectral_glossy,
+                  *bsdf.evaluation.spectral_sum, Bool{false}, 3u);
             } else {
               out.diffuse_ratio = config.light_transport.light_component_ratio(
                   bsdf.evaluation.diffuse, bsdf.evaluation.sum);
@@ -260,7 +299,7 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
         out.bssrdf_sample.bssrdf_roughness = bssrdf.param.alpha;
         out.bssrdf_sample.bssrdf_anisotropy = bssrdf.param.anisotropy;
         if (spectral) {
-          out.throughput_weight = cycles_spectrum::Spectrum::from_lanes(
+          out.throughput_weight = sample.spectrum_from_eval(
               native::surface_shader_bssrdf_sample_weight_spectral(
                   sd, pick.index, *sample.spectral_context()));
         } else {
@@ -332,15 +371,30 @@ SurfaceScatterStage::Result commit_cycles_svm_surface_continuation(
       sample.ray_dD = cycles_ray_differential::widen_direction(
           sample.ray_dD, prepared.average_roughness_squared);
     };
-    sample.throughput *= prepared.throughput_weight;
+    std::optional<Float> xyz3_pdf;
+    if (sample.is_xyz3()) {
+      const auto collapse =
+          prepared.spectral_terminated_secondary.value_or(Bool{false});
+      const auto eval_sum = prepared.xyz3_eval_sum.value_or(make_float4(0.0f));
+      $if(collapse) {
+        sample.collapse_xyz3(eval_sum.x / max(prepared.pdf, 1.0e-30f));
+      }
+      $else {
+        xyz3_pdf.emplace(sample.apply_xyz3_bsdf_weight(
+            eval_sum, prepared.pdf, prepared.xyz3_eval_lane_pdf));
+      };
+    } else {
+      sample.throughput *= prepared.throughput_weight;
+    }
+    const auto &committed_pdf = xyz3_pdf ? *xyz3_pdf : prepared.pdf;
     $if(sample.path_depth == 0u) {
       sample.path_diffuse_weight = prepared.diffuse_ratio;
       sample.path_glossy_weight = prepared.glossy_ratio;
     };
     $if(!transparent) {
-      sample.previous_bsdf_pdf = prepared.pdf;
+      sample.previous_bsdf_pdf = committed_pdf;
       if (config.has_filter_glossy) {
-        sample.minimum_bsdf_pdf = min(prepared.pdf, sample.minimum_bsdf_pdf);
+        sample.minimum_bsdf_pdf = min(committed_pdf, sample.minimum_bsdf_pdf);
       }
       sample.previous_mis_origin_normal = prepared.shading_normal;
     };
@@ -357,7 +411,7 @@ SurfaceScatterStage::Result commit_cycles_svm_surface_continuation(
           sample, context.surface, config, prev_caustic_flags, prepared.label,
           prepared.sms_caster_eligible.value_or(Bool{false}));
     }
-    if (sample.is_spectral() &&
+    if (sample.is_hero4() &&
         prepared.spectral_terminated_secondary.has_value()) {
       $if(*prepared.spectral_terminated_secondary) {
         sample.path_flags |=
@@ -456,6 +510,8 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
     UInt label = closure::label_none;
     const bool outline_bsdf = should_outline_simd_bsdf(config);
   const bool spectral = sample.is_spectral();
+  const bool hero4 = sample.is_hero4();
+  const bool xyz3 = sample.is_xyz3();
   const auto ordinary_bsdf = [&] noexcept {
       Float3 bsdf_wo = make_float3(0.0f);
       Float3 bsdf_sum = make_float3(0.0f);
@@ -508,8 +564,7 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
           trace(path_trace_schema::EventSlot::bsdf_wo, bsdf_wo);
           trace(path_trace_schema::EventSlot::bsdf_eval,
                 spectral ? sample.reflectance_to_rgb(
-                               cycles_spectrum::Spectrum::from_lanes(
-                                   *bsdf_spec_sum))
+                               sample.spectrum_from_eval(*bsdf_spec_sum))
                          : bsdf_sum);
           trace(path_trace_schema::EventSlot::bsdf_roughness_eta,
                 make_float3(bsdf_sampled_roughness, bsdf_eta));
@@ -528,23 +583,38 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
           sample.ray_dD = cycles_ray_differential::widen_direction(
               sample.ray_dD, bsdf_avg_r2);
         };
-        if (spectral) {
+        std::optional<Float> xyz3_pdf;
+        if (hero4) {
           sample.throughput *= cycles_spectrum::Spectrum::from_lanes(
               *bsdf_spec_sum / bsdf_pdf);
+        } else if (xyz3) {
+          $if(*bsdf_term_sec) {
+            sample.collapse_xyz3(bsdf_spec_sum->x / max(bsdf_pdf, 1.0e-30f));
+          }
+          $else {
+            xyz3_pdf.emplace(sample.apply_xyz3_bsdf_weight(
+                *bsdf_spec_sum, bsdf_pdf, std::nullopt));
+          };
         } else {
           sample.throughput.rgb() *= bsdf_sum / bsdf_pdf;
         }
+        const auto &committed_pdf = xyz3_pdf ? *xyz3_pdf : bsdf_pdf;
         // This renderer exposes the complete light-pass contract. Native
         // first-bounce weights include transparent closures and are reduced
         // only inside the first-bounce predicate.
         $if(sample.path_depth == 0u) {
-          if (spectral) {
+          if (hero4) {
             const auto eff_term =
                 sample.spectral_secondary_terminated() | *bsdf_term_sec;
             sample.path_diffuse_weight = spectral_component_ratio(
                 *bsdf_spec_diffuse, *bsdf_spec_sum, eff_term);
             sample.path_glossy_weight = spectral_component_ratio(
                 *bsdf_spec_glossy, *bsdf_spec_sum, eff_term);
+          } else if (xyz3) {
+            sample.path_diffuse_weight = spectral_component_ratio(
+                *bsdf_spec_diffuse, *bsdf_spec_sum, Bool{false}, 3u);
+            sample.path_glossy_weight = spectral_component_ratio(
+                *bsdf_spec_glossy, *bsdf_spec_sum, Bool{false}, 3u);
           } else {
             sample.path_diffuse_weight = config.light_transport.light_component_ratio(
                 bsdf_diffuse, bsdf_sum);
@@ -553,9 +623,9 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
           }
         };
         $if(!transparent) {
-          sample.previous_bsdf_pdf = bsdf_pdf;
+          sample.previous_bsdf_pdf = committed_pdf;
           if (config.has_filter_glossy || config.path_trace_enabled) {
-            sample.minimum_bsdf_pdf = min(bsdf_pdf, sample.minimum_bsdf_pdf);
+            sample.minimum_bsdf_pdf = min(committed_pdf, sample.minimum_bsdf_pdf);
           }
           sample.previous_mis_origin_normal = sd.N;
         };
@@ -575,7 +645,7 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
           update_caustic_path_flags(sample, context.surface, config,
                                     prev_caustic_flags, label, sms_eligible);
         }
-        if (spectral) {
+        if (hero4) {
           $if(*bsdf_term_sec) {
             sample.path_flags |=
                 cycles_path_state::flag_spectral_secondary_terminated;
@@ -624,7 +694,7 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
               const auto ctx = sample.spectral_context();
               sample.throughput *=
                   cycles_spectrum::Spectrum::from_rgb_reflectance(
-                      ctx->tables, state.throughput, &ctx->wavelengths, true);
+                      ctx->tables, state.throughput, &*ctx);
             } else {
               sample.throughput =
                   cycles_spectrum::Spectrum::from_rgb_raw(state.throughput);
@@ -666,7 +736,7 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
         bssrdf_sample.bssrdf_roughness = bssrdf.param.alpha;
         bssrdf_sample.bssrdf_anisotropy = bssrdf.param.anisotropy;
         if (spectral) {
-          sample.throughput *= cycles_spectrum::Spectrum::from_lanes(
+          sample.throughput *= sample.spectrum_from_eval(
               native::surface_shader_bssrdf_sample_weight_spectral(
                   sd, pick.index, *sample.spectral_context()));
         } else {

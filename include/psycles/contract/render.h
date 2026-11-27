@@ -82,6 +82,12 @@ enum class CausticsMethod : std::uint8_t {
     sms
 };
 
+enum class SpectralMode : std::uint8_t {
+    none,
+    hero4,
+    xyz3
+};
+
 // Transport controls are part of the render contract, not backend tuning.
 // A scene imported from Blender must carry the same values that Cycles uses so
 // a backend cannot silently render with convenient hard-coded limits.
@@ -116,12 +122,22 @@ struct PathIntegratorSettings {
     bool refractive_caustics{true};
     bool use_light_tree{false};
     bool spectral_rendering{false};
+    SpectralMode spectral_mode{SpectralMode::none};
     CausticsMethod caustics_method{CausticsMethod::mnee};
     bool sms_unbiased{true};
     std::uint32_t sms_max_trials{8u};
     DirectLightSampling direct_light_sampling{
         DirectLightSampling::multiple_importance_sampling};
 };
+
+[[nodiscard]] constexpr SpectralMode effective_spectral_mode(
+    const PathIntegratorSettings &settings) noexcept {
+    if (settings.spectral_mode != SpectralMode::none) {
+        return settings.spectral_mode;
+    }
+    return settings.spectral_rendering ? SpectralMode::hero4
+                                       : SpectralMode::none;
+}
 
 struct RenderSettings {
     ImageExtent full_extent;

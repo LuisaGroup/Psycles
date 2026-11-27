@@ -279,7 +279,7 @@ class PathVolumeSegmentStageImpl final
             spectral ? make_float3(1.0f) : throughput.rgb();
         Float3 result_emission = make_float3(0.0f);
         Float4 result_throughput_4 =
-            spectral ? throughput.lanes() : make_float4(0.0f);
+            spectral ? sample.throughput_eval4() : make_float4(0.0f);
         Float4 result_emission_4 = make_float4(0.0f);
         Float result_distance = segment_length;
         Float result_optical_depth = 0.0f;
@@ -304,7 +304,7 @@ class PathVolumeSegmentStageImpl final
         Bool direct_scattered = false;
 
         if (spectral) {
-            const auto sec_term = sample.spectral_secondary_terminated();
+            const auto sec_term = sample.spectral_lane_terminated();
             const auto emit_homogeneous_spec = [&]() noexcept {
                 $outline_when_with_name(outline_volume, "simd_volume_homogeneous_spec") {
                     const auto result = _homogeneous->emit_spectral(
@@ -313,7 +313,7 @@ class PathVolumeSegmentStageImpl final
                         segment_position,
                         -ray->direction(),
                         segment_length,
-                        throughput.lanes(),
+                        sample.throughput_eval4(),
                         scatter_random,
                         channel_random,
                         phase_random,
@@ -366,7 +366,7 @@ class PathVolumeSegmentStageImpl final
                              .ray_direction = ray->direction(),
                              .ray_minimum = segment_start,
                              .ray_maximum = event.distance,
-                             .throughput = throughput.lanes(),
+                             .throughput = sample.throughput_eval4(),
                              .reservoir_random = channel_random,
                              .phase_random = phase_random,
                              .direct =
@@ -428,7 +428,7 @@ class PathVolumeSegmentStageImpl final
             const Float4 spec_emission =
                 select(make_float4(0.0f), result_emission_4, inside_volume);
             const Float3 raw_emission = sample.spectrum_to_rgb(
-                cycles_spectrum::Spectrum::from_lanes(spec_emission));
+                sample.spectrum_from_eval(spec_emission));
             const auto emission = invocation.clamp_emission_contribution(
                 raw_emission, path_depth);
             sample.accumulate_radiance(emission);
@@ -437,8 +437,8 @@ class PathVolumeSegmentStageImpl final
             optical_depth +=
                 select(0.0f, result_optical_depth,
                        inside_volume & (path_depth == 0u));
-            throughput = cycles_spectrum::Spectrum::from_lanes(
-                select(throughput.lanes(), result_throughput_4, inside_volume));
+            throughput = sample.spectrum_from_eval(
+                select(sample.throughput_eval4(), result_throughput_4, inside_volume));
         } else {
             const Float3 volume_input_throughput = throughput.rgb();
             const auto emit_homogeneous =

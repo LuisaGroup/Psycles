@@ -73,7 +73,9 @@ Bool evaluate_cycles_svm_volume_entry(
           false,
           nullptr,
           nullptr,
-          sd.spectral.has_value()};
+          sd.spectral.has_value(),
+          sd.spectral.has_value() ? sd.spectral->mode
+                                  : contract::SpectralMode::none};
       const svm::TransformState transforms{
           parameters.camera_transform, parameters.camera_inverse_transform,
           object_to_world, world_to_object};

@@ -126,6 +126,7 @@ struct DirectLightTaskEvaluator {
   ClampLightContributionCallable clamp_contribution;
   std::shared_ptr<const DirectLightEmissionComponent> light_emission;
   std::shared_ptr<const cycles_spectrum::SpectralTablesGpu> spectral_tables;
+  contract::SpectralMode spectral_mode{contract::SpectralMode::none};
   bool volume_guiding{};
 
   [[nodiscard]] Var<ShadowTraceResultCall>

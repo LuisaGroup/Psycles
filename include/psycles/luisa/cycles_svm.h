@@ -487,6 +487,15 @@ public:
 
   [[nodiscard]] virtual bool is_spectral() const noexcept { return false; }
 
+  [[nodiscard]] virtual contract::SpectralMode spectral_mode() const noexcept {
+    return is_spectral() ? contract::SpectralMode::hero4
+                         : contract::SpectralMode::none;
+  }
+
+  [[nodiscard]] virtual bool xyz3_rough_dispersion() const noexcept {
+    return false;
+  }
+
   [[nodiscard]] virtual const cycles_spectrum::SpectralTablesGpu *
   spectral_tables() const noexcept {
     return nullptr;

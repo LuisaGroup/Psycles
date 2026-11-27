@@ -86,6 +86,7 @@ struct CausticsTaskEvaluator {
   std::shared_ptr<const cycles_spectrum::SpectralTablesGpu> spectral_tables;
   CameraProjection camera_projection{CameraProjection::perspective};
   bool spectral_rendering{false};
+  contract::SpectralMode spectral_mode{contract::SpectralMode::none};
   bool volume_guiding{false};
   bool reflective_caustics{true};
   bool refractive_caustics{true};

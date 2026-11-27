@@ -269,7 +269,7 @@ class VolumeShadowComponentImpl final
                                 *collisions,
                                 transmittance,
                                 tracking_rng_offset,
-                                sample.spectral_secondary_terminated());
+                                sample.spectral_lane_terminated());
                             transmittance = estimate.throughput;
                         } else {
                             const auto estimate = _heterogeneous->emit(

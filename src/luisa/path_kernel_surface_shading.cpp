@@ -186,7 +186,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                         const auto ctx = sample.spectral_context();
                         const auto weight_spec =
                             cycles_spectrum::Spectrum::from_rgb_reflectance(
-                                ctx->tables, weight, &ctx->wavelengths, true);
+                                ctx->tables, weight, &*ctx);
                         const auto weighted = weight_spec * throughput;
                         sample.accumulate_transparency(
                             cycles_spectrum::average(

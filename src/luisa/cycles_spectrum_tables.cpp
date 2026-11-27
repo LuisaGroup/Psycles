@@ -480,6 +480,110 @@ void try_save_cached(const std::filesystem::path &path, std::uint64_t cs_hash,
   return (exp_ratio * denom_peak) / std::max(l5 * denom, 1.0e-30);
 }
 
+void fill_xyz3_tables(SpectralTablesHost &tables) noexcept {
+  // Exact normalized CIE 1931 2-deg PDFs reconstructed from cie_illuminant
+  // (.xyz stores CMF / Y_int) using the same trapezoidal rule on [360..830] nm.
+  constexpr std::size_t n_cie = spectral_cie_sample_count;
+  std::array<std::array<double, n_cie>, 3u> y_val{};
+  std::array<std::array<double, n_cie>, 3u> raw_cdf{};
+  std::array<double, 3u> integrals{};
+  std::array<std::array<double, n_cie>, 3u> pdf{};
+  std::array<std::array<double, n_cie>, 3u> cdf{};
+  std::array<std::size_t, 3u> last_active{};
+
+  for (std::size_t c = 0u; c < 3u; ++c) {
+    for (std::size_t i = 0u; i < n_cie; ++i) {
+      const auto v = tables.cie_illuminant[i];
+      const double cmf_c = (c == 0u) ? v.x : ((c == 1u) ? v.y : v.z);
+      y_val[c][i] = std::max(cmf_c, 0.0);
+    }
+    raw_cdf[c][0u] = 0.0;
+    for (std::size_t i = 0u; i + 1u < n_cie; ++i) {
+      raw_cdf[c][i + 1u] =
+          raw_cdf[c][i] + 0.5 * (y_val[c][i] + y_val[c][i + 1u]);
+    }
+    integrals[c] = std::max(raw_cdf[c][n_cie - 1u], 1.0e-30);
+    const double inv_integral = 1.0 / integrals[c];
+    for (std::size_t i = 0u; i < n_cie; ++i) {
+      pdf[c][i] = y_val[c][i] * inv_integral;
+      cdf[c][i] = raw_cdf[c][i] * inv_integral;
+    }
+    cdf[c][0u] = 0.0;
+    cdf[c][n_cie - 1u] = 1.0;
+    last_active[c] = 0u;
+    for (std::size_t i = 0u; i + 1u < n_cie; ++i) {
+      if (cdf[c][i + 1u] > cdf[c][i]) {
+        last_active[c] = i;
+      }
+    }
+  }
+
+  // 1. Build 2048-entry exact inverse CDF table by inverting piecewise-linear PDFs.
+  tables.xyz3_cdfinv.resize(xyz3_cdfinv_lut_count);
+  for (std::uint32_t k = 0u; k < xyz3_cdfinv_lut_count; ++k) {
+    const double u = static_cast<double>(k) /
+                     static_cast<double>(xyz3_cdfinv_lut_count - 1u);
+    std::array<float, 3u> lam{};
+    for (std::size_t c = 0u; c < 3u; ++c) {
+      const std::size_t end_bin = last_active[c];
+      auto it = std::upper_bound(cdf[c].begin() + 1,
+                                 cdf[c].begin() + end_bin + 1, u);
+      const std::size_t idx =
+          static_cast<std::size_t>(std::max<std::ptrdiff_t>(
+              0, (it - cdf[c].begin()) - 1));
+      const std::size_t i = std::min(idx, end_bin);
+      const double p0 = pdf[c][i];
+      const double p1 = pdf[c][i + 1u];
+      const double bin_mass = std::max(cdf[c][i + 1u] - cdf[c][i], 0.0);
+      const double delta = std::clamp(u - cdf[c][i], 0.0, bin_mass);
+      const double disc = std::max(p0 * p0 + 2.0 * (p1 - p0) * delta, 0.0);
+      const double denom = p0 + std::sqrt(disc);
+      const double t =
+          denom > 1.0e-30 ? std::clamp((2.0 * delta) / denom, 0.0, 1.0) : 0.0;
+      const double wl = static_cast<double>(spectral_lambda_min) +
+                        static_cast<double>(i) + t;
+      lam[c] = static_cast<float>(
+          std::clamp(wl, static_cast<double>(spectral_lambda_min),
+                     static_cast<double>(spectral_lambda_max)));
+    }
+    tables.xyz3_cdfinv[k] =
+        luisa::make_float4(lam[0u], lam[1u], lam[2u], 0.0f);
+  }
+
+  // 2. Build 512-entry exact single-wavelength collapse weight LUT over [360..830] nm.
+  tables.xyz3_collapse.resize(xyz3_collapse_lut_count);
+  for (std::uint32_t k = 0u; k < xyz3_collapse_lut_count; ++k) {
+    const double t = static_cast<double>(k) /
+                     static_cast<double>(xyz3_collapse_lut_count - 1u);
+    const double pos = t * static_cast<double>(n_cie - 1u);
+    const std::size_t i0 =
+        std::min(static_cast<std::size_t>(pos), n_cie - 2u);
+    const double frac = pos - static_cast<double>(i0);
+    const double px = pdf[0u][i0] * (1.0 - frac) + pdf[0u][i0 + 1u] * frac;
+    const double py = pdf[1u][i0] * (1.0 - frac) + pdf[1u][i0 + 1u] * frac;
+    const double pz = pdf[2u][i0] * (1.0 - frac) + pdf[2u][i0 + 1u] * frac;
+    const double sum_p = px + py + pz;
+    const double p_mix = sum_p * (1.0 / 3.0);
+    if (sum_p > 1.0e-30) {
+      const double scale = 3.0 / sum_p;
+      tables.xyz3_collapse[k] = luisa::make_float4(
+          static_cast<float>(px * scale), static_cast<float>(py * scale),
+          static_cast<float>(pz * scale), static_cast<float>(p_mix));
+    } else {
+      tables.xyz3_collapse[k] = luisa::make_float4(1.0f, 1.0f, 1.0f, 0.0f);
+    }
+  }
+
+  // 3. Raw xyz3 -> working RGB matrix = M_spec * diag(I_X/I_Y, 1, I_Z/I_Y).
+  const double inv_iy = 1.0 / std::max(integrals[1u], 1.0e-30);
+  tables.xyz3_integral_ratio = luisa::make_float3(
+      static_cast<float>(integrals[0u] * inv_iy), 1.0f,
+      static_cast<float>(integrals[2u] * inv_iy));
+  tables.xyz3_to_r = tables.spec_xyz_to_r * tables.xyz3_integral_ratio;
+  tables.xyz3_to_g = tables.spec_xyz_to_g * tables.xyz3_integral_ratio;
+  tables.xyz3_to_b = tables.spec_xyz_to_b * tables.xyz3_integral_ratio;
+}
+
 } // namespace
 
 SpectralTablesHost build_spectral_tables_host(
@@ -488,6 +592,7 @@ SpectralTablesHost build_spectral_tables_host(
   const auto cache_path = cache_file_path(cs_hash);
   SpectralTablesHost cached;
   if (try_load_cached(cache_path, cs_hash, cached)) {
+    fill_xyz3_tables(cached);
     return cached;
   }
 
@@ -659,6 +764,7 @@ SpectralTablesHost build_spectral_tables_host(
   }
 
   try_save_cached(cache_path, cs_hash, out);
+  fill_xyz3_tables(out);
   return out;
 }
 
@@ -671,18 +777,30 @@ std::shared_ptr<SpectralTablesGpu> upload_spectral_tables(
   gpu->spec_xyz_to_g = host.spec_xyz_to_g;
   gpu->spec_xyz_to_b = host.spec_xyz_to_b;
   gpu->rgb_to_y = host.rgb_to_y;
+  gpu->xyz3_integral_ratio = host.xyz3_integral_ratio;
+  gpu->xyz3_to_r = host.xyz3_to_r;
+  gpu->xyz3_to_g = host.xyz3_to_g;
+  gpu->xyz3_to_b = host.xyz3_to_b;
   gpu->cie_illuminant_buffer =
       device.create_buffer<luisa::float4>(host.cie_illuminant.size());
   gpu->rgb2spec_buffer =
       device.create_buffer<luisa::float4>(host.rgb2spec_coeffs.size());
   gpu->blackbody_norm_buffer =
       device.create_buffer<float>(host.blackbody_norm.size());
+  gpu->xyz3_cdfinv_buffer =
+      device.create_buffer<luisa::float4>(host.xyz3_cdfinv.size());
+  gpu->xyz3_collapse_buffer =
+      device.create_buffer<luisa::float4>(host.xyz3_collapse.size());
   stream << gpu->cie_illuminant_buffer.copy_from(
                 luisa::span<const luisa::float4>{host.cie_illuminant})
          << gpu->rgb2spec_buffer.copy_from(
                 luisa::span<const luisa::float4>{host.rgb2spec_coeffs})
          << gpu->blackbody_norm_buffer.copy_from(
                 luisa::span<const float>{host.blackbody_norm})
+         << gpu->xyz3_cdfinv_buffer.copy_from(
+                luisa::span<const luisa::float4>{host.xyz3_cdfinv})
+         << gpu->xyz3_collapse_buffer.copy_from(
+                luisa::span<const luisa::float4>{host.xyz3_collapse})
          << luisa::compute::synchronize();
   return gpu;
 }
@@ -836,6 +954,70 @@ luisa::float3 integrate_reflectance_xyz_host(
   }
   return luisa::make_float3(static_cast<float>(x), static_cast<float>(y),
                             static_cast<float>(z));
+}
+
+luisa::float3 sample_xyz3_lambdas_host(
+    const SpectralTablesHost &tables, float u) noexcept {
+  const double pos =
+      std::clamp(static_cast<double>(u), 0.0, 1.0) *
+      static_cast<double>(xyz3_cdfinv_lut_count - 1u);
+  const std::size_t i0 = std::min(static_cast<std::size_t>(pos),
+                                  static_cast<std::size_t>(xyz3_cdfinv_lut_count - 2u));
+  const float frac = static_cast<float>(pos - static_cast<double>(i0));
+  const auto a = tables.xyz3_cdfinv[i0];
+  const auto b = tables.xyz3_cdfinv[i0 + 1u];
+  return luisa::make_float3(
+      std::clamp(a.x + (b.x - a.x) * frac, spectral_lambda_min, spectral_lambda_max),
+      std::clamp(a.y + (b.y - a.y) * frac, spectral_lambda_min, spectral_lambda_max),
+      std::clamp(a.z + (b.z - a.z) * frac, spectral_lambda_min, spectral_lambda_max));
+}
+
+luisa::float3 xyz3_collapse_weight_host(
+    const SpectralTablesHost &tables, float lambda_nm) noexcept {
+  const double t =
+      std::clamp((static_cast<double>(lambda_nm) - spectral_lambda_min) /
+                     static_cast<double>(spectral_lambda_span),
+                 0.0, 1.0) *
+      static_cast<double>(xyz3_collapse_lut_count - 1u);
+  const std::size_t i0 = std::min(static_cast<std::size_t>(t),
+                                  static_cast<std::size_t>(xyz3_collapse_lut_count - 2u));
+  const float frac = static_cast<float>(t - static_cast<double>(i0));
+  const auto a = tables.xyz3_collapse[i0];
+  const auto b = tables.xyz3_collapse[i0 + 1u];
+  return luisa::make_float3(a.x + (b.x - a.x) * frac,
+                            a.y + (b.y - a.y) * frac,
+                            a.z + (b.z - a.z) * frac);
+}
+
+luisa::float3 xyz3_pdf_host(
+    const SpectralTablesHost &tables, float lambda_nm) noexcept {
+  if (lambda_nm < spectral_lambda_min || lambda_nm > spectral_lambda_max) {
+    return luisa::make_float3(0.0f);
+  }
+  const double pos = std::clamp(static_cast<double>(lambda_nm - spectral_lambda_min),
+                                0.0, static_cast<double>(spectral_lambda_span));
+  const std::size_t i0 = std::min(static_cast<std::size_t>(pos),
+                                  static_cast<std::size_t>(spectral_cie_sample_count - 2u));
+  const double frac = pos - static_cast<double>(i0);
+  const auto c0 = tables.cie_illuminant[i0];
+  const auto c1 = tables.cie_illuminant[i0 + 1u];
+  const double cx = std::max(0.0, c0.x * (1.0 - frac) + c1.x * frac);
+  const double cy = std::max(0.0, c0.y * (1.0 - frac) + c1.y * frac);
+  const double cz = std::max(0.0, c0.z * (1.0 - frac) + c1.z * frac);
+  const auto &ratio = tables.xyz3_integral_ratio;
+  return luisa::make_float3(static_cast<float>(cx / std::max<double>(ratio.x, 1.0e-30)),
+                            static_cast<float>(cy / std::max<double>(ratio.y, 1.0e-30)),
+                            static_cast<float>(cz / std::max<double>(ratio.z, 1.0e-30)));
+}
+
+luisa::float3 xyz3_to_rgb_host(
+    const SpectralTablesHost &tables, luisa::float3 raw) noexcept {
+  auto d = [](luisa::float3 a, luisa::float3 b) noexcept {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+  };
+  return luisa::make_float3(d(tables.xyz3_to_r, raw),
+                            d(tables.xyz3_to_g, raw),
+                            d(tables.xyz3_to_b, raw));
 }
 
 } // namespace psycles::luisa_backend::cycles_spectrum

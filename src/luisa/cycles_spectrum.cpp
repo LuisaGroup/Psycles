@@ -358,6 +358,117 @@ cauchy_ior_callable() noexcept {
   return callable;
 }
 
+[[nodiscard]] const Callable<luisa::float3(
+    Buffer<luisa::float4>, float)> &
+sample_xyz3_lambdas_callable() noexcept {
+  static auto callable = []() noexcept {
+    Callable result{[](BufferVar<luisa::float4> cdfinv_buf, Float u) noexcept {
+      constexpr float max_idx = static_cast<float>(xyz3_cdfinv_lut_count - 1u);
+      const auto pos = clamp(u, 0.0f, 1.0f) * max_idx;
+      const auto i0 = min(cast<std::uint32_t>(pos), xyz3_cdfinv_lut_count - 2u);
+      const auto frac = clamp(pos - cast<float>(i0), 0.0f, 1.0f);
+      const auto a = cdfinv_buf.read(i0).xyz();
+      const auto b = cdfinv_buf.read(i0 + 1u).xyz();
+      return clamp(lerp(a, b, frac),
+                   make_float3(spectral_lambda_min),
+                   make_float3(spectral_lambda_max));
+    }};
+    result.set_name("cycles_sample_xyz3_lambdas");
+    return result;
+  }();
+  return callable;
+}
+
+[[nodiscard]] const Callable<luisa::float3(
+    Buffer<luisa::float4>, float)> &
+xyz3_collapse_weight_callable() noexcept {
+  static auto callable = []() noexcept {
+    Callable result{[](BufferVar<luisa::float4> collapse_buf,
+                       Float lambda_nm) noexcept {
+      constexpr float max_idx =
+          static_cast<float>(xyz3_collapse_lut_count - 1u);
+      const auto t =
+          clamp((lambda_nm - spectral_lambda_min) * (1.0f / spectral_lambda_span),
+                0.0f, 1.0f) *
+          max_idx;
+      const auto i0 =
+          min(cast<std::uint32_t>(t), xyz3_collapse_lut_count - 2u);
+      const auto frac = clamp(t - cast<float>(i0), 0.0f, 1.0f);
+      const auto a = collapse_buf.read(i0).xyz();
+      const auto b = collapse_buf.read(i0 + 1u).xyz();
+      return max(lerp(a, b, frac), make_float3(0.0f));
+    }};
+    result.set_name("cycles_xyz3_collapse_weight");
+    return result;
+  }();
+  return callable;
+}
+
+[[nodiscard]] const Callable<luisa::float3(
+    luisa::float3, luisa::float3, luisa::float3, luisa::float3)> &
+xyz3_to_rgb_callable() noexcept {
+  static auto callable = []() noexcept {
+    Callable result{[](Float3 raw, Float3 xyz3_to_r, Float3 xyz3_to_g,
+                       Float3 xyz3_to_b) noexcept {
+      const Float3 rgb = make_float3(dot(xyz3_to_r, raw),
+                                     dot(xyz3_to_g, raw),
+                                     dot(xyz3_to_b, raw));
+      const auto safe = !luisa::compute::dsl::isnan(rgb) &&
+                        !luisa::compute::dsl::isinf(rgb);
+      return select(make_float3(0.0f), rgb, safe);
+    }};
+    result.set_name("cycles_xyz3_to_rgb");
+    return result;
+  }();
+  return callable;
+}
+
+[[nodiscard]] const Callable<luisa::float3(
+    Buffer<luisa::float4>, luisa::float3, luisa::float3,
+    luisa::float3, luisa::float3, luisa::float3)> &
+xyz3_reflectance_to_rgb_callable() noexcept {
+  static auto callable = []() noexcept {
+    Callable result{[](BufferVar<luisa::float4> cie_buf, Float3 reflectance,
+                       Float3 lambdas_xyz, Float3 xyz3_to_r, Float3 xyz3_to_g,
+                       Float3 xyz3_to_b) noexcept {
+      const Float3 d65 = make_float3(
+          sample_cie_illuminant(cie_buf, lambdas_xyz.x).w,
+          sample_cie_illuminant(cie_buf, lambdas_xyz.y).w,
+          sample_cie_illuminant(cie_buf, lambdas_xyz.z).w);
+      const Float3 raw = reflectance * d65;
+      const Float3 rgb = make_float3(dot(xyz3_to_r, raw),
+                                     dot(xyz3_to_g, raw),
+                                     dot(xyz3_to_b, raw));
+      const auto safe = !luisa::compute::dsl::isnan(rgb) &&
+                        !luisa::compute::dsl::isinf(rgb);
+      return select(make_float3(0.0f), rgb, safe);
+    }};
+    result.set_name("cycles_xyz3_reflectance_to_rgb");
+    return result;
+  }();
+  return callable;
+}
+
+[[nodiscard]] const Callable<float(
+    Buffer<luisa::float4>, luisa::float3, luisa::float3)> &
+xyz3_luminance_callable() noexcept {
+  static auto callable = []() noexcept {
+    Callable result{[](BufferVar<luisa::float4> cie_buf, Float3 reflectance,
+                       Float3 lambdas_xyz) noexcept {
+      // Channel Y directly importance-samples y_bar(lambda) / I_Y, so
+      // R.y * D65_norm(lambda_Y) is an exact unbiased luminance estimator.
+      const Float d65_y = sample_cie_illuminant(cie_buf, lambdas_xyz.y).w;
+      const Float lum = reflectance.y * d65_y;
+      return select(0.0f, lum,
+                    !luisa::compute::dsl::isnan(lum) &
+                        !luisa::compute::dsl::isinf(lum));
+    }};
+    result.set_name("cycles_xyz3_luminance");
+    return result;
+  }();
+  return callable;
+}
+
 } // namespace
 
 Float4 sample_illuminant_4(const SpectralTablesGpu &tables,
@@ -439,6 +550,96 @@ Float4 wavelength_spd(Expr<float> center_nm,
 Float4 cauchy_ior(Expr<float> ior_d, Expr<float> abbe_v,
                   Expr<luisa::float4> lambdas) noexcept {
   return cauchy_ior_callable()(ior_d, abbe_v, lambdas);
+}
+
+Xyz3DecodedU xyz3_decode_u(Expr<float> u_raw) noexcept {
+  const Float uc = clamp(u_raw, 0.0f, 0.99999994f);
+  const Float scaled = uc * 3.0f;
+  const UInt h = min(cast<std::uint32_t>(scaled), 2u);
+  const Float u = clamp(scaled - h.cast<float>(), 0.0f, 0.99999994f);
+  return {.hero_index = h, .u = u};
+}
+
+Float3 sample_xyz3_lambdas(const SpectralTablesGpu &tables,
+                           Expr<float> u) noexcept {
+  return sample_xyz3_lambdas_callable()(tables.xyz3_cdfinv_buffer, u);
+}
+
+Float3 xyz3_collapse_weight(const SpectralTablesGpu &tables,
+                            Expr<float> lambda_nm) noexcept {
+  return xyz3_collapse_weight_callable()(tables.xyz3_collapse_buffer,
+                                         lambda_nm);
+}
+
+Float4 xyz3_rotate_eval(Expr<luisa::float3> v, Expr<std::uint32_t> h) noexcept {
+  // Build hero lane once and duplicate to lane w so compiler CSE folds w.
+  const Float x = select(select(v.z, v.y, h == 1u), v.x, h == 0u);
+  const Float y = select(select(v.x, v.z, h == 1u), v.y, h == 0u);
+  const Float z = select(select(v.y, v.x, h == 1u), v.z, h == 0u);
+  return make_float4(x, y, z, x);
+}
+
+Float3 xyz3_unrotate_eval(Expr<luisa::float4> v4,
+                          Expr<std::uint32_t> h) noexcept {
+  const auto h1 = make_float3(v4.z, v4.x, v4.y);
+  const auto h2 = make_float3(v4.y, v4.z, v4.x);
+  return select(select(h2, h1, h == 1u), v4.xyz(), h == 0u);
+}
+
+Float xyz3_hero(Expr<luisa::float3> v, Expr<std::uint32_t> h) noexcept {
+  return select(select(v.z, v.y, h == 1u), v.x, h == 0u);
+}
+
+Float3 xyz3_to_rgb(const SpectralTablesGpu &tables,
+                   Expr<luisa::float3> raw) noexcept {
+  return xyz3_to_rgb_callable()(
+      raw, make_float3(tables.xyz3_to_r), make_float3(tables.xyz3_to_g),
+      make_float3(tables.xyz3_to_b));
+}
+
+Float3 xyz3_reflectance_to_rgb(const SpectralTablesGpu &tables,
+                               Expr<luisa::float3> reflectance,
+                               Expr<luisa::float3> lambdas_xyz) noexcept {
+  return xyz3_reflectance_to_rgb_callable()(
+      tables.cie_illuminant_buffer, reflectance, lambdas_xyz,
+      make_float3(tables.xyz3_to_r), make_float3(tables.xyz3_to_g),
+      make_float3(tables.xyz3_to_b));
+}
+
+Float xyz3_luminance(const SpectralTablesGpu &tables,
+                     Expr<luisa::float3> reflectance,
+                     Expr<luisa::float3> lambdas_xyz) noexcept {
+  return xyz3_luminance_callable()(
+      tables.cie_illuminant_buffer, reflectance, lambdas_xyz);
+}
+
+SpectralContext make_spectral_context(
+    const SpectralTablesGpu *tables, contract::SpectralMode mode,
+    Expr<float> u_lambda, Expr<bool> secondary_terminated) noexcept {
+  LUISA_ASSERT(tables != nullptr,
+               "make_spectral_context requires uploaded SpectralTablesGpu.");
+  if (mode == contract::SpectralMode::xyz3) {
+    const auto decoded = xyz3_decode_u(u_lambda);
+    const Float3 base_lambdas = sample_xyz3_lambdas(*tables, decoded.u);
+    const Float h_lambda = xyz3_hero(base_lambdas, decoded.hero_index);
+    const Float3 eff_lambdas =
+        select(base_lambdas, make_float3(h_lambda), secondary_terminated);
+    const Float4 eval_lambdas =
+        select(xyz3_rotate_eval(base_lambdas, decoded.hero_index),
+               make_float4(h_lambda), secondary_terminated);
+    return SpectralContext{
+        .tables = tables,
+        .wavelengths = SampledWavelengths{.lambdas = eval_lambdas,
+                                          .pdfs = make_float4(1.0f)},
+        .secondary_terminated = secondary_terminated,
+        .mode = contract::SpectralMode::xyz3,
+        .hero_index = decoded.hero_index,
+        .lambdas_xyz = eff_lambdas};
+  }
+  return SpectralContext{
+      .tables = tables,
+      .wavelengths = sample_visible_wavelengths(u_lambda),
+      .secondary_terminated = secondary_terminated};
 }
 
 } // namespace psycles::luisa_backend::cycles_spectrum

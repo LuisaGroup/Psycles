@@ -21,9 +21,12 @@ struct PreparedCyclesSvmSurfaceScatter {
   Bool valid;
   std::optional<Bool> spectral_terminated_secondary{};
   std::optional<Bool> sms_caster_eligible{};
+  std::optional<Float4> xyz3_eval_sum{};
+  std::optional<Float4> xyz3_eval_lane_pdf{};
 
   [[nodiscard]] static PreparedCyclesSvmSurfaceScatter
-  empty(bool spectral = false, bool sms = false) noexcept;
+  empty(contract::SpectralMode spectral_mode = contract::SpectralMode::none,
+        bool sms = false, bool xyz3_rough_dispersion = false) noexcept;
   [[nodiscard]] Bool needs_triangle_ray_origin() const noexcept;
   void accept(const PreparedCyclesSvmSurfaceScatter &other,
               bool include_bssrdf) noexcept;

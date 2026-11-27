@@ -171,7 +171,8 @@ bool run(const char *program, const char *backend) {
     PathSampleContext sample{
         .invocation = invocation,
         .throughput =
-            psycles::luisa_backend::cycles_spectrum::Spectrum::one(false)};
+            psycles::luisa_backend::cycles_spectrum::Spectrum::one(
+                psycles::contract::SpectralMode::none)};
     sample.ray =
         make_ray(make_float3(0), make_float3(0, 0, 1), 0.0f, f::maximum);
     sample.ray_source_object = f::initial_object;

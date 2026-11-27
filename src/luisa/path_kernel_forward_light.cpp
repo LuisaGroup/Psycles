@@ -41,14 +41,15 @@ public:
           ((light.flags & light_flag_caustics) != 0u);
       evaluate_emission &= !suppressed_caustic;
     }
-    const bool spectral = sample.is_spectral();
+    const bool hero4 = sample.is_hero4();
+    const bool xyz3 = sample.is_xyz3();
     Float3 light_radiance = make_float3(0.0f);
     std::optional<Float4> light_radiance_spec;
-    if (spectral) {
+    if (hero4) {
       light_radiance_spec.emplace(make_float4(0.0f));
     }
     $if(evaluate_emission) {
-      if (spectral) {
+      if (hero4) {
         const auto ctx = sample.spectral_context();
         const auto tint_spec = cycles_spectrum::rgb_to_spectrum_reflectance(
             *ctx->tables, light.color, ctx->wavelengths.lambdas);
@@ -58,6 +59,16 @@ public:
         *light_radiance_spec =
             tint_spec * (light.power * event.light_evaluation_factor) *
             shader_spec.lanes();
+      } else if (xyz3) {
+        const auto ctx = sample.spectral_context();
+        const auto tint_xyz = cycles_spectrum::Spectrum::from_rgb_reflectance(
+            ctx->tables, light.color, &*ctx);
+        const auto shader_xyz = sample.analytic_light_shader_spectrum(
+            light, event.light_index, event.light_position, event.light_normal,
+            event.light_uv, -ray->direction(), event.distance);
+        light_radiance = tint_xyz.xyz3() *
+                         (light.power * event.light_evaluation_factor) *
+                         shader_xyz.xyz3();
       } else {
         light_radiance =
             light.color * (light.power * event.light_evaluation_factor);
@@ -80,8 +91,8 @@ public:
                          max(ray->t_min(), event.distance)),
                      ray->t_max());
       const auto has_radiance =
-          spectral ? any(*light_radiance_spec != make_float4(0.0f))
-                   : any(light_radiance != make_float3(0.0f));
+          hero4 ? any(*light_radiance_spec != make_float4(0.0f))
+                : any(light_radiance != make_float3(0.0f));
       $if(evaluate_emission & has_radiance) {
         Float mis_weight = 1.0f;
         const auto competing = (path_depth > 0u) & (!mis_competition_skipped);
@@ -100,12 +111,16 @@ public:
               previous_bsdf_pdf, light_pdf, competing, light_pdf > 0.0f);
         };
         const auto contrib_rgb =
-            spectral
+            hero4
                 ? sample.spectrum_to_rgb(
                       throughput *
                       cycles_spectrum::Spectrum::from_lanes(*light_radiance_spec) *
                       mis_weight)
-                : (throughput.rgb() * light_radiance * mis_weight);
+                : (xyz3 ? sample.spectrum_to_rgb(
+                              throughput *
+                              cycles_spectrum::Spectrum::from_xyz3(light_radiance) *
+                              mis_weight)
+                        : (throughput.rgb() * light_radiance * mis_weight));
         const auto contribution = invocation.clamp_emission_contribution(
             contrib_rgb, path_depth);
         sample.accumulate_radiance(contribution);

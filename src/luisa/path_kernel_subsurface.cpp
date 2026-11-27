@@ -385,7 +385,7 @@ public:
             Float4 spectral_radius = make_float4(0.0f);
             if (path.is_spectral()) {
                 const auto ctx = path.spectral_context();
-                const auto sec_term = path.spectral_secondary_terminated();
+                const auto sec_term = path.spectral_lane_terminated();
                 const auto r4 = max(
                     cycles_spectrum::scale_invariant_rgb_to_spectrum(
                         *ctx->tables, state.radius, ctx->wavelengths.lambdas),
@@ -580,7 +580,7 @@ public:
                 };
                 const auto sec_term = [&]() noexcept -> Bool {
                     if constexpr (Spectral) {
-                        return path.spectral_secondary_terminated();
+                        return path.spectral_lane_terminated();
                     } else {
                         return false;
                     }
@@ -603,7 +603,7 @@ public:
                 }();
                 const auto avg_weight = [&](const WeightT &w) noexcept -> Float {
                     if constexpr (Spectral) {
-                        return cycles_spectrum::avg_active(abs(w), sec_term);
+                        return cycles_spectrum::avg_active(abs(w), sec_term, 4u);
                     } else {
                         return (abs(w.x) + abs(w.y) + abs(w.z)) / 3.0f;
                     }
@@ -700,8 +700,7 @@ public:
                         selected_weight * weight_sum /
                         max(selected_sample_weight, 1.0e-20f);
                     if constexpr (Spectral) {
-                        throughput *=
-                            cycles_spectrum::Spectrum::from_lanes(weight_factor);
+                        throughput *= path.spectrum_from_eval(weight_factor);
                     } else {
                         throughput = cycles_spectrum::Spectrum::from_rgb_raw(
                             throughput.rgb() * weight_factor);

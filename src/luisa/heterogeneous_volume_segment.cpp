@@ -1022,7 +1022,7 @@ class HeterogeneousVolumeSegmentComponentImpl final
             $if(candidate.candidate) {
                 $if(!indirect_selected & input.terminate & any(beta_u != 0.0f)) {
                     const auto denom_u = cycles_spectrum::avg_active(
-                        r_u, input.secondary_terminated);
+                        r_u, input.secondary_terminated, 4u);
                     const auto eff_beta = select(
                         make_float4(0.0f),
                         beta_u / select(1.0f, denom_u, denom_u > 0.0f),
@@ -1124,7 +1124,7 @@ class HeterogeneousVolumeSegmentComponentImpl final
                                         cycles_spectrum::avg_active(
                                             p_null_prod * candidate.sampled_majorant *
                                                 collision.p_s,
-                                            input.secondary_terminated);
+                                            input.secondary_terminated, 4u);
                                     direct.mark_distance_scatter();
                                 };
                             }
@@ -1168,7 +1168,7 @@ class HeterogeneousVolumeSegmentComponentImpl final
 
         $if(!indirect_selected) {
             const auto denom_u =
-                cycles_spectrum::avg_active(r_u, input.secondary_terminated);
+                cycles_spectrum::avg_active(r_u, input.secondary_terminated, 4u);
             final_indirect_throughput = select(
                 make_float4(0.0f),
                 beta_u / select(1.0f, denom_u, denom_u > 0.0f),
@@ -1246,7 +1246,7 @@ class HeterogeneousVolumeSegmentComponentImpl final
                         const auto p_s_eq = safe_divide4(direct_sigma_s, sigma_c_eq);
                         direct_distance_pdf = cycles_spectrum::avg_active(
                             direct.eq_p_null_prod() * direct.sampled_majorant() * p_s_eq,
-                            input.secondary_terminated);
+                            input.secondary_terminated, 4u);
                         direct_throughput = safe_divide4(
                             eq_beta_corr * direct_sigma_s, direct_equiangular_pdf);
                     }

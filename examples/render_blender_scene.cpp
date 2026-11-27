@@ -237,6 +237,7 @@ int main(int argc, char **argv) {
     auto direct_texture_mip_mode =
         psycles::luisa_backend::LuisaTextureMipMode::mip0;
     std::optional<bool> spectral_override;
+    std::optional<psycles::contract::SpectralMode> spectral_mode_override;
     std::optional<psycles::contract::CausticsMethod> caustics_override;
     std::optional<bool> sms_unbiased_override;
     std::optional<std::uint32_t> sms_max_trials_override;
@@ -529,6 +530,32 @@ int main(int argc, char **argv) {
             spectral_override = false;
             continue;
         }
+        if (arg.starts_with("--spectral-mode")) {
+            std::string_view mode;
+            if (arg == "--spectral-mode") {
+                if (i + 1 >= argc) {
+                    std::cerr << "error: --spectral-mode requires none|hero4|xyz3\n";
+                    return EXIT_FAILURE;
+                }
+                mode = argv[++i];
+            } else if (arg.starts_with("--spectral-mode=")) {
+                mode = arg.substr(16u);
+            } else {
+                std::cerr << "error: unknown option " << arg << '\n';
+                return EXIT_FAILURE;
+            }
+            if (mode == "none") {
+                spectral_mode_override = psycles::contract::SpectralMode::none;
+            } else if (mode == "hero4") {
+                spectral_mode_override = psycles::contract::SpectralMode::hero4;
+            } else if (mode == "xyz3") {
+                spectral_mode_override = psycles::contract::SpectralMode::xyz3;
+            } else {
+                std::cerr << "error: --spectral-mode must be none, hero4, or xyz3\n";
+                return EXIT_FAILURE;
+            }
+            continue;
+        }
         if (arg == "--sms-unbiased") {
             sms_unbiased_override = true;
             continue;
@@ -676,6 +703,14 @@ int main(int argc, char **argv) {
     }
     if (spectral_override.has_value()) {
         imported.integrator.spectral_rendering = *spectral_override;
+        imported.integrator.spectral_mode =
+            *spectral_override ? psycles::contract::SpectralMode::hero4
+                               : psycles::contract::SpectralMode::none;
+    }
+    if (spectral_mode_override.has_value()) {
+        imported.integrator.spectral_mode = *spectral_mode_override;
+        imported.integrator.spectral_rendering =
+            *spectral_mode_override != psycles::contract::SpectralMode::none;
     }
     if (caustics_override.has_value()) {
         imported.integrator.caustics_method = *caustics_override;
@@ -1259,13 +1294,29 @@ int main(int argc, char **argv) {
                       &ft_user0);
     }
 #endif
+    const auto resolved_spectral_mode =
+        psycles::contract::effective_spectral_mode(imported.integrator);
+    const auto spectral_mode_name = [&]() -> const char * {
+        switch (resolved_spectral_mode) {
+        case psycles::contract::SpectralMode::hero4:
+            return "hero4";
+        case psycles::contract::SpectralMode::xyz3:
+            return "xyz3";
+        case psycles::contract::SpectralMode::none:
+        default:
+            return "none";
+        }
+    }();
     emit_phase("render_begin",
                "width=" + std::to_string(width) +
                    " height=" + std::to_string(height) +
                    " samples=" + std::to_string(sample_count) +
                    " spectral=" +
-                   std::string{imported.integrator.spectral_rendering ? "1"
-                                                                      : "0"} +
+                   std::string{resolved_spectral_mode !=
+                                       psycles::contract::SpectralMode::none
+                                   ? "1"
+                                   : "0"} +
+                   " spectral_mode=" + std::string{spectral_mode_name} +
                    " caustics=" +
                    std::to_string(static_cast<unsigned>(
                        imported.integrator.caustics_method)) +

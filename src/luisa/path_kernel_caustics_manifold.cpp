@@ -3173,6 +3173,7 @@ make_caustics_task_evaluator(const PathKernelConfig &config) noexcept {
                                                         : nullptr,
           .camera_projection = config.camera_projection,
           .spectral_rendering = config.spectral_rendering,
+          .spectral_mode = config.effective_spectral_mode(),
           .volume_guiding = config.volume_state != nullptr,
           .reflective_caustics = config.reflective_caustics,
           .refractive_caustics = config.refractive_caustics,

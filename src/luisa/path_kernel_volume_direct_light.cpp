@@ -459,10 +459,20 @@ class AnalyticVolumeLightProvider final
                         light);
             if (_event.bounce.sample.is_spectral() &&
                 _result.spectral_radiance.has_value()) {
-                *_result.spectral_radiance *=
-                    _event.bounce.sample
-                        .analytic_light_constant_shader_spectrum(light)
-                        .lanes();
+                if (_event.bounce.sample.is_xyz3()) {
+                    const auto ctx = _event.bounce.sample.spectral_context();
+                    const auto spec =
+                        _event.bounce.sample
+                            .analytic_light_constant_shader_spectrum(light);
+                    *_result.spectral_radiance *=
+                        cycles_spectrum::xyz3_rotate_eval(
+                            spec.xyz3(), *ctx->hero_index);
+                } else {
+                    *_result.spectral_radiance *=
+                        _event.bounce.sample
+                            .analytic_light_constant_shader_spectrum(light)
+                            .lanes();
+                }
             }
         };
     }
@@ -1057,7 +1067,7 @@ class PathVolumeDirectLightingComponent final
                         make_float4(volume.phase.value) * rad_spec *
                         (mis_weight / max(light.pdf, 1.0e-20f));
                     const auto roulette_max = cycles_spectrum::max_abs_active(
-                        unshadowed_spec, sample.spectral_secondary_terminated());
+                        unshadowed_spec, sample.spectral_lane_terminated());
                     const auto roulette_weight = invocation.sample_light_roulette(
                         make_float3(roulette_max, 0.0f, 0.0f),
                         bounce.random().light_terminate_sample);
@@ -1066,7 +1076,7 @@ class PathVolumeDirectLightingComponent final
                         unshadowed_spec * surface_trans_4 * volume_trans_4 *
                         roulette_weight;
                     contribution_out = sample.spectrum_to_rgb(
-                        cycles_spectrum::Spectrum::from_lanes(spec_contrib));
+                        sample.spectrum_from_eval(spec_contrib));
                 } else {
                     const auto volume_transmittance =
                         _volume_shadow->emit(
@@ -1096,7 +1106,7 @@ class PathVolumeDirectLightingComponent final
                     make_float4(volume.phase.value) * rad_spec *
                     (mis_weight / max(light.pdf, 1.0e-20f));
                 const auto roulette_max = cycles_spectrum::max_abs_active(
-                    unshadowed_spec, sample.spectral_secondary_terminated());
+                    unshadowed_spec, sample.spectral_lane_terminated());
                 const auto roulette_weight = invocation.sample_light_roulette(
                     make_float3(roulette_max, 0.0f, 0.0f),
                     bounce.random().light_terminate_sample);

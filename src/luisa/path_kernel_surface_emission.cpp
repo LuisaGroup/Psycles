@@ -42,9 +42,11 @@ void emit_surface_emission(
   // work and atomic film writes. Flag-set zero emission remains eligible.
   $if((!bounce.subsurface_exit) &
       ((preparation.runtime_flags & cycles_closure::runtime_emission) != 0u)) {
-    const bool spectral = sample.is_spectral();
+    const bool hero4 = sample.is_hero4();
+    const bool xyz3 = sample.is_xyz3();
     std::optional<Float4> emitted_spec;
-    if (spectral) {
+    std::optional<Float3> emitted_xyz3;
+    if (hero4) {
       if (preparation.spectral_emission.has_value()) {
         emitted_spec.emplace(*preparation.spectral_emission);
       } else {
@@ -55,6 +57,18 @@ void emit_surface_emission(
       if (config.path_trace_enabled) {
         emitted = sample.spectrum_to_rgb(
             cycles_spectrum::Spectrum::from_lanes(*emitted_spec));
+      }
+    } else if (xyz3) {
+      const auto ctx = sample.spectral_context();
+      emitted_xyz3.emplace(
+          preparation.spectral_emission.has_value()
+              ? sample.spectrum_from_eval(*preparation.spectral_emission).xyz3()
+              : cycles_spectrum::Spectrum::from_rgb_illuminant(
+                    ctx->tables, preparation.emission, &*ctx)
+                    .xyz3());
+      if (config.path_trace_enabled) {
+        emitted = sample.spectrum_to_rgb(
+            cycles_spectrum::Spectrum::from_xyz3(*emitted_xyz3));
       }
     } else {
       emitted = preparation.emission;
@@ -118,9 +132,15 @@ void emit_surface_emission(
         };
       };
     }
-    if (spectral) {
+    if (hero4) {
       const auto spectral_contrib =
           throughput * cycles_spectrum::Spectrum::from_lanes(*emitted_spec) *
+          emission_weight;
+      emission_contribution = clamp_contribution(
+          sample.spectrum_to_rgb(spectral_contrib), path_depth);
+    } else if (xyz3) {
+      const auto spectral_contrib =
+          throughput * cycles_spectrum::Spectrum::from_xyz3(*emitted_xyz3) *
           emission_weight;
       emission_contribution = clamp_contribution(
           sample.spectrum_to_rgb(spectral_contrib), path_depth);

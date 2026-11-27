@@ -146,7 +146,7 @@ Float4 evaluate_cycles_svm_lamp_emission_spectral(
       const PathCyclesSvmKernelGlobals kg{
           scene, parameters, scene->camera.projection, true, true,
           PathCyclesSvmShaderDomain::light_emission, {}, false, local_vt_ptr,
-          nullptr, true};
+          nullptr, true, spectral.mode};
       const auto identity = make_float4x4(1.0f);
       svm::TransformState transforms{parameters.camera_transform,
                                      parameters.camera_inverse_transform,

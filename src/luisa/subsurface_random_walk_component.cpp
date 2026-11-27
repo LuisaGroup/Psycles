@@ -419,7 +419,7 @@ template<typename ScenePtr, typename AccelT>
     }
 
     const auto ctx = path.spectral_context();
-    const auto sec_term = path.spectral_secondary_terminated();
+    const auto sec_term = path.spectral_lane_terminated();
     const Float4 albedo4 = clamp(
         cycles_spectrum::rgb_to_spectrum_reflectance(
             *ctx->tables, state.albedo, ctx->wavelengths.lambdas),
@@ -457,9 +457,10 @@ template<typename ScenePtr, typename AccelT>
         };
     }
 
+    const auto eval_throughput = path.throughput_eval4();
     Float4 walk_throughput = select(
-        throughput.lanes(),
-        make_float4(throughput.lanes().x, 0.0f, 0.0f, 0.0f),
+        eval_throughput,
+        make_float4(eval_throughput.x, 0.0f, 0.0f, 0.0f),
         sec_term);
     walk_throughput = safe_divide4(walk_throughput, albedo4);
     const auto low_alpha = alpha4 < make_float4(minimum_alpha);
@@ -716,7 +717,7 @@ template<typename ScenePtr, typename AccelT>
     };
 
     $if(hit) {
-        throughput = cycles_spectrum::Spectrum::from_lanes(walk_throughput);
+        throughput = path.spectrum_from_eval(walk_throughput);
         path.pending_subsurface_hit.store_surface(exit_hit);
         path.pending_subsurface_exit = true;
         path.ray = make_ray(
@@ -1163,7 +1164,7 @@ Bool SubsurfaceRandomWalkComponent::transport(
         if (path.is_spectral()) {
             const auto ctx = path.spectral_context();
             throughput *= cycles_spectrum::Spectrum::from_rgb_reflectance(
-                ctx->tables, walk_throughput, &ctx->wavelengths, true);
+                ctx->tables, walk_throughput, &*ctx);
         } else {
             throughput =
                 cycles_spectrum::Spectrum::from_rgb_raw(walk_throughput);

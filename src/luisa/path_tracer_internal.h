@@ -627,6 +627,8 @@ struct SessionKernelSignature {
     std::uint32_t transparent_max_bounces{8u};
     std::uint32_t wavefront_frame_capacity{1u};
     bool spectral_rendering{false};
+    contract::SpectralMode spectral_mode{contract::SpectralMode::none};
+    bool xyz3_force_collapse{false};
     contract::CausticsMethod caustics_method{contract::CausticsMethod::mnee};
     bool sms_unbiased{true};
     std::uint32_t sms_max_trials{8u};

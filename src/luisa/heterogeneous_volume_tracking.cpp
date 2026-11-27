@@ -310,7 +310,7 @@ HeterogeneousVolumeTracking::evaluate_collision_spectral(
         sigma_s.x == 0.0f,
         secondary_terminated);
 
-    const auto denom_u = cycles_spectrum::avg_active(r_u, secondary_terminated);
+    const auto denom_u = cycles_spectrum::avg_active(r_u, secondary_terminated, 4u);
     const auto emission = select(
         make_float4(0.0f),
         (normalized_beta * emission_coeff) / select(1.0f, denom_u, denom_u > 0.0f),
@@ -323,7 +323,7 @@ HeterogeneousVolumeTracking::evaluate_collision_spectral(
 
     const auto r_u_scatter = r_u * p_s;
     const auto denom_scatter =
-        cycles_spectrum::avg_active(r_u_scatter, secondary_terminated);
+        cycles_spectrum::avg_active(r_u_scatter, secondary_terminated, 4u);
     const auto scatter_throughput = select(
         make_float4(0.0f),
         (normalized_beta * sigma_s) / select(1.0f, denom_scatter, denom_scatter > 0.0f),
@@ -331,7 +331,7 @@ HeterogeneousVolumeTracking::evaluate_collision_spectral(
 
     const auto raw_null_beta = normalized_beta * sigma_n;
     const auto raw_null_r = r_u * p_n;
-    const auto norm_null = cycles_spectrum::avg_active(raw_null_r, secondary_terminated);
+    const auto norm_null = cycles_spectrum::avg_active(raw_null_r, secondary_terminated, 4u);
     const auto stochastic_null_valid = active & (norm_null > 0.0f);
     const auto safe_norm_null = select(1.0f, norm_null, stochastic_null_valid);
     const auto stochastic_null_beta = select(

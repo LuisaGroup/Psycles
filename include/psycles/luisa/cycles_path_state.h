@@ -51,6 +51,8 @@ inline constexpr std::uint32_t
 inline constexpr std::uint32_t
     flag_spectral_secondary_terminated = 1u << 25u;
 inline constexpr std::uint32_t
+    flag_spectral_collapsed = flag_spectral_secondary_terminated;
+inline constexpr std::uint32_t
     flag_caustic_receiver_parent = 1u << 26u;
 inline constexpr std::uint32_t
     flag_caustic_caster_chain = 1u << 27u;

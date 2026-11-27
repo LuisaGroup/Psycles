@@ -272,7 +272,8 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     std::span<const std::uint8_t> explicit_shader_mask,
     bool force_direct_textures,
     UInt *vt_miss_page,
-    bool spectral_rendering) noexcept
+    bool spectral_rendering,
+    contract::SpectralMode spectral_mode) noexcept
     : PathCyclesSvmKernelGlobals(
           std::move(scene), context.parameters, context.camera_projection,
           context.query.reflective_caustics,
@@ -282,7 +283,8 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
           force_direct_textures,
           vt_miss_page != nullptr ? vt_miss_page : context.vt_miss_page,
           nullptr,
-          spectral_rendering) {
+          spectral_rendering,
+          spectral_mode) {
   _ambient_occlusion = context.ambient_occlusion;
 }
 
@@ -296,11 +298,17 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     bool force_direct_textures,
     UInt *vt_miss_page,
     const UInt *vt_preflight_weight,
-    bool spectral_rendering) noexcept
+    bool spectral_rendering,
+    contract::SpectralMode spectral_mode) noexcept
     : _scene{std::move(scene)},
       _parameters{parameters},
       _camera_projection{camera_projection},
-      _spectral_rendering{spectral_rendering},
+      _spectral_rendering{spectral_rendering ||
+                          spectral_mode != contract::SpectralMode::none},
+      _spectral_mode{spectral_mode != contract::SpectralMode::none
+                         ? spectral_mode
+                         : (spectral_rendering ? contract::SpectralMode::hero4
+                                               : contract::SpectralMode::none)},
       _caustics_reflective{reflective_caustics},
       _caustics_refractive{refractive_caustics},
       _camera_to_world{parameters.camera_transform},
@@ -539,6 +547,16 @@ bool PathCyclesSvmKernelGlobals::may_have_thin_film() const noexcept {
 
 bool PathCyclesSvmKernelGlobals::is_spectral() const noexcept {
   return _spectral_rendering;
+}
+
+contract::SpectralMode
+PathCyclesSvmKernelGlobals::spectral_mode() const noexcept {
+  return _spectral_mode;
+}
+
+bool PathCyclesSvmKernelGlobals::xyz3_rough_dispersion() const noexcept {
+  return _spectral_mode == contract::SpectralMode::xyz3 &&
+         has_dispersive_materials();
 }
 
 const cycles_spectrum::SpectralTablesGpu *

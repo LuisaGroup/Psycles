@@ -442,7 +442,9 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           _kernel_globals{
               _scene, context,
               std::span<const std::uint8_t>{bucket.active_shader_mask},
-              false, context.vt_miss_page, context.spectral.has_value()},
+              false, context.vt_miss_page, context.spectral.has_value(),
+              context.spectral ? context.spectral->mode
+                               : contract::SpectralMode::none},
           _closures{[&]() noexcept {
             const auto &cu = _kernel_globals.closure_usage();
             constexpr std::uint64_t wide_closure_mask =
@@ -877,7 +879,8 @@ make_cycles_svm_surface_population_component(
 
 SurfaceCallables make_surface_callables(
     const std::shared_ptr<LuisaSceneData> &scene,
-    bool /*spectral_rendering*/) noexcept {
+    bool /*spectral_rendering*/,
+    contract::SpectralMode /*spectral_mode*/) noexcept {
   return {make_cycles_svm_surface_population_component(scene)};
 }
 

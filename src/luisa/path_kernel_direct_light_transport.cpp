@@ -15,7 +15,8 @@
 
 namespace psycles::luisa_backend::detail {
 
-DirectLightSampleState DirectLightSampleState::empty(bool spectral) noexcept {
+DirectLightSampleState DirectLightSampleState::empty(
+    contract::SpectralMode spectral_mode) noexcept {
     DirectLightSampleState state{
         .direction = make_float3(0.0f, 0.0f, 1.0f),
         .target_position = make_float3(0.0f),
@@ -37,7 +38,7 @@ DirectLightSampleState DirectLightSampleState::empty(bool spectral) noexcept {
         .constant_light_shader = false,
         .distant = false,
         .valid = false};
-    if (spectral) {
+    if (spectral_mode == contract::SpectralMode::hero4) {
         state.spectral_radiometric_weight.emplace(make_float4(0.0f));
         state.spectral_light_shader.emplace(make_float4(0.0f));
     }
@@ -79,7 +80,8 @@ void DirectLightSampleState::accept(
     }
 }
 
-DirectLightTransportState DirectLightTransportState::empty(bool spectral) noexcept {
+DirectLightTransportState DirectLightTransportState::empty(
+    contract::SpectralMode spectral_mode) noexcept {
     DirectLightTransportState state{
         .weighted_bsdf = make_float3(0.0f),
         .light_shader = make_float3(0.0f),
@@ -96,7 +98,7 @@ DirectLightTransportState DirectLightTransportState::empty(bool spectral) noexce
         .constant_light_shader = false,
         .distant = false,
         .valid = false};
-    if (spectral) {
+    if (spectral_mode == contract::SpectralMode::hero4) {
         state.spectral_weighted_bsdf.emplace(make_float4(0.0f));
         state.spectral_light_shader.emplace(make_float4(0.0f));
         state.spectral_bsdf.emplace(make_float4(0.0f));
@@ -166,12 +168,36 @@ void DirectLightTransportState::accept(
     Float3 proposal_direction, Float3 proposal_target_position,
     Bool proposal_distant, UInt proposal_light_object,
     UInt proposal_light_primitive, UInt proposal_shader_flags,
-    Bool proposal_constant_light_shader) noexcept {
+    Bool proposal_constant_light_shader,
+    const cycles_spectrum::SpectralContext *spectral) noexcept {
+    if (proposal_weighted_bsdf.is_xyz3()) {
+        accept(evaluation, proposal_weighted_bsdf.xyz3(),
+               proposal_light_shader.vec3(), proposal_direction,
+               proposal_target_position, proposal_distant,
+               proposal_light_object, proposal_light_primitive,
+               proposal_shader_flags, proposal_constant_light_shader);
+        if (spectral != nullptr && evaluation.spectral_f.has_value()) {
+            bsdf = cycles_spectrum::Spectrum::from_eval4(
+                       spectral, *evaluation.spectral_f)
+                       .xyz3();
+        }
+        if (spectral != nullptr && evaluation.spectral_diffuse_f.has_value()) {
+            diffuse_bsdf = cycles_spectrum::Spectrum::from_eval4(
+                               spectral, *evaluation.spectral_diffuse_f)
+                               .xyz3();
+        }
+        if (spectral != nullptr && evaluation.spectral_glossy_f.has_value()) {
+            glossy_bsdf = cycles_spectrum::Spectrum::from_eval4(
+                              spectral, *evaluation.spectral_glossy_f)
+                              .xyz3();
+        }
+        return;
+    }
     accept(evaluation,
-           proposal_weighted_bsdf.is_spectral()
+           proposal_weighted_bsdf.is_hero4()
                ? proposal_weighted_bsdf.lanes().xyz()
                : proposal_weighted_bsdf.rgb(),
-           proposal_light_shader.is_spectral()
+           proposal_light_shader.is_hero4()
                ? proposal_light_shader.lanes().xyz()
                : proposal_light_shader.rgb(),
            proposal_direction, proposal_target_position, proposal_distant,
@@ -228,6 +254,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
         DirectLightTransportPreparation preparation;
         auto &task = preparation.task;
         const bool spectral = sample.is_spectral();
+        const bool hero4 = sample.is_hero4();
         if (spectral) {
             preparation.spectral.emplace(DirectLightSpectralExtension{
                 .u_lambda = *sample.spectral_u_lambda});
@@ -242,7 +269,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
             Float4 initial_spec = make_float4(0.0f);
             Float4 light_shader_spec = make_float4(0.0f);
             Bool publish = false;
-            if (spectral) {
+            if (hero4) {
                 const auto weighted_spec =
                     transport.spectral_weighted_bsdf.value_or(
                         make_float4(transport.weighted_bsdf, 0.0f));
@@ -265,7 +292,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                     transport.weighted_bsdf * transport.light_shader;
                 const auto constant_contribution = finalize_direct_light_sample(
                     config.light_transport.light_sample_roulette_weight,
-                    local_unshadowed, sample.throughput.rgb(),
+                    local_unshadowed, sample.throughput.vec3(),
                     light_terminate_sample,
                     invocation.parameters.light_inv_rr_threshold);
                 initial_rgb = select(
@@ -303,7 +330,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                         transport.average_roughness_squared);
                 task.ray_origin = shadow.position;
                 task.ray_direction = shadow_direction;
-                if (spectral) {
+                if (hero4) {
                     const auto path_t = sample.throughput.lanes();
                     task.unshadowed_contribution = initial_spec.xyz();
                     task.nee_path_throughput = path_t.xyz();
@@ -316,7 +343,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                     preparation.spectral->shadow_throughput_w = initial_spec.w;
                 } else {
                     task.unshadowed_contribution = initial_rgb;
-                    task.nee_path_throughput = sample.throughput.rgb();
+                    task.nee_path_throughput = sample.throughput.vec3();
                     task.light_shader = transport.light_shader;
                     task.shadow_throughput = initial_rgb;
                 }

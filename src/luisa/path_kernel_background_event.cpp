@@ -57,11 +57,12 @@ class BackgroundEventStageImpl final
         Bool competing =
             (path_depth > 0u) &
             (!mis_competition_skipped);
-        const auto spectral = sample.is_spectral();
+        const bool hero4 = sample.is_hero4();
+        const bool xyz3 = sample.is_xyz3();
         Float environment_weight = 1.0f;
         Float3 environment_radiance = make_float3(0.0f);
         std::optional<Float4> environment_radiance_spec;
-        if (spectral) {
+        if (hero4) {
             environment_radiance_spec.emplace(make_float4(0.0f));
         }
         // Cycles rejects invisible background shaders before evaluating SVM,
@@ -106,7 +107,7 @@ class BackgroundEventStageImpl final
                         competing,
                         environment_pdf > 0.0f);
             };
-            if (spectral) {
+            if (hero4) {
                 if (scene->environment_emission_is_constant) {
                     *environment_radiance_spec =
                         _environment_light->evaluate_constant_emission_spectral(
@@ -114,9 +115,21 @@ class BackgroundEventStageImpl final
                 } else {
                     *environment_radiance_spec =
                         _environment_light->evaluate_emission_spectral(
-                            sample, ray->origin(), ray->direction(), sample.ray_dD,
+                            sample, ray->origin(), ray->direction(),
+                            sample.ray_dD,
                             CyclesSvmBackgroundEvaluation::forward);
                 }
+            } else if (xyz3) {
+                environment_radiance =
+                    sample.spectrum_from_eval(
+                              scene->environment_emission_is_constant
+                                  ? _environment_light->evaluate_constant_emission_spectral(
+                                        sample)
+                                  : _environment_light->evaluate_emission_spectral(
+                                        sample, ray->origin(), ray->direction(),
+                                        sample.ray_dD,
+                                        CyclesSvmBackgroundEvaluation::forward))
+                        .xyz3();
             } else {
                 if (scene->environment_emission_is_constant) {
                     environment_radiance =
@@ -140,18 +153,26 @@ class BackgroundEventStageImpl final
                     1.0f,
                     invocation.parameters.ambient_occlusion_factor,
                     ambient_occlusion_bounce);
-                if (spectral) {
+                if (hero4) {
                     *environment_radiance_spec *= ao_scale;
                 } else {
                     environment_radiance *= ao_scale;
                 }
             }
             Float3 environment_contribution = make_float3(0.0f);
-            if (spectral) {
+            if (hero4) {
                 const auto spectral_contrib =
                     throughput *
                     cycles_spectrum::Spectrum::from_lanes(
                         *environment_radiance_spec) *
+                    environment_weight;
+                environment_contribution =
+                    invocation.clamp_emission_contribution(
+                        sample.spectrum_to_rgb(spectral_contrib), path_depth);
+            } else if (xyz3) {
+                const auto spectral_contrib =
+                    throughput *
+                    cycles_spectrum::Spectrum::from_xyz3(environment_radiance) *
                     environment_weight;
                 environment_contribution =
                     invocation.clamp_emission_contribution(

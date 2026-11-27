@@ -246,9 +246,9 @@ int main(int argc, char **argv) {
     $if(color_idx < color_count) {
       const Float3 rgb = colors->read(color_idx);
       const Spectrum s_refl = Spectrum::from_rgb_reflectance(
-          gpu_tables.get(), rgb, &sw, true);
+          gpu_tables.get(), rgb, &sw, psycles::contract::SpectralMode::hero4);
       const Spectrum s_illum = Spectrum::from_rgb_illuminant(
-          gpu_tables.get(), rgb, &sw, true);
+          gpu_tables.get(), rgb, &sw, psycles::contract::SpectralMode::hero4);
       out_refl->write(gid, reflectance_to_rgb(s_refl, gpu_tables.get(), &sw,
                                               false));
       out_illum->write(gid, to_rgb(s_illum, gpu_tables.get(), &sw, false));

@@ -17,7 +17,7 @@ void prepare_surface_shadow_pass(Var<DirectLightTaskCall> &task,
   }
   $else {
     task.path_flags |= cycles_path_state::flag_surface_pass;
-    if (sample.is_spectral() && transport.spectral_bsdf.has_value()) {
+    if (sample.is_hero4() && transport.spectral_bsdf.has_value()) {
       const auto diff_rgb = sample.reflectance_to_rgb(
           cycles_spectrum::Spectrum::from_lanes(
               transport.spectral_diffuse_bsdf.value_or(
@@ -28,6 +28,15 @@ void prepare_surface_shadow_pass(Var<DirectLightTaskCall> &task,
                   make_float4(transport.glossy_bsdf, 0.0f))));
       const auto bsdf_rgb = sample.reflectance_to_rgb(
           cycles_spectrum::Spectrum::from_lanes(*transport.spectral_bsdf));
+      task.diffuse_weight = ratio(diff_rgb, bsdf_rgb);
+      task.glossy_weight = ratio(gloss_rgb, bsdf_rgb);
+    } else if (sample.is_xyz3()) {
+      const auto diff_rgb = sample.reflectance_to_rgb(
+          cycles_spectrum::Spectrum::from_xyz3(transport.diffuse_bsdf));
+      const auto gloss_rgb = sample.reflectance_to_rgb(
+          cycles_spectrum::Spectrum::from_xyz3(transport.glossy_bsdf));
+      const auto bsdf_rgb = sample.reflectance_to_rgb(
+          cycles_spectrum::Spectrum::from_xyz3(transport.bsdf));
       task.diffuse_weight = ratio(diff_rgb, bsdf_rgb);
       task.glossy_weight = ratio(gloss_rgb, bsdf_rgb);
     } else {

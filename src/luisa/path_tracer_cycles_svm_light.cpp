@@ -252,7 +252,8 @@ public:
       const PathCyclesSvmKernelGlobals kg{
           _scene, parameters, _camera_projection, Bool{_reflective_caustics},
           Bool{_refractive_caustics}, PathCyclesSvmShaderDomain::light_emission,
-          {}, false, local_vt_ptr, nullptr, use_spectral};
+          {}, false, local_vt_ptr, nullptr, use_spectral,
+          use_spectral ? spectral->mode : contract::SpectralMode::none};
       auto setup =
           setup_cycles_svm_light_shader_data(_scene, kg, task, parameters);
       auto &sd = setup.shader_data;

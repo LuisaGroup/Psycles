@@ -112,20 +112,28 @@ class EmissiveMeshDirectLightProvider final : public DirectLightProvider {
                     Float3 light_shader = make_float3(0.0f);
                     std::optional<Float4> spectral_radiometric_weight{};
                     std::optional<Float4> spectral_light_shader{};
-                    const auto spectral = sample.is_spectral();
-                    if (spectral) {
+                    const bool hero4 = sample.is_hero4();
+                    const bool xyz3 = sample.is_xyz3();
+                    if (hero4) {
                         spectral_radiometric_weight.emplace(make_float4(1.0f));
                         spectral_light_shader.emplace(make_float4(0.0f));
                     }
                     // Cycles' constant factor is evaluated after geometric
                     // rejection but before the receiving BSDF.
                     $if(constant_emission) {
-                        if (spectral) {
+                        if (hero4) {
                             *spectral_light_shader =
                                 _emissive_triangle
                                     ->evaluate_constant_emission_spectral(
                                         sample, light);
                             light_shader = spectral_light_shader->xyz();
+                        } else if (xyz3) {
+                            light_shader =
+                                sample.spectrum_from_eval(
+                                    _emissive_triangle
+                                        ->evaluate_constant_emission_spectral(
+                                            sample, light))
+                                    .xyz3();
                         } else {
                             light_shader =
                                 _emissive_triangle

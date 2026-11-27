@@ -4,12 +4,16 @@
 #error "Include <psycles/luisa/cycles_spectrum.h> through the Psycles::luisa target."
 #endif
 
+#include <psycles/contract/render.h>
 #include <psycles/contract/scene.h>
 
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <source_location>
 #include <span>
+#include <utility>
 #include <variant>
 
 #include <luisa/dsl/sugar.h>
@@ -25,6 +29,8 @@ inline constexpr float spectral_lambda_span =
 inline constexpr std::uint32_t spectral_cie_sample_count = 471u;
 inline constexpr std::uint32_t rgb2spec_table_resolution = 96u;
 inline constexpr std::uint32_t blackbody_lut_count = 256u;
+inline constexpr std::uint32_t xyz3_cdfinv_lut_count = 2048u;
+inline constexpr std::uint32_t xyz3_collapse_lut_count = 512u;
 inline constexpr float blackbody_temp_min = 600.0f;
 inline constexpr float blackbody_temp_max = 20000.0f;
 
@@ -54,16 +60,30 @@ struct SpectralTablesHost {
   luisa::float3 spec_xyz_to_g{};
   luisa::float3 spec_xyz_to_b{};
   luisa::float3 rgb_to_y{};
+  // xyz3 CDF^-1 LUT: 2048 entries, .xyz = (F_X^-1(u), F_Y^-1(u), F_Z^-1(u)), .w = 0
+  luisa::vector<luisa::float4> xyz3_cdfinv;
+  // xyz3 collapse LUT: 512 entries over [360..830] nm, .xyz = W_raw(lambda), .w = p_mix(lambda)
+  luisa::vector<luisa::float4> xyz3_collapse;
+  luisa::float3 xyz3_integral_ratio{};
+  luisa::float3 xyz3_to_r{};
+  luisa::float3 xyz3_to_g{};
+  luisa::float3 xyz3_to_b{};
 };
 
 struct SpectralTablesGpu {
   luisa::compute::Buffer<luisa::float4> cie_illuminant_buffer;
   luisa::compute::Buffer<luisa::float4> rgb2spec_buffer;
   luisa::compute::Buffer<float> blackbody_norm_buffer;
+  luisa::compute::Buffer<luisa::float4> xyz3_cdfinv_buffer;
+  luisa::compute::Buffer<luisa::float4> xyz3_collapse_buffer;
   luisa::float3 spec_xyz_to_r{};
   luisa::float3 spec_xyz_to_g{};
   luisa::float3 spec_xyz_to_b{};
   luisa::float3 rgb_to_y{};
+  luisa::float3 xyz3_integral_ratio{};
+  luisa::float3 xyz3_to_r{};
+  luisa::float3 xyz3_to_g{};
+  luisa::float3 xyz3_to_b{};
 };
 
 // Host builders & test/CPU reference utilities.
@@ -88,7 +108,73 @@ struct SpectralTablesGpu {
     const SpectralTablesHost &tables,
     luisa::float3 rgb) noexcept;
 
+[[nodiscard]] luisa::float3 sample_xyz3_lambdas_host(
+    const SpectralTablesHost &tables, float u) noexcept;
+
+[[nodiscard]] luisa::float3 xyz3_collapse_weight_host(
+    const SpectralTablesHost &tables, float lambda_nm) noexcept;
+
+[[nodiscard]] luisa::float3 xyz3_pdf_host(
+    const SpectralTablesHost &tables, float lambda_nm) noexcept;
+
+[[nodiscard]] luisa::float3 xyz3_to_rgb_host(
+    const SpectralTablesHost &tables, luisa::float3 raw) noexcept;
+
 // Device DSL wavelength sampling & spectral color conversions.
+struct Xyz3DecodedU {
+  luisa::compute::UInt hero_index;
+  luisa::compute::Float u;
+};
+
+struct SpectralContext {
+  const SpectralTablesGpu *tables{nullptr};
+  SampledWavelengths wavelengths;
+  luisa::compute::Bool secondary_terminated;
+  contract::SpectralMode mode{contract::SpectralMode::hero4};
+  std::optional<luisa::compute::UInt> hero_index{};
+  std::optional<luisa::compute::Float3> lambdas_xyz{};
+};
+
+[[nodiscard]] Xyz3DecodedU xyz3_decode_u(
+    luisa::compute::Expr<float> u_raw) noexcept;
+
+[[nodiscard]] luisa::compute::Float3 sample_xyz3_lambdas(
+    const SpectralTablesGpu &tables, luisa::compute::Expr<float> u) noexcept;
+
+[[nodiscard]] luisa::compute::Float3 xyz3_collapse_weight(
+    const SpectralTablesGpu &tables,
+    luisa::compute::Expr<float> lambda_nm) noexcept;
+
+[[nodiscard]] luisa::compute::Float4 xyz3_rotate_eval(
+    luisa::compute::Expr<luisa::float3> v,
+    luisa::compute::Expr<std::uint32_t> h) noexcept;
+
+[[nodiscard]] luisa::compute::Float3 xyz3_unrotate_eval(
+    luisa::compute::Expr<luisa::float4> v4,
+    luisa::compute::Expr<std::uint32_t> h) noexcept;
+
+[[nodiscard]] luisa::compute::Float xyz3_hero(
+    luisa::compute::Expr<luisa::float3> v,
+    luisa::compute::Expr<std::uint32_t> h) noexcept;
+
+[[nodiscard]] luisa::compute::Float3 xyz3_to_rgb(
+    const SpectralTablesGpu &tables,
+    luisa::compute::Expr<luisa::float3> raw) noexcept;
+
+[[nodiscard]] luisa::compute::Float3 xyz3_reflectance_to_rgb(
+    const SpectralTablesGpu &tables,
+    luisa::compute::Expr<luisa::float3> reflectance,
+    luisa::compute::Expr<luisa::float3> lambdas_xyz) noexcept;
+
+[[nodiscard]] luisa::compute::Float xyz3_luminance(
+    const SpectralTablesGpu &tables,
+    luisa::compute::Expr<luisa::float3> reflectance,
+    luisa::compute::Expr<luisa::float3> lambdas_xyz) noexcept;
+
+[[nodiscard]] SpectralContext make_spectral_context(
+    const SpectralTablesGpu *tables, contract::SpectralMode mode,
+    luisa::compute::Expr<float> u_lambda,
+    luisa::compute::Expr<bool> secondary_terminated) noexcept;
 [[nodiscard]] SampledWavelengths sample_visible_wavelengths(
     luisa::compute::Expr<float> u_lambda) noexcept;
 
@@ -163,7 +249,12 @@ struct SpectralTablesGpu {
 
 [[nodiscard]] inline luisa::compute::Float avg_active(
     luisa::compute::Expr<luisa::float4> v,
-    luisa::compute::Expr<bool> secondary_terminated) noexcept {
+    luisa::compute::Expr<bool> secondary_terminated,
+    std::uint32_t lane_count) noexcept {
+  if (lane_count == 3u) {
+    return luisa::compute::select(
+        (v.x + v.y + v.z) * (1.0f / 3.0f), v.x, secondary_terminated);
+  }
   return luisa::compute::select(
       (v.x + v.y + v.z + v.w) * 0.25f, v.x, secondary_terminated);
 }
@@ -196,41 +287,48 @@ struct SpectralTablesGpu {
       v.x, secondary_terminated);
 }
 
-// Transport wrapper: holds Float3 in RGB mode and Float4 in Spectral mode.
+// Transport wrapper: holds Float3 in RGB and xyz3 modes, Float4 in hero4 mode.
 // Copy constructor allocates a fresh DSL Var; copy assignment emits a DSL
 // assignment to the underlying variable without changing the active variant.
 class Spectrum final {
 private:
+  contract::SpectralMode _mode{contract::SpectralMode::none};
   std::variant<luisa::compute::Float3, luisa::compute::Float4> _data;
 
-  explicit Spectrum(luisa::compute::Float3 value) noexcept
-      : _data{std::move(value)} {}
+  explicit Spectrum(contract::SpectralMode mode,
+                    luisa::compute::Float3 value) noexcept
+      : _mode{mode}, _data{std::move(value)} {
+    LUISA_ASSERT(mode != contract::SpectralMode::hero4,
+                 "hero4 Spectrum requires float4 storage.");
+  }
   explicit Spectrum(luisa::compute::Float4 value) noexcept
-      : _data{std::move(value)} {}
+      : _mode{contract::SpectralMode::hero4}, _data{std::move(value)} {}
 
 public:
   // Default construction selects RGB transport with a zero-initialized lane
   // var. Host-side path-kernel contexts rely on this so that they stay
   // aggregate-initializable; spectral pipelines must build their transport
-  // explicitly (zero(true) / constant(true, ...) / from_lanes(...)).
-  Spectrum() noexcept : _data{luisa::compute::Float3{}} {}
+  // explicitly (zero(mode) / constant(mode, ...) / from_lanes / from_xyz3).
+  Spectrum() noexcept
+      : _mode{contract::SpectralMode::none}, _data{luisa::compute::Float3{}} {}
 
   Spectrum(const Spectrum &other) noexcept
-      : _data{other.is_spectral()
+      : _mode{other._mode},
+        _data{other.has_float4_storage()
                   ? std::variant<luisa::compute::Float3, luisa::compute::Float4>{
                         luisa::compute::def<luisa::float4>(other.lanes())}
                   : std::variant<luisa::compute::Float3, luisa::compute::Float4>{
-                        luisa::compute::def<luisa::float3>(other.rgb())}} {}
+                        luisa::compute::def<luisa::float3>(other.vec3())}} {}
 
   Spectrum(Spectrum &&) noexcept = default;
 
   Spectrum &operator=(const Spectrum &other) noexcept {
-    LUISA_ASSERT(is_spectral() == other.is_spectral(),
+    LUISA_ASSERT(_mode == other._mode,
                  "Spectrum assignment requires matching spectral mode.");
-    if (is_spectral()) {
+    if (has_float4_storage()) {
       std::get<luisa::compute::Float4>(_data) = other.lanes();
     } else {
-      std::get<luisa::compute::Float3>(_data) = other.rgb();
+      std::get<luisa::compute::Float3>(_data) = other.vec3();
     }
     return *this;
   }
@@ -240,155 +338,281 @@ public:
   }
 
   // Raw lane assignment keeps the active variant and only rebinds its value.
-  // It mirrors from_rgb_raw()/from_lanes() for already-constructed transports.
   void operator=(luisa::compute::Expr<luisa::float3> value) noexcept {
-    LUISA_ASSERT(!is_spectral(),
-                 "Assigning RGB lanes to a spectral Spectrum; use from_lanes().");
+    LUISA_ASSERT(!has_float4_storage(),
+                 "Assigning float3 lanes to a hero4 Spectrum; use from_lanes().");
     std::get<luisa::compute::Float3>(_data) = std::move(value);
   }
 
   void operator=(luisa::compute::Expr<luisa::float4> value) noexcept {
-    LUISA_ASSERT(is_spectral(),
-                 "Assigning spectral lanes to an RGB Spectrum; use from_rgb_raw().");
+    LUISA_ASSERT(has_float4_storage(),
+                 "Assigning float4 lanes to a non-hero4 Spectrum.");
     std::get<luisa::compute::Float4>(_data) = std::move(value);
   }
 
+  [[nodiscard]] contract::SpectralMode mode() const noexcept { return _mode; }
   [[nodiscard]] bool is_spectral() const noexcept {
+    return _mode != contract::SpectralMode::none;
+  }
+  [[nodiscard]] bool is_hero4() const noexcept {
+    return _mode == contract::SpectralMode::hero4;
+  }
+  [[nodiscard]] bool is_xyz3() const noexcept {
+    return _mode == contract::SpectralMode::xyz3;
+  }
+  [[nodiscard]] bool has_float4_storage() const noexcept {
     return std::holds_alternative<luisa::compute::Float4>(_data);
   }
 
-  [[nodiscard]] static Spectrum zero(bool spectral) noexcept {
-    return constant(spectral, 0.0f);
+  [[nodiscard]] static Spectrum zero(contract::SpectralMode mode) noexcept {
+    return constant(mode, 0.0f);
   }
 
-  [[nodiscard]] static Spectrum one(bool spectral) noexcept {
-    return constant(spectral, 1.0f);
+  [[nodiscard]] static Spectrum one(contract::SpectralMode mode) noexcept {
+    return constant(mode, 1.0f);
   }
 
   [[nodiscard]] static Spectrum constant(
-      bool spectral, luisa::compute::Expr<float> scalar) noexcept {
-    if (spectral) {
+      contract::SpectralMode mode, luisa::compute::Expr<float> scalar) noexcept {
+    if (mode == contract::SpectralMode::hero4) {
       return Spectrum{luisa::compute::make_float4(scalar)};
     }
-    return Spectrum{luisa::compute::make_float3(scalar)};
+    return Spectrum{mode, luisa::compute::make_float3(scalar)};
   }
 
   [[nodiscard]] static Spectrum from_rgb_raw(
+      luisa::compute::Expr<luisa::float3> value,
+      std::source_location loc = std::source_location::current()) noexcept {
+    static_cast<void>(loc);
+    return Spectrum{contract::SpectralMode::none,
+                    luisa::compute::Float3{value}};
+  }
+
+  [[nodiscard]] static Spectrum from_xyz3(
       luisa::compute::Expr<luisa::float3> value) noexcept {
-    return Spectrum{luisa::compute::Float3{value}};
+    return Spectrum{contract::SpectralMode::xyz3,
+                    luisa::compute::Float3{value}};
   }
 
   [[nodiscard]] static Spectrum from_lanes(
-      luisa::compute::Expr<luisa::float4> value) noexcept {
+      luisa::compute::Expr<luisa::float4> value,
+      std::source_location loc = std::source_location::current()) noexcept {
+    static_cast<void>(loc);
     return Spectrum{luisa::compute::Float4{value}};
+  }
+
+  [[nodiscard]] static Spectrum from_eval4(
+      const SpectralContext *spectral,
+      luisa::compute::Expr<luisa::float4> eval4) noexcept {
+    if (spectral == nullptr || spectral->mode == contract::SpectralMode::none) {
+      return from_rgb_raw(eval4.xyz());
+    }
+    if (spectral->mode == contract::SpectralMode::xyz3) {
+      LUISA_ASSERT(spectral->hero_index.has_value(),
+                   "xyz3 SpectralContext requires hero_index.");
+      return from_xyz3(xyz3_unrotate_eval(eval4, *spectral->hero_index));
+    }
+    return from_lanes(eval4);
   }
 
   [[nodiscard]] static Spectrum from_rgb_reflectance(
       const SpectralTablesGpu *tables, luisa::compute::Expr<luisa::float3> value,
-      const SampledWavelengths *wavelengths, bool spectral) noexcept {
-    if (!spectral) {
+      const SampledWavelengths *wavelengths,
+      contract::SpectralMode mode) noexcept {
+    if (mode == contract::SpectralMode::none) {
       return from_rgb_raw(value);
     }
     LUISA_ASSERT(tables != nullptr && wavelengths != nullptr,
                  "Spectral conversion requires tables and wavelengths.");
+    if (mode == contract::SpectralMode::xyz3) {
+      LUISA_ERROR_WITH_LOCATION(
+          "from_rgb_reflectance in xyz3 requires the SpectralContext overload.");
+    }
     return from_lanes(
         rgb_to_spectrum_reflectance(*tables, value, wavelengths->lambdas));
   }
 
+  [[nodiscard]] static Spectrum from_rgb_reflectance(
+      const SpectralTablesGpu *tables, luisa::compute::Expr<luisa::float3> value,
+      const SpectralContext *spectral) noexcept {
+    if (spectral == nullptr || spectral->mode == contract::SpectralMode::none) {
+      return from_rgb_raw(value);
+    }
+    LUISA_ASSERT(tables != nullptr,
+                 "Spectral conversion requires tables.");
+    if (spectral->mode == contract::SpectralMode::xyz3) {
+      LUISA_ASSERT(spectral->lambdas_xyz.has_value(),
+                   "xyz3 SpectralContext requires lambdas_xyz.");
+      const auto l3 = *spectral->lambdas_xyz;
+      const auto spec = rgb_to_spectrum_reflectance(
+          *tables, value, luisa::compute::make_float4(l3, l3.x));
+      return from_xyz3(spec.xyz());
+    }
+    return from_lanes(rgb_to_spectrum_reflectance(
+        *tables, value, spectral->wavelengths.lambdas));
+  }
+
   [[nodiscard]] static Spectrum from_rgb_illuminant(
       const SpectralTablesGpu *tables, luisa::compute::Expr<luisa::float3> value,
-      const SampledWavelengths *wavelengths, bool spectral) noexcept {
-    if (!spectral) {
+      const SampledWavelengths *wavelengths,
+      contract::SpectralMode mode) noexcept {
+    if (mode == contract::SpectralMode::none) {
       return from_rgb_raw(value);
     }
     LUISA_ASSERT(tables != nullptr && wavelengths != nullptr,
                  "Spectral conversion requires tables and wavelengths.");
+    if (mode == contract::SpectralMode::xyz3) {
+      LUISA_ERROR_WITH_LOCATION(
+          "from_rgb_illuminant in xyz3 requires the SpectralContext overload.");
+    }
     return from_lanes(
         rgb_to_spectrum_illuminant(*tables, value, wavelengths->lambdas));
   }
 
-  [[nodiscard]] const luisa::compute::Float3 &rgb() const noexcept {
-    LUISA_ASSERT(!is_spectral(), "Accessed RGB lanes of spectral Spectrum.");
+  [[nodiscard]] static Spectrum from_rgb_illuminant(
+      const SpectralTablesGpu *tables, luisa::compute::Expr<luisa::float3> value,
+      const SpectralContext *spectral) noexcept {
+    if (spectral == nullptr || spectral->mode == contract::SpectralMode::none) {
+      return from_rgb_raw(value);
+    }
+    LUISA_ASSERT(tables != nullptr,
+                 "Spectral conversion requires tables.");
+    if (spectral->mode == contract::SpectralMode::xyz3) {
+      LUISA_ASSERT(spectral->lambdas_xyz.has_value(),
+                   "xyz3 SpectralContext requires lambdas_xyz.");
+      const auto l3 = *spectral->lambdas_xyz;
+      const auto spec = rgb_to_spectrum_illuminant(
+          *tables, value, luisa::compute::make_float4(l3, l3.x));
+      return from_xyz3(spec.xyz());
+    }
+    return from_lanes(rgb_to_spectrum_illuminant(
+        *tables, value, spectral->wavelengths.lambdas));
+  }
+
+  [[nodiscard]] const luisa::compute::Float3 &rgb(
+      std::source_location loc = std::source_location::current()) const noexcept {
+    LUISA_ASSERT(_mode == contract::SpectralMode::none,
+                 "Accessed rgb() of non-RGB Spectrum at {}:{}.",
+                 loc.file_name(), loc.line());
     return std::get<luisa::compute::Float3>(_data);
   }
-  [[nodiscard]] luisa::compute::Float3 &rgb() noexcept {
-    LUISA_ASSERT(!is_spectral(), "Accessed RGB lanes of spectral Spectrum.");
+  [[nodiscard]] luisa::compute::Float3 &rgb(
+      std::source_location loc = std::source_location::current()) noexcept {
+    LUISA_ASSERT(_mode == contract::SpectralMode::none,
+                 "Accessed rgb() of non-RGB Spectrum at {}:{}.",
+                 loc.file_name(), loc.line());
     return std::get<luisa::compute::Float3>(_data);
   }
 
-  [[nodiscard]] const luisa::compute::Float4 &lanes() const noexcept {
-    LUISA_ASSERT(is_spectral(), "Accessed 4-wavelength lanes of RGB Spectrum.");
+  [[nodiscard]] const luisa::compute::Float3 &xyz3(
+      std::source_location loc = std::source_location::current()) const noexcept {
+    LUISA_ASSERT(_mode == contract::SpectralMode::xyz3,
+                 "Accessed xyz3() of non-xyz3 Spectrum at {}:{}.",
+                 loc.file_name(), loc.line());
+    return std::get<luisa::compute::Float3>(_data);
+  }
+  [[nodiscard]] luisa::compute::Float3 &xyz3(
+      std::source_location loc = std::source_location::current()) noexcept {
+    LUISA_ASSERT(_mode == contract::SpectralMode::xyz3,
+                 "Accessed xyz3() of non-xyz3 Spectrum at {}:{}.",
+                 loc.file_name(), loc.line());
+    return std::get<luisa::compute::Float3>(_data);
+  }
+
+  [[nodiscard]] const luisa::compute::Float3 &vec3(
+      std::source_location loc = std::source_location::current()) const noexcept {
+    LUISA_ASSERT(!has_float4_storage(),
+                 "Accessed vec3() of hero4 Spectrum at {}:{}.",
+                 loc.file_name(), loc.line());
+    return std::get<luisa::compute::Float3>(_data);
+  }
+  [[nodiscard]] luisa::compute::Float3 &vec3(
+      std::source_location loc = std::source_location::current()) noexcept {
+    LUISA_ASSERT(!has_float4_storage(),
+                 "Accessed vec3() of hero4 Spectrum at {}:{}.",
+                 loc.file_name(), loc.line());
+    return std::get<luisa::compute::Float3>(_data);
+  }
+
+  [[nodiscard]] const luisa::compute::Float4 &lanes(
+      std::source_location loc = std::source_location::current()) const noexcept {
+    LUISA_ASSERT(is_hero4(),
+                 "Accessed lanes() of non-hero4 Spectrum at {}:{}.",
+                 loc.file_name(), loc.line());
     return std::get<luisa::compute::Float4>(_data);
   }
-  [[nodiscard]] luisa::compute::Float4 &lanes() noexcept {
-    LUISA_ASSERT(is_spectral(), "Accessed 4-wavelength lanes of RGB Spectrum.");
+  [[nodiscard]] luisa::compute::Float4 &lanes(
+      std::source_location loc = std::source_location::current()) noexcept {
+    LUISA_ASSERT(is_hero4(),
+                 "Accessed lanes() of non-hero4 Spectrum at {}:{}.",
+                 loc.file_name(), loc.line());
     return std::get<luisa::compute::Float4>(_data);
   }
 
   [[nodiscard]] luisa::compute::Float hero() const noexcept {
-    return is_spectral() ? lanes().x : rgb().x;
+    return has_float4_storage() ? lanes().x : vec3().x;
   }
 
   void terminate_secondary() noexcept {
-    if (is_spectral()) {
+    if (has_float4_storage()) {
       lanes() = luisa::compute::make_float4(lanes().x, 0.0f, 0.0f, 0.0f);
     }
   }
 
   Spectrum &operator+=(const Spectrum &rhs) noexcept {
-    LUISA_ASSERT(is_spectral() == rhs.is_spectral(), "Spectrum mode mismatch.");
-    if (is_spectral()) {
+    LUISA_ASSERT(_mode == rhs._mode, "Spectrum mode mismatch.");
+    if (has_float4_storage()) {
       lanes() += rhs.lanes();
     } else {
-      rgb() += rhs.rgb();
+      vec3() += rhs.vec3();
     }
     return *this;
   }
 
   Spectrum &operator-=(const Spectrum &rhs) noexcept {
-    LUISA_ASSERT(is_spectral() == rhs.is_spectral(), "Spectrum mode mismatch.");
-    if (is_spectral()) {
+    LUISA_ASSERT(_mode == rhs._mode, "Spectrum mode mismatch.");
+    if (has_float4_storage()) {
       lanes() -= rhs.lanes();
     } else {
-      rgb() -= rhs.rgb();
+      vec3() -= rhs.vec3();
     }
     return *this;
   }
 
   Spectrum &operator*=(const Spectrum &rhs) noexcept {
-    LUISA_ASSERT(is_spectral() == rhs.is_spectral(), "Spectrum mode mismatch.");
-    if (is_spectral()) {
+    LUISA_ASSERT(_mode == rhs._mode, "Spectrum mode mismatch.");
+    if (has_float4_storage()) {
       lanes() *= rhs.lanes();
     } else {
-      rgb() *= rhs.rgb();
+      vec3() *= rhs.vec3();
     }
     return *this;
   }
 
   Spectrum &operator/=(const Spectrum &rhs) noexcept {
-    LUISA_ASSERT(is_spectral() == rhs.is_spectral(), "Spectrum mode mismatch.");
-    if (is_spectral()) {
+    LUISA_ASSERT(_mode == rhs._mode, "Spectrum mode mismatch.");
+    if (has_float4_storage()) {
       lanes() /= rhs.lanes();
     } else {
-      rgb() /= rhs.rgb();
+      vec3() /= rhs.vec3();
     }
     return *this;
   }
 
   Spectrum &operator*=(luisa::compute::Expr<float> s) noexcept {
-    if (is_spectral()) {
+    if (has_float4_storage()) {
       lanes() *= s;
     } else {
-      rgb() *= s;
+      vec3() *= s;
     }
     return *this;
   }
 
   Spectrum &operator/=(luisa::compute::Expr<float> s) noexcept {
-    if (is_spectral()) {
+    if (has_float4_storage()) {
       lanes() /= s;
     } else {
-      rgb() /= s;
+      vec3() /= s;
     }
     return *this;
   }
@@ -444,21 +668,25 @@ public:
 [[nodiscard]] inline Spectrum select(
     const Spectrum &false_val, const Spectrum &true_val,
     luisa::compute::Expr<bool> predicate) noexcept {
-  LUISA_ASSERT(false_val.is_spectral() == true_val.is_spectral(),
+  LUISA_ASSERT(false_val.mode() == true_val.mode(),
                "Spectrum select mode mismatch.");
-  if (false_val.is_spectral()) {
+  if (false_val.has_float4_storage()) {
     return Spectrum::from_lanes(
         luisa::compute::select(false_val.lanes(), true_val.lanes(), predicate));
   }
+  if (false_val.is_xyz3()) {
+    return Spectrum::from_xyz3(
+        luisa::compute::select(false_val.vec3(), true_val.vec3(), predicate));
+  }
   return Spectrum::from_rgb_raw(
-      luisa::compute::select(false_val.rgb(), true_val.rgb(), predicate));
+      luisa::compute::select(false_val.vec3(), true_val.vec3(), predicate));
 }
 
 [[nodiscard]] inline luisa::compute::Float max_component(
     const Spectrum &s,
     luisa::compute::Expr<bool> secondary_terminated = false) noexcept {
-  if (!s.is_spectral()) {
-    const auto &v = s.rgb();
+  if (!s.has_float4_storage()) {
+    const auto &v = s.vec3();
     return luisa::compute::max(v.x, luisa::compute::max(v.y, v.z));
   }
   const auto &v = s.lanes();
@@ -470,8 +698,8 @@ public:
 [[nodiscard]] inline luisa::compute::Float max_abs_component(
     const Spectrum &s,
     luisa::compute::Expr<bool> secondary_terminated = false) noexcept {
-  if (!s.is_spectral()) {
-    const auto &v = s.rgb();
+  if (!s.has_float4_storage()) {
+    const auto &v = s.vec3();
     return luisa::compute::max(
         luisa::compute::abs(v.x),
         luisa::compute::max(luisa::compute::abs(v.y), luisa::compute::abs(v.z)));
@@ -486,8 +714,8 @@ public:
 [[nodiscard]] inline luisa::compute::Float average(
     const Spectrum &s,
     luisa::compute::Expr<bool> secondary_terminated = false) noexcept {
-  if (!s.is_spectral()) {
-    const auto &v = s.rgb();
+  if (!s.has_float4_storage()) {
+    const auto &v = s.vec3();
     return (v.x + v.y + v.z) * (1.0f / 3.0f);
   }
   const auto &v = s.lanes();
@@ -497,8 +725,8 @@ public:
 
 [[nodiscard]] inline luisa::compute::Bool any_nonzero(
     const Spectrum &s) noexcept {
-  if (!s.is_spectral()) {
-    return luisa::compute::any(s.rgb() != luisa::compute::make_float3(0.0f));
+  if (!s.has_float4_storage()) {
+    return luisa::compute::any(s.vec3() != luisa::compute::make_float3(0.0f));
   }
   return luisa::compute::any(s.lanes() != luisa::compute::make_float4(0.0f));
 }
@@ -508,19 +736,31 @@ public:
 }
 
 [[nodiscard]] inline Spectrum clamp_nonnegative(const Spectrum &s) noexcept {
-  if (!s.is_spectral()) {
-    return Spectrum::from_rgb_raw(
-        luisa::compute::max(s.rgb(), luisa::compute::make_float3(0.0f)));
+  if (!s.has_float4_storage()) {
+    const auto clamped =
+        luisa::compute::max(s.vec3(), luisa::compute::make_float3(0.0f));
+    return s.is_xyz3() ? Spectrum::from_xyz3(clamped)
+                       : Spectrum::from_rgb_raw(clamped);
   }
   return Spectrum::from_lanes(
       luisa::compute::max(s.lanes(), luisa::compute::make_float4(0.0f)));
 }
 
 inline void terminate_secondary(Spectrum &s) noexcept {
-  if (s.is_spectral()) {
-    const auto h = s.lanes().x;
-    s.lanes() = luisa::compute::make_float4(h, 0.0f, 0.0f, 0.0f);
+  s.terminate_secondary();
+}
+
+[[nodiscard]] inline luisa::compute::Float3 to_rgb(
+    const Spectrum &radiance, const SpectralContext &ctx) noexcept {
+  if (!radiance.is_spectral()) {
+    return radiance.rgb();
   }
+  LUISA_ASSERT(ctx.tables != nullptr, "Spectral to_rgb requires tables.");
+  if (radiance.is_xyz3()) {
+    return xyz3_to_rgb(*ctx.tables, radiance.xyz3());
+  }
+  return spectrum_to_rgb(*ctx.tables, radiance.lanes(), ctx.wavelengths,
+                         ctx.secondary_terminated);
 }
 
 [[nodiscard]] inline luisa::compute::Float3 to_rgb(
@@ -530,10 +770,31 @@ inline void terminate_secondary(Spectrum &s) noexcept {
   if (!radiance.is_spectral()) {
     return radiance.rgb();
   }
-  LUISA_ASSERT(tables != nullptr && wavelengths != nullptr,
-               "Spectral to_rgb requires tables and wavelengths.");
+  LUISA_ASSERT(tables != nullptr, "Spectral to_rgb requires tables.");
+  if (radiance.is_xyz3()) {
+    return xyz3_to_rgb(*tables, radiance.xyz3());
+  }
+  LUISA_ASSERT(wavelengths != nullptr,
+               "hero4 to_rgb requires wavelengths.");
   return spectrum_to_rgb(*tables, radiance.lanes(), *wavelengths,
                          secondary_terminated);
+}
+
+[[nodiscard]] inline luisa::compute::Float3 reflectance_to_rgb(
+    const Spectrum &reflectance, const SpectralContext &ctx) noexcept {
+  if (!reflectance.is_spectral()) {
+    return reflectance.rgb();
+  }
+  LUISA_ASSERT(ctx.tables != nullptr,
+               "Spectral reflectance_to_rgb requires tables.");
+  if (reflectance.is_xyz3()) {
+    LUISA_ASSERT(ctx.lambdas_xyz.has_value(),
+                 "xyz3 reflectance_to_rgb requires lambdas_xyz.");
+    return xyz3_reflectance_to_rgb(*ctx.tables, reflectance.xyz3(),
+                                   *ctx.lambdas_xyz);
+  }
+  return reflectance_to_rgb(*ctx.tables, reflectance.lanes(), ctx.wavelengths,
+                            ctx.secondary_terminated);
 }
 
 [[nodiscard]] inline luisa::compute::Float3 reflectance_to_rgb(
@@ -545,14 +806,10 @@ inline void terminate_secondary(Spectrum &s) noexcept {
   }
   LUISA_ASSERT(tables != nullptr && wavelengths != nullptr,
                "Spectral reflectance_to_rgb requires tables and wavelengths.");
+  LUISA_ASSERT(!reflectance.is_xyz3(),
+               "xyz3 reflectance_to_rgb requires SpectralContext.");
   return reflectance_to_rgb(*tables, reflectance.lanes(), *wavelengths,
                             secondary_terminated);
 }
-
-struct SpectralContext {
-  const SpectralTablesGpu *tables{nullptr};
-  SampledWavelengths wavelengths;
-  luisa::compute::Bool secondary_terminated;
-};
 
 } // namespace psycles::luisa_backend::cycles_spectrum

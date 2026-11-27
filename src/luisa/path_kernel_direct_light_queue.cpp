@@ -69,7 +69,7 @@ private:
   bool _may_have_shade_shadow{true};
   bool _may_continue_shadow{true};
   bool _has_fallback_light_shader{false};
-  bool _spectral{false};
+  contract::SpectralMode _spectral_mode{contract::SpectralMode::none};
   std::array<std::uint32_t, 5u> _host_counts{};
 
   static constexpr std::uint32_t k_stride_ray_origin_tmin = 0u;
@@ -99,7 +99,11 @@ private:
     return stride_after_16() + 16u;
   }
   [[nodiscard]] std::uint32_t total_slot_stride() const noexcept {
-    return stride_after_16() + (_spectral ? 32u : 16u);
+    const std::uint32_t spectral_bytes =
+        _spectral_mode == contract::SpectralMode::hero4
+            ? 32u
+            : (_spectral_mode == contract::SpectralMode::xyz3 ? 20u : 16u);
+    return stride_after_16() + spectral_bytes;
   }
 
   [[nodiscard]] static constexpr std::uint32_t
@@ -137,7 +141,11 @@ public:
       : _task_buffer{device.create_byte_buffer(
             static_cast<std::size_t>(
                 (evaluator.light_emission == nullptr ? 160u : 144u) +
-                (evaluator.spectral_tables != nullptr ? 32u : 16u)) *
+                (evaluator.spectral_tables != nullptr
+                     ? (evaluator.spectral_mode == contract::SpectralMode::hero4
+                            ? 32u
+                            : 20u)
+                     : 16u)) *
             static_cast<std::size_t>(capacity))},
         _shadow_storage{shadow_storage
                             ? std::move(shadow_storage)
@@ -163,7 +171,7 @@ public:
         _may_have_shade_shadow{may_have_shade_shadow},
         _may_continue_shadow{may_continue_shadow},
         _has_fallback_light_shader{evaluator.light_emission == nullptr},
-        _spectral{evaluator.spectral_tables != nullptr} {
+        _spectral_mode{evaluator.spectral_mode} {
     if (producer_continuations.empty()) {
       _producers.push_back(
           {.continuation = path_transition::shade_surface,
@@ -372,8 +380,10 @@ public:
                 copy_chunk.operator()<luisa::float4>(k_stride_fallback_light);
               }
             };
-            if (_spectral) {
+            if (_spectral_mode == contract::SpectralMode::hero4) {
               copy_chunk.operator()<luisa::float4>(stride_spectral());
+            } else if (_spectral_mode == contract::SpectralMode::xyz3) {
+              copy_chunk.operator()<float>(stride_spectral());
             }
             // Only this edge owns a traversal batch. Never read the scratch
             // fields of a task at NEE or INTERSECT_SHADOW.
@@ -527,7 +537,7 @@ public:
               fallback_light_w = fallback_chunk.w;
             }
             std::optional<DirectLightSpectralExtension> spec;
-            if (_spectral) {
+            if (_spectral_mode == contract::SpectralMode::hero4) {
               const auto spec_chunk =
                   read_chunk.operator()<luisa::float4>(stride_spectral());
               spec.emplace(DirectLightSpectralExtension{
@@ -536,6 +546,9 @@ public:
                   .light_shader_w = fallback_light_w,
                   .shadow_throughput_w = spec_chunk.x,
                   .u_lambda = spec_chunk.y});
+            } else if (_spectral_mode == contract::SpectralMode::xyz3) {
+              spec.emplace(DirectLightSpectralExtension{
+                  .u_lambda = read_chunk.operator()<float>(stride_spectral())});
             }
             UInt vt_miss = vt_invalid_page;
             $if(evaluator.shade_light_nee(
@@ -544,11 +557,14 @@ public:
               write_chunk.operator()<luisa::float4>(
                   k_stride_throughput_and_term,
                   def(luisa::compute::make_float4(task.shadow_throughput, 0.0f)));
-              if (_spectral) {
+              if (_spectral_mode == contract::SpectralMode::hero4) {
                 write_chunk.operator()<luisa::float4>(
                     stride_spectral(),
                     def(luisa::compute::make_float4(
                         spec->shadow_throughput_w, spec->u_lambda, 0.0f, 0.0f)));
+              } else if (_spectral_mode == contract::SpectralMode::xyz3) {
+                write_chunk.operator()<float>(stride_spectral(),
+                                              spec->u_lambda);
               }
               next = 2u;
             };
@@ -642,12 +658,16 @@ public:
                     task.path_flags = film.z;
                     task.path_visibility = film.w;
                     std::optional<DirectLightSpectralExtension> spec;
-                    if (_spectral) {
+                    if (_spectral_mode == contract::SpectralMode::hero4) {
                       const auto spec_chunk =
                           read_chunk.operator()<luisa::float4>(stride_spectral());
                       spec.emplace(DirectLightSpectralExtension{
                           .shadow_throughput_w = spec_chunk.x,
                           .u_lambda = spec_chunk.y});
+                    } else if (_spectral_mode == contract::SpectralMode::xyz3) {
+                      spec.emplace(DirectLightSpectralExtension{
+                          .u_lambda =
+                              read_chunk.operator()<float>(stride_spectral())});
                     }
                     const auto value = evaluator.contribution(
                         task, task.shadow_throughput, parameters,
@@ -708,12 +728,16 @@ public:
                   task.path_flags = film.z;
                   task.path_visibility = film.w;
                   std::optional<DirectLightSpectralExtension> spec;
-                  if (_spectral) {
+                  if (_spectral_mode == contract::SpectralMode::hero4) {
                     const auto spec_chunk =
                         read_chunk.operator()<luisa::float4>(stride_spectral());
                     spec.emplace(DirectLightSpectralExtension{
                         .shadow_throughput_w = spec_chunk.x,
                         .u_lambda = spec_chunk.y});
+                  } else if (_spectral_mode == contract::SpectralMode::xyz3) {
+                    spec.emplace(DirectLightSpectralExtension{
+                        .u_lambda =
+                            read_chunk.operator()<float>(stride_spectral())});
                   }
                   const auto value = evaluator.contribution(
                       task, task.shadow_throughput, parameters,
@@ -787,12 +811,16 @@ public:
                 }
                 UInt vt_miss = vt_invalid_page;
                 std::optional<DirectLightSpectralExtension> spec;
-                if (_spectral) {
+                if (_spectral_mode == contract::SpectralMode::hero4) {
                   const auto spec_chunk =
                       read_chunk.operator()<luisa::float4>(stride_spectral());
                   spec.emplace(DirectLightSpectralExtension{
                       .shadow_throughput_w = spec_chunk.x,
                       .u_lambda = spec_chunk.y});
+                } else if (_spectral_mode == contract::SpectralMode::xyz3) {
+                  spec.emplace(DirectLightSpectralExtension{
+                      .u_lambda =
+                          read_chunk.operator()<float>(stride_spectral())});
                 }
                 const auto step = evaluator.shade_shadow(
                     task, batch, parameters, vt_enabled ? &vt_miss : nullptr,
@@ -819,12 +847,15 @@ public:
                           k_stride_throughput_and_term,
                           def(luisa::compute::make_float4(task.shadow_throughput,
                                                           0.0f)));
-                      if (_spectral) {
+                      if (_spectral_mode == contract::SpectralMode::hero4) {
                         write_chunk.operator()<luisa::float4>(
                             stride_spectral(),
                             def(luisa::compute::make_float4(
                                 spec->shadow_throughput_w, spec->u_lambda,
                                 0.0f, 0.0f)));
+                      } else if (_spectral_mode == contract::SpectralMode::xyz3) {
+                        write_chunk.operator()<float>(stride_spectral(),
+                                                      spec->u_lambda);
                       }
                       write_chunk.operator()<luisa::uint>(
                           stride_transp_and_vol(),
@@ -1100,7 +1131,7 @@ public:
             Expr<std::uint32_t> runtime_capacity,
             const DirectLightSpectralExtension *spectral = nullptr)
       const noexcept override {
-    if (_spectral) {
+    if (_spectral_mode != contract::SpectralMode::none) {
       LUISA_ASSERT(spectral != nullptr,
                    "Spectral direct-light queue requires spectral extension.");
     }
@@ -1207,7 +1238,7 @@ public:
                                             : Float{0.0f}));
         }
       };
-      if (_spectral) {
+      if (_spectral_mode == contract::SpectralMode::hero4) {
         const auto initial_w = select(spectral->unshadowed_contribution_w,
                                       spectral->shadow_throughput_w,
                                       is_const_light);
@@ -1215,6 +1246,10 @@ public:
                       runtime_capacity, stride_spectral(), slot),
                   luisa::compute::make_float4(initial_w, spectral->u_lambda,
                                               0.0f, 0.0f));
+      } else if (_spectral_mode == contract::SpectralMode::xyz3) {
+        buf.write(slot_byte_offset<float>(runtime_capacity, stride_spectral(),
+                                          slot),
+                  spectral->u_lambda);
       }
       tokens.write(slot, token);
       if (_warp_size == 32u) {

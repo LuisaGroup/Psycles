@@ -309,6 +309,16 @@ LuisaRenderSession::update_kernel_parameters(const RenderSettings &settings) {
         .camera_dy = to_luisa(camera_setup.dy),
         .camera_inv_aperture_ratio = 1.0f / camera_aperture_ratio};
 
+    const auto spectral_mode = contract::effective_spectral_mode(integrator);
+    const bool spectral_rendering =
+        spectral_mode != contract::SpectralMode::none;
+    const bool xyz3_force_collapse = [&]() noexcept {
+        if (spectral_mode != contract::SpectralMode::xyz3) {
+            return false;
+        }
+        const char *raw = std::getenv("PSYCLES_XYZ3_FORCE_COLLAPSE");
+        return raw != nullptr && std::string_view{raw} == "1";
+    }();
     return SessionKernelSignature{
         .camera_projection = camera_projection,
         .camera_depth_of_field = camera_depth_of_field,
@@ -325,7 +335,9 @@ LuisaRenderSession::update_kernel_parameters(const RenderSettings &settings) {
             integrator.ambient_occlusion_bounces != 0u,
         .transparent_max_bounces = transparent_max_bounces,
         .wavefront_frame_capacity = wavefront_frame_capacity,
-        .spectral_rendering = integrator.spectral_rendering,
+        .spectral_rendering = spectral_rendering,
+        .spectral_mode = spectral_mode,
+        .xyz3_force_collapse = xyz3_force_collapse,
         .caustics_method = integrator.caustics_method,
         .sms_unbiased = integrator.sms_unbiased,
         .sms_max_trials = integrator.sms_max_trials,
@@ -373,8 +385,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         make_light_distribution_sample_callable(_scene);
     auto light_tree_callables = make_light_tree_callables(
         _scene, _scene->volume_metadata.stack_size != 0u);
-    auto surface_callables =
-        make_surface_callables(_scene, signature.spectral_rendering);
+    auto surface_callables = make_surface_callables(
+        _scene, signature.spectral_rendering, signature.spectral_mode);
     auto shadow_trace_callables =
         make_shadow_trace_callables(_scene, light_transport.safe_normalize);
     std::shared_ptr<const PathVolumeStateComponent> volume_state;
@@ -420,6 +432,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .enable_virtual_texture_cache =
             _options.virtual_texture_cache.enabled,
         .spectral_rendering = signature.spectral_rendering,
+        .spectral_mode = signature.spectral_mode,
+        .xyz3_force_collapse = signature.xyz3_force_collapse,
         .caustics_method = signature.caustics_method,
         .sms_unbiased = signature.sms_unbiased,
         .sms_max_trials = signature.sms_max_trials};

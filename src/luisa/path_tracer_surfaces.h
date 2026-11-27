@@ -105,6 +105,7 @@ struct SurfaceCallables {
 
 [[nodiscard]] SurfaceCallables make_surface_callables(
     const std::shared_ptr<LuisaSceneData> &scene,
-    bool spectral_rendering = false) noexcept;
+    bool spectral_rendering = false,
+    contract::SpectralMode spectral_mode = contract::SpectralMode::none) noexcept;
 
 }// namespace psycles::luisa_backend::detail
