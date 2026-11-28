@@ -573,6 +573,15 @@ void ClosurePool::set_fresnel_f82_tint(Expr<std::uint32_t> index,
 
 void ClosurePool::set_left(Expr<std::uint32_t> left) noexcept { _left = left; }
 
+UInt ClosurePool::closure_type(Expr<std::uint32_t> index) const noexcept {
+  return load_word(index, layout::ShaderClosure_type);
+}
+
+Float ClosurePool::closure_sample_weight(
+    Expr<std::uint32_t> index) const noexcept {
+  return load_float(index, layout::ShaderClosure_sample_weight);
+}
+
 ShaderClosureCommon
 ClosurePool::common(Expr<std::uint32_t> index) const noexcept {
   static_assert(layout::ShaderClosure_weight == 0u &&

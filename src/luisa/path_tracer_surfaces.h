@@ -54,6 +54,11 @@ struct CyclesSvmSurfaceState {
     cycles_svm::detail::ClosureTypeMask closure_types;
 };
 
+struct UpperHemisphereGuard {
+    luisa::compute::Bool valid{false};
+    luisa::compute::Float3 normal{luisa::compute::make_float3(0.0f)};
+};
+
 class PopulatedSurfaceShader {
 
   public:
@@ -69,6 +74,11 @@ class PopulatedSurfaceShader {
 
     [[nodiscard]] virtual Bool has_sms_eligible_closure() const noexcept {
       return Bool{false};
+    }
+
+    [[nodiscard]] virtual UpperHemisphereGuard
+    opaque_upper_hemisphere() const noexcept {
+      return {};
     }
 
     [[nodiscard]] virtual Expr<std::uint32_t>

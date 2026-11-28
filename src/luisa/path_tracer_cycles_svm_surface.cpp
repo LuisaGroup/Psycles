@@ -740,6 +740,50 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
       return _has_sms_eligible_closure.value_or(Bool{false});
     }
 
+    [[nodiscard]] UpperHemisphereGuard
+    opaque_upper_hemisphere() const noexcept override {
+      Bool ok = ((_shader_data->flag &
+                  unsigned(abi::SD_BSDF_HAS_TRANSMISSION)) == 0u);
+      if (_kernel_globals.has_curves()) {
+        ok = ok & ((_shader_data->type & unsigned(abi::PRIMITIVE_CURVE)) == 0u);
+      }
+      Bool has_bsdf = false;
+      Float3 shared_normal = _shader_data->N;
+      $if(ok) {
+        const auto &pool = *_closures;
+        const auto check_slot = [&](Expr<std::uint32_t> index) noexcept {
+          const auto common = pool.common(index);
+          const auto reflect_only_type =
+              ((common.type >= closure::type_diffuse) &
+               (common.type <= closure::type_oren_nayar)) |
+              (common.type == closure::type_sheen) |
+              ((common.type >= closure::type_microfacet_ggx) &
+               (common.type <= closure::type_ashikhmin_shirley)) |
+              (common.type == closure::type_transparent);
+          $if(closure::is_bsdf(common.type)) {
+            $if(!has_bsdf) {
+              shared_normal = common.N;
+              has_bsdf = true;
+            }
+            $else {
+              ok = ok & all(common.N == shared_normal);
+            };
+            ok = ok & reflect_only_type;
+          };
+        };
+        if (pool.capacity() <= 1u) {
+          $if(pool.count() != 0u) { check_slot(0u); };
+        } else {
+          UInt index = 0u;
+          $while(index < pool.count()) {
+            check_slot(index);
+            index += 1u;
+          };
+        }
+      };
+      return {.valid = ok & has_bsdf, .normal = shared_normal};
+    }
+
     [[nodiscard]] Expr<std::uint32_t>
     closure_count() const noexcept override {
       return _closures->count();

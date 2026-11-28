@@ -129,7 +129,9 @@ public:
       }
       if (direct_lighting_plan.transport_stage_count() != 0u) {
         direct_light_transport = make_direct_light_transport_stage(
-            direct_light_trace, make_direct_light_task_evaluator(config),
+            direct_light_trace,
+            make_direct_light_task_evaluator(
+                config, !static_cast<bool>(config.direct_light_task_sink)),
             config.direct_light_task_sink, config.path_trace_enabled);
       }
       if (config.caustics_active() && !config.caustics_task_sink) {
@@ -215,6 +217,14 @@ void PathKernelPipeline::emit(
     Bool search_events = true;
     Bool path_terminated = false;
     Bool volume_scattered = false;
+    const bool can_reuse_closest_shader_id =
+        (_impl->volume_segment == nullptr) &&
+        !sample.vt_wait_resident &&
+        (pipeline_config.scene != nullptr) &&
+        (pipeline_config.scene->cycles_svm != nullptr) &&
+        (pipeline_config.scene->cycles_svm->geometry != nullptr) &&
+        pipeline_config.scene->cycles_svm->kernel_shader_buffer.has_value();
+    UInt cached_surface_shader_id = 0u;
     $while(search_events & !path_terminated) {
       suspend_before_closest_intersection(
           cut_policy, static_cast<bool>(_impl->subsurface_transport),
@@ -233,6 +243,11 @@ void PathKernelPipeline::emit(
         prof->bump(MegakernelStageProfileState::count_closest_traces);
       }
       auto event = _impl->closest_event->emit(bounce, previous_analytic_light);
+      if (can_reuse_closest_shader_id) {
+        $if(event.surface) {
+          cached_surface_shader_id = event.surface_shader_id;
+        };
+      }
       if (prof != nullptr) {
         prof->enter(MegakernelStageProfileState::stage_volume_and_background);
       }
@@ -270,7 +285,9 @@ void PathKernelPipeline::emit(
         auto emit_background_stage = [&]() noexcept {
           search_events = false;
           $if(event.background) {
-            if (sample.vt_wait_resident) {
+            if (pipeline_config.inline_constant_background()) {
+              _impl->background->emit(event);
+            } else if (sample.vt_wait_resident) {
               $loop {
                 $suspend(path_transition::shade_background);
                 UInt vt_miss = vt_invalid_page;
@@ -463,6 +480,14 @@ void PathKernelPipeline::emit(
         _impl->bounce_random->with_active_state(
             sample, has_evaluable_bsdf, [&](PathBounceRandomState &random) {
               bounce.random_state = &random;
+              if (!config.path_trace_enabled &&
+                  lighting.shading.populated_surface) {
+                const auto guard =
+                    lighting.shading.populated_surface
+                        ->opaque_upper_hemisphere();
+                lighting.opaque_upper_hemisphere_only = guard.valid;
+                lighting.opaque_upper_hemisphere_normal = guard.normal;
+              }
               if (config.use_light_tree) {
                 random.selected_light = config.light_tree.surface_sample(
                     random.light_sample.z, lighting.surface.hit_position,
@@ -617,7 +642,15 @@ void PathKernelPipeline::emit(
               if (config.xyz3_rough_dispersion()) {
                 evaluation.spectral_lane_pdf.emplace(make_float4(0.0f));
               }
-              $if(direct_light.valid) {
+              const auto eval_active =
+                  !config.path_trace_enabled
+                      ? (direct_light.valid &
+                         !(lighting.opaque_upper_hemisphere_only &
+                           (dot(direct_light.direction,
+                                lighting.opaque_upper_hemisphere_normal) <
+                            0.0f)))
+                      : direct_light.valid;
+              $if(eval_active) {
                 if (prof != nullptr) {
                   prof->bump(MegakernelStageProfileState::count_nee_evals);
                 }
@@ -627,7 +660,7 @@ void PathKernelPipeline::emit(
                     lighting.surface.path_surface_query,
                     direct_light.shader_flags);
               };
-              $if(direct_light.valid) {
+              $if(eval_active) {
                 const auto cycles_mis_weight =
                     config.is_xyz3() && evaluation.spectral_lane_pdf.has_value()
                         ? config.light_transport.nee_light_weight(
@@ -905,6 +938,20 @@ void PathKernelPipeline::emit(
                 outer_break, outer_continue);
           };
 
+      const auto emit_surface_shader_id = [&]() noexcept -> UInt {
+        if (can_reuse_closest_shader_id) {
+          if (_impl->subsurface_transport != nullptr) {
+            UInt resolved = cached_surface_shader_id;
+            $if(bounce.subsurface_exit) {
+              resolved = _impl->surface_queue_key->emit(scene, bounce.hit);
+            };
+            return resolved;
+          }
+          return cached_surface_shader_id;
+        }
+        return _impl->surface_queue_key->emit(scene, bounce.hit);
+      };
+
       if (use_post_substage) {
         const bool any_bssrdf = bucket_plan.any_may_have_bssrdf();
         Float3 merged_hit_position = make_float3(0.0f);
@@ -1004,8 +1051,7 @@ void PathKernelPipeline::emit(
         };
 
         if (use_multi_bucket) {
-          const auto shader_id =
-              _impl->surface_queue_key->emit(scene, bounce.hit);
+          const auto shader_id = emit_surface_shader_id();
           const auto bucket_idx = bucket_plan.emit_bucket_index(shader_id);
           const auto suspend_bucket = [&](std::size_t b) noexcept {
             run_phase_a_with_vt(b, [&]() noexcept {
@@ -1036,8 +1082,7 @@ void PathKernelPipeline::emit(
         } else {
           run_phase_a_with_vt(0u, [&]() noexcept {
             if (_impl->surface_queue_key) {
-              const auto surface_queue_key =
-                  _impl->surface_queue_key->emit(scene, bounce.hit);
+              const auto surface_queue_key = emit_surface_shader_id();
               if (config.staged_surface_sort_annotation) {
                 $suspend(path_transition::shade_surface,
                          make_surface_sort_annotation(
@@ -1096,8 +1141,7 @@ void PathKernelPipeline::emit(
         emit_post_closure_tail(post_lighting, merged_transport, merged_scatter,
                                any_bssrdf);
       } else if (use_multi_bucket) {
-        const auto shader_id =
-            _impl->surface_queue_key->emit(scene, bounce.hit);
+        const auto shader_id = emit_surface_shader_id();
         const auto bucket_idx = bucket_plan.emit_bucket_index(shader_id);
         Bool vt_outer_break = false;
         Bool vt_outer_continue = false;
@@ -1225,8 +1269,7 @@ void PathKernelPipeline::emit(
         auto emit_single_surface_suspend = [&]() noexcept {
           if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
             if (_impl->surface_queue_key) {
-              const auto surface_queue_key =
-                  _impl->surface_queue_key->emit(scene, bounce.hit);
+              const auto surface_queue_key = emit_surface_shader_id();
               if (config.staged_surface_sort_annotation) {
                 $suspend(path_transition::shade_surface,
                          make_surface_sort_annotation(

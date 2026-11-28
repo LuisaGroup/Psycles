@@ -245,16 +245,16 @@ void surface_shader_prepare_closures(
     auto &pool = *shader_data.closure;
     if (pool.capacity() <= 1u) {
       $if(pool.count() != 0u) {
-        const auto common = pool.common(0u);
-        $if(closure::is_bsdf(common.type)) {
+        const auto t = pool.closure_type(0u);
+        $if(closure::is_bsdf(t)) {
           bsdf_blur(pool, 0u, blur_roughness, closure_types);
         };
       };
     } else {
       UInt index = 0u;
       $while(index < pool.count()) {
-        const auto common = pool.common(index);
-        $if(closure::is_bsdf(common.type)) {
+        const auto t = pool.closure_type(index);
+        $if(closure::is_bsdf(t)) {
           bsdf_blur(pool, index, blur_roughness, closure_types);
         };
         index += 1u;
@@ -301,32 +301,52 @@ surface_shader_bsdf_bssrdf_pick(const ShaderData &shader_data,
   /* This intentionally branches on the total retained closure count rather
    * than the eligible count. It is the exact Cycles fast-path condition. */
   $if(pool.count() > 1u) {
-    Float sum_sample_weight = 0.0f;
-    UInt index = 0u;
-    $while(index < pool.count()) {
-      const auto common = pool.common(index);
-      $if(closure::is_bsdf_or_bssrdf(common.type)) {
-        sum_sample_weight += common.sample_weight;
+    $if(pool.count() == 2u) {
+      const auto t0 = pool.closure_type(0u);
+      const auto w0 = select(0.0f, pool.closure_sample_weight(0u),
+                             closure::is_bsdf_or_bssrdf(t0));
+      const auto t1 = pool.closure_type(1u);
+      const auto w1 = select(0.0f, pool.closure_sample_weight(1u),
+                             closure::is_bsdf_or_bssrdf(t1));
+      const auto sum_w = w0 + w1;
+      const auto target = random.z * sum_w;
+      $if(target < w0) {
+        sampled = 0u;
+        reused_random = make_float3(random.xy(), target / w0);
+      }
+      $elif(target < sum_w) {
+        sampled = 1u;
+        reused_random = make_float3(random.xy(), (target - w0) / w1);
       };
-      index += 1u;
-    };
-
-    const auto target = random.z * sum_sample_weight;
-    Float partial_sum = 0.0f;
-    index = 0u;
-    $while(index < pool.count()) {
-      const auto common = pool.common(index);
-      $if(closure::is_bsdf_or_bssrdf(common.type)) {
-        const auto next_sum = partial_sum + common.sample_weight;
-        $if(target < next_sum) {
-          sampled = index;
-          reused_random = make_float3(random.xy(), (target - partial_sum) /
-                                                       common.sample_weight);
-          $break;
+    }
+    $else {
+      Float sum_sample_weight = 0.0f;
+      UInt index = 0u;
+      $while(index < pool.count()) {
+        const auto t = pool.closure_type(index);
+        $if(closure::is_bsdf_or_bssrdf(t)) {
+          sum_sample_weight += pool.closure_sample_weight(index);
         };
-        partial_sum = next_sum;
+        index += 1u;
       };
-      index += 1u;
+
+      const auto target = random.z * sum_sample_weight;
+      Float partial_sum = 0.0f;
+      index = 0u;
+      $while(index < pool.count()) {
+        const auto t = pool.closure_type(index);
+        $if(closure::is_bsdf_or_bssrdf(t)) {
+          const auto sw = pool.closure_sample_weight(index);
+          const auto next_sum = partial_sum + sw;
+          $if(target < next_sum) {
+            sampled = index;
+            reused_random = make_float3(random.xy(), (target - partial_sum) / sw);
+            $break;
+          };
+          partial_sum = next_sum;
+        };
+        index += 1u;
+      };
     };
   };
 

@@ -432,16 +432,20 @@ void DirectLightTaskEvaluator::emit_atomic(
 }
 
 DirectLightTaskEvaluator
-make_direct_light_task_evaluator(const PathKernelConfig &config) noexcept {
+make_direct_light_task_evaluator(const PathKernelConfig &config,
+                                 bool include_light_emission) noexcept {
   return {.intersect_shadow = config.intersect_shadow,
           .shade_shadow_surface = config.shade_shadow_surface,
           .trace_shadow = config.trace_shadow,
           .light_sample_roulette =
               config.light_transport.light_sample_roulette_weight,
           .clamp_contribution = config.light_transport.clamp_light_contribution,
-          .light_emission = make_cycles_svm_light_emission_component(
-              config.scene, config.camera_projection,
-              config.reflective_caustics, config.refractive_caustics),
+          .light_emission = include_light_emission
+                                ? make_cycles_svm_light_emission_component(
+                                      config.scene, config.camera_projection,
+                                      config.reflective_caustics,
+                                      config.refractive_caustics)
+                                : nullptr,
           .spectral_tables = config.spectral_rendering
                                  ? config.scene->spectral_tables
                                  : nullptr,

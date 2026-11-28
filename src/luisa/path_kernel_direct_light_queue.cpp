@@ -995,18 +995,18 @@ public:
                 };
               }
               if (_warp_size == 32u) {
-                $if(luisa::compute::warp_active_all_equal(next)) {
-                  const auto total =
-                      luisa::compute::warp_active_count_bits(true);
-                  $if((next != 0u) &
-                      (luisa::compute::warp_prefix_count_bits(true) == 0u)) {
-                    _count->atomic(next - 1u).fetch_add(total);
-                  };
-                }
-                $else {
-                  $if(next != 0u) {
-                    _count->atomic(next - 1u).fetch_add(1u);
-                  };
+                const auto is_leader =
+                    luisa::compute::warp_prefix_count_bits(true) == 0u;
+                const auto c0 =
+                    luisa::compute::warp_active_count_bits(next == 1u);
+                const auto c1 =
+                    luisa::compute::warp_active_count_bits(next == 2u);
+                const auto c2 =
+                    luisa::compute::warp_active_count_bits(next == 3u);
+                $if(is_leader) {
+                  $if(c0 != 0u) { _count->atomic(0u).fetch_add(c0); };
+                  $if(c1 != 0u) { _count->atomic(1u).fetch_add(c1); };
+                  $if(c2 != 0u) { _count->atomic(2u).fetch_add(c2); };
                 };
               } else {
                 $if(next != 0u) {
@@ -1023,18 +1023,18 @@ public:
             };
             if (!(stage == 2u && !_may_continue_shadow && !vt_enabled)) {
               if (_warp_size == 32u) {
-                $if(luisa::compute::warp_active_all_equal(next)) {
-                  const auto total =
-                      luisa::compute::warp_active_count_bits(true);
-                  $if((next != 0u) &
-                      (luisa::compute::warp_prefix_count_bits(true) == 0u)) {
-                    _count->atomic(next - 1u).fetch_add(total);
-                  };
-                }
-                $else {
-                  $if(next != 0u) {
-                    _count->atomic(next - 1u).fetch_add(1u);
-                  };
+                const auto is_leader =
+                    luisa::compute::warp_prefix_count_bits(true) == 0u;
+                const auto c0 =
+                    luisa::compute::warp_active_count_bits(next == 1u);
+                const auto c1 =
+                    luisa::compute::warp_active_count_bits(next == 2u);
+                const auto c2 =
+                    luisa::compute::warp_active_count_bits(next == 3u);
+                $if(is_leader) {
+                  $if(c0 != 0u) { _count->atomic(0u).fetch_add(c0); };
+                  $if(c1 != 0u) { _count->atomic(1u).fetch_add(c1); };
+                  $if(c2 != 0u) { _count->atomic(2u).fetch_add(c2); };
                 };
               } else {
                 $if(next != 0u) {
@@ -1253,13 +1253,14 @@ public:
       }
       tokens.write(slot, token);
       if (_warp_size == 32u) {
-        $if(luisa::compute::warp_active_all_equal(token)) {
-          const auto total = luisa::compute::warp_active_count_bits(true);
-          $if(luisa::compute::warp_prefix_count_bits(true) == 0u) {
-            queue_count.atomic(token - 1u).fetch_add(total);
-          };
-        }
-        $else { queue_count.atomic(token - 1u).fetch_add(1u); };
+        const auto c_nonconst =
+            luisa::compute::warp_active_count_bits(!is_const_light);
+        const auto c_const =
+            luisa::compute::warp_active_count_bits(is_const_light);
+        $if(luisa::compute::warp_prefix_count_bits(true) == 0u) {
+          $if(c_nonconst != 0u) { queue_count.atomic(0u).fetch_add(c_nonconst); };
+          $if(c_const != 0u) { queue_count.atomic(1u).fetch_add(c_const); };
+        };
       } else {
         queue_count.atomic(token - 1u).fetch_add(1u);
       }
@@ -1443,37 +1444,24 @@ public:
     }
     auto encode_chained_shade_and_intersect = [&](std::uint32_t in_kind,
                                                   std::uint32_t threads) {
-      const auto chain12 = alloc_chain_slot(true);
-      const bool chain_extra_round =
-          _may_continue_shadow && _vt_cache == nullptr && threads <= 8192u;
-      if (chain_extra_round) {
-        const auto chain21 = alloc_chain_slot(false);
-        const auto chain12_b = alloc_chain_slot(true);
+      const std::uint32_t chain_rounds =
+          (_may_continue_shadow && _vt_cache == nullptr)
+              ? (threads <= 262144u ? 4u : 2u)
+              : 1u;
+      std::uint32_t cur_in = in_kind;
+      for (std::uint32_t r = 0u; r < chain_rounds; ++r) {
+        const auto mid_kind = alloc_chain_slot(true);
+        const auto next_in =
+            (r + 1u < chain_rounds) ? alloc_chain_slot(false) : 0u;
         commands << _consumers[1u](combined, light_passes, volume_guiding_raw,
                                    consumer_parameters, threads,
-                                   pack_chain_mode(in_kind, chain12))
+                                   pack_chain_mode(cur_in, mid_kind))
                         .dispatch(threads)
                  << _consumers[2u](combined, light_passes, volume_guiding_raw,
                                    consumer_parameters, threads,
-                                   pack_chain_mode(chain12, chain21))
-                        .dispatch(threads)
-                 << _consumers[1u](combined, light_passes, volume_guiding_raw,
-                                   consumer_parameters, threads,
-                                   pack_chain_mode(chain21, chain12_b))
-                        .dispatch(threads)
-                 << _consumers[2u](combined, light_passes, volume_guiding_raw,
-                                   consumer_parameters, threads,
-                                   pack_chain_mode(chain12_b, 0u))
+                                   pack_chain_mode(mid_kind, next_in))
                         .dispatch(threads);
-      } else {
-        commands << _consumers[1u](combined, light_passes, volume_guiding_raw,
-                                   consumer_parameters, threads,
-                                   pack_chain_mode(in_kind, chain12))
-                        .dispatch(threads)
-                 << _consumers[2u](combined, light_passes, volume_guiding_raw,
-                                   consumer_parameters, threads,
-                                   pack_chain_mode(chain12, 0u))
-                        .dispatch(threads);
+        cur_in = next_in;
       }
     };
     if (stage == 0u && _fuse_unoccluded_shadow) {

@@ -25,6 +25,12 @@ class BackgroundEventStageImpl final
 
     void emit(ClosestPathEvent &event)
         const noexcept override {
+        const auto &early_config = event.bounce.sample.invocation.config;
+        if (early_config.scene->environment_emission_is_constant &&
+            early_config.scene->environment_emission_is_zero &&
+            !early_config.transparent_background) {
+            return;
+        }
         auto &sample = event.bounce.sample;
         auto &invocation = sample.invocation;
         const auto &config =
@@ -54,9 +60,6 @@ class BackgroundEventStageImpl final
         const auto world_visible =
             (scene->world_visibility_mask &
              traversal_ray_visibility) != 0u;
-        Bool competing =
-            (path_depth > 0u) &
-            (!mis_competition_skipped);
         const bool hero4 = sample.is_hero4();
         const bool xyz3 = sample.is_xyz3();
         Float environment_weight = 1.0f;
@@ -69,44 +72,44 @@ class BackgroundEventStageImpl final
         // and non-competing rays (primary / delta) always receive unit MIS
         // weight so environment PDF evaluation is not needed.
         $if(world_visible) {
-            $if(competing) {
-                Float environment_selection_pdf =
-                    scene->environment_in_light_distribution
-                        ? scene->light_selection_pdf
-                        : 0.0f;
-                if (config.use_light_tree) {
-                    const auto environment_emitter_id =
-                        scene->emissive_triangle_count + scene->light_count;
-                    environment_selection_pdf = select(
-                        0.0f,
-                        config.light_tree.forward_pdf(
+            if (scene->environment_in_light_distribution) {
+                Bool competing =
+                    (path_depth > 0u) &
+                    (!mis_competition_skipped);
+                $if(competing) {
+                    Float environment_selection_pdf =
+                        scene->light_selection_pdf;
+                    if (config.use_light_tree) {
+                        const auto environment_emitter_id =
+                            scene->emissive_triangle_count + scene->light_count;
+                        environment_selection_pdf = config.light_tree.forward_pdf(
                             environment_emitter_id,
                             ray->origin(),
                             previous_mis_origin_normal,
                             previous_light_tree_dt,
                             sample.cycles_path_visibility,
-                            path_flags),
-                        scene->environment_in_light_distribution);
-                }
-                Float environment_pdf =
-                    _environment_light
-                        ->from_direction(
-                            scene,
-                            *config.background_sampling,
-                            ray->origin(),
-                            ray->direction(),
-                            environment_selection_pdf,
-                            invocation.parameters
-                                .analytic_light_count,
-                            invocation.parameters
-                                .portal_count);
-                environment_weight =
-                    forward_light_weight(
-                        previous_bsdf_pdf,
-                        environment_pdf,
-                        competing,
-                        environment_pdf > 0.0f);
-            };
+                            path_flags);
+                    }
+                    Float environment_pdf =
+                        _environment_light
+                            ->from_direction(
+                                scene,
+                                *config.background_sampling,
+                                ray->origin(),
+                                ray->direction(),
+                                environment_selection_pdf,
+                                invocation.parameters
+                                    .analytic_light_count,
+                                invocation.parameters
+                                    .portal_count);
+                    environment_weight =
+                        forward_light_weight(
+                            previous_bsdf_pdf,
+                            environment_pdf,
+                            competing,
+                            environment_pdf > 0.0f);
+                };
+            }
             if (hero4) {
                 if (scene->environment_emission_is_constant) {
                     *environment_radiance_spec =
@@ -191,24 +194,36 @@ class BackgroundEventStageImpl final
                     make_float3(0.0f),
                     environment_contribution,
                     world_visible);
-            const auto transparent_background_ray =
-                (invocation.parameters
-                     .transparent_background !=
-                 0u) &
-                ((path_flags &
-                  cycles_path_state::
-                      flag_transparent_background) !=
-                 0u);
-            $if(transparent_background_ray) {
-                sample.accumulate_transparency(sample.throughput_average());
+            if (config.transparent_background) {
+                const auto transparent_background_ray =
+                    (invocation.parameters
+                         .transparent_background !=
+                     0u) &
+                    ((path_flags &
+                      cycles_path_state::
+                          flag_transparent_background) !=
+                     0u);
+                $if(transparent_background_ray) {
+                    sample.accumulate_transparency(sample.throughput_average());
+                }
+                $elif(any(environment_contribution != make_float3(0.0f))) {
+                    sample.accumulate_radiance(
+                        environment_contribution);
+                };
+                $if(any(environment_contribution != make_float3(0.0f))) {
+                    sample.accumulate_emission_or_background(
+                        environment_contribution,
+                        LightPassBuffer::environment);
+                };
+            } else {
+                $if(any(environment_contribution != make_float3(0.0f))) {
+                    sample.accumulate_radiance(
+                        environment_contribution);
+                    sample.accumulate_emission_or_background(
+                        environment_contribution,
+                        LightPassBuffer::environment);
+                };
             }
-            $else {
-                sample.accumulate_radiance(
-                    environment_contribution);
-            };
-            sample.accumulate_emission_or_background(
-                environment_contribution,
-                LightPassBuffer::environment);
         };
         if (sample.vt_miss_page != nullptr) {
             $if(*sample.vt_miss_page == vt_invalid_page) {

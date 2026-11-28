@@ -44,6 +44,10 @@ void provide_inert_storage(SceneTableUploadInput input) {
     if (input.emissive_triangles.empty()) {
         input.emissive_triangles.emplace_back(EmissiveTriangleGpu{});
     }
+    if (input.emissive_triangle_geometries.empty()) {
+        input.emissive_triangle_geometries.emplace_back(
+            EmissiveTriangleGeometryGpu{});
+    }
     if (input.geometry_materials.empty()) {
         input.geometry_materials.emplace_back(inert_material_binding());
     }
@@ -580,12 +584,20 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
     scene->emissive_triangle_buffer =
         scene->device.create_buffer<EmissiveTriangleGpu>(
             input.emissive_triangles.size());
+    scene->emissive_triangle_geometry_buffer.emplace(
+        scene->device.create_buffer<EmissiveTriangleGeometryGpu>(
+            input.emissive_triangle_geometries.size()));
+    scene->emissive_triangle_geometry_has_packed_meta =
+        input.emissive_triangle_geometry_has_packed_meta;
     luisa::vector<float> light_distribution_cdf;
     light_distribution_cdf.reserve(input.light_distribution.size());
     for (const auto &entry : input.light_distribution) {
         light_distribution_cdf.emplace_back(entry.cumulative);
     }
-    constexpr std::uint32_t k_light_dist_guide_bins = 8192u;
+    const std::uint32_t k_light_dist_guide_bins =
+        scene->light_distribution_count > 65536u
+            ? 65536u
+            : (scene->light_distribution_count > 16384u ? 32768u : 8192u);
     luisa::vector<luisa::uint> light_distribution_cdf_guide;
     std::uint32_t guide_bins = 0u;
     if (scene->light_distribution_count > 64u &&
@@ -625,9 +637,21 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
     }
     scene->light_distribution_cdf_guide_bins = guide_bins;
 
+    luisa::vector<LightDistributionPayloadGpu> light_distribution_payload;
+    light_distribution_payload.reserve(input.light_distribution.size());
+    for (const auto &entry : input.light_distribution) {
+        light_distribution_payload.emplace_back(LightDistributionPayloadGpu{
+            .selection_pdf = entry.selection_pdf,
+            .kind = entry.kind,
+            .index = entry.index,
+            .emitter_id = entry.emitter_id});
+    }
     scene->light_distribution_buffer =
         scene->device.create_buffer<LightDistributionGpu>(
             input.light_distribution.size());
+    scene->light_distribution_payload_buffer.emplace(
+        scene->device.create_buffer<LightDistributionPayloadGpu>(
+            light_distribution_payload.size()));
     scene->light_distribution_cdf_buffer =
         scene->device.create_buffer<float>(light_distribution_cdf.size());
     scene->light_distribution_cdf_guide_buffer =
@@ -671,8 +695,12 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
                   luisa::span{intersectable_light_indices})
            << scene->emissive_triangle_buffer.copy_from(
                   luisa::span{input.emissive_triangles})
+           << scene->emissive_triangle_geometry_buffer->copy_from(
+                  luisa::span{input.emissive_triangle_geometries})
            << scene->light_distribution_buffer.copy_from(
                   luisa::span{input.light_distribution})
+           << scene->light_distribution_payload_buffer->copy_from(
+                  luisa::span{light_distribution_payload})
            << scene->light_distribution_cdf_buffer.copy_from(
                   luisa::span{light_distribution_cdf})
            << scene->light_distribution_cdf_guide_buffer.copy_from(

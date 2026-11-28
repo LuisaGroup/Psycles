@@ -426,6 +426,7 @@ struct LuisaSceneData {
     std::optional<NishitaEnvironmentRuntime>
         nishita_environment;
     bool environment_emission_is_constant{true};
+    bool environment_emission_is_zero{false};
     std::uint32_t background_map_width{1u};
     std::uint32_t background_map_height{1u};
     float background_portal_weight{};
@@ -472,8 +473,11 @@ struct LuisaSceneData {
     // the direct-light distribution. Their offset is exactly light_count.
     std::uint32_t portal_count{};
     Buffer<EmissiveTriangleGpu> emissive_triangle_buffer;
+    std::optional<Buffer<EmissiveTriangleGeometryGpu>> emissive_triangle_geometry_buffer;
+    bool emissive_triangle_geometry_has_packed_meta{false};
     std::uint32_t emissive_triangle_count{};
     Buffer<LightDistributionGpu> light_distribution_buffer;
+    std::optional<Buffer<LightDistributionPayloadGpu>> light_distribution_payload_buffer;
     std::uint32_t light_distribution_count{};
     Buffer<float> light_distribution_cdf_buffer;
     Buffer<luisa::uint> light_distribution_cdf_guide_buffer;
@@ -633,6 +637,7 @@ struct SessionKernelSignature {
     bool refractive_caustics{true};
     bool has_filter_glossy{false};
     bool ambient_occlusion_bounce_approximation{false};
+    bool transparent_background{false};
     std::uint32_t transparent_max_bounces{8u};
     std::uint32_t wavefront_frame_capacity{1u};
     bool spectral_rendering{false};

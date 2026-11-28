@@ -6,12 +6,12 @@
 #include <psycles/luisa/triangle_light_sampling.h>
 
 #include <memory>
+#include <optional>
 
 namespace psycles::luisa_backend::detail {
 
 struct EmissiveTriangleGeometryContext {
     Var<EmissiveTriangleGpu> emitter;
-    TriangleGeometryContext triangle;
     Float3 p0;
     Float3 p1;
     Float3 p2;
@@ -67,7 +67,10 @@ class EmissiveTriangleComponent {
         UInt emitter_index,
         Float3 reference,
         Float2 random,
-        Float selection_pdf) const noexcept = 0;
+        Float selection_pdf,
+        bool require_full_emitter = true,
+        std::optional<Float3> receiver_upper_hemisphere_normal = std::nullopt,
+        std::optional<Bool> receiver_upper_hemisphere_only = std::nullopt) const noexcept = 0;
 
     [[nodiscard]] virtual Float3
     evaluate_constant_emission(

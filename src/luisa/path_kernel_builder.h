@@ -34,6 +34,7 @@ namespace psycles::luisa_backend::detail {
 
 class CausticsTaskSink;
 class DirectLightTraceRecorder;
+struct PathSurfaceBucketPlan;
 
 using RenderKernelSignature = void(Buffer<luisa::float4>, Buffer<luisa::float4>,
                                    Buffer<luisa::float4>, Buffer<luisa::float4>,
@@ -99,6 +100,7 @@ struct PathKernelConfig {
   // PathKernelPipeline in both cases.
   std::shared_ptr<const DirectLightTaskSink> direct_light_task_sink;
   std::shared_ptr<const CausticsTaskSink> caustics_task_sink;
+  std::shared_ptr<const PathSurfaceBucketPlan> cached_surface_buckets;
     std::uint32_t volume_stack_size{};
     std::uint32_t transparent_max_bounces{~0u};
     std::uint32_t max_volume_shadow_steps{1024u};
@@ -125,6 +127,7 @@ struct PathKernelConfig {
     contract::CausticsMethod caustics_method{contract::CausticsMethod::mnee};
     bool sms_unbiased{true};
     std::uint32_t sms_max_trials{8u};
+    bool transparent_background{true};
 
     [[nodiscard]] contract::SpectralMode
     effective_spectral_mode() const noexcept {
@@ -153,6 +156,20 @@ struct PathKernelConfig {
         return caustics_method == contract::CausticsMethod::sms &&
                scene && scene->scene_has_mnee_caustics() &&
                scene->caustics_caster_triangle_count > 0u;
+    }
+    [[nodiscard]] bool inline_constant_background() const noexcept {
+        if (!staged_surface_sort_annotation || path_trace_enabled || !scene) {
+            return false;
+        }
+        if (!scene->environment_emission_is_constant ||
+            scene->environment_in_light_distribution) {
+            return false;
+        }
+        if (const char *raw = std::getenv("PSYCLES_INLINE_CONSTANT_BACKGROUND");
+            raw != nullptr && *raw != '\0' && std::string_view{raw} == "0") {
+            return false;
+        }
+        return true;
     }
 };
 
@@ -617,6 +634,8 @@ struct ClosestPathEvent {
     // same predicate: EmissionSampling::NONE remains visibly emissive but has
     // no competing light-sampling PDF.
     Bool surface_may_emit;
+    UInt surface_shader_id{0u};
+    Bool has_surface_shader_id{false};
 };
 
 struct VolumeSegmentEvent {
@@ -710,6 +729,8 @@ struct DirectLightingContext {
     PathBounceContext &bounce;
     SurfaceGeometryContext &surface;
     SurfaceShadingState &shading;
+    Bool opaque_upper_hemisphere_only{false};
+    Float3 opaque_upper_hemisphere_normal{make_float3(0.0f)};
 };
 
 // Cycles' LightSample-equivalent state after one emitter-specific proposal

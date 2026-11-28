@@ -54,6 +54,8 @@ struct SceneTableUploadInput {
     luisa::vector<MaterialBindingGpu> &override_materials;
     luisa::vector<LightGpu> &lights;
     luisa::vector<EmissiveTriangleGpu> &emissive_triangles;
+    luisa::vector<EmissiveTriangleGeometryGpu> &emissive_triangle_geometries;
+    bool emissive_triangle_geometry_has_packed_meta{false};
     luisa::vector<LightDistributionGpu> &light_distribution;
     luisa::vector<LightTreeNodeGpu> &light_tree_nodes;
     luisa::vector<LightTreeEmitterGpu> &light_tree_emitters;

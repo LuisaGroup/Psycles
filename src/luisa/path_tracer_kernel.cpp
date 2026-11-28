@@ -333,6 +333,7 @@ LuisaRenderSession::update_kernel_parameters(const RenderSettings &settings) {
         .has_filter_glossy = integrator.filter_glossy > 0.0f,
         .ambient_occlusion_bounce_approximation =
             integrator.ambient_occlusion_bounces != 0u,
+        .transparent_background = settings.transparent_background,
         .transparent_max_bounces = transparent_max_bounces,
         .wavefront_frame_capacity = wavefront_frame_capacity,
         .spectral_rendering = spectral_rendering,
@@ -387,8 +388,18 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         _scene, _scene->volume_metadata.stack_size != 0u);
     auto surface_callables = make_surface_callables(
         _scene, signature.spectral_rendering, signature.spectral_mode);
+    const bool needs_initial_shadow_trace =
+        _options.scheduler == LuisaPathScheduler::megakernel ||
+        _options.scheduler == LuisaPathScheduler::megakernel_per_sample;
+    using NullFnBuilder =
+        luisa::shared_ptr<const luisa::compute::detail::FunctionBuilder>;
     auto shadow_trace_callables =
-        make_shadow_trace_callables(_scene, light_transport.safe_normalize);
+        needs_initial_shadow_trace
+            ? make_shadow_trace_callables(_scene, light_transport.safe_normalize)
+            : ShadowTraceCallables{
+                  .intersect = nullptr,
+                  .shade_surface = EvaluateShadowSurfaceCallable{NullFnBuilder{}},
+                  .trace = TraceShadowCallable{NullFnBuilder{}}};
     std::shared_ptr<const PathVolumeStateComponent> volume_state;
     if (_scene->volume_metadata.stack_size != 0u) {
         volume_state = make_path_volume_state_component();
@@ -436,7 +447,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .xyz3_force_collapse = signature.xyz3_force_collapse,
         .caustics_method = signature.caustics_method,
         .sms_unbiased = signature.sms_unbiased,
-        .sms_max_trials = signature.sms_max_trials};
+        .sms_max_trials = signature.sms_max_trials,
+        .transparent_background = signature.transparent_background};
 
     PathKernelExecutorConfig executor_config{
         .scheduler = _options.scheduler,

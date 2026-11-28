@@ -166,7 +166,8 @@ void validate_cycles_stage_partition_abi(
     const PathSurfaceBucketPlan &surface_buckets,
     bool has_volume,
     bool has_subsurface,
-    bool has_split_shadow_path) noexcept {
+    bool has_split_shadow_path,
+    bool has_shade_background) noexcept {
     const auto require = [&](luisa::string_view name,
                              bool reachable) noexcept {
         const auto *node = coroutine.graph().node_by_name(name);
@@ -188,7 +189,7 @@ void validate_cycles_stage_partition_abi(
     require(path_transition::shade_volume, has_volume);
     require(path_transition::shade_light_forward,
             plan.analytic_light_endpoints);
-    require(path_transition::shade_background, true);
+    require(path_transition::shade_background, has_shade_background);
     for (unsigned b = 0u; b < path_transition::max_surface_buckets; ++b) {
         require(path_transition::shade_surface_bucket_name(b),
                 has_surfaces && b < surface_buckets.buckets.size());
@@ -233,7 +234,8 @@ void validate_cycles_stage_partition_abi(
         path.has_subsurface,
         !path.path_trace_enabled &&
             path.direct_light_task_sink == nullptr &&
-            stage_plan.direct_lighting.transport_stage_count() != 0u);
+            stage_plan.direct_lighting.transport_stage_count() != 0u,
+        !path.inline_constant_background());
     return coroutine;
 }
 
@@ -647,6 +649,8 @@ build_path_kernel_executor(luisa::compute::Device &device,
     auto staged_path = make_local_shadow_path(path, vt_active);
     staged_path.staged_surface_sort_annotation = true;
     staged_path.enable_virtual_texture_cache = vt_active;
+    staged_path.cached_surface_buckets = std::make_shared<PathSurfaceBucketPlan>(
+        make_path_surface_bucket_plan(staged_path));
     DirectLightTaskQueueBinding direct_light_queue;
     CausticsTaskQueueBinding caustics_queue;
     const auto stage_plan = make_path_kernel_scene_stage_plan(
@@ -715,7 +719,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
         has_bucket0_block_override = true;
       }
     }
-    const auto surface_buckets = make_path_surface_bucket_plan(staged_path);
+    const auto &surface_buckets = *staged_path.cached_surface_buckets;
     luisa::compute::coro::WavefrontCoroSchedulerConfig scheduler_config;
     scheduler_config.thread_count = config.wavefront_frame_capacity;
     scheduler_config.execution_block_size = effective_execution_block_size;
@@ -808,7 +812,8 @@ build_path_kernel_executor(luisa::compute::Device &device,
     }
     const auto ext_t0 = VtProfileRecorder::steady_ns();
     auto preparation_stream = device.create_stream();
-    scheduler->register_extension_handler(preparation_stream, make_surface_sort_handler);
+    scheduler->register_extension_handler(preparation_stream,
+                                          make_surface_sort_handler_factory());
     if (vt_active) {
       scheduler->register_extension_handler(
           preparation_stream,

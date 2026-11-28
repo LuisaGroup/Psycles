@@ -2,6 +2,7 @@
 
 #include "path_kernel_builder.h"
 
+#include <functional>
 #include <memory>
 
 #include <luisa/coro/schedulers/wavefront_extension.h>
@@ -39,5 +40,13 @@ make_surface_sort_annotation(UInt shader, std::uint32_t shader_count,
 make_surface_sort_handler(
     luisa::compute::coro::WavefrontCoroExtensionPrepareContext &context,
     const luisa::compute::coro::WavefrontCoroExtensionStage &stage) noexcept;
+
+// Session-scoped factory that caches fused surface-sort shaders across
+// compatible boundaries within one WavefrontCoroScheduler instance.
+[[nodiscard]] std::function<luisa::unique_ptr<
+    luisa::compute::coro::WavefrontCoroSchedulerExtensionHandler>(
+    luisa::compute::coro::WavefrontCoroExtensionPrepareContext &,
+    const luisa::compute::coro::WavefrontCoroExtensionStage &)>
+make_surface_sort_handler_factory() noexcept;
 
 } // namespace psycles::luisa_backend::detail

@@ -68,8 +68,19 @@ make_light_distribution_sample_callable(
         selected = min(
             selected,
             scene->light_distribution_count - 1u);
-        result =
-            scene->light_distribution_buffer->read(selected);
+        if (use_compact_cdf &&
+            scene->light_distribution_payload_buffer.has_value()) {
+            const auto payload =
+                (*scene->light_distribution_payload_buffer)->read(selected);
+            result.cumulative = 0.0f;
+            result.selection_pdf = payload.selection_pdf;
+            result.kind = payload.kind;
+            result.index = payload.index;
+            result.emitter_id = payload.emitter_id;
+        } else {
+            result =
+                scene->light_distribution_buffer->read(selected);
+        }
         return result;
     };
 }

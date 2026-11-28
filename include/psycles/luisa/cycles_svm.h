@@ -1145,6 +1145,10 @@ public:
   [[nodiscard]] luisa::compute::Float4 spectral_weight(
       luisa::compute::Expr<std::uint32_t> index) const noexcept;
 
+  [[nodiscard]] luisa::compute::UInt
+  closure_type(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] luisa::compute::Float
+  closure_sample_weight(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] ShaderClosureCommon
   common(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] ShaderVolumeClosureCommon

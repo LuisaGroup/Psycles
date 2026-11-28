@@ -172,15 +172,22 @@ triangle_directional_pdf(luisa::compute::Float3 reference,
     const auto cosine = abs(dot(normal, -direction));
     const auto uses_solid_angle =
         use_triangle_solid_angle_sampling(reference, p0, p1, p2);
-    const auto solid_angle = triangle_solid_angle(reference, p0, p1, p2);
-    const auto area_pdf = distance_squared / max(cosine * area, 1.0e-20f);
-    const auto solid_angle_pdf = 1.0f / max(solid_angle, 1.0e-20f);
     const auto valid_area =
         (area > 0.0f) & (distance_squared > 1.0e-12f) & (cosine > 0.0f);
-    const auto valid_solid_angle = valid_area & (solid_angle > 0.0f);
-    return {.value = select(area_pdf, solid_angle_pdf, uses_solid_angle),
+    luisa::compute::Float value = 0.0f;
+    luisa::compute::Bool valid = false;
+    $if(uses_solid_angle) {
+        const auto solid_angle = triangle_solid_angle(reference, p0, p1, p2);
+        value = 1.0f / max(solid_angle, 1.0e-20f);
+        valid = valid_area & (solid_angle > 0.0f);
+    }
+    $else {
+        value = distance_squared / max(cosine * area, 1.0e-20f);
+        valid = valid_area;
+    };
+    return {.value = value,
             .uses_solid_angle = uses_solid_angle,
-            .valid = select(valid_area, valid_solid_angle, uses_solid_angle)};
+            .valid = valid};
 }
 
 // Uniformly sample the subtended spherical triangle when it is large and use
@@ -192,95 +199,155 @@ sample_triangle(luisa::compute::Float3 reference,
                 luisa::compute::Float3 p1,
                 luisa::compute::Float3 p2,
                 luisa::compute::Float2 random) noexcept {
-    const auto area_barycentric = low_distortion_triangle_barycentric(random);
-    const auto area_position =
-        (1.0f - area_barycentric.x - area_barycentric.y) * p0 +
-        area_barycentric.x * p1 + area_barycentric.y * p2;
-    const auto area_offset = area_position - reference;
-    const auto area_distance_squared = dot(area_offset, area_offset);
-    const auto area_distance = sqrt(max(area_distance_squared, 1.0e-20f));
-    const auto area_direction = area_offset / area_distance;
-
-    const auto a = normalize_or(p0 - reference,
-                                luisa::compute::make_float3(1.0f, 0.0f, 0.0f));
-    const auto b = normalize_or(p1 - reference,
-                                luisa::compute::make_float3(0.0f, 1.0f, 0.0f));
-    const auto c = normalize_or(p2 - reference,
-                                luisa::compute::make_float3(0.0f, 0.0f, 1.0f));
-    const auto cosine_a = clamp(dot(b, c), -1.0f, 1.0f);
-    const auto cosine_b = clamp(dot(a, c), -1.0f, 1.0f);
-    const auto cosine_c = clamp(dot(a, b), -1.0f, 1.0f);
-    const auto solid_angle = triangle_solid_angle(reference, p0, p1, p2);
-    const auto ab_normal = normalize_or(
-        cross(a, b), luisa::compute::make_float3(1.0f, 0.0f, 0.0f));
-    const auto ac_normal = normalize_or(
-        cross(a, c), luisa::compute::make_float3(0.0f, 1.0f, 0.0f));
-    const auto cosine_alpha = clamp(dot(ab_normal, ac_normal), -1.0f, 1.0f);
-    const auto sine_alpha = sqrt(max(1.0f - cosine_alpha * cosine_alpha, 0.0f));
-    const auto alpha = acos(cosine_alpha);
-    const auto phi = clamp(random.x, 0.0f, 1.0f) * solid_angle - alpha;
-    const auto sine_phi = sin(phi);
-    const auto cosine_phi = cos(phi);
-    const auto u = cosine_phi - cosine_alpha;
-    const auto v = sine_phi + sine_alpha * cosine_c;
-    const auto numerator = (v * cosine_phi - u * sine_phi) * cosine_alpha - v;
-    const auto denominator = (v * sine_phi + u * cosine_phi) * sine_alpha;
-    const auto safe_denominator =
-        select(select(-1.0e-20f, 1.0e-20f, denominator >= 0.0f),
-               denominator,
-               abs(denominator) > 1.0e-20f);
-    const auto q = select(
-        numerator / safe_denominator, 1.0f, abs(denominator) <= 1.0e-20f);
-    const auto tangent = normalize_or(
-        c - cosine_b * a, luisa::compute::make_float3(0.0f, 1.0f, 0.0f));
-    const auto c_prime = normalize_or(
-        clamp(q, -1.0f, 1.0f) * a + sqrt(max(1.0f - q * q, 0.0f)) * tangent, a);
-    const auto z =
-        1.0f - clamp(random.y, 0.0f, 1.0f) * (1.0f - dot(c_prime, b));
-    const auto edge_direction = normalize_or(c_prime - dot(c_prime, b) * b, a);
-    const auto solid_direction =
-        normalize_or(z * b + sqrt(max(1.0f - z * z, 0.0f)) * edge_direction, b);
-
-    // Intersect the sampled direction with the original planar triangle so
-    // attributes can use the same barycentric point as the light PDF.
-    const auto edge01 = p1 - p0;
-    const auto edge02 = p2 - p0;
-    const auto p_vector = cross(solid_direction, edge02);
-    const auto determinant = dot(edge01, p_vector);
-    const auto safe_determinant =
-        select(select(-1.0e-20f, 1.0e-20f, determinant >= 0.0f),
-               determinant,
-               abs(determinant) > 1.0e-20f);
-    const auto inverse_determinant = 1.0f / safe_determinant;
-    const auto t_vector = reference - p0;
-    const auto solid_u = dot(t_vector, p_vector) * inverse_determinant;
-    const auto q_vector = cross(t_vector, edge01);
-    const auto solid_v = dot(solid_direction, q_vector) * inverse_determinant;
-    const auto solid_distance = dot(edge02, q_vector) * inverse_determinant;
-    const auto solid_barycentric =
-        luisa::compute::make_float2(solid_u, solid_v);
-    const auto solid_position = reference + solid_direction * solid_distance;
-    const auto solid_valid =
-        (abs(determinant) > 1.0e-20f) & (solid_distance > 0.0f) &
-        (solid_u >= -1.0e-5f) & (solid_v >= -1.0e-5f) &
-        (solid_u + solid_v <= 1.0f + 1.0e-5f) & (solid_angle > 0.0f);
-
     const auto uses_solid_angle =
         use_triangle_solid_angle_sampling(reference, p0, p1, p2);
-    const auto position =
-        select(area_position, solid_position, uses_solid_angle);
-    const auto pdf = triangle_directional_pdf(reference, position, p0, p1, p2);
+    luisa::compute::Float3 position = luisa::compute::make_float3(0.0f);
+    luisa::compute::Float2 barycentric = luisa::compute::make_float2(0.0f);
+    luisa::compute::Float3 direction = luisa::compute::make_float3(0.0f);
+    luisa::compute::Float distance = 0.0f;
+    luisa::compute::Float conditional_pdf = 0.0f;
+    luisa::compute::Bool valid = false;
+
+    $if(luisa::compute::warp_active_any(uses_solid_angle)) {
+        const auto area_barycentric = low_distortion_triangle_barycentric(random);
+        const auto area_position =
+            (1.0f - area_barycentric.x - area_barycentric.y) * p0 +
+            area_barycentric.x * p1 + area_barycentric.y * p2;
+        const auto area_offset = area_position - reference;
+        const auto area_distance_squared = dot(area_offset, area_offset);
+        const auto area_distance = sqrt(max(area_distance_squared, 1.0e-20f));
+        const auto area_direction = area_offset / area_distance;
+
+        const auto a = normalize_or(p0 - reference,
+                                    luisa::compute::make_float3(1.0f, 0.0f, 0.0f));
+        const auto b = normalize_or(p1 - reference,
+                                    luisa::compute::make_float3(0.0f, 1.0f, 0.0f));
+        const auto c = normalize_or(p2 - reference,
+                                    luisa::compute::make_float3(0.0f, 0.0f, 1.0f));
+        const auto cosine_a = clamp(dot(b, c), -1.0f, 1.0f);
+        const auto cosine_b = clamp(dot(a, c), -1.0f, 1.0f);
+        const auto cosine_c = clamp(dot(a, b), -1.0f, 1.0f);
+        const auto solid_angle = triangle_solid_angle(reference, p0, p1, p2);
+        const auto ab_normal = normalize_or(
+            cross(a, b), luisa::compute::make_float3(1.0f, 0.0f, 0.0f));
+        const auto ac_normal = normalize_or(
+            cross(a, c), luisa::compute::make_float3(0.0f, 1.0f, 0.0f));
+        const auto cosine_alpha = clamp(dot(ab_normal, ac_normal), -1.0f, 1.0f);
+        const auto sine_alpha = sqrt(max(1.0f - cosine_alpha * cosine_alpha, 0.0f));
+        const auto alpha = acos(cosine_alpha);
+        const auto phi = clamp(random.x, 0.0f, 1.0f) * solid_angle - alpha;
+        const auto sine_phi = sin(phi);
+        const auto cosine_phi = cos(phi);
+        const auto u = cosine_phi - cosine_alpha;
+        const auto v = sine_phi + sine_alpha * cosine_c;
+        const auto numerator = (v * cosine_phi - u * sine_phi) * cosine_alpha - v;
+        const auto denominator = (v * sine_phi + u * cosine_phi) * sine_alpha;
+        const auto safe_denominator =
+            select(select(-1.0e-20f, 1.0e-20f, denominator >= 0.0f),
+                   denominator,
+                   abs(denominator) > 1.0e-20f);
+        const auto q = select(
+            numerator / safe_denominator, 1.0f, abs(denominator) <= 1.0e-20f);
+        const auto tangent = normalize_or(
+            c - cosine_b * a, luisa::compute::make_float3(0.0f, 1.0f, 0.0f));
+        const auto c_prime = normalize_or(
+            clamp(q, -1.0f, 1.0f) * a + sqrt(max(1.0f - q * q, 0.0f)) * tangent, a);
+        const auto z =
+            1.0f - clamp(random.y, 0.0f, 1.0f) * (1.0f - dot(c_prime, b));
+        const auto edge_direction = normalize_or(c_prime - dot(c_prime, b) * b, a);
+        const auto solid_direction =
+            normalize_or(z * b + sqrt(max(1.0f - z * z, 0.0f)) * edge_direction, b);
+
+        // Intersect the sampled direction with the original planar triangle so
+        // attributes can use the same barycentric point as the light PDF.
+        const auto edge01 = p1 - p0;
+        const auto edge02 = p2 - p0;
+        const auto p_vector = cross(solid_direction, edge02);
+        const auto determinant = dot(edge01, p_vector);
+        const auto safe_determinant =
+            select(select(-1.0e-20f, 1.0e-20f, determinant >= 0.0f),
+                   determinant,
+                   abs(determinant) > 1.0e-20f);
+        const auto inverse_determinant = 1.0f / safe_determinant;
+        const auto t_vector = reference - p0;
+        const auto solid_u = dot(t_vector, p_vector) * inverse_determinant;
+        const auto q_vector = cross(t_vector, edge01);
+        const auto solid_v = dot(solid_direction, q_vector) * inverse_determinant;
+        const auto solid_distance = dot(edge02, q_vector) * inverse_determinant;
+        const auto solid_barycentric =
+            luisa::compute::make_float2(solid_u, solid_v);
+        const auto solid_position = reference + solid_direction * solid_distance;
+        const auto solid_valid =
+            (abs(determinant) > 1.0e-20f) & (solid_distance > 0.0f) &
+            (solid_u >= -1.0e-5f) & (solid_v >= -1.0e-5f) &
+            (solid_u + solid_v <= 1.0f + 1.0e-5f) & (solid_angle > 0.0f);
+
+        position = select(area_position, solid_position, uses_solid_angle);
+        const auto pdf_unnormalized_normal = cross(edge01, edge02);
+        const auto pdf_doubled_area =
+            sqrt(max(dot(pdf_unnormalized_normal, pdf_unnormalized_normal), 0.0f));
+        const auto pdf_area = 0.5f * pdf_doubled_area;
+        const auto pdf_normal =
+            pdf_unnormalized_normal / max(pdf_doubled_area, 1.0e-20f);
+        const auto pdf_offset = position - reference;
+        const auto pdf_distance_squared = dot(pdf_offset, pdf_offset);
+        const auto pdf_direction =
+            pdf_offset * rsqrt(max(pdf_distance_squared, 1.0e-20f));
+        const auto pdf_cosine = abs(dot(pdf_normal, -pdf_direction));
+        const auto pdf_valid_area =
+            (pdf_area > 0.0f) & (pdf_distance_squared > 1.0e-12f) &
+            (pdf_cosine > 0.0f);
+        const auto pdf_area_value =
+            pdf_distance_squared / max(pdf_cosine * pdf_area, 1.0e-20f);
+        const auto pdf_solid_value = 1.0f / max(solid_angle, 1.0e-20f);
+        const auto pdf_valid = select(
+            pdf_valid_area, pdf_valid_area & (solid_angle > 0.0f), uses_solid_angle);
+        barycentric =
+            select(area_barycentric, solid_barycentric, uses_solid_angle);
+        direction = select(area_direction, solid_direction, uses_solid_angle);
+        distance = select(area_distance, solid_distance, uses_solid_angle);
+        conditional_pdf =
+            select(pdf_area_value, pdf_solid_value, uses_solid_angle);
+        valid = pdf_valid & select(area_distance_squared > 1.0e-12f,
+                                   solid_valid,
+                                   uses_solid_angle);
+    }
+    $else {
+        const auto e0 = p1 - p0;
+        const auto e1 = p2 - p0;
+        const auto unnormalized_normal = cross(e0, e1);
+        const auto doubled_area =
+            sqrt(max(dot(unnormalized_normal, unnormalized_normal), 0.0f));
+        const auto area = 0.5f * doubled_area;
+        const auto normal = unnormalized_normal / max(doubled_area, 1.0e-20f);
+        const auto area_barycentric = low_distortion_triangle_barycentric(random);
+        const auto area_position =
+            (1.0f - area_barycentric.x - area_barycentric.y) * p0 +
+            area_barycentric.x * p1 + area_barycentric.y * p2;
+        const auto area_offset = area_position - reference;
+        const auto area_distance_squared = dot(area_offset, area_offset);
+        const auto area_distance = sqrt(max(area_distance_squared, 1.0e-20f));
+        const auto area_direction = area_offset / area_distance;
+        const auto pdf_direction =
+            area_offset * rsqrt(max(area_distance_squared, 1.0e-20f));
+        const auto cosine = abs(dot(normal, -pdf_direction));
+        position = area_position;
+        barycentric = area_barycentric;
+        direction = area_direction;
+        distance = area_distance;
+        conditional_pdf =
+            area_distance_squared / max(cosine * area, 1.0e-20f);
+        valid = (area > 0.0f) & (area_distance_squared > 1.0e-12f) &
+                (cosine > 0.0f);
+    };
+
     return {.position = position,
-            .barycentric =
-                select(area_barycentric, solid_barycentric, uses_solid_angle),
-            .direction =
-                select(area_direction, solid_direction, uses_solid_angle),
-            .distance = select(area_distance, solid_distance, uses_solid_angle),
-            .conditional_pdf = pdf.value,
+            .barycentric = barycentric,
+            .direction = direction,
+            .distance = distance,
+            .conditional_pdf = conditional_pdf,
             .uses_solid_angle = uses_solid_angle,
-            .valid = pdf.valid & select(area_distance_squared > 1.0e-12f,
-                                        solid_valid,
-                                        uses_solid_angle)};
+            .valid = valid};
 }
 
 } // namespace psycles::luisa_backend::spherical_geometry

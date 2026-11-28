@@ -25,6 +25,7 @@
 #include <psycles/core/parallel.h>
 #include <psycles/luisa/cycles_nishita.h>
 
+#include <bit>
 #include <cstdlib>
 #include <cstring>
 #include <string_view>
@@ -32,6 +33,21 @@
 
 namespace psycles::luisa_backend {
 using namespace detail;
+
+namespace {
+[[nodiscard]] luisa::float3 normalize_above_or_host(
+    luisa::float3 value, luisa::float3 fallback,
+    float min_length_squared = 1.0e-20f) noexcept {
+    const float len_sq =
+        value.x * value.x + value.y * value.y + value.z * value.z;
+    if (len_sq > min_length_squared && std::isfinite(len_sq)) {
+        const float inv = 1.0f / std::sqrt(len_sq);
+        return luisa::make_float3(
+            value.x * inv, value.y * inv, value.z * inv);
+    }
+    return fallback;
+}
+}// namespace
 
 contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     const SceneSnapshot &snapshot) {
@@ -1524,6 +1540,14 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     bool has_ambient_occlusion_object_distance = false;
     luisa::vector<MaterialBindingGpu> override_materials;
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
+    luisa::vector<EmissiveTriangleGeometryGpu> emissive_triangle_geometries;
+    bool emissive_triangle_geometry_has_packed_meta = true;
+    static_assert((emissive_geom_shader_mask & emissive_geom_sampling_mask) == 0u);
+    static_assert((emissive_geom_shader_mask & emissive_geom_constant_bit) == 0u);
+    static_assert((emissive_geom_sampling_mask & emissive_geom_constant_bit) == 0u);
+    static_assert(((emissive_geom_shader_mask | emissive_geom_sampling_mask |
+                    emissive_geom_constant_bit) &
+                   ~cycles_shader_identity::shader_mask) == 0u);
     std::vector<float> emissive_triangle_areas;
     luisa::vector<CausticsCasterTriangleGpu> caustics_caster_tris;
     luisa::vector<CausticsCasterObjectGpu> caustics_caster_objs;
@@ -1751,6 +1775,17 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             (instance.visibility_mask &
              mesh_light_sampling_visibility) != 0u;
         if (light_visible) {
+            const auto &upload = uploads[geometry_iter->second];
+            const bool transform_applied = intersection_plan.transform_applied;
+            const auto &isect_positions =
+                upload.cycles_intersection_positions.empty()
+                    ? upload.positions
+                    : upload.cycles_intersection_positions;
+            const luisa::float4x4 o2w = to_luisa(instance.transform);
+            const luisa::float4x4 normal_to_world =
+                transform_applied
+                    ? luisa::transpose(to_luisa(intersection_plan.world_to_object))
+                    : luisa::transpose(luisa::inverse(o2w));
             for (std::size_t primitive_index = 0u;
                  primitive_index < geometry.triangles.size();
                  ++primitive_index) {
@@ -1813,6 +1848,28 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                             cycles_shader_identity::invalid_index
                         ? tag_iter->second.cycles_shader_index
                         : tag_iter->second.material_identity;
+                const auto tri_emission_sampling =
+                    static_cast<std::uint32_t>(
+                        tag_iter->second.emission_sampling);
+                const auto tri_emission_is_constant =
+                    (tag_iter->second.flags &
+                     material_flag_constant_emission) != 0u
+                        ? 1u
+                        : 0u;
+                const auto tri_cycles_primitive_index =
+                    cycles_primitive_offsets.at(instance.geometry) +
+                    static_cast<std::uint32_t>(primitive_index);
+                const auto tri_cycles_shader_id =
+                    cycles_shader_identity::emissive_triangle(
+                        base_shader_index,
+                        smooth,
+                        normalized_visibility,
+                        instance.is_shadow_catcher);
+                const auto tri_cycles_shader_flags =
+                    cycles_shader_identity::emissive_triangle_flags(
+                        smooth,
+                        normalized_visibility,
+                        instance.is_shadow_catcher);
                 emissive_triangles.emplace_back(
                     EmissiveTriangleGpu{
                         .instance_index = instance_index,
@@ -1825,37 +1882,77 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                             tag_iter->second.surface_tag,
                         .parameter_block =
                             tag_iter->second.parameter_block,
-                        .emission_sampling =
-                            static_cast<std::uint32_t>(
-                                tag_iter->second
-                                    .emission_sampling),
-                        .emission_is_constant =
-                            (tag_iter->second.flags &
-                             material_flag_constant_emission) != 0u
-                                ? 1u
-                                : 0u,
+                        .emission_sampling = tri_emission_sampling,
+                        .emission_is_constant = tri_emission_is_constant,
                         .visibility_mask =
                             normalized_visibility,
-                        .cycles_primitive_index =
-                            cycles_primitive_offsets.at(
-                                instance.geometry) +
-                            static_cast<std::uint32_t>(
-                                primitive_index),
+                        .cycles_primitive_index = tri_cycles_primitive_index,
                         .cycles_object_index =
                             cycles_object_index,
-                        .cycles_shader_id =
-                            cycles_shader_identity::emissive_triangle(
-                                base_shader_index,
-                                smooth,
-                                normalized_visibility,
-                                instance.is_shadow_catcher),
-                        .cycles_shader_flags =
-                            cycles_shader_identity::emissive_triangle_flags(
-                                smooth,
-                                normalized_visibility,
-                                instance.is_shadow_catcher),
+                        .cycles_shader_id = tri_cycles_shader_id,
+                        .cycles_shader_flags = tri_cycles_shader_flags,
                         .cycles_light_group =
                             instance.cycles_light_group});
+                const luisa::float3 lp0 = upload.positions[triangle[0u]];
+                const luisa::float3 lp1 = upload.positions[triangle[1u]];
+                const luisa::float3 lp2 = upload.positions[triangle[2u]];
+                luisa::float3 wp0 = isect_positions[triangle[0u]];
+                luisa::float3 wp1 = isect_positions[triangle[1u]];
+                luisa::float3 wp2 = isect_positions[triangle[2u]];
+                if (!transform_applied) {
+                    wp0 = (o2w * luisa::make_float4(lp0, 1.0f)).xyz();
+                    wp1 = (o2w * luisa::make_float4(lp1, 1.0f)).xyz();
+                    wp2 = (o2w * luisa::make_float4(lp2, 1.0f)).xyz();
+                }
+                const luisa::float3 local_n = normalize_above_or_host(
+                    luisa::cross(lp1 - lp0, lp2 - lp0),
+                    luisa::make_float3(0.0f, 0.0f, 1.0f));
+                const luisa::float3 geom_n = normalize_above_or_host(
+                    (normal_to_world * luisa::make_float4(local_n, 0.0f)).xyz(),
+                    luisa::make_float3(0.0f, 0.0f, 1.0f));
+                const float tri_area =
+                    0.5f * luisa::length(luisa::cross(wp1 - wp0, wp2 - wp0));
+                const bool tri_can_pack_meta =
+                    (base_shader_index <= emissive_geom_shader_mask) &&
+                    (tri_emission_sampling <= 7u) &&
+                    ((tri_cycles_shader_flags &
+                      cycles_shader_identity::shader_mask) == 0u) &&
+                    (tri_cycles_shader_id ==
+                     (base_shader_index | tri_cycles_shader_flags));
+                emissive_triangle_geometry_has_packed_meta =
+                    emissive_triangle_geometry_has_packed_meta &&
+                    tri_can_pack_meta;
+                const std::uint32_t packed_meta =
+                    (base_shader_index & emissive_geom_shader_mask) |
+                    ((tri_emission_sampling & 7u)
+                     << emissive_geom_sampling_shift) |
+                    (tri_emission_is_constant != 0u
+                         ? emissive_geom_constant_bit
+                         : 0u) |
+                    (tri_cycles_shader_flags &
+                     ~cycles_shader_identity::shader_mask);
+                emissive_triangle_geometries.emplace_back(
+                    EmissiveTriangleGeometryGpu{
+                        .p0_area = luisa::make_uint4(
+                            std::bit_cast<luisa::uint>(wp0.x),
+                            std::bit_cast<luisa::uint>(wp0.y),
+                            std::bit_cast<luisa::uint>(wp0.z),
+                            std::bit_cast<luisa::uint>(tri_area)),
+                        .p1_packed_meta = luisa::make_uint4(
+                            std::bit_cast<luisa::uint>(wp1.x),
+                            std::bit_cast<luisa::uint>(wp1.y),
+                            std::bit_cast<luisa::uint>(wp1.z),
+                            packed_meta),
+                        .p2_object = luisa::make_uint4(
+                            std::bit_cast<luisa::uint>(wp2.x),
+                            std::bit_cast<luisa::uint>(wp2.y),
+                            std::bit_cast<luisa::uint>(wp2.z),
+                            cycles_object_index),
+                        .normal_primitive = luisa::make_uint4(
+                            std::bit_cast<luisa::uint>(geom_n.x),
+                            std::bit_cast<luisa::uint>(geom_n.y),
+                            std::bit_cast<luisa::uint>(geom_n.z),
+                            tri_cycles_primitive_index)});
                 emissive_triangle_areas.emplace_back(
                     world_triangle_area(
                         instance.transform,
@@ -1993,10 +2090,24 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             data->cycles_background_shader_id & cycles_svm::shader_mask);
         data->environment_emission_is_constant =
             (shader.flags & compiler::cycles_svm::SD_HAS_CONSTANT_EMISSION) != 0;
+        if (data->environment_emission_is_constant) {
+            const float total_x = data->background.x + shader.constant_emission.x;
+            const float total_y = data->background.y + shader.constant_emission.y;
+            const float total_z = data->background.z + shader.constant_emission.z;
+            data->environment_emission_is_zero =
+                total_x == 0.0f && total_y == 0.0f && total_z == 0.0f;
+        } else {
+            data->environment_emission_is_zero = false;
+        }
     } else {
         data->environment_emission_is_constant =
             !data->environment_texture_slot && data->environment_suns.empty() &&
             !data->nishita_environment;
+        data->environment_emission_is_zero =
+            data->environment_emission_is_constant &&
+            data->background.x == 0.0f &&
+            data->background.y == 0.0f &&
+            data->background.z == 0.0f;
     }
 
     bool world_is_spatially_varying = false;
@@ -2064,6 +2175,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
          .override_materials = override_materials,
          .lights = analytic_lights.device_lights,
          .emissive_triangles = emissive_triangles,
+         .emissive_triangle_geometries = emissive_triangle_geometries,
+         .emissive_triangle_geometry_has_packed_meta =
+             emissive_triangle_geometry_has_packed_meta,
          .light_distribution = light_sampling.distribution,
          .light_tree_nodes = light_sampling.tree_nodes,
          .light_tree_emitters = light_sampling.tree_emitters,

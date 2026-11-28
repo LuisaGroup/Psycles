@@ -232,6 +232,20 @@ struct EmissiveTriangleGpu {
     std::int32_t cycles_light_group{};
 };
 
+inline constexpr std::uint32_t emissive_geom_shader_mask = 0x7ffffu;
+inline constexpr std::uint32_t emissive_geom_sampling_shift = 19u;
+inline constexpr std::uint32_t emissive_geom_sampling_mask =
+    0x7u << emissive_geom_sampling_shift;
+inline constexpr std::uint32_t emissive_geom_constant_bit = 1u << 29u;
+
+struct EmissiveTriangleGeometryGpu {
+    luisa::uint4 p0_area{};          // xyz = bit_cast(world p0), w = bit_cast(area)
+    luisa::uint4 p1_packed_meta{};   // xyz = bit_cast(world p1), w = packed_meta
+    luisa::uint4 p2_object{};        // xyz = bit_cast(world p2), w = cycles_object_index
+    luisa::uint4 normal_primitive{}; // xyz = bit_cast(geometric_normal), w = cycles_primitive_index
+};
+static_assert(sizeof(EmissiveTriangleGeometryGpu) == 64u);
+
 struct CausticsCasterTriangleGpu {
     luisa::uint instance_id{};
     luisa::uint primitive_id{};
@@ -261,6 +275,14 @@ struct LightDistributionGpu {
     luisa::uint padding_1{};
     luisa::uint padding_2{};
 };
+
+struct LightDistributionPayloadGpu {
+    float selection_pdf{};
+    luisa::uint kind{};
+    luisa::uint index{};
+    luisa::uint emitter_id{};
+};
+static_assert(sizeof(LightDistributionPayloadGpu) == 16u);
 
 // Light-tree measures are kept in 16-byte lanes. Besides making the ABI
 // explicit across fallback/HIP/Vulkan, this avoids the backend-dependent
@@ -604,6 +626,9 @@ LUISA_STRUCT(
     cycles_shader_flags,
     cycles_light_group) {};
 LUISA_STRUCT(
+    psycles::luisa_backend::detail::EmissiveTriangleGeometryGpu,
+    p0_area, p1_packed_meta, p2_object, normal_primitive) {};
+LUISA_STRUCT(
     psycles::luisa_backend::detail::CausticsCasterTriangleGpu,
     instance_id,
     primitive_id,
@@ -626,6 +651,9 @@ LUISA_STRUCT(
     padding_0,
     padding_1,
     padding_2) {};
+LUISA_STRUCT(
+    psycles::luisa_backend::detail::LightDistributionPayloadGpu,
+    selection_pdf, kind, index, emitter_id) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::LightTreeNodeGpu,
     bounds_min_energy,

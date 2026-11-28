@@ -369,80 +369,8 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
         .channel_mode = (b.sampler & cycles_svm_image_channel_mode_mask) >>
                         cycles_svm_image_channel_mode_shift};
   };
-  luisa::vector<const abi::SvmBlockIr *> domain_unique_routines;
-  for (std::uint32_t i = 0u; i < count; ++i) {
-    if (i < domain_mask.size() && domain_mask[i] == 0u) {
-      continue;
-    }
-    const auto &routine =
-        compilation.table.ir.shaders[i].routine_for(abi::SHADER_TYPE_SURFACE);
-    if (!routine.empty()) {
-      ++domain_active_nonempty;
-      bool merged = false;
-      for (const abi::SvmBlockIr *existing : domain_unique_routines) {
-        if (svm::can_merge_svm_blocks_structurally(
-                host_words, *existing, routine, false, direct_slot_query)) {
-          merged = true;
-          break;
-        }
-      }
-      if (!merged) {
-        domain_unique_routines.push_back(&routine);
-        domain_unique_jit_weight += svm::svm_block_jit_weight(
-            routine, host_words, abi::SHADER_TYPE_SURFACE,
-            svm::kernel_feature_node_mask_surface, false);
-      }
-    }
-  }
-  const std::size_t jit_weight_cap =
-      std::max<std::size_t>(svm::direct_jit_max_weight(), 1u);
-  const bool explicit_weight_env = []() noexcept {
-    const char *raw = std::getenv("PSYCLES_SVM_JIT_MAX_WEIGHT");
-    return raw != nullptr && *raw != '\0';
-  }();
-  std::size_t bucket_weight_cap = jit_weight_cap;
-  if (!explicit_weight_env &&
-      (backend_name == "hip" || backend_name == "dx" || backend_name == "vk")) {
-    bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 9000u);
-  }
-  const SurfaceBucketMode effective_mode = [&]() noexcept {
-    if (mode != SurfaceBucketMode::auto_select) {
-      return mode;
-    }
-    if (force_large_bucket_split) {
-      return SurfaceBucketMode::large_only;
-    }
-    // Multi-bucket splitting reduces shader I-cache/register pressure on
-    // CUDA and Metal, while on DX and Vulkan single-bucket dispatch avoids
-    // extra per-bucket surface-sort wave launches when active surface
-    // shaders fit within DirectJitTranslator's 80-shader budget. Beyond 80
-    // shaders (e.g. Barbershop), falling back to a single BytecodeVM bucket
-    // severely degrades DX/VK throughput, so split into <=80-shader buckets.
-    if (!has_subsurface &&
-        (backend_name == "dx" || backend_name == "vk") &&
-        domain_unique_routines.size() <= svm::direct_jit_max_shaders() &&
-        domain_unique_jit_weight <= bucket_weight_cap) {
-      return SurfaceBucketMode::off;
-    }
-    return SurfaceBucketMode::large_only;
-  }();
-  const bool allow_multi_bucket =
-      staged_surface_sort_annotation && staged_surface_sorting &&
-      effective_mode != SurfaceBucketMode::off && count > 1u;
-
-  if (!allow_multi_bucket) {
-    PathSurfaceBucketSpec single{};
-    single.continuation_name = path_transition::shade_surface;
-    single.active_shader_mask = domain_mask;
-    finalize_bucket_metadata(scene, single);
-    single.key_count = std::max(count, 1u);
-    plan.buckets.push_back(std::move(single));
-    return plan;
-  }
-
   std::vector<RoutineGroup> groups;
   std::vector<std::uint32_t> inactive_or_empty_shaders;
-
   for (std::uint32_t i = 0u; i < count; ++i) {
     if (i < domain_mask.size() && domain_mask[i] == 0u) {
       inactive_or_empty_shaders.push_back(i);
@@ -454,6 +382,7 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       inactive_or_empty_shaders.push_back(i);
       continue;
     }
+    ++domain_active_nonempty;
     const auto &meta = compilation.shader_metadata[i];
     const auto &entry = compilation.shader_surface_entry_usage[i];
     const auto flags =
@@ -502,23 +431,67 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
       }
     }
     if (!merged) {
+      const auto raw_weight = svm::svm_block_jit_weight(
+          routine, host_words, abi::SHADER_TYPE_SURFACE,
+          svm::kernel_feature_node_mask_surface, false);
+      domain_unique_jit_weight += raw_weight;
       RoutineGroup g{};
       g.shader_ids.push_back(i);
       g.routine = &routine;
       g.max_closures = meta.surface_num_closures;
       g.ir_ops = count_ir_ops(routine);
-      g.jit_weight = std::max<std::size_t>(
-          svm::svm_block_jit_weight(routine, host_words,
-                                    abi::SHADER_TYPE_SURFACE,
-                                    svm::kernel_feature_node_mask_surface,
-                                    false),
-          1u);
+      g.jit_weight = std::max<std::size_t>(raw_weight, 1u);
       g.has_bssrdf = meta.has_surface_bssrdf;
       g.is_heavy_closure_model = heavy_model;
       g.has_emission = has_emit;
       g.has_holdout = has_hold;
       groups.push_back(std::move(g));
     }
+  }
+  const std::size_t jit_weight_cap =
+      std::max<std::size_t>(svm::direct_jit_max_weight(), 1u);
+  const bool explicit_weight_env = []() noexcept {
+    const char *raw = std::getenv("PSYCLES_SVM_JIT_MAX_WEIGHT");
+    return raw != nullptr && *raw != '\0';
+  }();
+  std::size_t bucket_weight_cap = jit_weight_cap;
+  if (!explicit_weight_env &&
+      (backend_name == "hip" || backend_name == "dx" || backend_name == "vk")) {
+    bucket_weight_cap = std::min<std::size_t>(jit_weight_cap, 9000u);
+  }
+  const SurfaceBucketMode effective_mode = [&]() noexcept {
+    if (mode != SurfaceBucketMode::auto_select) {
+      return mode;
+    }
+    if (force_large_bucket_split) {
+      return SurfaceBucketMode::large_only;
+    }
+    // Multi-bucket splitting reduces shader I-cache/register pressure on
+    // CUDA and Metal, while on DX and Vulkan single-bucket dispatch avoids
+    // extra per-bucket surface-sort wave launches when active surface
+    // shaders fit within DirectJitTranslator's 80-shader budget. Beyond 80
+    // shaders (e.g. Barbershop), falling back to a single BytecodeVM bucket
+    // severely degrades DX/VK throughput, so split into <=80-shader buckets.
+    if (!has_subsurface &&
+        (backend_name == "dx" || backend_name == "vk") &&
+        groups.size() <= svm::direct_jit_max_shaders() &&
+        domain_unique_jit_weight <= bucket_weight_cap) {
+      return SurfaceBucketMode::off;
+    }
+    return SurfaceBucketMode::large_only;
+  }();
+  const bool allow_multi_bucket =
+      staged_surface_sort_annotation && staged_surface_sorting &&
+      effective_mode != SurfaceBucketMode::off && count > 1u;
+
+  if (!allow_multi_bucket) {
+    PathSurfaceBucketSpec single{};
+    single.continuation_name = path_transition::shade_surface;
+    single.active_shader_mask = domain_mask;
+    finalize_bucket_metadata(scene, single);
+    single.key_count = std::max(count, 1u);
+    plan.buckets.push_back(std::move(single));
+    return plan;
   }
 
   std::sort(groups.begin(), groups.end(),
@@ -825,6 +798,9 @@ PathSurfaceBucketPlan make_path_surface_bucket_plan(
 
 PathSurfaceBucketPlan
 make_path_surface_bucket_plan(const PathKernelConfig &config) noexcept {
+  if (config.cached_surface_buckets != nullptr) {
+    return *config.cached_surface_buckets;
+  }
   return make_path_surface_bucket_plan(
       *config.scene, config.staged_surface_sorting,
       config.staged_surface_sort_annotation, config.path_trace_enabled,

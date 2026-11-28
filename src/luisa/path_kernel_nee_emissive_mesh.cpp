@@ -43,18 +43,22 @@ class EmissiveMeshDirectLightProvider final : public DirectLightProvider {
                         emissive_triangle);
         $if(selected_mesh) {
             const auto light =
-                _emissive_triangle
-                    ->from_position(
-                        config.scene,
-                        selected_light
-                            .index,
-                        surface
-                            .hit_position,
-                        bounce.random()
-                            .light_sample
-                            .xy(),
-                        selected_light
-                            .selection_pdf);
+                !config.path_trace_enabled
+                    ? _emissive_triangle->from_position(
+                          config.scene,
+                          selected_light.index,
+                          surface.hit_position,
+                          bounce.random().light_sample.xy(),
+                          selected_light.selection_pdf,
+                          false,
+                          _context.opaque_upper_hemisphere_normal,
+                          _context.opaque_upper_hemisphere_only)
+                    : _emissive_triangle->from_position(
+                          config.scene,
+                          selected_light.index,
+                          surface.hit_position,
+                          bounce.random().light_sample.xy(),
+                          selected_light.selection_pdf);
             $if(light.valid) {
                 const auto &emitter =
                     light.geometry.emitter;
@@ -170,20 +174,22 @@ class EmissiveMeshDirectLightProvider final : public DirectLightProvider {
                 };
             }
             $else {
-                const auto emitter =
-                    config.scene->emissive_triangle_buffer->read(
-                        selected_light.index);
-                _trace->record_failed_sample(
-                    bounce,
-                    {.emitter_id = selected_light.emitter_id,
-                     .primitive = cast<int>(
-                         emitter.cycles_primitive_index),
-                     .object = cast<int>(
-                         emitter.cycles_object_index),
-                     .visibility_flag =
-                         emitter.cycles_shader_flags &
-                         cycles_shader_identity::exclude_any,
-                     .selection_pdf = selected_light.selection_pdf});
+                if (config.path_trace_enabled) {
+                    const auto emitter =
+                        config.scene->emissive_triangle_buffer->read(
+                            selected_light.index);
+                    _trace->record_failed_sample(
+                        bounce,
+                        {.emitter_id = selected_light.emitter_id,
+                         .primitive = cast<int>(
+                             emitter.cycles_primitive_index),
+                         .object = cast<int>(
+                             emitter.cycles_object_index),
+                         .visibility_flag =
+                             emitter.cycles_shader_flags &
+                             cycles_shader_identity::exclude_any,
+                         .selection_pdf = selected_light.selection_pdf});
+                }
             };
         };
     }

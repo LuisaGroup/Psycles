@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "cycles_shader_identity.h"
 #include "path_kernel_curve_primitive.h"
 #include "path_kernel_triangle_primitive.h"
 
@@ -340,7 +341,66 @@ class ClosestEventStageImpl final
             bounce.hit->miss();
         Bool surface_may_emit = false;
         Bool surface_has_transparent_shadow = false;
-        if (!_primitive_plan.empty()) {
+        UInt surface_shader_id = 0u;
+        Bool has_surface_shader_id = false;
+        const bool use_native_shader_table =
+            !_primitive_plan.empty() &&
+            scene != nullptr &&
+            scene->cycles_svm != nullptr &&
+            scene->cycles_svm->geometry != nullptr &&
+            scene->cycles_svm->kernel_shader_buffer.has_value();
+        Bool surface_flags_loaded = false;
+        const auto ensure_surface_flags = [&]() noexcept {
+            $if(!surface_flags_loaded) {
+                namespace abi = compiler::cycles_svm;
+                const auto sflags =
+                    (*scene->cycles_svm->kernel_shader_buffer)
+                        ->read(surface_shader_id)
+                        .flags.cast<std::uint32_t>();
+                surface_may_emit =
+                    (sflags & static_cast<std::uint32_t>(abi::SD_HAS_EMISSION)) != 0u;
+                surface_has_transparent_shadow =
+                    (sflags & static_cast<std::uint32_t>(
+                                  abi::SD_HAS_TRANSPARENT_SHADOW)) != 0u;
+                surface_flags_loaded = true;
+            };
+        };
+        if (use_native_shader_table) {
+            const auto &native = *scene->cycles_svm->geometry;
+            $if(surface) {
+                Var<InstanceGpu> instance =
+                    scene->instance_buffer->read(bounce.hit->inst);
+                const auto resolve_curve_shader = [&] {
+                    Var<GeometryGpu> geometry =
+                        scene->geometry_buffer->read(instance.geometry_index);
+                    const auto segment =
+                        scene->heap->buffer<CurveSegmentGpu>(geometry.bindless_base)
+                            .read(bounce.hit->prim);
+                    return native.curve_buffer->read(segment.cycles_curve_index)
+                        .shader_id.cast<std::uint32_t>();
+                };
+                const auto resolve_triangle_shader = [&] {
+                    return native.triangle_shader_buffer->read(
+                        instance.cycles_primitive_offset + bounce.hit->prim);
+                };
+                UInt raw_shader = 0u;
+                if (_primitive_plan.mixed()) {
+                    $if(bounce.hit->is_procedural()) {
+                        raw_shader = resolve_curve_shader();
+                    }
+                    $else {
+                        raw_shader = resolve_triangle_shader();
+                    };
+                } else if (_primitive_plan.curves) {
+                    raw_shader = resolve_curve_shader();
+                } else {
+                    raw_shader = resolve_triangle_shader();
+                }
+                surface_shader_id =
+                    raw_shader & cycles_shader_identity::shader_mask;
+                has_surface_shader_id = true;
+            };
+        } else if (!_primitive_plan.empty()) {
             const auto resolve_curve = [&] {
                 const auto primitive =
                     _curves->emit(
@@ -390,6 +450,11 @@ class ClosestEventStageImpl final
                     sample.transmission_depth,
                     sample.glossy_depth,
                     parameters.ambient_occlusion_bounces);
+            if (use_native_shader_table) {
+                $if(ambient_occlusion_bounce & surface) {
+                    ensure_surface_flags();
+                };
+            }
             const auto ambient_occlusion_decision =
                 cycles_path_state::decide_ambient_occlusion_continuation(
                     ambient_occlusion_bounce,
@@ -413,10 +478,24 @@ class ClosestEventStageImpl final
                     parameters.transparent_min_bounces,
                     throughput,
                     sample.spectral_secondary_terminated());
+            Float terminate_sample = 0.0f;
+            $if((continuation_probability != 1.0f) &
+                (continuation_probability != 0.0f)) {
+                terminate_sample = sample.continuation_terminate_sample();
+            };
+            if (use_native_shader_table) {
+                const auto rr_failed =
+                    (continuation_probability != 1.0f) &
+                    ((continuation_probability == 0.0f) |
+                     (terminate_sample >= continuation_probability));
+                $if(surface & rr_failed) {
+                    ensure_surface_flags();
+                };
+            }
             const auto decision =
                 cycles_path_state::decide_closest_continuation(
                     continuation_probability,
-                    sample.continuation_terminate_sample(),
+                    terminate_sample,
                     surface_may_emit,
                     inside_volume);
             path_flags |= decision.deferred_flags;
@@ -436,7 +515,9 @@ class ClosestEventStageImpl final
             std::move(
                 light_hit_evaluation_factor),
             std::move(terminated),
-            std::move(surface_may_emit)};
+            std::move(surface_may_emit),
+            std::move(surface_shader_id),
+            std::move(has_surface_shader_id)};
     }
 };
 

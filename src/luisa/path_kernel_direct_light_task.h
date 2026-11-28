@@ -178,7 +178,8 @@ struct DirectLightTaskEvaluator {
 };
 
 [[nodiscard]] DirectLightTaskEvaluator
-make_direct_light_task_evaluator(const PathKernelConfig &config) noexcept;
+make_direct_light_task_evaluator(const PathKernelConfig &config,
+                                 bool include_light_emission = true) noexcept;
 
 void prepare_surface_shadow_pass(Var<DirectLightTaskCall> &task,
                                  const PathSampleContext &sample,
