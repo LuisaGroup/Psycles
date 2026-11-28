@@ -73,7 +73,16 @@ bool run(const char *program, const char *backend) {
   auto stream = device.create_stream();
   auto scene = std::make_shared<LuisaSceneData>();
   scene->light_count = 1u;
+  scene->intersectable_light_count = 1u;
+  scene->intersectable_light_type_mask =
+      (1u << static_cast<unsigned>(LightType::area)) |
+      (1u << static_cast<unsigned>(LightType::point)) |
+      (1u << static_cast<unsigned>(LightType::spot));
+  scene->any_intersectable_light_camera_visible = true;
+  scene->any_intersectable_light_indirect_mis = true;
   scene->light_buffer = device.create_buffer<LightGpu>(1u);
+  scene->intersectable_light_bounds = device.create_buffer<luisa::float4>(1u);
+  scene->intersectable_light_indices = device.create_buffer<unsigned>(1u);
   auto config = make_config(scene);
   const auto closest = make_closest_event_stage(true, {}, false);
   auto records = device.create_buffer<luisa::float4>(f::count);
@@ -144,6 +153,8 @@ bool run(const char *program, const char *backend) {
   auto visibility_shader =
       device.compile(visibility_kernel, ShaderOption{.enable_cache = false,
                                                      .enable_fast_math = true});
+  const unsigned compact_light_index = 0u;
+  stream << scene->intersectable_light_indices.copy_from(&compact_light_index);
   for (unsigned row = 0u; row < f::inputs.size(); ++row) {
     const auto &input = f::inputs[row];
     for (unsigned mode = 0u; mode < f::modes; ++mode) {
@@ -173,7 +184,16 @@ bool run(const char *program, const char *backend) {
       const auto visibility = mode == 0u || mode == 3u
                                   ? path::visibility_camera
                                   : path::visibility_diffuse;
+      const float r =
+          light.type == static_cast<unsigned>(LightType::area)
+              ? std::sqrt(0.25f * (light.size_u * light.size_u +
+                                   light.size_v * light.size_v))
+              : std::max(light.radius, 0.0f);
+      const float r_pad = r * 1.01f + 1.0e-2f;
+      const auto bound = luisa::make_float4(
+          light.position.x, light.position.y, light.position.z, r_pad * r_pad);
       stream << scene->light_buffer.copy_from(&light)
+             << scene->intersectable_light_bounds.copy_from(&bound)
              << shader(records, unused_float, unused_uint,
                        luisa::make_float3(input.origin[0], input.origin[1],
                                           input.origin[2]),
