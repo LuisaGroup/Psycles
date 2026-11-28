@@ -365,7 +365,8 @@ inline constexpr float kPi = 3.14159265358979323846f;
     c::CausticsMethod caustics_method, bool sms_unbiased,
     std::uint32_t sms_max_trials, std::uint32_t size, std::uint32_t spp,
     std::vector<float> &out_rgba, bool allow_pt_caustics = false,
-    float filter_glossy = 0.0f) {
+    float filter_glossy = 0.0f,
+    c::SpectralMode spectral_mode = c::SpectralMode::hero4) {
   b::LuisaPathTracerBackend renderer{
       Device{device.impl_shared()},
       {.next_event_estimation = true,
@@ -396,6 +397,8 @@ inline constexpr float kPi = 3.14159265358979323846f;
   settings.integrator.direct_light_sampling =
       c::DirectLightSampling::multiple_importance_sampling;
   settings.integrator.spectral_rendering = spectral;
+  settings.integrator.spectral_mode =
+      spectral ? spectral_mode : c::SpectralMode::none;
   settings.integrator.caustics_method = caustics_method;
   settings.integrator.sms_unbiased = sms_unbiased;
   settings.integrator.sms_max_trials = sms_max_trials;
@@ -924,62 +927,68 @@ inline constexpr float kPi = 3.14159265358979323846f;
                      .cycles_object_index = 2u});
 
     constexpr std::uint32_t kSize = 32u;
-    std::vector<float> out_mega, out_wf;
-    if (!render_rgba(device, scene, b::LuisaPathScheduler::megakernel, true,
-                     c::CausticsMethod::sms, true, 8u, kSize, 32u, out_mega,
-                     false) ||
-        !render_rgba(device, scene, b::LuisaPathScheduler::wavefront_staged,
-                     true, c::CausticsMethod::sms, true, 8u, kSize, 32u, out_wf,
-                     false)) {
-      return false;
-    }
+    for (const auto mode : {c::SpectralMode::hero4, c::SpectralMode::xyz3}) {
+      const char *mode_name = mode == c::SpectralMode::hero4 ? "hero4" : "xyz3";
+      std::vector<float> out_mega, out_wf;
+      if (!render_rgba(device, scene, b::LuisaPathScheduler::megakernel, true,
+                       c::CausticsMethod::sms, true, 8u, kSize, 32u, out_mega,
+                       false, 0.0f, mode) ||
+          !render_rgba(device, scene, b::LuisaPathScheduler::wavefront_staged,
+                       true, c::CausticsMethod::sms, true, 8u, kSize, 32u,
+                       out_wf, false, 0.0f, mode)) {
+        return false;
+      }
 
-    auto radial_stats = [&](const std::vector<float> &rgba) {
-      double wr = 0.0, rr = 0.0, wb = 0.0, rb = 0.0, sum_y = 0.0;
-      bool finite = true;
-      for (std::uint32_t y = 0u; y < kSize; ++y) {
-        const float py =
-            (((static_cast<float>(y) + 0.5f) / kSize) - 0.5f) * 0.8f;
-        for (std::uint32_t x = 0u; x < kSize; ++x) {
-          const float px =
-              (((static_cast<float>(x) + 0.5f) / kSize) - 0.5f) * 0.8f;
-          const float rad = std::sqrt(px * px + py * py);
-          const std::size_t idx =
-              (static_cast<std::size_t>(y) * kSize + x) * 4u;
-          const float r = rgba[idx + 0u];
-          const float g = rgba[idx + 1u];
-          const float bv = rgba[idx + 2u];
-          if (!std::isfinite(r) || !std::isfinite(g) || !std::isfinite(bv)) {
-            finite = false;
-          }
-          sum_y += g;
-          if (rad < 0.35f) {
-            wr += r;
-            rr += r * rad;
-            wb += bv;
-            rb += bv * rad;
+      auto radial_stats = [&](const std::vector<float> &rgba) {
+        double wr = 0.0, rr = 0.0, wb = 0.0, rb = 0.0, sum_y = 0.0;
+        bool finite = true;
+        for (std::uint32_t y = 0u; y < kSize; ++y) {
+          const float py =
+              (((static_cast<float>(y) + 0.5f) / kSize) - 0.5f) * 0.8f;
+          for (std::uint32_t x = 0u; x < kSize; ++x) {
+            const float px =
+                (((static_cast<float>(x) + 0.5f) / kSize) - 0.5f) * 0.8f;
+            const float rad = std::sqrt(px * px + py * py);
+            const std::size_t idx =
+                (static_cast<std::size_t>(y) * kSize + x) * 4u;
+            const float r = rgba[idx + 0u];
+            const float g = rgba[idx + 1u];
+            const float bv = rgba[idx + 2u];
+            if (!std::isfinite(r) || !std::isfinite(g) || !std::isfinite(bv)) {
+              finite = false;
+            }
+            sum_y += g;
+            if (rad < 0.35f) {
+              const double r_pos = std::max(0.0f, r);
+              const double b_pos = std::max(0.0f, bv);
+              wr += r_pos;
+              rr += r_pos * rad;
+              wb += b_pos;
+              rb += b_pos * rad;
+            }
           }
         }
-      }
-      const double mean_rr = wr > 0.0 ? rr / wr : 0.0;
-      const double mean_rb = wb > 0.0 ? rb / wb : 0.0;
-      const double exp_frac = mean_rr > 0.0 ? (mean_rb - mean_rr) / mean_rr : 0.0;
-      return std::tuple{finite, mean_rr, mean_rb, exp_frac,
-                        sum_y / (kSize * kSize)};
-    };
+        const double mean_rr = wr > 0.0 ? rr / wr : 0.0;
+        const double mean_rb = wb > 0.0 ? rb / wb : 0.0;
+        const double exp_frac =
+            mean_rr > 0.0 ? (mean_rb - mean_rr) / mean_rr : 0.0;
+        return std::tuple{finite, mean_rr, mean_rb, exp_frac,
+                          sum_y / (kSize * kSize)};
+      };
 
-    const auto [fin_m, rr_m, rb_m, exp_m, mean_m] = radial_stats(out_mega);
-    const auto [fin_w, rr_w, rb_w, exp_w, mean_w] = radial_stats(out_wf);
-    const double rel_sched =
-        std::abs(mean_m - mean_w) / std::max(mean_w, 1.0e-5);
-    std::cout << "  4b disp_mega r_R=" << rr_m << " r_B=" << rb_m
-              << " exp=" << (exp_m * 100.0) << "% mean=" << mean_m << '\n';
-    std::cout << "  4b disp_wf   r_R=" << rr_w << " r_B=" << rb_w
-              << " exp=" << (exp_w * 100.0) << "% mean=" << mean_w
-              << " mega_vs_wf=" << (rel_sched * 100.0) << "%\n";
-    if (!fin_m || !fin_w || exp_m <= 0.04 || exp_w <= 0.04 ||
-        rel_sched > 0.04) {
-      return false;
+      const auto [fin_m, rr_m, rb_m, exp_m, mean_m] = radial_stats(out_mega);
+      const auto [fin_w, rr_w, rb_w, exp_w, mean_w] = radial_stats(out_wf);
+      const double rel_sched =
+          std::abs(mean_m - mean_w) / std::max(mean_w, 1.0e-5);
+      std::cout << "  4b " << mode_name << "_mega r_R=" << rr_m << " r_B=" << rb_m
+                << " exp=" << (exp_m * 100.0) << "% mean=" << mean_m << '\n';
+      std::cout << "  4b " << mode_name << "_wf   r_R=" << rr_w << " r_B=" << rb_w
+                << " exp=" << (exp_w * 100.0) << "% mean=" << mean_w
+                << " mega_vs_wf=" << (rel_sched * 100.0) << "%\n";
+      if (!fin_m || !fin_w || exp_m <= 0.04 || exp_w <= 0.04 ||
+          rel_sched > 0.04) {
+        return false;
+      }
     }
   }
   return true;

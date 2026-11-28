@@ -360,95 +360,101 @@ c::MaterialDesc make_furnace_material(int kind, std::uint32_t shader_idx) {
   constexpr std::array<float, kTiles> kTols{
       0.03f, 0.05f, 0.02f, 0.05f, 0.05f, 0.06f, 0.04f, 0.05f};
 
-  for (const auto scheduler : {b::LuisaPathScheduler::megakernel,
-                               b::LuisaPathScheduler::wavefront_staged}) {
-    b::LuisaPathTracerBackend renderer{
-        Device{device.impl_shared()},
-        {.next_event_estimation = true,
-         .scheduler = scheduler,
-         .wavefront_frame_capacity = 2048u,
-         .max_samples_per_dispatch = kSpp}};
-    auto compiled = renderer.compile_scene(scene);
-    if (!compiled.ok()) {
-      for (const auto &d : compiled.diagnostics) {
-        std::cerr << d.message << '\n';
-      }
-      return false;
-    }
-
-    c::RenderSettings settings{.full_extent = {kWidth, kHeight},
-                               .pixel_filter = c::PixelFilter::box,
-                               .filter_width = 1.0f};
-    settings.integrator.spectral_rendering = true;
-    settings.integrator.max_bounces = 16;
-    settings.integrator.diffuse_bounces = 16;
-    settings.integrator.glossy_bounces = 16;
-    settings.integrator.transmission_bounces = 16;
-    settings.integrator.transparent_max_bounces = 16;
-    settings.integrator.sample_clamp_direct = 0.0f;
-    settings.integrator.sample_clamp_indirect = 0.0f;
-    settings.integrator.direct_light_sampling =
-        c::DirectLightSampling::multiple_importance_sampling;
-    settings.passes = {{.kind = c::PassKind::combined, .channels = 4}};
-
-    auto session = renderer.create_session(*compiled.scene, settings);
-    if (!session) {
-      std::cerr << "Failed creating spectral white furnace session\n";
-      return false;
-    }
-    psycles::io::MemoryOutputSink output;
-    if (!session->render_samples(
-            {.first = 0, .count = kSpp, .offset = 0, .total = kSpp}, output)) {
-      std::cerr << "render_samples failed on white furnace\n";
-      return false;
-    }
-    const auto image = output.find(c::PassKind::combined);
-    if (!image) {
-      std::cerr << "Missing combined output pass\n";
-      return false;
-    }
-
-    for (std::size_t i = 0u; i < image->pixels.size(); ++i) {
-      if (!std::isfinite(image->pixels[i])) {
-        std::cerr << "FAIL non-finite pixel in spectral white furnace on "
-                  << backend << '\n';
+  for (const auto mode : {c::SpectralMode::hero4, c::SpectralMode::xyz3}) {
+    for (const auto scheduler : {b::LuisaPathScheduler::megakernel,
+                                 b::LuisaPathScheduler::wavefront_staged}) {
+      b::LuisaPathTracerBackend renderer{
+          Device{device.impl_shared()},
+          {.next_event_estimation = true,
+           .scheduler = scheduler,
+           .wavefront_frame_capacity = 2048u,
+           .max_samples_per_dispatch = kSpp}};
+      auto compiled = renderer.compile_scene(scene);
+      if (!compiled.ok()) {
+        for (const auto &d : compiled.diagnostics) {
+          std::cerr << d.message << '\n';
+        }
         return false;
       }
-    }
 
-    for (int tile = 0; tile < kTiles; ++tile) {
-      double sr = 0.0, sg = 0.0, sb = 0.0;
-      std::uint32_t count = 0u;
-      for (std::uint32_t y = 2u; y + 2u < kHeight; ++y) {
-        for (std::uint32_t x = static_cast<std::uint32_t>(tile) * kTileWidth + 2u;
-             x + 2u < static_cast<std::uint32_t>(tile + 1) * kTileWidth; ++x) {
-          const auto idx = (y * kWidth + x) * image->channels;
-          sr += image->pixels[idx + 0u];
-          sg += image->pixels[idx + 1u];
-          sb += image->pixels[idx + 2u];
-          ++count;
+      c::RenderSettings settings{.full_extent = {kWidth, kHeight},
+                                 .pixel_filter = c::PixelFilter::box,
+                                 .filter_width = 1.0f};
+      settings.integrator.spectral_rendering = true;
+      settings.integrator.spectral_mode = mode;
+      settings.integrator.max_bounces = 16;
+      settings.integrator.diffuse_bounces = 16;
+      settings.integrator.glossy_bounces = 16;
+      settings.integrator.transmission_bounces = 16;
+      settings.integrator.transparent_max_bounces = 16;
+      settings.integrator.sample_clamp_direct = 0.0f;
+      settings.integrator.sample_clamp_indirect = 0.0f;
+      settings.integrator.direct_light_sampling =
+          c::DirectLightSampling::multiple_importance_sampling;
+      settings.passes = {{.kind = c::PassKind::combined, .channels = 4}};
+
+      auto session = renderer.create_session(*compiled.scene, settings);
+      if (!session) {
+        std::cerr << "Failed creating spectral white furnace session\n";
+        return false;
+      }
+      psycles::io::MemoryOutputSink output;
+      if (!session->render_samples(
+              {.first = 0, .count = kSpp, .offset = 0, .total = kSpp}, output)) {
+        std::cerr << "render_samples failed on white furnace\n";
+        return false;
+      }
+      const auto image = output.find(c::PassKind::combined);
+      if (!image) {
+        std::cerr << "Missing combined output pass\n";
+        return false;
+      }
+
+      for (std::size_t i = 0u; i < image->pixels.size(); ++i) {
+        if (!std::isfinite(image->pixels[i])) {
+          std::cerr << "FAIL non-finite pixel in spectral white furnace on "
+                    << backend << '\n';
+          return false;
         }
       }
-      const float r = static_cast<float>(sr / count);
-      const float g = static_cast<float>(sg / count);
-      const float bch = static_cast<float>(sb / count);
-      const float tol = kTols[static_cast<std::size_t>(tile)];
-      if (std::abs(r - 1.0f) > tol || std::abs(g - 1.0f) > tol ||
-          std::abs(bch - 1.0f) > tol) {
-        std::cerr << "FAIL furnace [" << kNames[tile] << "] sched="
+
+      const char *mode_name = mode == c::SpectralMode::hero4 ? "hero4" : "xyz3";
+      for (int tile = 0; tile < kTiles; ++tile) {
+        double sr = 0.0, sg = 0.0, sb = 0.0;
+        std::uint32_t count = 0u;
+        for (std::uint32_t y = 2u; y + 2u < kHeight; ++y) {
+          for (std::uint32_t x = static_cast<std::uint32_t>(tile) * kTileWidth + 2u;
+               x + 2u < static_cast<std::uint32_t>(tile + 1) * kTileWidth; ++x) {
+            const auto idx = (y * kWidth + x) * image->channels;
+            sr += image->pixels[idx + 0u];
+            sg += image->pixels[idx + 1u];
+            sb += image->pixels[idx + 2u];
+            ++count;
+          }
+        }
+        const float r = static_cast<float>(sr / count);
+        const float g = static_cast<float>(sg / count);
+        const float bch = static_cast<float>(sb / count);
+        const float tol = kTols[static_cast<std::size_t>(tile)];
+        if (std::abs(r - 1.0f) > tol || std::abs(g - 1.0f) > tol ||
+            std::abs(bch - 1.0f) > tol) {
+          std::cerr << "FAIL furnace [" << kNames[tile] << "][" << mode_name
+                    << "] sched="
+                    << (scheduler == b::LuisaPathScheduler::megakernel
+                            ? "megakernel"
+                            : "wavefront_staged")
+                    << " on " << backend << ": rgb=(" << r << ", " << g << ", "
+                    << bch << ") tol=" << tol << '\n';
+          return false;
+        }
+        std::cout << "  [PASS] Furnace " << kNames[tile] << " (" << mode_name
+                  << ", "
                   << (scheduler == b::LuisaPathScheduler::megakernel
                           ? "megakernel"
                           : "wavefront_staged")
-                  << " on " << backend << ": rgb=(" << r << ", " << g << ", "
-                  << bch << ") tol=" << tol << '\n';
-        return false;
+                  << "): rgb=(" << r << ", " << g << ", " << bch << ")"
+                  << std::endl;
       }
-      std::cout << "  [PASS] Furnace " << kNames[tile] << " ("
-                << (scheduler == b::LuisaPathScheduler::megakernel
-                        ? "megakernel"
-                        : "wavefront_staged")
-                << "): rgb=(" << r << ", " << g << ", " << bch << ")"
-                << std::endl;
     }
   }
   return true;
@@ -711,10 +717,12 @@ c::MaterialDesc make_furnace_material(int kind, std::uint32_t shader_idx) {
                     .orthographic_scale = 2.0f});
   scene.active_camera = c::CameraId{1u};
 
-  // [0]=rgb mega, [1]=rgb wf, [2]=spec mega, [3]=spec wf
-  std::array<std::array<float, 3u>, 4u> means{};
+  // [0]=rgb mega, [1]=rgb wf, [2]=hero4 mega, [3]=hero4 wf, [4]=xyz3 mega, [5]=xyz3 wf
+  std::array<std::array<float, 3u>, 6u> means{};
   std::size_t idx_out = 0u;
-  for (const bool spectral : {false, true}) {
+  for (const auto mode :
+       {c::SpectralMode::none, c::SpectralMode::hero4, c::SpectralMode::xyz3}) {
+    const bool spectral = mode != c::SpectralMode::none;
     for (const auto scheduler : {b::LuisaPathScheduler::megakernel,
                                  b::LuisaPathScheduler::wavefront_staged}) {
       b::LuisaPathTracerBackend renderer{
@@ -734,6 +742,7 @@ c::MaterialDesc make_furnace_material(int kind, std::uint32_t shader_idx) {
                                  .pixel_filter = c::PixelFilter::box,
                                  .filter_width = 1.0f};
       settings.integrator.spectral_rendering = spectral;
+      settings.integrator.spectral_mode = mode;
       settings.integrator.max_bounces = 2;
       settings.integrator.diffuse_bounces = 0; // Forces 100% NEE path
       settings.integrator.sample_clamp_direct = 0.0f;
@@ -773,13 +782,15 @@ c::MaterialDesc make_furnace_material(int kind, std::uint32_t shader_idx) {
                         static_cast<float>(sg / count),
                         static_cast<float>(sb / count)};
       const auto &m = means[idx_out];
+      const char *mode_name = mode == c::SpectralMode::none ? "none"
+                            : (mode == c::SpectralMode::hero4 ? "hero4" : "xyz3");
       if (!(m[0] > m[1] && m[1] > m[2] && m[2] > 0.01f)) {
-        std::cerr << "FAIL non-constant point light NEE ordering (spectral="
-                  << spectral << ") on " << backend << ": rgb=(" << m[0] << ", "
+        std::cerr << "FAIL non-constant point light NEE ordering (mode="
+                  << mode_name << ") on " << backend << ": rgb=(" << m[0] << ", "
                   << m[1] << ", " << m[2] << ")\n";
         return false;
       }
-      std::cout << "  [PASS] Non-constant point NEE (spectral=" << spectral
+      std::cout << "  [PASS] Non-constant point NEE (mode=" << mode_name
                 << ", "
                 << (scheduler == b::LuisaPathScheduler::megakernel
                         ? "megakernel"
@@ -792,7 +803,7 @@ c::MaterialDesc make_furnace_material(int kind, std::uint32_t shader_idx) {
   const auto luma = [](const std::array<float, 3u> &rgb) noexcept {
     return 0.2126f * rgb[0] + 0.7152f * rgb[1] + 0.0722f * rgb[2];
   };
-  for (std::size_t base : {std::size_t{0u}, std::size_t{2u}}) {
+  for (std::size_t base : {std::size_t{0u}, std::size_t{2u}, std::size_t{4u}}) {
     for (std::size_t ch = 0u; ch < 3u; ++ch) {
       const float diff = std::abs(means[base][ch] - means[base + 1u][ch]);
       const float scale = std::max(means[base][ch], means[base + 1u][ch]);
@@ -805,11 +816,14 @@ c::MaterialDesc make_furnace_material(int kind, std::uint32_t shader_idx) {
     }
   }
   const float lum_rgb = luma(means[0]);
-  const float lum_spec = luma(means[2]);
-  if (std::abs(lum_spec - lum_rgb) > 0.15f * std::max(lum_rgb, 1.0e-5f)) {
-    std::cerr << "FAIL RGB vs Spectral point light NEE lum mismatch rgb="
-              << lum_rgb << " spec=" << lum_spec << " on " << backend << '\n';
-    return false;
+  for (const std::size_t spec_idx : {std::size_t{2u}, std::size_t{4u}}) {
+    const float lum_spec = luma(means[spec_idx]);
+    if (std::abs(lum_spec - lum_rgb) > 0.15f * std::max(lum_rgb, 1.0e-5f)) {
+      std::cerr << "FAIL RGB vs Spectral point light NEE lum mismatch rgb="
+                << lum_rgb << " spec=" << lum_spec << " idx=" << spec_idx
+                << " on " << backend << '\n';
+      return false;
+    }
   }
   return true;
 }

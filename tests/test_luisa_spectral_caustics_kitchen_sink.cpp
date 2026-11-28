@@ -364,7 +364,8 @@ struct ImageMetrics {
 [[nodiscard]] bool render_kitchen_sink(
     Device &device, const c::SceneSnapshot &scene,
     b::LuisaPathScheduler scheduler, c::CausticsMethod caustics_method,
-    std::uint32_t size, std::uint32_t spp, std::vector<float> &out_rgba) {
+    std::uint32_t size, std::uint32_t spp, std::vector<float> &out_rgba,
+    c::SpectralMode spectral_mode = c::SpectralMode::hero4) {
   b::LuisaPathTracerBackend renderer{
       Device{device.impl_shared()},
       {.next_event_estimation = true,
@@ -383,7 +384,9 @@ struct ImageMetrics {
                              .seed = 4242u,
                              .pixel_filter = c::PixelFilter::box,
                              .filter_width = 1.0f};
-  settings.integrator.spectral_rendering = true;
+  settings.integrator.spectral_rendering =
+      (spectral_mode != c::SpectralMode::none);
+  settings.integrator.spectral_mode = spectral_mode;
   settings.integrator.caustics_method = caustics_method;
   settings.integrator.sms_unbiased = true;
   settings.integrator.sms_max_trials = 8u;
@@ -536,67 +539,78 @@ struct ImageMetrics {
        b::LuisaPathScheduler::wavefront_staged},
   }};
 
-  std::array<ImageMetrics, 4u> stats{};
-  for (std::size_t i = 0u; i < modes.size(); ++i) {
-    std::vector<float> rgba;
-    if (!render_kitchen_sink(device, scene, modes[i].scheduler,
-                             modes[i].caustics, kSize, kSpp, rgba)) {
-      std::cerr << "FAIL render mode=" << modes[i].label << " on " << backend
-                << '\n';
-      return false;
-    }
-    stats[i] = compute_metrics(rgba, kSize, kSize);
-    std::cout << "  [" << backend << " | " << modes[i].label << "] mean=("
-              << stats[i].mean[0] << ", " << stats[i].mean[1] << ", "
-              << stats[i].mean[2] << ") max_luma=" << stats[i].max_luma
-              << " nan_inf=" << stats[i].nan_inf_count << '\n';
-    if (stats[i].nan_inf_count != 0u) {
-      std::cerr << "FAIL non-finite pixels in " << modes[i].label << " on "
-                << backend << '\n';
-      return false;
-    }
-    if (stats[i].max_luma >= 500.0) {
-      std::cerr << "FAIL firefly max_luma=" << stats[i].max_luma << " in "
-                << modes[i].label << " on " << backend << '\n';
-      return false;
-    }
-    for (std::size_t ch = 0u; ch < 3u; ++ch) {
-      if (stats[i].mean[ch] <= 1.0e-4) {
-        std::cerr << "FAIL channel " << ch << " too dark (" << stats[i].mean[ch]
-                  << ") in " << modes[i].label << " on " << backend << '\n';
+  for (const auto mode : {c::SpectralMode::hero4, c::SpectralMode::xyz3}) {
+    const char *mode_name = mode == c::SpectralMode::hero4 ? "hero4" : "xyz3";
+    std::array<ImageMetrics, 4u> stats{};
+    for (std::size_t i = 0u; i < modes.size(); ++i) {
+      std::vector<float> rgba;
+      if (!render_kitchen_sink(device, scene, modes[i].scheduler,
+                               modes[i].caustics, kSize, kSpp, rgba, mode)) {
+        std::cerr << "FAIL render mode=" << modes[i].label << " (" << mode_name
+                  << ") on " << backend << '\n';
         return false;
       }
+      stats[i] = compute_metrics(rgba, kSize, kSize);
+      std::cout << "  [" << backend << " | " << mode_name << " | "
+                << modes[i].label << "] mean=(" << stats[i].mean[0] << ", "
+                << stats[i].mean[1] << ", " << stats[i].mean[2]
+                << ") max_luma=" << stats[i].max_luma
+                << " nan_inf=" << stats[i].nan_inf_count << '\n';
+      if (stats[i].nan_inf_count != 0u) {
+        std::cerr << "FAIL non-finite pixels in " << modes[i].label << " ("
+                  << mode_name << ") on " << backend << '\n';
+        return false;
+      }
+      if (stats[i].max_luma >= 500.0) {
+        std::cerr << "FAIL firefly max_luma=" << stats[i].max_luma << " in "
+                  << modes[i].label << " (" << mode_name << ") on " << backend
+                  << '\n';
+        return false;
+      }
+      for (std::size_t ch = 0u; ch < 3u; ++ch) {
+        if (stats[i].mean[ch] <= 1.0e-4) {
+          std::cerr << "FAIL channel " << ch << " too dark ("
+                    << stats[i].mean[ch] << ") in " << modes[i].label << " ("
+                    << mode_name << ") on " << backend << '\n';
+          return false;
+        }
+      }
+    }
+
+    const auto check_parity = [&](const char *pair_name,
+                                  const ImageMetrics &mega,
+                                  const ImageMetrics &wf) {
+      for (std::size_t ch = 0u; ch < 3u; ++ch) {
+        const double denom = std::max(wf.mean[ch], 1.0e-4);
+        const double rel = std::abs(mega.mean[ch] - wf.mean[ch]) / denom;
+        if (rel > 0.06) {
+          std::cerr << "FAIL " << mode_name << " " << pair_name
+                    << " mega_vs_wf ch=" << ch << " mega=" << mega.mean[ch]
+                    << " wf=" << wf.mean[ch] << " rel=" << (rel * 100.0)
+                    << "% on " << backend << '\n';
+          return false;
+        }
+      }
+      std::cout << "  [PASS parity " << mode_name << " " << pair_name << " on "
+                << backend << "] rel=("
+                << (std::abs(mega.mean[0] - wf.mean[0]) /
+                    std::max(wf.mean[0], 1.0e-4) * 100.0)
+                << "%, "
+                << (std::abs(mega.mean[1] - wf.mean[1]) /
+                    std::max(wf.mean[1], 1.0e-4) * 100.0)
+                << "%, "
+                << (std::abs(mega.mean[2] - wf.mean[2]) /
+                    std::max(wf.mean[2], 1.0e-4) * 100.0)
+                << "%)\n";
+      return true;
+    };
+
+    if (!check_parity("MNEE", stats[0], stats[1]) ||
+        !check_parity("SMS", stats[2], stats[3])) {
+      return false;
     }
   }
-
-  const auto check_parity = [&](const char *pair_name, const ImageMetrics &mega,
-                                const ImageMetrics &wf) {
-    for (std::size_t ch = 0u; ch < 3u; ++ch) {
-      const double denom = std::max(wf.mean[ch], 1.0e-4);
-      const double rel = std::abs(mega.mean[ch] - wf.mean[ch]) / denom;
-      if (rel > 0.06) {
-        std::cerr << "FAIL " << pair_name << " mega_vs_wf ch=" << ch
-                  << " mega=" << mega.mean[ch] << " wf=" << wf.mean[ch]
-                  << " rel=" << (rel * 100.0) << "% on " << backend << '\n';
-        return false;
-      }
-    }
-    std::cout << "  [PASS parity " << pair_name << " on " << backend
-              << "] rel=("
-              << (std::abs(mega.mean[0] - wf.mean[0]) /
-                  std::max(wf.mean[0], 1.0e-4) * 100.0)
-              << "%, "
-              << (std::abs(mega.mean[1] - wf.mean[1]) /
-                  std::max(wf.mean[1], 1.0e-4) * 100.0)
-              << "%, "
-              << (std::abs(mega.mean[2] - wf.mean[2]) /
-                  std::max(wf.mean[2], 1.0e-4) * 100.0)
-              << "%)\n";
-    return true;
-  };
-
-  return check_parity("MNEE", stats[0], stats[1]) &&
-         check_parity("SMS", stats[2], stats[3]);
+  return true;
 }
 
 } // namespace

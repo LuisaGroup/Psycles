@@ -235,7 +235,8 @@ inline constexpr float kPi = 3.14159265358979323846f;
     Device &device, const c::SceneSnapshot &scene,
     b::LuisaPathScheduler scheduler, bool spectral,
     c::CausticsMethod caustics_method, std::uint32_t size, std::uint32_t spp,
-    std::vector<float> &out_rgba, bool allow_pt_caustics = false) {
+    std::vector<float> &out_rgba, bool allow_pt_caustics = false,
+    c::SpectralMode spectral_mode = c::SpectralMode::hero4) {
   b::LuisaPathTracerBackend renderer{
       Device{device.impl_shared()},
       {.next_event_estimation = true,
@@ -265,6 +266,8 @@ inline constexpr float kPi = 3.14159265358979323846f;
   settings.integrator.direct_light_sampling =
       c::DirectLightSampling::multiple_importance_sampling;
   settings.integrator.spectral_rendering = spectral;
+  settings.integrator.spectral_mode =
+      spectral ? spectral_mode : c::SpectralMode::none;
   settings.integrator.caustics_method = caustics_method;
   settings.passes = {{.kind = c::PassKind::combined, .channels = 4}};
 
@@ -810,69 +813,79 @@ inline constexpr float kPi = 3.14159265358979323846f;
 
   constexpr std::uint32_t kSize = 32u;
   constexpr std::uint32_t kSpp = 64u;
-  std::array<double, 2u> expansions{};
-  std::size_t idx = 0u;
-  for (const auto sched : {b::LuisaPathScheduler::megakernel,
-                           b::LuisaPathScheduler::wavefront_staged}) {
-    std::vector<float> rgba;
-    if (!render_rgba(device, scene, sched, true, c::CausticsMethod::mnee,
-                     kSize, kSpp, rgba)) {
-      return false;
-    }
-    double sum_r = 0.0, sum_b = 0.0;
-    double weighted_r_red = 0.0, weighted_r_blue = 0.0;
-    for (std::uint32_t y = 0u; y < kSize; ++y) {
-      for (std::uint32_t x = 0u; x < kSize; ++x) {
-        const float nx = ((static_cast<float>(x) + 0.5f) / kSize) * 2.0f - 1.0f;
-        const float ny = ((static_cast<float>(y) + 0.5f) / kSize) * 2.0f - 1.0f;
-        const float x_w = nx * 0.6f;
-        const float y_w = ny * 0.6f;
-        const float r_rad = std::sqrt(x_w * x_w + y_w * y_w);
-        const std::size_t p = (static_cast<std::size_t>(y) * kSize + x) * 4u;
-        const float r = rgba[p + 0u];
-        const float g = rgba[p + 1u];
-        const float bl = rgba[p + 2u];
-        if (!std::isfinite(r) || !std::isfinite(g) || !std::isfinite(bl)) {
-          std::cerr << "FAIL Test 3 non-finite pixel on " << backend << '\n';
-          return false;
-        }
-        if (r_rad <= 0.45f) {
-          const double r_pos = std::max(r, 0.0f);
-          const double b_pos = std::max(bl, 0.0f);
-          sum_r += r_pos;
-          sum_b += b_pos;
-          weighted_r_red += r_rad * r_pos;
-          weighted_r_blue += r_rad * b_pos;
+  for (const auto mode : {c::SpectralMode::hero4, c::SpectralMode::xyz3}) {
+    std::array<double, 2u> expansions{};
+    std::size_t idx = 0u;
+    const char *mode_name = mode == c::SpectralMode::hero4 ? "hero4" : "xyz3";
+    for (const auto sched : {b::LuisaPathScheduler::megakernel,
+                             b::LuisaPathScheduler::wavefront_staged}) {
+      std::vector<float> rgba;
+      if (!render_rgba(device, scene, sched, true, c::CausticsMethod::mnee,
+                       kSize, kSpp, rgba, false, mode)) {
+        return false;
+      }
+      double sum_r = 0.0, sum_b = 0.0;
+      double weighted_r_red = 0.0, weighted_r_blue = 0.0;
+      for (std::uint32_t y = 0u; y < kSize; ++y) {
+        for (std::uint32_t x = 0u; x < kSize; ++x) {
+          const float nx =
+              ((static_cast<float>(x) + 0.5f) / kSize) * 2.0f - 1.0f;
+          const float ny =
+              ((static_cast<float>(y) + 0.5f) / kSize) * 2.0f - 1.0f;
+          const float x_w = nx * 0.6f;
+          const float y_w = ny * 0.6f;
+          const float r_rad = std::sqrt(x_w * x_w + y_w * y_w);
+          const std::size_t p =
+              (static_cast<std::size_t>(y) * kSize + x) * 4u;
+          const float r = rgba[p + 0u];
+          const float g = rgba[p + 1u];
+          const float bl = rgba[p + 2u];
+          if (!std::isfinite(r) || !std::isfinite(g) || !std::isfinite(bl)) {
+            std::cerr << "FAIL Test 3 (" << mode_name << ") non-finite pixel on "
+                      << backend << '\n';
+            return false;
+          }
+          if (r_rad <= 0.45f) {
+            const double r_pos = std::max(r, 0.0f);
+            const double b_pos = std::max(bl, 0.0f);
+            sum_r += r_pos;
+            sum_b += b_pos;
+            weighted_r_red += r_rad * r_pos;
+            weighted_r_blue += r_rad * b_pos;
+          }
         }
       }
+      if (sum_r <= 0.0 || sum_b <= 0.0) {
+        std::cerr << "FAIL Test 3 (" << mode_name
+                  << ") empty dispersive caustic on " << backend << '\n';
+        return false;
+      }
+      const double mean_r_red = weighted_r_red / sum_r;
+      const double mean_r_blue = weighted_r_blue / sum_b;
+      const double rel_expansion = (mean_r_blue - mean_r_red) / mean_r_red;
+      if (rel_expansion <= 0.04) {
+        std::cerr << "FAIL Test 3 (" << mode_name
+                  << ") insufficient radial dispersion expansion="
+                  << rel_expansion << " mean_r_red=" << mean_r_red
+                  << " mean_r_blue=" << mean_r_blue << " on " << backend
+                  << '\n';
+        return false;
+      }
+      expansions[idx++] = rel_expansion;
+      std::cout << "  [PASS] Dispersive spectral caustic (" << mode_name << ", "
+                << (sched == b::LuisaPathScheduler::megakernel ? "mega" : "wf")
+                << "): r_red=" << mean_r_red << " r_blue=" << mean_r_blue
+                << " expansion=" << rel_expansion << '\n';
     }
-    if (sum_r <= 0.0 || sum_b <= 0.0) {
-      std::cerr << "FAIL Test 3 empty dispersive caustic on " << backend << '\n';
+    const double rel_sched =
+        std::abs(expansions[0] - expansions[1]) /
+        std::max(std::abs(expansions[0]), std::abs(expansions[1]));
+    if (rel_sched > 0.15) {
+      std::cerr << "FAIL Test 3 (" << mode_name
+                << ") mega vs wf dispersion expansion mismatch on " << backend
+                << ": " << expansions[0] << " vs " << expansions[1] << '\n';
       return false;
     }
-    const double mean_r_red = weighted_r_red / sum_r;
-    const double mean_r_blue = weighted_r_blue / sum_b;
-    const double rel_expansion = (mean_r_blue - mean_r_red) / mean_r_red;
-    if (rel_expansion <= 0.04) {
-      std::cerr << "FAIL Test 3 insufficient radial dispersion expansion="
-                << rel_expansion << " mean_r_red=" << mean_r_red
-                << " mean_r_blue=" << mean_r_blue << " on " << backend << '\n';
-      return false;
-    }
-    expansions[idx++] = rel_expansion;
-    std::cout << "  [PASS] Dispersive spectral caustic ("
-              << (sched == b::LuisaPathScheduler::megakernel ? "mega" : "wf")
-              << "): r_red=" << mean_r_red << " r_blue=" << mean_r_blue
-              << " expansion=" << rel_expansion << '\n';
-  }
-  const double rel_sched =
-      std::abs(expansions[0] - expansions[1]) /
-      std::max(std::abs(expansions[0]), std::abs(expansions[1]));
-  if (rel_sched > 0.15) {
-    std::cerr << "FAIL Test 3 mega vs wf dispersion expansion mismatch on "
-              << backend << ": " << expansions[0] << " vs " << expansions[1]
-              << '\n';
-    return false;
   }
   return true;
 }
