@@ -57,7 +57,8 @@ public:
         config.next_event_estimation,
         config.scene->environment_in_light_distribution,
         config.scene->emissive_triangle_count, config.scene->light_count,
-        config.scene->geometries.size(), config.scene->curve_geometries.size());
+        config.scene->geometries.size(), config.scene->curve_geometries.size(),
+        config.scene->intersectable_light_count);
     const auto traversal_plan = stage_plan.traversal;
     primitive_plan = traversal_plan.primitives;
     surface_buckets = make_path_surface_bucket_plan(config);

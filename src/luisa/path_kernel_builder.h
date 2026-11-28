@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -247,8 +248,12 @@ make_path_kernel_scene_stage_plan(
     bool next_event_estimation, bool environment_in_distribution,
     std::uint32_t emissive_triangle_count, std::uint32_t analytic_light_count,
     std::size_t triangle_geometry_count,
-    std::size_t curve_geometry_count) noexcept {
-  return {.analytic_light_endpoints = analytic_light_count != 0u,
+    std::size_t curve_geometry_count,
+    std::optional<std::uint32_t> intersectable_analytic_light_count =
+        std::nullopt) noexcept {
+  const auto endpoint_light_count =
+      intersectable_analytic_light_count.value_or(analytic_light_count);
+  return {.analytic_light_endpoints = endpoint_light_count != 0u,
           .traversal = make_scene_traversal_stage_plan(
               triangle_geometry_count, curve_geometry_count),
           .direct_lighting = make_direct_lighting_stage_plan(
