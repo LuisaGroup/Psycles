@@ -315,6 +315,9 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
 
       auto trace = SurfaceSampleTrace::zero(_spectral);
       auto &result = trace.sample;
+      if (_spectral && _kernel_globals.xyz3_rough_dispersion()) {
+        result.evaluation.spectral_lane_pdf.emplace(make_float4(0.0f));
+      }
       result.runtime_flags = runtime_flags(_shader_data->flag);
 
       const auto sample_bsdf = [&] noexcept {
@@ -345,7 +348,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
               sampled_valid &
               sampled.spectral_terminated_secondary.value_or(Bool{false});
           if (_kernel_globals.xyz3_rough_dispersion()) {
-            result.evaluation.spectral_lane_pdf = select(
+            *result.evaluation.spectral_lane_pdf = select(
                 make_float4(0.0f),
                 sampled.evaluation.spectral_lane_pdf.value_or(
                     make_float4(sampled.evaluation.pdf)),
@@ -387,7 +390,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                 cycles_spectrum::rgb_to_spectrum_reflectance(
                     *sc.tables, bssrdf_weight, sc.wavelengths.lambdas);
             if (_kernel_globals.xyz3_rough_dispersion()) {
-              result.evaluation.spectral_lane_pdf = make_float4(1.0f);
+              *result.evaluation.spectral_lane_pdf = make_float4(1.0f);
             }
           }
           result.evaluation.pdf = 1.0f;

@@ -120,11 +120,8 @@ PreparedCyclesSvmSurfaceScatter::empty(
   if (spectral) {
     out.spectral_terminated_secondary.emplace(false);
   }
-  if (spectral_mode == contract::SpectralMode::xyz3) {
-    out.xyz3_eval_sum.emplace(make_float4(0.0f));
-    if (xyz3_rough_dispersion) {
-      out.xyz3_eval_lane_pdf.emplace(make_float4(0.0f));
-    }
+  if (spectral_mode == contract::SpectralMode::xyz3 && xyz3_rough_dispersion) {
+    out.xyz3_next_pdf_ratio.emplace(make_float3(1.0f));
   }
   if (sms) {
     out.sms_caster_eligible.emplace(false);
@@ -165,12 +162,9 @@ void PreparedCyclesSvmSurfaceScatter::accept(
       other.sms_caster_eligible.has_value()) {
     *sms_caster_eligible = *other.sms_caster_eligible;
   }
-  if (xyz3_eval_sum.has_value() && other.xyz3_eval_sum.has_value()) {
-    *xyz3_eval_sum = *other.xyz3_eval_sum;
-  }
-  if (xyz3_eval_lane_pdf.has_value() &&
-      other.xyz3_eval_lane_pdf.has_value()) {
-    *xyz3_eval_lane_pdf = *other.xyz3_eval_lane_pdf;
+  if (xyz3_next_pdf_ratio.has_value() &&
+      other.xyz3_next_pdf_ratio.has_value()) {
+    *xyz3_next_pdf_ratio = *other.xyz3_next_pdf_ratio;
   }
 }
 
@@ -227,20 +221,56 @@ PreparedCyclesSvmSurfaceScatter sample_cycles_svm_surface_continuation(
                 *bsdf.evaluation.spectral_sum / bsdf.evaluation.pdf);
             *out.spectral_terminated_secondary =
                 bsdf.spectral_terminated_secondary.value_or(Bool{false});
+            out.pdf = bsdf.evaluation.pdf;
           } else if (xyz3) {
-            *out.xyz3_eval_sum = *bsdf.evaluation.spectral_sum;
-            *out.spectral_terminated_secondary =
+            const auto collapse =
                 bsdf.spectral_terminated_secondary.value_or(Bool{false});
-            if (out.xyz3_eval_lane_pdf.has_value()) {
-              *out.xyz3_eval_lane_pdf =
-                  bsdf.evaluation.spectral_lane_pdf.value_or(
-                      make_float4(bsdf.evaluation.pdf));
+            *out.spectral_terminated_secondary = collapse;
+            const auto ctx = sample.spectral_context();
+            const auto h = *ctx->hero_index;
+            const Float3 f_xyz = cycles_spectrum::xyz3_unrotate_eval(
+                *bsdf.evaluation.spectral_sum, h);
+            const Float hero_w =
+                bsdf.evaluation.spectral_sum->x /
+                max(bsdf.evaluation.pdf, 1.0e-30f);
+            if (out.xyz3_next_pdf_ratio.has_value() &&
+                sample.spectral_pdf_ratio.has_value()) {
+              const Float3 p_xyz = max(
+                  cycles_spectrum::xyz3_unrotate_eval(
+                      bsdf.evaluation.spectral_lane_pdf.value_or(
+                          make_float4(bsdf.evaluation.pdf)),
+                      h),
+                  make_float3(0.0f));
+              const Float3 &r = *sample.spectral_pdf_ratio;
+              const Float r_sum = max(r.x + r.y + r.z, 1.0e-30f);
+              const Float p_bar_raw = dot(r, p_xyz) / r_sum;
+              const Float p_bar = select(
+                  p_bar_raw, bsdf.evaluation.pdf,
+                  sample.spectral_secondary_terminated());
+              const Float3 next_r_raw = r * p_xyz;
+              const Float next_sum =
+                  next_r_raw.x + next_r_raw.y + next_r_raw.z;
+              const Float3 next_r_norm = select(
+                  make_float3(1.0f),
+                  next_r_raw * (3.0f / max(next_sum, 1.0e-30f)),
+                  next_sum > 1.0e-30f);
+              *out.xyz3_next_pdf_ratio = select(
+                  next_r_norm, r, sample.spectral_secondary_terminated());
+              out.throughput_weight = cycles_spectrum::Spectrum::from_xyz3(
+                  select(f_xyz / max(p_bar, 1.0e-30f), make_float3(hero_w),
+                         collapse));
+              out.pdf = select(p_bar, bsdf.evaluation.pdf, collapse);
+            } else {
+              out.throughput_weight = cycles_spectrum::Spectrum::from_xyz3(
+                  select(f_xyz / bsdf.evaluation.pdf, make_float3(hero_w),
+                         collapse));
+              out.pdf = bsdf.evaluation.pdf;
             }
           } else {
             out.throughput_weight = cycles_spectrum::Spectrum::from_rgb_raw(
                 bsdf.evaluation.sum / bsdf.evaluation.pdf);
+            out.pdf = bsdf.evaluation.pdf;
           }
-          out.pdf = bsdf.evaluation.pdf;
           out.average_roughness_squared =
               bsdf.evaluation.average_roughness_squared;
           out.label = bsdf.label;
@@ -373,22 +403,23 @@ SurfaceScatterStage::Result commit_cycles_svm_surface_continuation(
       sample.ray_dD = cycles_ray_differential::widen_direction(
           sample.ray_dD, prepared.average_roughness_squared);
     };
-    std::optional<Float> xyz3_pdf;
     if (sample.is_xyz3()) {
       const auto collapse =
           prepared.spectral_terminated_secondary.value_or(Bool{false});
-      const auto eval_sum = prepared.xyz3_eval_sum.value_or(make_float4(0.0f));
       $if(collapse) {
-        sample.collapse_xyz3(eval_sum.x / max(prepared.pdf, 1.0e-30f));
+        sample.collapse_xyz3(prepared.throughput_weight.xyz3().x);
       }
       $else {
-        xyz3_pdf.emplace(sample.apply_xyz3_bsdf_weight(
-            eval_sum, prepared.pdf, prepared.xyz3_eval_lane_pdf));
+        sample.throughput *= prepared.throughput_weight;
+        if (sample.spectral_pdf_ratio.has_value() &&
+            prepared.xyz3_next_pdf_ratio.has_value()) {
+          *sample.spectral_pdf_ratio = *prepared.xyz3_next_pdf_ratio;
+        }
       };
     } else {
       sample.throughput *= prepared.throughput_weight;
     }
-    const auto &committed_pdf = xyz3_pdf ? *xyz3_pdf : prepared.pdf;
+    const auto &committed_pdf = prepared.pdf;
     $if(sample.path_depth == 0u) {
       sample.path_diffuse_weight = prepared.diffuse_ratio;
       sample.path_glossy_weight = prepared.glossy_ratio;
@@ -593,7 +624,7 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
           sample.ray_dD = cycles_ray_differential::widen_direction(
               sample.ray_dD, bsdf_avg_r2);
         };
-        std::optional<Float> xyz3_pdf;
+        Float committed_pdf = bsdf_pdf;
         if (hero4) {
           sample.throughput *= cycles_spectrum::Spectrum::from_lanes(
               *bsdf_spec_sum / bsdf_pdf);
@@ -602,13 +633,12 @@ SurfaceScatterStage::Result emit_cycles_svm_surface_scatter(
             sample.collapse_xyz3(bsdf_spec_sum->x / max(bsdf_pdf, 1.0e-30f));
           }
           $else {
-            xyz3_pdf.emplace(sample.apply_xyz3_bsdf_weight(
-                *bsdf_spec_sum, bsdf_pdf, bsdf_lane_pdf));
+            committed_pdf = sample.apply_xyz3_bsdf_weight(
+                *bsdf_spec_sum, bsdf_pdf, bsdf_lane_pdf);
           };
         } else {
           sample.throughput.rgb() *= bsdf_sum / bsdf_pdf;
         }
-        const auto &committed_pdf = xyz3_pdf ? *xyz3_pdf : bsdf_pdf;
         // This renderer exposes the complete light-pass contract. Native
         // first-bounce weights include transparent closures and are reduced
         // only inside the first-bounce predicate.

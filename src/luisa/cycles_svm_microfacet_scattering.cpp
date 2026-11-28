@@ -663,6 +663,9 @@ template<MicrofacetDistribution Distribution>
   const bool has_disp = kernel_globals.has_dispersive_materials();
 
   BsdfSpectralEvaluation result{.value = make_float4(0.0f), .pdf = 0.0f};
+  if (kernel_globals.xyz3_rough_dispersion()) {
+    result.lane_pdf.emplace(make_float4(0.0f));
+  }
   const auto &microfacet = closure.param;
   const auto normal = closure.common.N;
   const auto cosine_incoming = dot(normal, wi);
@@ -724,6 +727,9 @@ template<MicrofacetDistribution Distribution>
         }
         const auto common = 0.25f * distribution / cosine_incoming;
         result.pdf = common / (1.0f + lambda_incoming);
+        if (result.lane_pdf.has_value()) {
+          *result.lane_pdf = make_float4(result.pdf);
+        }
         result.value = fresnel.reflectance * common /
                        (1.0f + lambda_outgoing + lambda_incoming);
       };
@@ -766,7 +772,8 @@ template<MicrofacetDistribution Distribution>
                 refl_prob, cosine_incoming, lambda_incoming, lambda_outgoing);
         result.value = trans_eval.value;
         result.pdf = trans_eval.pdf;
-        result.lane_pdf = trans_eval.lane_pdf;
+        *result.lane_pdf =
+            trans_eval.lane_pdf.value_or(make_float4(trans_eval.pdf));
       }
       $else {
         const Float eta_hero = eta_lambda.x;
@@ -848,7 +855,7 @@ template<MicrofacetDistribution Distribution>
               const auto lobe_probability =
                   select(refl_prob, 1.0f - refl_prob, is_transmission);
               result.pdf = common * lobe_probability / (1.0f + lambda_incoming);
-              result.lane_pdf = make_float4(result.pdf);
+              *result.lane_pdf = make_float4(result.pdf);
               result.value = active_lobe * common /
                              (1.0f + lambda_outgoing + lambda_incoming);
             };
@@ -1001,6 +1008,9 @@ template<MicrofacetDistribution Distribution>
                             .eta = 0.0f,
                             .label = closure_type::label_none,
                             .terminated_secondary = false};
+  if (kernel_globals.xyz3_rough_dispersion()) {
+    result.lane_pdf.emplace(make_float4(0.0f));
+  }
   const auto &microfacet = closure.param;
   const auto normal = closure.common.N;
   const auto cosine_incoming = dot(normal, wi);
@@ -1098,6 +1108,9 @@ template<MicrofacetDistribution Distribution>
             result.pdf = common / (1.0f + lambda_incoming);
             result.value *= common / (1.0f + lambda_incoming + lambda_outgoing);
           };
+          if (result.lane_pdf.has_value()) {
+            *result.lane_pdf = make_float4(result.pdf);
+          }
           result.sampled_roughness =
               make_float2(microfacet.alpha_x, microfacet.alpha_y);
           result.eta = 1.0f;
@@ -1165,7 +1178,7 @@ template<MicrofacetDistribution Distribution>
                 result.value = fresnel.reflectance * 1.0e6f;
                 result.pdf = reflection_probability * 1.0e6f;
               };
-              result.lane_pdf = make_float4(result.pdf);
+              *result.lane_pdf = make_float4(result.pdf);
             }
             $else {
               Float distribution;
@@ -1211,7 +1224,8 @@ template<MicrofacetDistribution Distribution>
                         lambda_incoming, lambda_outgoing);
                 result.value = trans_eval.value;
                 result.pdf = trans_eval.pdf;
-                result.lane_pdf = trans_eval.lane_pdf;
+                *result.lane_pdf =
+                    trans_eval.lane_pdf.value_or(make_float4(trans_eval.pdf));
               }
               $else {
                 const auto lobe_prob = select(
@@ -1225,7 +1239,7 @@ template<MicrofacetDistribution Distribution>
                                square(cos_t + cosine_half_incoming * inverse_eta),
                            refract);
                 result.pdf = common * lobe_prob / (1.0f + lambda_incoming);
-                result.lane_pdf = make_float4(result.pdf);
+                *result.lane_pdf = make_float4(result.pdf);
                 result.value = lobe_fresnel * common /
                                (1.0f + lambda_incoming + lambda_outgoing);
               };
@@ -1558,6 +1572,9 @@ BsdfSpectralSample bsdf_thin_glass_transmission_sample_spectral(
                             .eta = 0.0f,
                             .label = closure_type::label_none,
                             .terminated_secondary = false};
+  if (kernel_globals.xyz3_rough_dispersion()) {
+    result.lane_pdf.emplace(make_float4(0.0f));
+  }
   $if(roughness_is_almost_specular(closure.param)) {
     result.value = make_float4(1.0e6f);
     result.wo = -wi;
@@ -1566,11 +1583,24 @@ BsdfSpectralSample bsdf_thin_glass_transmission_sample_spectral(
     result.eta = 1.0f;
     result.label =
         closure_type::label_transmit | closure_type::label_singular;
+    if (result.lane_pdf.has_value()) {
+      *result.lane_pdf = make_float4(1.0e6f);
+    }
   }
   $else {
-    result = bsdf_microfacet_ggx_sample_spectral(
+    const auto tmp = bsdf_microfacet_ggx_sample_spectral(
         kernel_globals, closure, -Ng, reflect(wi, closure.common.N), random,
         spectral, dispersion_abbe);
+    result.value = tmp.value;
+    result.wo = tmp.wo;
+    result.pdf = tmp.pdf;
+    result.sampled_roughness = tmp.sampled_roughness;
+    result.eta = tmp.eta;
+    result.label = tmp.label;
+    result.terminated_secondary = tmp.terminated_secondary;
+    if (result.lane_pdf.has_value()) {
+      *result.lane_pdf = tmp.lane_pdf.value_or(make_float4(tmp.pdf));
+    }
     $if(result.label != closure_type::label_none) {
       result.label =
           closure_type::label_transmit | closure_type::label_glossy;

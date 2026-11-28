@@ -613,6 +613,9 @@ void PathKernelPipeline::emit(
 
               auto evaluation =
                   SurfaceEvaluation::zero(config.spectral_rendering);
+              if (config.xyz3_rough_dispersion()) {
+                evaluation.spectral_lane_pdf.emplace(make_float4(0.0f));
+              }
               $if(direct_light.valid) {
                 if (prof != nullptr) {
                   prof->bump(MegakernelStageProfileState::count_nee_evals);

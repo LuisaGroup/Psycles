@@ -21,8 +21,7 @@ struct PreparedCyclesSvmSurfaceScatter {
   Bool valid;
   std::optional<Bool> spectral_terminated_secondary{};
   std::optional<Bool> sms_caster_eligible{};
-  std::optional<Float4> xyz3_eval_sum{};
-  std::optional<Float4> xyz3_eval_lane_pdf{};
+  std::optional<Float3> xyz3_next_pdf_ratio{};
 
   [[nodiscard]] static PreparedCyclesSvmSurfaceScatter
   empty(contract::SpectralMode spectral_mode = contract::SpectralMode::none,
